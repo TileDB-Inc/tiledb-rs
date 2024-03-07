@@ -1,5 +1,6 @@
 **/.DS_Store
 
-/Cargo.lock
-/.nova
-/target
+.nova
+Cargo.lock
+target
+test.config

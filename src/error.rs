@@ -16,6 +16,23 @@ impl Error {
     pub fn is_null(&self) -> bool {
         self._wrapped.is_null()
     }
+
+    pub fn get_message(&mut self) -> String {
+        let mut msg = std::ptr::null::<std::os::raw::c_char>();
+        let res = unsafe {
+            ffi::tiledb_error_message(
+                self.as_mut_ptr(),
+                &mut msg as *mut *const std::os::raw::c_char,
+            )
+        };
+        if res == ffi::TILEDB_OK && !msg.is_null() {
+            let c_msg = unsafe { std::ffi::CStr::from_ptr(msg) };
+            let msg = String::from(c_msg.to_string_lossy());
+            msg
+        } else {
+            String::from("Failed to retrieve an error message from TileDB.")
+        }
+    }
 }
 
 impl Default for Error {
