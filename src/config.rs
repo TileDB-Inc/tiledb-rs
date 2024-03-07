@@ -30,6 +30,10 @@ impl Config {
         }
     }
 
+    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_config_t {
+        self._wrapped
+    }
+
     pub fn set(&mut self, key: &str, val: &str) -> Result<(), String> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");
@@ -135,11 +139,7 @@ impl Drop for Config {
         if self._wrapped.is_null() {
             return;
         }
-        unsafe {
-            ffi::tiledb_config_free(
-                &mut self._wrapped as *mut *mut ffi::tiledb_config_t,
-            )
-        }
+        unsafe { ffi::tiledb_config_free(&mut self._wrapped) }
     }
 }
 

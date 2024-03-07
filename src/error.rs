@@ -48,6 +48,6 @@ impl Drop for Error {
         if self._wrapped.is_null() {
             return;
         }
-        unsafe { ffi::tiledb_error_free(self.as_mut_ptr_ptr()) }
+        unsafe { ffi::tiledb_error_free(&mut self._wrapped) }
     }
 }
