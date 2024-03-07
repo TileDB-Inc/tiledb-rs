@@ -12,6 +12,10 @@ pub struct ConfigIterator<'a> {
 }
 
 impl Config {
+    pub fn as_mut_ptr_ptr(&mut self) -> *mut *mut ffi::tiledb_config_t {
+        &mut self._wrapped
+    }
+
     pub fn new() -> Result<Config, String> {
         let mut cfg = Config {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_config_t>(),
@@ -130,6 +134,14 @@ impl Config {
             Ok(())
         } else {
             Err(err.get_message())
+        }
+    }
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            _wrapped: std::ptr::null_mut::<ffi::tiledb_config_t>(),
         }
     }
 }
