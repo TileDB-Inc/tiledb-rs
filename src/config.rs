@@ -143,6 +143,20 @@ impl Drop for Config {
     }
 }
 
+impl PartialEq for Config {
+    fn eq(&self, other: &Self) -> bool {
+        let mut eq: u8 = 0;
+        let res = unsafe {
+            ffi::tiledb_config_compare(self._wrapped, other._wrapped, &mut eq)
+        };
+        if res == ffi::TILEDB_OK {
+            eq == 1
+        } else {
+            false
+        }
+    }
+}
+
 impl<'a> IntoIterator for &'a Config {
     type Item = (String, String);
     type IntoIter = ConfigIterator<'a>;
@@ -293,6 +307,16 @@ mod tests {
             .get("rs.tiledb.test_key")
             .expect("Error getting config key.");
         assert_eq!(val.unwrap(), "foobar");
+    }
+
+    #[test]
+    fn config_compare() {
+        let cfg1 = Config::new().expect("Error creating config instance.");
+        let mut cfg2 = Config::new().expect("Error creating config instance.");
+        assert!(cfg1 == cfg2);
+
+        cfg2.set("foo", "bar").expect("Error setting config key.");
+        assert!(cfg1 != cfg2);
     }
 
     #[test]
