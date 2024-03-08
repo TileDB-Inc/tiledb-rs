@@ -72,7 +72,7 @@ impl Context {
         }
     }
 
-    pub fn is_supported_fs(&self, fs: ffi::FilesystemType) -> bool {
+    pub fn is_supported_fs(&self, fs: ffi::Filesystem) -> bool {
         let mut supported: i32 = 0;
         let res = unsafe {
             ffi::tiledb_ctx_is_supported_fs(
@@ -157,8 +157,8 @@ mod tests {
         // MEMFS is by default enabled in TileDB builds while HDFS is rarely
         // enabled. These tests failing most likely means a non "standard"
         // build of libtiledb.{so,dylib,dll}
-        assert!(ctx.is_supported_fs(ffi::FilesystemType::MEMFS));
-        assert!(!ctx.is_supported_fs(ffi::FilesystemType::HDFS));
+        assert!(ctx.is_supported_fs(ffi::Filesystem::MEMFS));
+        assert!(!ctx.is_supported_fs(ffi::Filesystem::HDFS));
     }
 
     #[test]
