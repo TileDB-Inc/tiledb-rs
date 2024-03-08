@@ -34,6 +34,14 @@ impl Filter {
         }
     }
 
+    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_filter_t {
+        self._wrapped
+    }
+
+    pub fn as_mut_ptr_ptr(&mut self) -> *mut *mut ffi::tiledb_filter_t {
+        &mut self._wrapped
+    }
+
     pub fn get_type(&self, ctx: &Context) -> Result<FilterType, String> {
         let mut c_ftype: u32 = 0;
         let res = unsafe {
@@ -357,6 +365,14 @@ impl Filter {
             Err(ctx.get_last_error().unwrap_or_else(|| {
                 String::from("Error getting last context error.")
             }))
+        }
+    }
+}
+
+impl Default for Filter {
+    fn default() -> Self {
+        Self {
+            _wrapped: std::ptr::null_mut::<ffi::tiledb_filter_t>(),
         }
     }
 }

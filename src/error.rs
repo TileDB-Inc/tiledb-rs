@@ -5,7 +5,7 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn as_mut_ptr(&mut self) -> *mut ffi::tiledb_error_t {
+    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_error_t {
         self._wrapped
     }
 
