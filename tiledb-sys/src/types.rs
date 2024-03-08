@@ -29,6 +29,6 @@ pub struct tiledb_error_t {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct tiledb_filter_handle_t {
+pub struct tiledb_filter_t {
     _unused: [u8; 0],
 }

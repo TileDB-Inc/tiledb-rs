@@ -13,6 +13,10 @@ impl Context {
         Context::from_config(&cfg)
     }
 
+    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_ctx_t {
+        self._wrapped
+    }
+
     pub fn from_config(cfg: &Config) -> Result<Context, String> {
         let mut ctx = Context {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_ctx_t>(),

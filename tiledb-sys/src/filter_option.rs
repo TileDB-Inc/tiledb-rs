@@ -14,13 +14,35 @@ extern "C" {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum WebPFilterInputFormat {
+    NONE = 0,
+    RGB = 1,
+    BGR = 2,
+    RGBA = 3,
+    BGRA = 4,
+}
+
+impl WebPFilterInputFormat {
+    pub fn from_u32(fmt: u32) -> Option<WebPFilterInputFormat> {
+        match fmt {
+            0 => Some(WebPFilterInputFormat::NONE),
+            1 => Some(WebPFilterInputFormat::RGB),
+            2 => Some(WebPFilterInputFormat::BGR),
+            3 => Some(WebPFilterInputFormat::RGBA),
+            4 => Some(WebPFilterInputFormat::BGRA),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum FilterOption {
     COMPRESSION_LEVEL = 0,
     BIT_WIDTH_MAX_WINDOW = 1,
     POSITIVE_DELTA_MAX_WINDOW = 2,
-    FLOAT_BYTEWIDTH = 3,
-    FLOAT_FACTOR = 4,
-    FLOAT_OFFSET = 5,
+    SCALE_FLOAT_BYTEWIDTH = 3,
+    SCALE_FLOAT_FACTOR = 4,
+    SCALE_FLOAT_OFFSET = 5,
     WEBP_QUALITY = 6,
     WEBP_INPUT_FORMAT = 7,
     WEBP_LOSSLESS = 8,
@@ -64,9 +86,9 @@ impl FilterOption {
             0 => Some(FilterOption::COMPRESSION_LEVEL),
             1 => Some(FilterOption::BIT_WIDTH_MAX_WINDOW),
             2 => Some(FilterOption::POSITIVE_DELTA_MAX_WINDOW),
-            3 => Some(FilterOption::FLOAT_BYTEWIDTH),
-            4 => Some(FilterOption::FLOAT_FACTOR),
-            5 => Some(FilterOption::FLOAT_OFFSET),
+            3 => Some(FilterOption::SCALE_FLOAT_BYTEWIDTH),
+            4 => Some(FilterOption::SCALE_FLOAT_FACTOR),
+            5 => Some(FilterOption::SCALE_FLOAT_OFFSET),
             6 => Some(FilterOption::WEBP_QUALITY),
             7 => Some(FilterOption::WEBP_INPUT_FORMAT),
             8 => Some(FilterOption::WEBP_LOSSLESS),
