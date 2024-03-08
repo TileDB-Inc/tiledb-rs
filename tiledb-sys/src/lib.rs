@@ -5,11 +5,13 @@
 mod config;
 mod constants;
 mod context;
+mod datatype;
 mod error;
 mod types;
 
 pub use config::*;
 pub use constants::*;
 pub use context::*;
+pub use datatype::*;
 pub use error::*;
 pub use types::*;
