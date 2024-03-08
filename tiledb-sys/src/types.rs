@@ -38,3 +38,9 @@ pub struct tiledb_filter_t {
 pub struct tiledb_filter_list_t {
     _unused: [u8; 0],
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_string_t {
+    _unused: [u8; 0],
+}
