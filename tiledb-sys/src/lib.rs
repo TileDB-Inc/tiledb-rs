@@ -8,6 +8,8 @@ mod context;
 mod datatype;
 mod error;
 mod filesystem;
+mod filter_option;
+mod filter_type;
 mod types;
 
 pub use config::*;
@@ -16,4 +18,6 @@ pub use context::*;
 pub use datatype::*;
 pub use error::*;
 pub use filesystem::*;
+pub use filter_option::*;
+pub use filter_type::*;
 pub use types::*;

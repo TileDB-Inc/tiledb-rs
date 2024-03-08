@@ -17,12 +17,18 @@ pub struct tiledb_config_iter_t {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_ctx_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_error_t {
     _unused: [u8; 0],
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct tiledb_ctx_t {
+pub struct tiledb_filter_handle_t {
     _unused: [u8; 0],
 }
