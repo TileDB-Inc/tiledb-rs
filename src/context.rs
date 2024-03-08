@@ -65,14 +65,14 @@ impl Context {
         let res = unsafe {
             ffi::tiledb_ctx_get_last_error(self._wrapped, err.as_mut_ptr_ptr())
         };
-        if res == ffi::TILEDB_OK {
+        if res == ffi::TILEDB_OK && !err.is_null() {
             Some(err.get_message())
         } else {
             None
         }
     }
 
-    pub fn is_supported_fs(&self, fs: ffi::TileDBFilesystem) -> bool {
+    pub fn is_supported_fs(&self, fs: ffi::FilesystemType) -> bool {
         let mut supported: i32 = 0;
         let res = unsafe {
             ffi::tiledb_ctx_is_supported_fs(
@@ -133,6 +133,32 @@ mod tests {
     fn ctx_from_config() {
         let cfg = Config::new().expect("Error creating config instance.");
         Context::from_config(&cfg).expect("Error creating context instance.");
+    }
+
+    #[test]
+    fn ctx_get_stats() {
+        let ctx = Context::new().expect("Error creating context instance.");
+        let json = ctx.get_stats();
+        // I have to wrap enable_stats/disable_stats before we'll get anything
+        // useful out of this.
+        assert!(json.unwrap() == "");
+    }
+
+    #[test]
+    fn ctx_get_last_error() {
+        let ctx = Context::new().expect("Error creating instance.");
+        assert!(ctx.get_last_error().is_none());
+    }
+
+    #[test]
+    fn ctx_is_supported_fs() {
+        let ctx = Context::new().expect("Error creating instance.");
+
+        // MEMFS is by default enabled in TileDB builds while HDFS is rarely
+        // enabled. These tests failing most likely means a non "standard"
+        // build of libtiledb.{so,dylib,dll}
+        assert!(ctx.is_supported_fs(ffi::FilesystemType::MEMFS));
+        assert!(!ctx.is_supported_fs(ffi::FilesystemType::HDFS));
     }
 
     #[test]
