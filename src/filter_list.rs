@@ -24,6 +24,14 @@ impl FilterList {
         }
     }
 
+    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_filter_list_t {
+        self._wrapped
+    }
+
+    pub fn as_mut_ptr_ptr(&mut self) -> *mut *mut ffi::tiledb_filter_list_t {
+        &mut self._wrapped
+    }
+
     pub fn add_filter(
         &self,
         ctx: &Context,
@@ -122,6 +130,14 @@ impl FilterList {
             Err(ctx.get_last_error().unwrap_or_else(|| {
                 String::from("Error getting last error from context.")
             }))
+        }
+    }
+}
+
+impl Default for FilterList {
+    fn default() -> Self {
+        Self {
+            _wrapped: std::ptr::null_mut::<ffi::tiledb_filter_list_t>(),
         }
     }
 }

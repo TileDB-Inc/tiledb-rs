@@ -5,6 +5,12 @@ pub type capi_status_t = i32;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_attribute_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_config_t {
     _unused: [u8; 0],
 }

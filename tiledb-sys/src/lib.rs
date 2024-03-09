@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+mod attribute;
 mod config;
 mod constants;
 mod context;
@@ -15,6 +16,7 @@ mod filter_type;
 mod string;
 mod types;
 
+pub use attribute::*;
 pub use config::*;
 pub use constants::*;
 pub use context::*;
