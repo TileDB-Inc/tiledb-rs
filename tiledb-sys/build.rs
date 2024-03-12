@@ -7,7 +7,8 @@ const INSTALL_DEFAULT: &str = "/opt/tiledb/lib";
 fn main() {
     // Hard coded for now
     println!("cargo:rustc-link-lib=tiledb");
-    println!("cargo:rustc-link-search=all={}",
+    println!(
+        "cargo:rustc-link-search=all={}",
         match env::var(INSTALL_ENVVAR) {
             Ok(dir) => dir,
             Err(e) =>
