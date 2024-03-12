@@ -5,9 +5,8 @@ const INSTALL_ENVVAR: &str = "CMAKE_INSTALL_PREFIX";
 const INSTALL_DEFAULT: &str = "/opt/tiledb/lib";
 
 fn main() {
-    // Hard coded for now
-    println!("cargo:rustc-link-lib=tiledb");
-    println!("cargo:rustc-link-search=all={}",
+    println!(
+        "cargo:rustc-env=LD_LIBRARY_PATH={}",
         match env::var(INSTALL_ENVVAR) {
             Ok(dir) => dir,
             Err(e) =>
