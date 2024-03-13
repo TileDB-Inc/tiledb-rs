@@ -49,6 +49,22 @@ impl<'ctx> Schema<'ctx> {
         **self.ffi
     }
 
+    pub fn version(&self) -> i64 {
+        let mut c_ret: std::os::raw::c_int = out_ptr!();
+        if unsafe {
+            ffi::tiledb_array_schema_get_allows_dups(
+                self.context.as_mut_ptr(),
+                self.as_mut_ptr(),
+                &mut c_ret,
+            )
+        } == ffi::TILEDB_OK
+        {
+            c_ret as i64
+        } else {
+            unreachable!("Rust API design should prevent sanity check failure")
+        }
+    }
+
     pub fn allows_duplicates(&self) -> bool {
         let mut c_ret: std::os::raw::c_int = out_ptr!();
         if unsafe {
@@ -143,6 +159,19 @@ impl<'ctx> Into<Schema<'ctx>> for Builder<'ctx> {
 #[cfg(test)]
 mod tests {
     use crate::array::schema::*;
+
+    #[test]
+    fn test_get_version() {
+        let c: Context = Context::new().unwrap();
+
+        let b: Builder = Builder::new(&c, ArrayType::Dense)
+            .unwrap()
+            .allow_duplicates(false)
+            .unwrap();
+
+        let s: Schema = b.into();
+        assert_eq!(0, s.version());
+    }
 
     #[test]
     fn test_allow_duplicates() {
