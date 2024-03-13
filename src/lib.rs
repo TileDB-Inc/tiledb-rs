@@ -21,7 +21,6 @@ macro_rules! out_ptr {
 }
 
 pub mod array;
-pub mod attribute;
 pub mod config;
 pub mod context;
 pub mod error;
