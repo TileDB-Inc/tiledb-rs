@@ -1,6 +1,7 @@
 extern crate tiledb_sys as ffi;
 
 use crate::error::Error;
+use crate::Result as TileDBResult;
 
 pub struct Config {
     _wrapped: *mut ffi::tiledb_config_t,
@@ -12,21 +13,21 @@ pub struct ConfigIterator<'a> {
 }
 
 impl Config {
-    pub fn new() -> Result<Config, String> {
+    pub fn new() -> TileDBResult<Config> {
         let mut cfg = Config {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_config_t>(),
         };
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_alloc(
                 &mut cfg._wrapped as *mut *mut ffi::tiledb_config_t,
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
         if res == ffi::TILEDB_OK {
             Ok(cfg)
         } else {
-            Err(err.get_message())
+            Err(Error::from(c_err))
         }
     }
 
@@ -38,39 +39,39 @@ impl Config {
         &mut self._wrapped
     }
 
-    pub fn set(&mut self, key: &str, val: &str) -> Result<(), String> {
+    pub fn set(&mut self, key: &str, val: &str) -> TileDBResult<()> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");
         let c_val =
             std::ffi::CString::new(val).expect("Error creating CString");
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_set(
                 self._wrapped,
                 c_key.as_c_str().as_ptr(),
                 c_val.as_c_str().as_ptr(),
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
 
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(err.get_message())
+            Err(Error::from(c_err))
         }
     }
 
-    pub fn get(&self, key: &str) -> Result<Option<String>, String> {
+    pub fn get(&self, key: &str) -> TileDBResult<Option<String>> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");
         let mut val = std::ptr::null::<std::os::raw::c_char>();
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_get(
                 self._wrapped,
                 c_key.as_c_str().as_ptr(),
                 &mut val as *mut *const std::os::raw::c_char,
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
         if res == ffi::TILEDB_OK && !val.is_null() {
@@ -79,61 +80,61 @@ impl Config {
         } else if res == ffi::TILEDB_OK {
             Ok(None)
         } else {
-            Err(err.get_message())
+            Err(Error::from(c_err))
         }
     }
 
-    pub fn unset(&mut self, key: &str) -> Result<(), String> {
+    pub fn unset(&mut self, key: &str) -> TileDBResult<()> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_unset(
                 self._wrapped,
                 c_key.as_c_str().as_ptr(),
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(err.get_message())
+            Err(Error::from(c_err))
         }
     }
 
-    pub fn load(&mut self, path: &str) -> Result<(), String> {
+    pub fn load(&mut self, path: &str) -> TileDBResult<()> {
         let c_path =
             std::ffi::CString::new(path).expect("Error creating CString");
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_load_from_file(
                 self._wrapped,
                 c_path.as_c_str().as_ptr(),
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(err.get_message())
+            Err(Error::from(c_err))
         }
     }
 
-    pub fn save(&mut self, path: &str) -> Result<(), String> {
+    pub fn save(&mut self, path: &str) -> TileDBResult<()> {
         let c_path =
             std::ffi::CString::new(path).expect("Error creating CString");
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_save_to_file(
                 self._wrapped,
                 c_path.as_c_str().as_ptr(),
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(err.get_message())
+            Err(Error::from(c_err))
         }
     }
 }
@@ -179,13 +180,13 @@ impl<'a> IntoIterator for &'a Config {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_config_iter_t>(),
         };
         let c_path = std::ptr::null::<std::os::raw::c_char>();
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_iter_alloc(
                 iter.cfg._wrapped,
                 c_path,
                 &mut iter._wrapped,
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
 
@@ -215,14 +216,10 @@ impl<'a> Iterator for ConfigIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let mut c_key = std::ptr::null::<std::os::raw::c_char>();
         let mut c_val = std::ptr::null::<std::os::raw::c_char>();
-        let mut err = Error::default();
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let mut done: i32 = 0;
         let res = unsafe {
-            ffi::tiledb_config_iter_done(
-                self._wrapped,
-                &mut done,
-                err.as_mut_ptr_ptr(),
-            )
+            ffi::tiledb_config_iter_done(self._wrapped, &mut done, &mut c_err)
         };
 
         if res != ffi::TILEDB_OK || done != 0 {
@@ -234,7 +231,7 @@ impl<'a> Iterator for ConfigIterator<'a> {
                 self._wrapped,
                 &mut c_key as *mut *const std::os::raw::c_char,
                 &mut c_val as *mut *const std::os::raw::c_char,
-                err.as_mut_ptr_ptr(),
+                &mut c_err,
             )
         };
         if res == ffi::TILEDB_OK && !c_key.is_null() && !c_val.is_null() {
@@ -248,14 +245,10 @@ impl<'a> Iterator for ConfigIterator<'a> {
                 (k, v)
             };
 
-            let mut next_err = Error::default();
             unsafe {
                 // TODO: Ignoring the errors here since I have no idea how we'd
                 // do anything abou them.
-                ffi::tiledb_config_iter_next(
-                    self._wrapped,
-                    next_err.as_mut_ptr_ptr(),
-                );
+                ffi::tiledb_config_iter_next(self._wrapped, &mut c_err);
             }
 
             Some((key, val))

@@ -6,16 +6,15 @@ pub use tiledb_sys::FilterType;
 pub use tiledb_sys::WebPFilterInputFormat;
 
 use crate::context::Context;
+use crate::error::Error;
+use crate::Result as TileDBResult;
 
 pub struct Filter {
     _wrapped: *mut ffi::tiledb_filter_t,
 }
 
 impl Filter {
-    pub fn new(
-        ctx: &Context,
-        filter_type: FilterType,
-    ) -> Result<Filter, String> {
+    pub fn new(ctx: &Context, filter_type: FilterType) -> TileDBResult<Filter> {
         let mut filter = Filter {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_filter_t>(),
         };
@@ -30,7 +29,7 @@ impl Filter {
         if res == ffi::TILEDB_OK {
             Ok(filter)
         } else {
-            Err(String::from("Error creating filter."))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -42,7 +41,7 @@ impl Filter {
         &mut self._wrapped
     }
 
-    pub fn get_type(&self, ctx: &Context) -> Result<FilterType, String> {
+    pub fn get_type(&self, ctx: &Context) -> TileDBResult<FilterType> {
         let mut c_ftype: u32 = 0;
         let res = unsafe {
             ffi::tiledb_filter_get_type(
@@ -55,12 +54,10 @@ impl Filter {
             let ftype = FilterType::from_u32(c_ftype);
             match ftype {
                 Some(ft) => Ok(ft),
-                None => Err(String::from("Unknown filter type.")),
+                None => Err(Error::from("Unknown filter type.")),
             }
         } else {
-            Err(ctx
-                .get_last_error()
-                .unwrap_or_else(|| String::from("Invalid filter type")))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -68,7 +65,7 @@ impl Filter {
         &self,
         ctx: &Context,
         level: i32,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_level = level as std::ffi::c_int;
         self.set_option(
             ctx,
@@ -77,7 +74,7 @@ impl Filter {
         )
     }
 
-    pub fn get_compression_level(&self, ctx: &Context) -> Result<i32, String> {
+    pub fn get_compression_level(&self, ctx: &Context) -> TileDBResult<i32> {
         let mut c_level: std::ffi::c_int = 0;
         self.get_option(
             ctx,
@@ -91,7 +88,7 @@ impl Filter {
         &self,
         ctx: &Context,
         size: u32,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_size = size as std::ffi::c_uint;
         self.set_option(
             ctx,
@@ -100,10 +97,7 @@ impl Filter {
         )
     }
 
-    pub fn get_bit_width_max_window(
-        &self,
-        ctx: &Context,
-    ) -> Result<u32, String> {
+    pub fn get_bit_width_max_window(&self, ctx: &Context) -> TileDBResult<u32> {
         let mut c_width: std::ffi::c_uint = 0;
         self.get_option(
             ctx,
@@ -117,7 +111,7 @@ impl Filter {
         &self,
         ctx: &Context,
         size: u32,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_size = size as std::ffi::c_uint;
         self.set_option(
             ctx,
@@ -129,7 +123,7 @@ impl Filter {
     pub fn get_positive_delta_max_window(
         &self,
         ctx: &Context,
-    ) -> Result<u32, String> {
+    ) -> TileDBResult<u32> {
         let mut c_width: std::ffi::c_uint = 0;
         self.get_option(
             ctx,
@@ -143,7 +137,7 @@ impl Filter {
         &self,
         ctx: &Context,
         width: u64,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_width = width as std::ffi::c_ulonglong;
         self.set_option(
             ctx,
@@ -152,7 +146,7 @@ impl Filter {
         )
     }
 
-    pub fn get_float_bytewidth(&self, ctx: &Context) -> Result<u64, String> {
+    pub fn get_float_bytewidth(&self, ctx: &Context) -> TileDBResult<u64> {
         let mut c_width: std::ffi::c_ulonglong = 0;
         self.get_option(
             ctx,
@@ -166,7 +160,7 @@ impl Filter {
         &self,
         ctx: &Context,
         factor: f64,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_factor = factor as std::ffi::c_double;
         self.set_option(
             ctx,
@@ -175,7 +169,7 @@ impl Filter {
         )
     }
 
-    pub fn get_float_factor(&self, ctx: &Context) -> Result<f64, String> {
+    pub fn get_float_factor(&self, ctx: &Context) -> TileDBResult<f64> {
         let mut c_factor: std::ffi::c_double = 0.0;
         self.get_option(
             ctx,
@@ -189,7 +183,7 @@ impl Filter {
         &self,
         ctx: &Context,
         offset: f64,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_offset = offset as std::ffi::c_double;
         self.set_option(
             ctx,
@@ -198,7 +192,7 @@ impl Filter {
         )
     }
 
-    pub fn get_float_offset(&self, ctx: &Context) -> Result<f64, String> {
+    pub fn get_float_offset(&self, ctx: &Context) -> TileDBResult<f64> {
         let mut c_factor: std::ffi::c_double = 0.0;
         self.get_option(
             ctx,
@@ -212,7 +206,7 @@ impl Filter {
         &self,
         ctx: &Context,
         quality: f32,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_quality = quality as std::ffi::c_float;
         self.set_option(
             ctx,
@@ -221,7 +215,7 @@ impl Filter {
         )
     }
 
-    pub fn get_webp_quality(&self, ctx: &Context) -> Result<f32, String> {
+    pub fn get_webp_quality(&self, ctx: &Context) -> TileDBResult<f32> {
         let mut c_factor: std::ffi::c_float = 0.0;
         self.get_option(
             ctx,
@@ -235,7 +229,7 @@ impl Filter {
         &self,
         ctx: &Context,
         format: WebPFilterInputFormat,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_format = format as std::ffi::c_uchar;
         self.set_option(
             ctx,
@@ -247,7 +241,7 @@ impl Filter {
     pub fn get_webp_input_format(
         &self,
         ctx: &Context,
-    ) -> Result<WebPFilterInputFormat, String> {
+    ) -> TileDBResult<WebPFilterInputFormat> {
         let mut c_fmt: std::ffi::c_uchar = 0;
         let res = self.get_option(
             ctx,
@@ -257,7 +251,7 @@ impl Filter {
         match res {
             Ok(()) => match WebPFilterInputFormat::from_u32(c_fmt as u32) {
                 Some(fmt) => Ok(fmt),
-                None => Err(String::from(
+                None => Err(Error::from(
                     "Invalid WebP input filter format returned from core.",
                 )),
             },
@@ -269,7 +263,7 @@ impl Filter {
         &self,
         ctx: &Context,
         lossless: bool,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_lossless: std::ffi::c_uchar = if lossless { 1 } else { 0 };
         self.set_option(
             ctx,
@@ -278,7 +272,7 @@ impl Filter {
         )
     }
 
-    pub fn get_webp_lossless(&self, ctx: &Context) -> Result<bool, String> {
+    pub fn get_webp_lossless(&self, ctx: &Context) -> TileDBResult<bool> {
         let mut c_lossless: std::ffi::c_uchar = 0;
         self.get_option(
             ctx,
@@ -292,7 +286,7 @@ impl Filter {
         &self,
         ctx: &Context,
         dtype: Datatype,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_dtype = dtype as std::ffi::c_uchar;
         self.set_option(
             ctx,
@@ -304,7 +298,7 @@ impl Filter {
     pub fn get_compression_reinterpret_datatype(
         &self,
         ctx: &Context,
-    ) -> Result<Datatype, String> {
+    ) -> TileDBResult<Datatype> {
         let mut c_fmt: std::ffi::c_uchar = 0;
         let res = self.get_option(
             ctx,
@@ -314,9 +308,7 @@ impl Filter {
         match res {
             Ok(()) => match Datatype::from_u32(c_fmt as u32) {
                 Some(dtype) => Ok(dtype),
-                None => Err(String::from(
-                    "Invalid compression reinterpret datatype returned from core.",
-                )),
+                None => Err(Error::from("Invalid compression reinterpret datatype returned from core."))
             },
             Err(msg) => Err(msg),
         }
@@ -327,7 +319,7 @@ impl Filter {
         ctx: &Context,
         fopt: FilterOption,
         val: *const std::ffi::c_void,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_set_option(
                 ctx.as_mut_ptr(),
@@ -339,9 +331,7 @@ impl Filter {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last context error.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -350,7 +340,7 @@ impl Filter {
         ctx: &Context,
         fopt: FilterOption,
         val: *mut std::ffi::c_void,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_get_option(
                 ctx.as_mut_ptr(),
@@ -362,9 +352,7 @@ impl Filter {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last context error.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 }

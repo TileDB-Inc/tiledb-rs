@@ -4,7 +4,9 @@ pub use tiledb_sys::Datatype;
 pub use tiledb_sys::FilterType;
 
 use crate::context::Context;
+use crate::error::Error;
 use crate::filter_list::FilterList;
+use crate::Result as TileDBResult;
 
 pub struct Attribute {
     _wrapped: *mut ffi::tiledb_attribute_t,
@@ -15,7 +17,7 @@ impl Attribute {
         ctx: &Context,
         name: &str,
         datatype: Datatype,
-    ) -> Result<Attribute, String> {
+    ) -> TileDBResult<Attribute> {
         let mut attr = Attribute {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_attribute_t>(),
         };
@@ -32,13 +34,11 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(attr)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn name(&self, ctx: &Context) -> Result<String, String> {
+    pub fn name(&self, ctx: &Context) -> TileDBResult<String> {
         let mut c_name = std::ptr::null::<std::ffi::c_char>();
         let res = unsafe {
             ffi::tiledb_attribute_get_name(
@@ -51,13 +51,11 @@ impl Attribute {
             let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
             Ok(String::from(c_name.to_string_lossy()))
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn datatype(&self, ctx: &Context) -> Result<Datatype, String> {
+    pub fn datatype(&self, ctx: &Context) -> TileDBResult<Datatype> {
         let mut c_dtype: std::ffi::c_uint = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_type(
@@ -70,12 +68,10 @@ impl Attribute {
             if let Some(dtype) = Datatype::from_u32(c_dtype) {
                 Ok(dtype)
             } else {
-                Err(String::from("Invalid Datatype value returned by TileDB"))
+                Err(Error::from("Invalid Datatype value returned by TileDB"))
             }
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -83,7 +79,7 @@ impl Attribute {
         &self,
         ctx: &Context,
         nullable: bool,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let nullable: u8 = if nullable { 1 } else { 0 };
         let res = unsafe {
             ffi::tiledb_attribute_set_nullable(
@@ -95,13 +91,11 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn get_nullable(&self, ctx: &Context) -> Result<bool, String> {
+    pub fn get_nullable(&self, ctx: &Context) -> TileDBResult<bool> {
         let mut c_nullable: std::ffi::c_uchar = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_nullable(
@@ -113,9 +107,7 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(c_nullable == 1)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -123,7 +115,7 @@ impl Attribute {
         &self,
         ctx: &Context,
         filter_list: &FilterList,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_attribute_set_filter_list(
                 ctx.as_mut_ptr(),
@@ -134,13 +126,11 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn get_filter_list(&self, ctx: &Context) -> Result<FilterList, String> {
+    pub fn get_filter_list(&self, ctx: &Context) -> TileDBResult<FilterList> {
         let mut flist = FilterList::default();
         let res = unsafe {
             ffi::tiledb_attribute_get_filter_list(
@@ -152,17 +142,15 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(flist)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn set_var_sized(&self, ctx: &Context) -> Result<(), String> {
+    pub fn set_var_sized(&self, ctx: &Context) -> TileDBResult<()> {
         self.set_cell_val_num(ctx, u32::MAX)
     }
 
-    pub fn is_var_sized(&self, ctx: &Context) -> Result<bool, String> {
+    pub fn is_var_sized(&self, ctx: &Context) -> TileDBResult<bool> {
         self.get_cell_val_num(ctx).map(|num| num == u32::MAX)
     }
 
@@ -170,7 +158,7 @@ impl Attribute {
         &self,
         ctx: &Context,
         num: u32,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let c_num = num as std::ffi::c_uint;
         let res = unsafe {
             ffi::tiledb_attribute_set_cell_val_num(
@@ -182,13 +170,11 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn get_cell_val_num(&self, ctx: &Context) -> Result<u32, String> {
+    pub fn get_cell_val_num(&self, ctx: &Context) -> TileDBResult<u32> {
         let mut c_num: std::ffi::c_uint = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_val_num(
@@ -200,13 +186,11 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(c_num as u32)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn get_cell_size(&self, ctx: &Context) -> Result<u64, String> {
+    pub fn get_cell_size(&self, ctx: &Context) -> TileDBResult<u64> {
         let mut c_size: std::ffi::c_ulonglong = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_size(
@@ -218,9 +202,7 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(c_size as u64)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 }

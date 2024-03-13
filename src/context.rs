@@ -1,14 +1,17 @@
 extern crate tiledb_sys as ffi;
 
+use std::convert::From;
+
 use crate::config::Config;
 use crate::error::Error;
+use crate::Result as TileDBResult;
 
 pub struct Context {
     _wrapped: *mut ffi::tiledb_ctx_t,
 }
 
 impl Context {
-    pub fn new() -> Result<Context, String> {
+    pub fn new() -> TileDBResult<Context> {
         let cfg = Config::new().expect("Error creating config instance.");
         Context::from_config(&cfg)
     }
@@ -17,7 +20,7 @@ impl Context {
         self._wrapped
     }
 
-    pub fn from_config(cfg: &Config) -> Result<Context, String> {
+    pub fn from_config(cfg: &Config) -> TileDBResult<Context> {
         let mut ctx = Context {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_ctx_t>(),
         };
@@ -27,11 +30,11 @@ impl Context {
         if res == ffi::TILEDB_OK {
             Ok(ctx)
         } else {
-            Err(String::from("Error creating context."))
+            Err(Error::from("Error creating context."))
         }
     }
 
-    pub fn get_stats(&self) -> Result<String, String> {
+    pub fn get_stats(&self) -> TileDBResult<String> {
         let mut c_json = std::ptr::null_mut::<std::os::raw::c_char>();
         let res = unsafe {
             ffi::tiledb_ctx_get_stats(
@@ -44,13 +47,11 @@ impl Context {
             let json = unsafe { std::ffi::CStr::from_ptr(c_json) };
             Ok(String::from(json.to_string_lossy()))
         } else {
-            Err(self.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context")
-            }))
+            Err(self.expect_last_error())
         }
     }
 
-    pub fn get_config(&self) -> Result<Config, String> {
+    pub fn get_config(&self) -> TileDBResult<Config> {
         let mut cfg = Config::default();
         let res = unsafe {
             ffi::tiledb_ctx_get_config(self._wrapped, cfg.as_mut_ptr_ptr())
@@ -58,22 +59,26 @@ impl Context {
         if res == ffi::TILEDB_OK {
             Ok(cfg)
         } else {
-            Err(self.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(self.expect_last_error())
         }
     }
 
-    pub fn get_last_error(&self) -> Option<String> {
-        let mut err = Error::default();
+    pub fn get_last_error(&self) -> Option<Error> {
+        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
-            ffi::tiledb_ctx_get_last_error(self._wrapped, err.as_mut_ptr_ptr())
+            ffi::tiledb_ctx_get_last_error(self._wrapped, &mut c_err)
         };
-        if res == ffi::TILEDB_OK && !err.is_null() {
-            Some(err.get_message())
+        if res == ffi::TILEDB_OK && !c_err.is_null() {
+            Some(Error::from(c_err))
         } else {
             None
         }
+    }
+
+    pub fn expect_last_error(&self) -> Error {
+        self.get_last_error().unwrap_or(Error::from(
+            "TileDB internal error: expected error data but found none",
+        ))
     }
 
     pub fn is_supported_fs(&self, fs: ffi::Filesystem) -> bool {
@@ -92,7 +97,7 @@ impl Context {
         }
     }
 
-    pub fn set_tag(&self, key: &str, val: &str) -> Result<(), String> {
+    pub fn set_tag(&self, key: &str, val: &str) -> TileDBResult<()> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");
         let c_val =
@@ -108,9 +113,7 @@ impl Context {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(self.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(self.expect_last_error())
         }
     }
 }

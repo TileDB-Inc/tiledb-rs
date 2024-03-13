@@ -2,13 +2,14 @@ extern crate tiledb_sys as ffi;
 
 use crate::context::Context;
 use crate::filter::Filter;
+use crate::Result as TileDBResult;
 
 pub struct FilterList {
     _wrapped: *mut ffi::tiledb_filter_list_t,
 }
 
 impl FilterList {
-    pub fn new(ctx: &Context) -> Result<FilterList, String> {
+    pub fn new(ctx: &Context) -> TileDBResult<FilterList> {
         let mut flist = FilterList {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_filter_list_t>(),
         };
@@ -18,9 +19,7 @@ impl FilterList {
         if res == ffi::TILEDB_OK {
             Ok(flist)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Failed to get last error message from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -36,7 +35,7 @@ impl FilterList {
         &self,
         ctx: &Context,
         filter: &Filter,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_list_add_filter(
                 ctx.as_mut_ptr(),
@@ -47,13 +46,11 @@ impl FilterList {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn get_num_filters(&self, ctx: &Context) -> Result<u32, String> {
+    pub fn get_num_filters(&self, ctx: &Context) -> TileDBResult<u32> {
         let mut num: u32 = 0;
         let res = unsafe {
             ffi::tiledb_filter_list_get_nfilters(
@@ -65,9 +62,7 @@ impl FilterList {
         if res == ffi::TILEDB_OK {
             Ok(num)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -75,7 +70,7 @@ impl FilterList {
         &self,
         ctx: &Context,
         index: u32,
-    ) -> Result<Filter, String> {
+    ) -> TileDBResult<Filter> {
         let mut filter = Filter::default();
         let res = unsafe {
             ffi::tiledb_filter_list_get_filter_from_index(
@@ -88,9 +83,7 @@ impl FilterList {
         if res == ffi::TILEDB_OK {
             Ok(filter)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
@@ -98,7 +91,7 @@ impl FilterList {
         &self,
         ctx: &Context,
         size: u32,
-    ) -> Result<(), String> {
+    ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_list_set_max_chunk_size(
                 ctx.as_mut_ptr(),
@@ -109,13 +102,11 @@ impl FilterList {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 
-    pub fn get_max_chunk_size(&self, ctx: &Context) -> Result<u32, String> {
+    pub fn get_max_chunk_size(&self, ctx: &Context) -> TileDBResult<u32> {
         let mut size: u32 = 0;
         let res = unsafe {
             ffi::tiledb_filter_list_get_max_chunk_size(
@@ -127,9 +118,7 @@ impl FilterList {
         if res == ffi::TILEDB_OK {
             Ok(size)
         } else {
-            Err(ctx.get_last_error().unwrap_or_else(|| {
-                String::from("Error getting last error from context.")
-            }))
+            Err(ctx.expect_last_error())
         }
     }
 }
