@@ -1,9 +1,13 @@
-use std::ffi::CString;
 use std::sync::Arc;
 
 use crate::context::Context;
-use crate::error::Error;
 use crate::Result as TileDBResult;
+
+mod attribute;
+mod schema;
+
+pub use attribute::Attribute;
+pub use schema::{Builder as SchemaBuilder, Schema};
 
 pub enum Mode {
     Read,
@@ -36,10 +40,7 @@ impl Array {
         let ctx = context.as_mut_ptr();
         let mut array_raw: *mut ffi::tiledb_array_t = std::ptr::null_mut();
 
-        let c_uri = match CString::new(uri) {
-            Ok(c_uri) => c_uri,
-            Err(nullity) => return Err(Error::from(format!("{}", nullity))),
-        };
+        let c_uri = cstring!(uri);
 
         if unsafe {
             ffi::tiledb_array_alloc(ctx, c_uri.as_ptr(), &mut array_raw)

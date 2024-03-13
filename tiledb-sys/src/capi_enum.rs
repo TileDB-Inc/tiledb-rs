@@ -30,3 +30,24 @@ pub const tiledb_query_type_t_TILEDB_DELETE: tiledb_query_type_t = 2;
 pub const tiledb_query_type_t_TILEDB_UPDATE: tiledb_query_type_t = 3;
 #[doc = " Exclusive Modification query"]
 pub const tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE: tiledb_query_type_t = 4;
+
+pub const tiledb_layout_t_TILEDB_ROW_MAJOR: tiledb_layout_t = 0;
+#[doc = " Column-major layout"]
+pub const tiledb_layout_t_TILEDB_COL_MAJOR: tiledb_layout_t = 1;
+#[doc = " Global-order layout"]
+pub const tiledb_layout_t_TILEDB_GLOBAL_ORDER: tiledb_layout_t = 2;
+#[doc = " Unordered layout"]
+pub const tiledb_layout_t_TILEDB_UNORDERED: tiledb_layout_t = 3;
+#[doc = " Hilbert layout"]
+pub const tiledb_layout_t_TILEDB_HILBERT: tiledb_layout_t = 4;
+#[doc = " Tile or cell layout."]
+pub type tiledb_layout_t = ::std::os::raw::c_uint;
+
+#[doc = " No encryption."]
+pub const tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION:
+    tiledb_encryption_type_t = 0;
+#[doc = " AES-256-GCM encryption."]
+pub const tiledb_encryption_type_t_TILEDB_AES_256_GCM:
+    tiledb_encryption_type_t = 1;
+#[doc = " Encryption type."]
+pub type tiledb_encryption_type_t = ::std::os::raw::c_uint;

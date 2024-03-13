@@ -15,6 +15,7 @@ mod filter;
 mod filter_list;
 mod filter_option;
 mod filter_type;
+mod schema;
 mod string;
 mod types;
 
@@ -31,5 +32,6 @@ pub use filter::*;
 pub use filter_list::*;
 pub use filter_option::*;
 pub use filter_type::*;
+pub use schema::*;
 pub use string::*;
 pub use types::*;
