@@ -15,10 +15,13 @@ extern "C" {
     pub fn tiledb_datatype_size(type_: u32) -> u64;
 }
 
+pub type tiledb_datatype_t = ::std::os::raw::c_uint;
+
 // When I find the time, I should come back and turn these into a macro
 // so that we can auto-generate the Datatype::from_u32 generation.
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[repr(u64)]
 pub enum Datatype {
     #[doc = " 32-bit signed integer"]
     Int32 = 0,
@@ -113,12 +116,17 @@ pub enum Datatype {
 impl Datatype {
     pub fn size(&self) -> u64 {
         let copy = (*self).clone();
-        unsafe { tiledb_datatype_size(copy as u32) }
+        unsafe { tiledb_datatype_size(copy as tiledb_datatype_t) }
+    }
+
+    /// TODO: this should not be exposed outside of the tiledb-rs library
+    pub fn capi_enum(&self) -> tiledb_datatype_t {
+        *self as tiledb_datatype_t
     }
 
     pub fn to_string(&self) -> Option<String> {
         let copy = (*self).clone();
-        let c_dtype: u32 = copy as u32;
+        let c_dtype = copy as tiledb_datatype_t;
         let mut c_str = std::ptr::null::<std::os::raw::c_char>();
         let res = unsafe { tiledb_datatype_to_str(c_dtype, &mut c_str) };
         if res == TILEDB_OK {
