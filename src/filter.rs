@@ -405,12 +405,12 @@ mod tests {
             .expect("Error getting compression level.");
         assert_eq!(level, 23);
 
-        f.set_compression_reinterpret_datatype(&ctx, Datatype::UINT16)
+        f.set_compression_reinterpret_datatype(&ctx, Datatype::UInt16)
             .expect("Error setting compression reinterpret datatype.");
         let dt = f
             .get_compression_reinterpret_datatype(&ctx)
             .expect("Error getting compression reinterpret datatype");
-        assert_eq!(dt, Datatype::UINT16);
+        assert_eq!(dt, Datatype::UInt16);
     }
 
     #[test]

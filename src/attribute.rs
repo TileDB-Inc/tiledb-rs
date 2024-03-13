@@ -226,14 +226,14 @@ mod test {
     #[test]
     fn attribute_alloc() {
         let ctx = Context::new().expect("Error creating context instance.");
-        Attribute::new(&ctx, "foo", Datatype::UINT64)
+        Attribute::new(&ctx, "foo", Datatype::UInt64)
             .expect("Error creating attribute instance.");
     }
 
     #[test]
     fn attribute_get_name_and_type() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "xkcd", Datatype::UINT32)
+        let attr = Attribute::new(&ctx, "xkcd", Datatype::UInt32)
             .expect("Error creating attribute instance.");
 
         let name = attr.name(&ctx).expect("Error getting attribute name.");
@@ -242,13 +242,13 @@ mod test {
         let dtype = attr
             .datatype(&ctx)
             .expect("Error getting attribute datatype.");
-        assert_eq!(dtype, Datatype::UINT32);
+        assert_eq!(dtype, Datatype::UInt32);
     }
 
     #[test]
     fn attribute_set_nullable() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "foo", Datatype::UINT64)
+        let attr = Attribute::new(&ctx, "foo", Datatype::UInt64)
             .expect("Error creating attribute instance.");
 
         let nullable = attr
@@ -268,7 +268,7 @@ mod test {
     #[test]
     fn attribute_get_set_filter_list() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "foo", Datatype::UINT8)
+        let attr = Attribute::new(&ctx, "foo", Datatype::UInt8)
             .expect("Error creating attribute instance.");
 
         let flist1 = attr
@@ -312,7 +312,7 @@ mod test {
     #[test]
     fn attribute_cell_val_size() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "foo", Datatype::UINT16)
+        let attr = Attribute::new(&ctx, "foo", Datatype::UInt16)
             .expect("Error creating attribute instance.");
 
         let num = attr
