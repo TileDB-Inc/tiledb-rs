@@ -7,7 +7,7 @@ mod attribute;
 mod schema;
 
 pub use attribute::Attribute;
-pub use schema::{Builder as SchemaBuilder, Schema};
+pub use schema::{ArrayType, Builder as SchemaBuilder, Schema};
 
 pub enum Mode {
     Read,
@@ -41,7 +41,7 @@ impl Array {
         if unsafe {
             ffi::tiledb_array_create(
                 context.as_mut_ptr(),
-                c_name,
+                c_name.as_ptr(),
                 schema.as_mut_ptr(),
             )
         } == ffi::TILEDB_OK
@@ -79,5 +79,37 @@ impl Array {
         } else {
             Err(context.expect_last_error())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate lazy_static;
+    extern crate tempdir;
+
+    use crate::array::*;
+    use crate::context::Context;
+    use crate::Datatype;
+    use lazy_static::lazy_static;
+
+    lazy_static! {
+        static ref DIR: tempdir::TempDir =
+            tempdir::TempDir::new("tiledb-rs.array").unwrap();
+    }
+
+    #[test]
+    fn test_array_create() {
+        let arr_path = DIR.path().join("test_array_create");
+
+        let c: Context = Context::new().unwrap();
+
+        let s: Schema = SchemaBuilder::new(&c, ArrayType::Sparse)
+            .unwrap()
+            .add_attribute(Attribute::new(&c, "a", Datatype::UInt64).unwrap())
+            .unwrap()
+            .into();
+
+        // domain not set
+        assert!(Array::create(&c, arr_path.to_str().unwrap(), s).is_err());
     }
 }

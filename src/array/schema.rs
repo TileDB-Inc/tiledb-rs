@@ -128,10 +128,7 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn add_attribute<'myself>(
-        &'myself mut self,
-        attr: Attribute,
-    ) -> TileDBResult<&'myself mut Self> {
+    pub fn add_attribute<'myself>(self, attr: Attribute) -> TileDBResult<Self> {
         if unsafe {
             ffi::tiledb_array_schema_add_attribute(
                 self.context.as_mut_ptr(),

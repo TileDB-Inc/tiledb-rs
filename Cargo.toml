@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+lazy_static = "1.4.0"
+tempdir = "0.3.7"
 tiledb-sys = {version = "0.1.0", path = "tiledb-sys" }
