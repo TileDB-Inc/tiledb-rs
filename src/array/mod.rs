@@ -32,6 +32,26 @@ pub struct Array {
 }
 
 impl Array {
+    pub fn create(
+        context: &Context,
+        name: &str,
+        schema: Schema,
+    ) -> TileDBResult<()> {
+        let c_name = cstring!(name);
+        if unsafe {
+            ffi::tiledb_array_create(
+                context.as_mut_ptr(),
+                c_name,
+                schema.as_mut_ptr(),
+            )
+        } == ffi::TILEDB_OK
+        {
+            Ok(())
+        } else {
+            Err(context.expect_last_error())
+        }
+    }
+
     pub fn open(
         context: Arc<Context>,
         uri: &str,
