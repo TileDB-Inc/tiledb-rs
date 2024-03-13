@@ -96,6 +96,22 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
+    pub fn allow_duplicates(self, allow: bool) -> TileDBResult<Self> {
+        let c_allow = if allow { 1 } else { 0 };
+        if unsafe {
+            ffi::tiledb_array_schema_set_allows_dups(
+                self.context.as_mut_ptr(),
+                self.ffi.wrapped,
+                c_allow,
+            )
+        } == ffi::TILEDB_OK
+        {
+            Ok(self)
+        } else {
+            Err(self.context.expect_last_error())
+        }
+    }
+
     pub fn add_attribute<'myself>(
         &'myself mut self,
         attr: Attribute,
@@ -120,6 +136,54 @@ impl<'ctx> Into<Schema<'ctx>> for Builder<'ctx> {
         Schema {
             context: self.context,
             ffi: self.ffi,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::array::schema::*;
+
+    #[test]
+    fn test_allow_duplicates() {
+        let c: Context = Context::new().unwrap();
+
+        // dense, no duplicates
+        {
+            let b: Builder = Builder::new(&c, ArrayType::Dense)
+                .unwrap()
+                .allow_duplicates(false)
+                .unwrap();
+
+            let s: Schema = b.into();
+            assert!(!s.allows_duplicates());
+        }
+        // dense, duplicates (should error)
+        {
+            let e = Builder::new(&c, ArrayType::Dense)
+                .unwrap()
+                .allow_duplicates(true);
+            assert!(e.is_err());
+        }
+        // sparse, no duplicates
+        {
+            let b: Builder = Builder::new(&c, ArrayType::Sparse)
+                .unwrap()
+                .allow_duplicates(false)
+                .unwrap();
+
+            let s: Schema = b.into();
+            assert!(!s.allows_duplicates());
+        }
+        // sparse, duplicates
+        {
+            let b: Builder = Builder::new(&c, ArrayType::Sparse)
+                .unwrap()
+                .allow_duplicates(true)
+                .unwrap();
+
+            let s: Schema = b.into();
+            assert!(s.allows_duplicates());
         }
     }
 }
