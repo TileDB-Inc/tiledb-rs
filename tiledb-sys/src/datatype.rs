@@ -205,12 +205,10 @@ impl Datatype {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn datatype_test() {
         for i in 0..256 {
-            prinln!("{}", i);
+            println!("{}", i);
         }
     }
 }
