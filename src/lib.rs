@@ -1,5 +1,6 @@
 extern crate tiledb_sys as ffi;
 
+pub mod array;
 pub mod attribute;
 pub mod config;
 pub mod context;

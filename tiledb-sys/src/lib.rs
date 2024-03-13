@@ -2,7 +2,9 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+mod array;
 mod attribute;
+mod capi_enum;
 mod config;
 mod constants;
 mod context;
@@ -16,7 +18,9 @@ mod filter_type;
 mod string;
 mod types;
 
+pub use array::*;
 pub use attribute::*;
+pub use capi_enum::*;
 pub use config::*;
 pub use constants::*;
 pub use context::*;

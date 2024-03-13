@@ -50,3 +50,29 @@ pub struct tiledb_filter_list_t {
 pub struct tiledb_string_t {
     _unused: [u8; 0],
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_array_t {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_subarray_t {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_array_schema_t {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_query_t {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_query_condition_t {
+    _unused: [u8; 0],
+}
