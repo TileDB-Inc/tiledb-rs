@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::rc::Rc;
 
-use crate::array::Attribute;
+use crate::array::{Attribute, Domain};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
@@ -128,7 +128,24 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn add_attribute<'myself>(self, attr: Attribute) -> TileDBResult<Self> {
+    pub fn domain(self, domain: Domain) -> TileDBResult<Self> {
+        let c_context = self.context.as_mut_ptr();
+        let c_domain = domain.capi();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_set_domain(
+                c_context,
+                self.ffi.wrapped,
+                c_domain,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.context.expect_last_error())
+        }
+    }
+
+    pub fn add_attribute(self, attr: Attribute) -> TileDBResult<Self> {
         if unsafe {
             ffi::tiledb_array_schema_add_attribute(
                 self.context.as_mut_ptr(),

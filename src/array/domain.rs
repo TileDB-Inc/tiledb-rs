@@ -8,6 +8,10 @@ pub struct Domain<'ctx> {
 }
 
 impl<'ctx> Domain<'ctx> {
+    pub(crate) fn capi(self) -> *mut ffi::tiledb_domain_t {
+        self.wrapped
+    }
+
     pub fn ndim(&self) -> u32 {
         let mut ndim: u32 = out_ptr!();
         let c_ret = unsafe {
