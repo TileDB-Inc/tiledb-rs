@@ -13,10 +13,10 @@ macro_rules! cstring {
 
 macro_rules! out_ptr {
     () => {
-        0
+        unsafe { std::mem::MaybeUninit::zeroed().assume_init() }
     };
     ($T:ty) => {
-        0 as $T
+        $T::default()
     };
 }
 
