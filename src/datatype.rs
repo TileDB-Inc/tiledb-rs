@@ -22,3 +22,17 @@ impl DomainType for i32 {
         *capi as Self
     }
 }
+
+impl DomainType for f64 {
+    const DATATYPE: Datatype = Datatype::Float64;
+
+    type CApiType = std::ffi::c_double;
+
+    fn as_capi(&self) -> Self::CApiType {
+        *self as Self::CApiType
+    }
+
+    fn from_capi(capi: &Self::CApiType) -> Self {
+        *capi as Self
+    }
+}

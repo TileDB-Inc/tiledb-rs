@@ -5,10 +5,12 @@ use crate::Result as TileDBResult;
 
 mod attribute;
 mod dimension;
+mod domain;
 mod schema;
 
 pub use attribute::Attribute;
 pub use dimension::{Builder as DimensionBuilder, Dimension};
+pub use domain::{Builder as DomainBuilder, Domain};
 pub use schema::{ArrayType, Builder as SchemaBuilder, Schema};
 
 pub enum Mode {
