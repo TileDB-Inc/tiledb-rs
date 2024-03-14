@@ -1,14 +1,68 @@
 use crate::context::Context;
-use crate::datatype::DomainType;
+use crate::datatype::{Datatype, DomainType};
+use crate::error::Error;
 use crate::filter_list::FilterList;
 use crate::Result as TileDBResult;
 
 pub struct Dimension<'ctx> {
-    context: &'ctx Context,
-    wrapped: *mut ffi::tiledb_dimension_t,
+    pub(crate) context: &'ctx Context,
+    pub(crate) wrapped: *mut ffi::tiledb_dimension_t,
 }
 
 impl<'ctx> Dimension<'ctx> {
+    pub(crate) fn capi(&mut self) -> *mut ffi::tiledb_dimension_t {
+        self.wrapped
+    }
+
+    pub fn datatype(&self) -> Datatype {
+        let c_context = self.context.as_mut_ptr();
+        let c_dimension = self.wrapped;
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_dimension_get_type(
+                c_context,
+                c_dimension,
+                &mut c_datatype,
+            )
+        };
+
+        assert_eq!(ffi::TILEDB_OK, c_ret);
+
+        Datatype::from_capi_enum(c_datatype)
+    }
+
+    pub fn domain<DT: DomainType>(&self) -> TileDBResult<[DT; 2]> {
+        let c_context = self.context.as_mut_ptr();
+        let c_dimension = self.wrapped;
+        let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
+
+        if DT::DATATYPE != self.datatype() {
+            return Err(Error::from(format!(
+                "Dimension type mismatch: expected {}, found {}",
+                self.datatype(),
+                DT::DATATYPE
+            )));
+        }
+
+        let c_ret = unsafe {
+            ffi::tiledb_dimension_get_domain(
+                c_context,
+                c_dimension,
+                &mut c_domain_ptr,
+            )
+        };
+
+        // the only errors are possible via mis-use of the C API, which Rust prevents
+        assert_eq!(ffi::TILEDB_OK, c_ret);
+
+        let c_domain: &[DT::CApiType; 2] = unsafe {
+            std::mem::transmute::<*const std::ffi::c_void, &[DT::CApiType; 2]>(
+                c_domain_ptr,
+            )
+        };
+        Ok([DT::from_capi(&c_domain[0]), DT::from_capi(&c_domain[1])])
+    }
+
     pub fn filters(&self) -> FilterList {
         let mut c_fl: *mut ffi::tiledb_filter_list_t = out_ptr!();
 
@@ -100,11 +154,15 @@ impl<'ctx> Builder<'ctx> {
             Err(self.dim.context.expect_last_error())
         }
     }
+
+    pub fn build(self) -> Dimension<'ctx> {
+        self.dim
+    }
 }
 
 impl<'ctx> Into<Dimension<'ctx>> for Builder<'ctx> {
     fn into(self) -> Dimension<'ctx> {
-        self.dim
+        self.build()
     }
 }
 
@@ -154,6 +212,31 @@ mod tests {
                 &extent,
             );
             assert!(b.is_err());
+        }
+    }
+
+    #[test]
+    fn test_dimension_domain() {
+        let context = Context::new().unwrap();
+
+        // normal use case, should succeed, no memory issues
+        {
+            let domain_in: [i32; 2] = [1, 4];
+            let extent: i32 = 4;
+            let dim = Builder::new::<i32>(
+                &context,
+                "test_dimension_domain",
+                &domain_in,
+                &extent,
+            )
+            .unwrap()
+            .build();
+
+            assert_eq!(Datatype::Int32, dim.datatype());
+
+            let domain_out = dim.domain::<i32>().unwrap();
+            assert_eq!(domain_in[0], domain_out[0]);
+            assert_eq!(domain_in[1], domain_out[1]);
         }
     }
 

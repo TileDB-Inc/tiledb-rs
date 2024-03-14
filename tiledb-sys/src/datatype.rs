@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
 use crate::constants::TILEDB_OK;
 use crate::types::capi_return_t;
 
@@ -124,6 +126,10 @@ impl Datatype {
         *self as tiledb_datatype_t
     }
 
+    pub fn from_capi_enum(c_datatype: tiledb_datatype_t) -> Self {
+        Self::from_u32(c_datatype).unwrap()
+    }
+
     pub fn to_string(&self) -> Option<String> {
         let copy = (*self).clone();
         let c_dtype = copy as tiledb_datatype_t;
@@ -200,6 +206,19 @@ impl Datatype {
             43 => Some(Datatype::GeometryWkt),
             _ => None,
         }
+    }
+}
+
+impl Display for Datatype {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(
+            f,
+            "{}",
+            match self.to_string() {
+                Some(s) => s,
+                None => String::from("<UNKNOWN DATA TYPE>"),
+            }
+        )
     }
 }
 

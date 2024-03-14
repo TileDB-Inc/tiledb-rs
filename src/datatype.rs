@@ -6,6 +6,7 @@ pub trait DomainType {
     type CApiType;
 
     fn as_capi(&self) -> Self::CApiType;
+    fn from_capi(capi: &Self::CApiType) -> Self;
 }
 
 impl DomainType for i32 {
@@ -15,5 +16,9 @@ impl DomainType for i32 {
 
     fn as_capi(&self) -> Self::CApiType {
         *self as Self::CApiType
+    }
+
+    fn from_capi(capi: &Self::CApiType) -> Self {
+        *capi as Self
     }
 }
