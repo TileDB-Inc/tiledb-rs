@@ -5,7 +5,7 @@ use crate::filter::Filter;
 use crate::Result as TileDBResult;
 
 pub struct FilterList {
-    _wrapped: *mut ffi::tiledb_filter_list_t,
+    pub(crate) _wrapped: *mut ffi::tiledb_filter_list_t,
 }
 
 impl FilterList {
@@ -32,7 +32,7 @@ impl FilterList {
     }
 
     pub fn add_filter(
-        &self,
+        &mut self,
         ctx: &Context,
         filter: &Filter,
     ) -> TileDBResult<()> {
@@ -156,7 +156,7 @@ mod test {
         let ctx = Context::new().expect("Error creating context instance.");
         let filter = Filter::new(&ctx, FilterType::ZSTD)
             .expect("Error creating filter instance.");
-        let flist = FilterList::new(&ctx)
+        let mut flist = FilterList::new(&ctx)
             .expect("Error creating filter list instance.");
 
         let nfilters = flist
@@ -183,7 +183,7 @@ mod test {
             .expect("Error creating filter instance 2.");
         let filter3 = Filter::new(&ctx, FilterType::ZSTD)
             .expect("Error creating filter instance 3.");
-        let flist = FilterList::new(&ctx)
+        let mut flist = FilterList::new(&ctx)
             .expect("Error creating filter list instance.");
 
         flist

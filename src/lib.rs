@@ -23,6 +23,7 @@ macro_rules! out_ptr {
 pub mod array;
 pub mod config;
 pub mod context;
+pub mod datatype;
 pub mod error;
 pub mod filter;
 pub mod filter_list;

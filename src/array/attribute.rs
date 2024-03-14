@@ -288,7 +288,7 @@ mod test {
             .expect("Error creating filter 2.");
         let f3 = Filter::new(&ctx, FilterType::ZSTD)
             .expect("Error creating filter 3.");
-        let flist2 =
+        let mut flist2 =
             FilterList::new(&ctx).expect("Error creating filter list.");
         flist2
             .add_filter(&ctx, &f1)

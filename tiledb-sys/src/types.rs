@@ -63,6 +63,11 @@ pub struct tiledb_subarray_t {
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_dimension_t {
+    _unused: [u8; 0],
+}
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_array_schema_t {
     _unused: [u8; 0],
 }
