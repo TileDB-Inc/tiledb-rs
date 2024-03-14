@@ -142,14 +142,18 @@ impl<'ctx> Builder<'ctx> {
             Err(self.context.expect_last_error())
         }
     }
-}
 
-impl<'ctx> Into<Schema<'ctx>> for Builder<'ctx> {
-    fn into(self) -> Schema<'ctx> {
+    pub fn build(self) -> Schema<'ctx> {
         Schema {
             context: self.context,
             ffi: self.ffi,
         }
+    }
+}
+
+impl<'ctx> Into<Schema<'ctx>> for Builder<'ctx> {
+    fn into(self) -> Schema<'ctx> {
+        self.build()
     }
 }
 
