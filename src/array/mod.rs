@@ -55,13 +55,14 @@ impl Drop for RawArray {
     }
 }
 
-pub struct Array {
+pub struct Array<'ctx> {
+    context: &'ctx Context,
     raw: RawArray,
 }
 
-impl Array {
+impl<'ctx> Array<'ctx> {
     pub fn create(
-        context: &Context,
+        context: &'ctx Context,
         name: &str,
         schema: Schema,
     ) -> TileDBResult<()> {
@@ -81,7 +82,7 @@ impl Array {
     }
 
     pub fn open(
-        context: Arc<Context>,
+        context: &'ctx Context,
         uri: &str,
         mode: Mode,
     ) -> TileDBResult<Self> {
@@ -102,6 +103,7 @@ impl Array {
             == ffi::TILEDB_OK
         {
             Ok(Array {
+                context,
                 raw: RawArray::new(array_raw),
             })
         } else {
