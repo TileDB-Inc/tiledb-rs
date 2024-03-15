@@ -1,5 +1,4 @@
 use std::ops::Deref;
-use std::sync::Arc;
 
 use crate::context::Context;
 use crate::Result as TileDBResult;
@@ -108,6 +107,24 @@ impl<'ctx> Array<'ctx> {
             })
         } else {
             Err(context.expect_last_error())
+        }
+    }
+
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_t {
+        *self.raw
+    }
+}
+
+impl Drop for Array<'_> {
+    fn drop(&mut self) {
+        let c_context = self.context.as_mut_ptr();
+        let c_array = *self.raw;
+        let c_ret = unsafe { ffi::tiledb_array_close(c_context, c_array) };
+        if c_ret != ffi::TILEDB_OK {
+            panic!(
+                "TileDB internal error when closing array: {}",
+                self.context.expect_last_error()
+            )
         }
     }
 }
