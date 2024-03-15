@@ -131,13 +131,34 @@ mod tests {
 
         let c: Context = Context::new().unwrap();
 
-        let s: Schema = SchemaBuilder::new(&c, ArrayType::Sparse)
+        // "quickstart_dense" example
+        let d: Domain = {
+            let rows: Dimension =
+                DimensionBuilder::new::<i32>(&c, "rows", &[1, 4], &4)
+                    .expect("Error constructing rows dimension")
+                    .build();
+            let cols: Dimension =
+                DimensionBuilder::new::<i32>(&c, "cols", &[1, 4], &4)
+                    .expect("Error constructing cols dimension")
+                    .build();
+
+            DomainBuilder::new(&c)
+                .unwrap()
+                .add_dimension(rows)
+                .unwrap()
+                .add_dimension(cols)
+                .unwrap()
+                .build()
+        };
+
+        let s: Schema = SchemaBuilder::new(&c, ArrayType::Sparse, d)
             .unwrap()
             .add_attribute(Attribute::new(&c, "a", Datatype::UInt64).unwrap())
             .unwrap()
             .into();
 
         // domain not set
-        assert!(Array::create(&c, arr_path.to_str().unwrap(), s).is_err());
+        // TODO
+        assert!(Array::create(&c, arr_path.to_str().unwrap(), s).is_ok());
     }
 }

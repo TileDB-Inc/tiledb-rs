@@ -30,10 +30,11 @@ impl Drop for RawDomain {
 pub struct Domain<'ctx> {
     context: &'ctx Context,
     raw: RawDomain,
+    dimensions: Vec<Dimension<'ctx>>,
 }
 
 impl<'ctx> Domain<'ctx> {
-    pub(crate) fn capi(self) -> *mut ffi::tiledb_domain_t {
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_domain_t {
         *self.raw
     }
 
@@ -87,6 +88,7 @@ impl<'ctx> Builder<'ctx> {
                 domain: Domain {
                     context,
                     raw: RawDomain::Owned(c_domain),
+                    dimensions: Vec::new(),
                 },
             })
         } else {
@@ -95,7 +97,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn add_dimension(
-        self,
+        mut self,
         dimension: Dimension<'ctx>,
     ) -> TileDBResult<Self> {
         let c_context = self.domain.context.as_mut_ptr();
@@ -106,6 +108,7 @@ impl<'ctx> Builder<'ctx> {
             ffi::tiledb_domain_add_dimension(c_context, c_domain, c_dim)
         };
         if c_ret == ffi::TILEDB_OK {
+            self.domain.dimensions.push(dimension);
             Ok(self)
         } else {
             Err(self.domain.context.expect_last_error())

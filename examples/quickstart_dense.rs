@@ -37,8 +37,8 @@ fn create_array() -> TileDBResult<()> {
     let schema = tiledb::array::SchemaBuilder::new(
         &tdb,
         tiledb::array::ArrayType::Dense,
+        domain,
     )?
-    .domain(domain)?
     .add_attribute(attribute_a)?
     .build();
 

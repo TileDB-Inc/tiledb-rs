@@ -47,6 +47,7 @@ impl Drop for RawSchema {
 pub struct Schema<'ctx> {
     context: &'ctx Context,
     raw: RawSchema,
+    domain: Domain<'ctx>,
 }
 
 impl<'ctx> Schema<'ctx> {
@@ -95,27 +96,38 @@ impl<'ctx> Builder<'ctx> {
     pub fn new(
         context: &'ctx Context,
         array_type: ArrayType,
+        domain: Domain<'ctx>,
     ) -> TileDBResult<Self> {
+        let c_context = context.as_mut_ptr();
         let c_array_type = array_type.capi_enum();
         let mut c_schema: *mut ffi::tiledb_array_schema_t =
             std::ptr::null_mut();
-        if unsafe {
+        let c_alloc_ret = unsafe {
             ffi::tiledb_array_schema_alloc(
-                context.as_mut_ptr(),
+                c_context,
                 c_array_type,
                 &mut c_schema,
             )
-        } == ffi::TILEDB_OK
-        {
-            Ok(Builder {
-                schema: Schema {
-                    context,
-                    raw: RawSchema::new(c_schema),
-                },
-            })
-        } else {
-            Err(context.expect_last_error())
+        };
+        if c_alloc_ret != ffi::TILEDB_OK {
+            return Err(context.expect_last_error());
         }
+
+        let c_domain = domain.capi();
+        let c_domain_ret = unsafe {
+            ffi::tiledb_array_schema_set_domain(c_context, c_schema, c_domain)
+        };
+        if c_domain_ret != ffi::TILEDB_OK {
+            return Err(context.expect_last_error());
+        }
+
+        Ok(Builder {
+            schema: Schema {
+                context,
+                raw: RawSchema::new(c_schema),
+                domain,
+            },
+        })
     }
 
     pub fn allow_duplicates(self, allow: bool) -> TileDBResult<Self> {
@@ -128,23 +140,6 @@ impl<'ctx> Builder<'ctx> {
             )
         } == ffi::TILEDB_OK
         {
-            Ok(self)
-        } else {
-            Err(self.schema.context.expect_last_error())
-        }
-    }
-
-    pub fn domain(self, domain: Domain) -> TileDBResult<Self> {
-        let c_context = self.schema.context.as_mut_ptr();
-        let c_domain = domain.capi();
-        let c_ret = unsafe {
-            ffi::tiledb_array_schema_set_domain(
-                c_context,
-                *self.schema.raw,
-                c_domain,
-            )
-        };
-        if c_ret == ffi::TILEDB_OK {
             Ok(self)
         } else {
             Err(self.schema.context.expect_last_error())
@@ -180,12 +175,26 @@ impl<'ctx> Into<Schema<'ctx>> for Builder<'ctx> {
 #[cfg(test)]
 mod tests {
     use crate::array::schema::*;
+    use crate::array::{DimensionBuilder, DomainBuilder};
+    use crate::context::Context;
+
+    /// Helper function to make a Domain which isn't needed for the purposes of the test
+    fn unused_domain<'ctx>(c: &'ctx Context) -> Domain<'ctx> {
+        let dim = DimensionBuilder::new::<i32>(&c, "test", &[-100, 100], &100)
+            .unwrap()
+            .build();
+        DomainBuilder::new(&c)
+            .unwrap()
+            .add_dimension(dim)
+            .unwrap()
+            .build()
+    }
 
     #[test]
     fn test_get_version() {
         let c: Context = Context::new().unwrap();
 
-        let b: Builder = Builder::new(&c, ArrayType::Dense)
+        let b: Builder = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
             .unwrap()
             .allow_duplicates(false)
             .unwrap();
@@ -200,37 +209,40 @@ mod tests {
 
         // dense, no duplicates
         {
-            let b: Builder = Builder::new(&c, ArrayType::Dense)
-                .unwrap()
-                .allow_duplicates(false)
-                .unwrap();
+            let b: Builder =
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                    .unwrap()
+                    .allow_duplicates(false)
+                    .unwrap();
 
             let s: Schema = b.into();
             assert!(!s.allows_duplicates());
         }
         // dense, duplicates (should error)
         {
-            let e = Builder::new(&c, ArrayType::Dense)
+            let e = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
                 .unwrap()
                 .allow_duplicates(true);
             assert!(e.is_err());
         }
         // sparse, no duplicates
         {
-            let b: Builder = Builder::new(&c, ArrayType::Sparse)
-                .unwrap()
-                .allow_duplicates(false)
-                .unwrap();
+            let b: Builder =
+                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                    .unwrap()
+                    .allow_duplicates(false)
+                    .unwrap();
 
             let s: Schema = b.into();
             assert!(!s.allows_duplicates());
         }
         // sparse, duplicates
         {
-            let b: Builder = Builder::new(&c, ArrayType::Sparse)
-                .unwrap()
-                .allow_duplicates(true)
-                .unwrap();
+            let b: Builder =
+                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                    .unwrap()
+                    .allow_duplicates(true)
+                    .unwrap();
 
             let s: Schema = b.into();
             assert!(s.allows_duplicates());
