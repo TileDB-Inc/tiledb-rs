@@ -1,3 +1,19 @@
+#[doc = " Invalid object"]
+pub const tiledb_object_t_TILEDB_INVALID: tiledb_object_t = 0;
+#[doc = " Group object"]
+pub const tiledb_object_t_TILEDB_GROUP: tiledb_object_t = 1;
+#[doc = " Array object"]
+pub const tiledb_object_t_TILEDB_ARRAY: tiledb_object_t = 2;
+#[doc = " TileDB object type."]
+pub type tiledb_object_t = ::std::os::raw::c_uint;
+
+#[doc = " Pre-order traversal"]
+pub const tiledb_walk_order_t_TILEDB_PREORDER: tiledb_walk_order_t = 0;
+#[doc = " Post-order traversal"]
+pub const tiledb_walk_order_t_TILEDB_POSTORDER: tiledb_walk_order_t = 1;
+#[doc = " Walk traversal order."]
+pub type tiledb_walk_order_t = ::std::os::raw::c_uint;
+
 #[doc = " Array type."]
 pub type tiledb_array_type_t = ::std::os::raw::c_uint;
 #[doc = " Dense array"]
