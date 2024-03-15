@@ -1,5 +1,7 @@
 extern crate tiledb_sys as ffi;
 
+use std::ops::Deref;
+
 pub use tiledb_sys::Datatype;
 pub use tiledb_sys::FilterOption;
 pub use tiledb_sys::FilterType;
@@ -9,36 +11,51 @@ use crate::context::Context;
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
+pub(crate) enum RawFilter {
+    Owned(*mut ffi::tiledb_filter_t),
+    Borrowed(*mut ffi::tiledb_filter_t),
+}
+
+impl Deref for RawFilter {
+    type Target = *mut ffi::tiledb_filter_t;
+    fn deref(&self) -> &Self::Target {
+        match *self {
+            RawFilter::Owned(ref ffi) => ffi,
+            RawFilter::Borrowed(ref ffi) => ffi,
+        }
+    }
+}
+
+impl Drop for RawFilter {
+    fn drop(&mut self) {
+        if let RawFilter::Owned(ref mut ffi) = *self {
+            unsafe { ffi::tiledb_filter_free(ffi) }
+        }
+    }
+}
+
 pub struct Filter {
-    _wrapped: *mut ffi::tiledb_filter_t,
+    pub(crate) raw: RawFilter,
 }
 
 impl Filter {
     pub fn new(ctx: &Context, filter_type: FilterType) -> TileDBResult<Filter> {
-        let mut filter = Filter {
-            _wrapped: std::ptr::null_mut::<ffi::tiledb_filter_t>(),
-        };
+        let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let ftype = filter_type as u32;
         let res = unsafe {
-            ffi::tiledb_filter_alloc(
-                ctx.as_mut_ptr(),
-                ftype,
-                &mut filter._wrapped,
-            )
+            ffi::tiledb_filter_alloc(ctx.as_mut_ptr(), ftype, &mut c_filter)
         };
         if res == ffi::TILEDB_OK {
-            Ok(filter)
+            Ok(Filter {
+                raw: RawFilter::Owned(c_filter),
+            })
         } else {
             Err(ctx.expect_last_error())
         }
     }
 
-    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_filter_t {
-        self._wrapped
-    }
-
-    pub fn as_mut_ptr_ptr(&mut self) -> *mut *mut ffi::tiledb_filter_t {
-        &mut self._wrapped
+    pub fn capi(&self) -> *mut ffi::tiledb_filter_t {
+        *self.raw
     }
 
     pub fn get_type(&self, ctx: &Context) -> TileDBResult<FilterType> {
@@ -46,7 +63,7 @@ impl Filter {
         let res = unsafe {
             ffi::tiledb_filter_get_type(
                 ctx.as_mut_ptr(),
-                self._wrapped,
+                self.capi(),
                 &mut c_ftype,
             )
         };
@@ -323,7 +340,7 @@ impl Filter {
         let res = unsafe {
             ffi::tiledb_filter_set_option(
                 ctx.as_mut_ptr(),
-                self._wrapped,
+                self.capi(),
                 fopt as u32,
                 val,
             )
@@ -344,7 +361,7 @@ impl Filter {
         let res = unsafe {
             ffi::tiledb_filter_get_option(
                 ctx.as_mut_ptr(),
-                self._wrapped,
+                self.capi(),
                 fopt as u32,
                 val,
             )
@@ -354,23 +371,6 @@ impl Filter {
         } else {
             Err(ctx.expect_last_error())
         }
-    }
-}
-
-impl Default for Filter {
-    fn default() -> Self {
-        Self {
-            _wrapped: std::ptr::null_mut::<ffi::tiledb_filter_t>(),
-        }
-    }
-}
-
-impl Drop for Filter {
-    fn drop(&mut self) {
-        if self._wrapped.is_null() {
-            return;
-        }
-        unsafe { ffi::tiledb_filter_free(&mut self._wrapped) }
     }
 }
 

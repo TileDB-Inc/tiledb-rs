@@ -1,7 +1,7 @@
 extern crate tiledb_sys as ffi;
 
 use crate::context::Context;
-use crate::filter::Filter;
+use crate::filter::{Filter, RawFilter};
 use crate::Result as TileDBResult;
 
 pub struct FilterList {
@@ -40,7 +40,7 @@ impl FilterList {
             ffi::tiledb_filter_list_add_filter(
                 ctx.as_mut_ptr(),
                 self._wrapped,
-                filter.as_mut_ptr(),
+                filter.capi(),
             )
         };
         if res == ffi::TILEDB_OK {
@@ -71,17 +71,19 @@ impl FilterList {
         ctx: &Context,
         index: u32,
     ) -> TileDBResult<Filter> {
-        let mut filter = Filter::default();
+        let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let res = unsafe {
             ffi::tiledb_filter_list_get_filter_from_index(
                 ctx.as_mut_ptr(),
                 self._wrapped,
                 index,
-                filter.as_mut_ptr_ptr(),
+                &mut c_filter,
             )
         };
         if res == ffi::TILEDB_OK {
-            Ok(filter)
+            Ok(Filter {
+                raw: RawFilter::Borrowed(c_filter),
+            })
         } else {
             Err(ctx.expect_last_error())
         }
