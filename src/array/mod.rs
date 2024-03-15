@@ -31,6 +31,24 @@ impl Mode {
     }
 }
 
+pub enum Layout {
+    Unordered,
+    RowMajor,
+    ColumnMajor,
+    Hilbert,
+}
+
+impl Layout {
+    pub(crate) fn capi_enum(&self) -> ffi::tiledb_layout_t {
+        match *self {
+            Layout::Unordered => ffi::tiledb_layout_t_TILEDB_UNORDERED,
+            Layout::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
+            Layout::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
+            Layout::Hilbert => ffi::tiledb_layout_t_TILEDB_HILBERT,
+        }
+    }
+}
+
 pub(crate) struct RawArray {
     ffi: *mut ffi::tiledb_array_t,
 }

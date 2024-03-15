@@ -27,8 +27,10 @@ pub mod datatype;
 pub mod error;
 pub mod filter;
 pub mod filter_list;
+pub mod query;
 pub mod string;
 
 pub use array::Array;
 pub use ffi::Datatype;
+pub use query::{Builder as QueryBuilder, Query, QueryType};
 pub type Result<T> = std::result::Result<T, error::Error>;
