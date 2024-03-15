@@ -1,5 +1,4 @@
 use std::ops::Deref;
-use std::rc::Rc;
 
 use crate::array::{Attribute, Domain};
 use crate::context::Context;
@@ -20,33 +19,39 @@ impl ArrayType {
 }
 
 /// Wrapper for the CAPI handle.
-/// Reference-counting this is recommended so it can be shared between builder and built
-struct FFISchema {
-    wrapped: *mut ffi::tiledb_array_schema_t,
+/// Ensures that the CAPI structure is freed.
+pub(crate) struct RawSchema {
+    ffi: *mut ffi::tiledb_array_schema_t,
 }
 
-impl Deref for FFISchema {
-    type Target = *mut ffi::tiledb_array_schema_t;
-
-    fn deref(&self) -> &Self::Target {
-        &self.wrapped
+impl RawSchema {
+    pub fn new(ffi: *mut ffi::tiledb_array_schema_t) -> Self {
+        RawSchema { ffi }
     }
 }
 
-impl Drop for FFISchema {
+impl Deref for RawSchema {
+    type Target = *mut ffi::tiledb_array_schema_t;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ffi
+    }
+}
+
+impl Drop for RawSchema {
     fn drop(&mut self) {
-        unsafe { ffi::tiledb_array_schema_free(&mut self.wrapped) }
+        unsafe { ffi::tiledb_array_schema_free(&mut self.ffi) }
     }
 }
 
 pub struct Schema<'ctx> {
     context: &'ctx Context,
-    ffi: Rc<FFISchema>,
+    raw: RawSchema,
 }
 
 impl<'ctx> Schema<'ctx> {
     pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_array_schema_t {
-        **self.ffi
+        *self.raw
     }
 
     pub fn version(&self) -> i64 {
@@ -83,8 +88,7 @@ impl<'ctx> Schema<'ctx> {
 }
 
 pub struct Builder<'ctx> {
-    context: &'ctx Context,
-    ffi: Rc<FFISchema>,
+    schema: Schema<'ctx>,
 }
 
 impl<'ctx> Builder<'ctx> {
@@ -104,8 +108,10 @@ impl<'ctx> Builder<'ctx> {
         } == ffi::TILEDB_OK
         {
             Ok(Builder {
-                context,
-                ffi: Rc::new(FFISchema { wrapped: c_schema }),
+                schema: Schema {
+                    context,
+                    raw: RawSchema::new(c_schema),
+                },
             })
         } else {
             Err(context.expect_last_error())
@@ -116,55 +122,52 @@ impl<'ctx> Builder<'ctx> {
         let c_allow = if allow { 1 } else { 0 };
         if unsafe {
             ffi::tiledb_array_schema_set_allows_dups(
-                self.context.as_mut_ptr(),
-                self.ffi.wrapped,
+                self.schema.context.as_mut_ptr(),
+                *self.schema.raw,
                 c_allow,
             )
         } == ffi::TILEDB_OK
         {
             Ok(self)
         } else {
-            Err(self.context.expect_last_error())
+            Err(self.schema.context.expect_last_error())
         }
     }
 
     pub fn domain(self, domain: Domain) -> TileDBResult<Self> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.schema.context.as_mut_ptr();
         let c_domain = domain.capi();
         let c_ret = unsafe {
             ffi::tiledb_array_schema_set_domain(
                 c_context,
-                self.ffi.wrapped,
+                *self.schema.raw,
                 c_domain,
             )
         };
         if c_ret == ffi::TILEDB_OK {
             Ok(self)
         } else {
-            Err(self.context.expect_last_error())
+            Err(self.schema.context.expect_last_error())
         }
     }
 
     pub fn add_attribute(self, attr: Attribute) -> TileDBResult<Self> {
         if unsafe {
             ffi::tiledb_array_schema_add_attribute(
-                self.context.as_mut_ptr(),
-                self.ffi.wrapped,
+                self.schema.context.as_mut_ptr(),
+                *self.schema.raw,
                 attr.as_mut_ptr(),
             )
         } == ffi::TILEDB_OK
         {
             Ok(self)
         } else {
-            Err(self.context.expect_last_error())
+            Err(self.schema.context.expect_last_error())
         }
     }
 
     pub fn build(self) -> Schema<'ctx> {
-        Schema {
-            context: self.context,
-            ffi: self.ffi,
-        }
+        self.schema
     }
 }
 
