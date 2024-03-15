@@ -73,5 +73,6 @@ fn write_array() -> TileDBResult<()> {
 }
 
 fn main() {
-    create_array().expect("Failed to create array")
+    create_array().expect("Failed to create array");
+    write_array().expect("Failed to write array");
 }

@@ -30,6 +30,7 @@ impl Drop for RawQuery {
 
 pub struct Query<'ctx> {
     context: &'ctx Context,
+    array: Array<'ctx>,
     raw: RawQuery,
 }
 
@@ -56,7 +57,7 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     pub fn new(
         context: &'ctx Context,
-        array: Array,
+        array: Array<'ctx>,
         query_type: QueryType,
     ) -> TileDBResult<Self> {
         let c_context = context.as_mut_ptr();
@@ -75,6 +76,7 @@ impl<'ctx> Builder<'ctx> {
             Ok(Builder {
                 query: Query {
                     context,
+                    array,
                     raw: RawQuery::Owned(c_query),
                 },
             })
@@ -109,6 +111,9 @@ impl<'ctx> Builder<'ctx> {
         let c_bufptr = unsafe {
             std::mem::transmute::<&mut DT, *mut std::ffi::c_void>(&mut data[0])
         };
+
+        // TODO: this is not safe because the C API keeps a pointer to the size
+        // and may write back to it
         let mut c_size: u64 =
             (data.len() * std::mem::size_of::<DT>()).try_into().unwrap();
 
