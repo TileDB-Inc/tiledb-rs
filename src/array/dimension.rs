@@ -1,22 +1,47 @@
+use std::ops::Deref;
+
 use crate::context::Context;
 use crate::datatype::{Datatype, DomainType};
 use crate::error::Error;
 use crate::filter_list::FilterList;
 use crate::Result as TileDBResult;
 
+pub(crate) enum RawDimension {
+    Owned(*mut ffi::tiledb_dimension_t),
+    Borrowed(*mut ffi::tiledb_dimension_t),
+}
+
+impl Deref for RawDimension {
+    type Target = *mut ffi::tiledb_dimension_t;
+    fn deref(&self) -> &Self::Target {
+        match *self {
+            RawDimension::Owned(ref ffi) => ffi,
+            RawDimension::Borrowed(ref ffi) => ffi,
+        }
+    }
+}
+
+impl Drop for RawDimension {
+    fn drop(&mut self) {
+        if let RawDimension::Owned(ref mut ffi) = *self {
+            unsafe { ffi::tiledb_dimension_free(ffi) }
+        }
+    }
+}
+
 pub struct Dimension<'ctx> {
     pub(crate) context: &'ctx Context,
-    pub(crate) wrapped: *mut ffi::tiledb_dimension_t,
+    pub(crate) raw: RawDimension,
 }
 
 impl<'ctx> Dimension<'ctx> {
-    pub(crate) fn capi(&mut self) -> *mut ffi::tiledb_dimension_t {
-        self.wrapped
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_dimension_t {
+        *self.raw
     }
 
     pub fn datatype(&self) -> Datatype {
         let c_context = self.context.as_mut_ptr();
-        let c_dimension = self.wrapped;
+        let c_dimension = self.capi();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let c_ret = unsafe {
             ffi::tiledb_dimension_get_type(
@@ -33,7 +58,7 @@ impl<'ctx> Dimension<'ctx> {
 
     pub fn domain<DT: DomainType>(&self) -> TileDBResult<[DT; 2]> {
         let c_context = self.context.as_mut_ptr();
-        let c_dimension = self.wrapped;
+        let c_dimension = self.capi();
         let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
 
         if DT::DATATYPE != self.datatype() {
@@ -67,7 +92,7 @@ impl<'ctx> Dimension<'ctx> {
         let mut c_fl: *mut ffi::tiledb_filter_list_t = out_ptr!();
 
         let c_context = self.context.as_mut_ptr();
-        let c_dimension = self.wrapped;
+        let c_dimension = self.capi();
         let c_ret = unsafe {
             ffi::tiledb_dimension_get_filter_list(
                 c_context,
@@ -80,12 +105,6 @@ impl<'ctx> Dimension<'ctx> {
         assert_eq!(ffi::TILEDB_OK, c_ret);
 
         FilterList { _wrapped: c_fl }
-    }
-}
-
-impl Drop for Dimension<'_> {
-    fn drop(&mut self) {
-        unsafe { ffi::tiledb_dimension_free(&mut self.wrapped) }
     }
 }
 
@@ -132,7 +151,7 @@ impl<'ctx> Builder<'ctx> {
             Ok(Builder {
                 dim: Dimension {
                     context,
-                    wrapped: c_dimension,
+                    raw: RawDimension::Owned(c_dimension),
                 },
             })
         } else {
@@ -142,7 +161,7 @@ impl<'ctx> Builder<'ctx> {
 
     pub fn filters(self, filters: FilterList) -> TileDBResult<Self> {
         let c_context = self.dim.context.as_mut_ptr();
-        let c_dimension = self.dim.wrapped;
+        let c_dimension = self.dim.capi();
         let c_fl = filters.as_mut_ptr();
 
         if unsafe {

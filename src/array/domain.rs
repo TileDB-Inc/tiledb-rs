@@ -1,4 +1,4 @@
-use crate::array::Dimension;
+use crate::array::{dimension::RawDimension, Dimension};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
@@ -39,7 +39,7 @@ impl<'ctx> Domain<'ctx> {
         if c_ret == ffi::TILEDB_OK {
             Ok(Dimension {
                 context: self.context,
-                wrapped: c_dimension,
+                raw: RawDimension::Borrowed(c_dimension),
             })
         } else {
             Err(self.context.expect_last_error())
@@ -77,7 +77,7 @@ impl<'ctx> Builder<'ctx> {
 
     pub fn add_dimension(
         self,
-        mut dimension: Dimension<'ctx>,
+        dimension: Dimension<'ctx>,
     ) -> TileDBResult<Self> {
         let c_context = self.domain.context.as_mut_ptr();
         let c_domain = self.domain.wrapped;
