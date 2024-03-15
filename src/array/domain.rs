@@ -1,15 +1,40 @@
+use std::ops::Deref;
+
 use crate::array::{dimension::RawDimension, Dimension};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
+pub(crate) enum RawDomain {
+    Owned(*mut ffi::tiledb_domain_t),
+    Borrowed(*mut ffi::tiledb_domain_t),
+}
+
+impl Deref for RawDomain {
+    type Target = *mut ffi::tiledb_domain_t;
+    fn deref(&self) -> &Self::Target {
+        match *self {
+            RawDomain::Owned(ref ffi) => ffi,
+            RawDomain::Borrowed(ref ffi) => ffi,
+        }
+    }
+}
+
+impl Drop for RawDomain {
+    fn drop(&mut self) {
+        if let RawDomain::Owned(ref mut ffi) = *self {
+            unsafe { ffi::tiledb_domain_free(ffi) }
+        }
+    }
+}
+
 pub struct Domain<'ctx> {
     context: &'ctx Context,
-    wrapped: *mut ffi::tiledb_domain_t,
+    raw: RawDomain,
 }
 
 impl<'ctx> Domain<'ctx> {
     pub(crate) fn capi(self) -> *mut ffi::tiledb_domain_t {
-        self.wrapped
+        *self.raw
     }
 
     pub fn ndim(&self) -> u32 {
@@ -17,7 +42,7 @@ impl<'ctx> Domain<'ctx> {
         let c_ret = unsafe {
             ffi::tiledb_domain_get_ndim(
                 self.context.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 &mut ndim,
             )
         };
@@ -31,7 +56,7 @@ impl<'ctx> Domain<'ctx> {
         let c_ret = unsafe {
             ffi::tiledb_domain_get_dimension_from_index(
                 self.context.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 idx,
                 &mut c_dimension,
             )
@@ -44,12 +69,6 @@ impl<'ctx> Domain<'ctx> {
         } else {
             Err(self.context.expect_last_error())
         }
-    }
-}
-
-impl Drop for Domain<'_> {
-    fn drop(&mut self) {
-        unsafe { ffi::tiledb_domain_free(&mut self.wrapped) }
     }
 }
 
@@ -67,7 +86,7 @@ impl<'ctx> Builder<'ctx> {
             Ok(Builder {
                 domain: Domain {
                     context,
-                    wrapped: c_domain,
+                    raw: RawDomain::Owned(c_domain),
                 },
             })
         } else {
@@ -80,7 +99,7 @@ impl<'ctx> Builder<'ctx> {
         dimension: Dimension<'ctx>,
     ) -> TileDBResult<Self> {
         let c_context = self.domain.context.as_mut_ptr();
-        let c_domain = self.domain.wrapped;
+        let c_domain = *self.domain.raw;
         let c_dim = dimension.capi();
 
         let c_ret = unsafe {
