@@ -87,9 +87,42 @@ fn write_array() -> TileDBResult<()> {
     query.submit().map(|_| ())
 }
 
+fn read_array() -> TileDBResult<()> {
+    let tdb = tiledb::context::Context::new()?;
+
+    let array = tiledb::Array::open(
+        &tdb,
+        QUICKSTART_DENSE_ARRAY_URI,
+        tiledb::array::Mode::Read,
+    )?;
+
+    let mut results = vec![0; 6];
+
+    let query =
+        tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
+            .layout(tiledb::array::Layout::RowMajor)?
+            .dimension_buffer_typed(
+                QUICKSTART_ATTRIBUTE_NAME,
+                results.as_mut_slice(),
+            )?
+            .add_subarray()?
+            .dimension_range_typed::<i32>(0, &[1, 2])?
+            .add_subarray()?
+            .dimension_range_typed::<i32>(1, &[2, 4])?
+            .build();
+
+    query.submit().map(|_| ());
+
+    for value in results {
+        print!("{} ", value)
+    }
+    Ok(println!())
+}
+
 fn main() {
     if !array_exists() {
         create_array().expect("Failed to create array");
     }
     write_array().expect("Failed to write array");
+    read_array().expect("Failed to read array");
 }

@@ -1,3 +1,5 @@
+pub mod subarray;
+
 use std::collections::HashMap;
 use std::ops::Deref;
 
@@ -5,6 +7,8 @@ use crate::array::Layout;
 use crate::context::Context;
 use crate::datatype::DomainType;
 use crate::{Array, Result as TileDBResult};
+
+pub use crate::query::subarray::{Builder as SubarrayBuilder, Subarray};
 
 pub type QueryType = crate::array::Mode;
 
@@ -32,6 +36,7 @@ impl Drop for RawQuery {
 pub struct Query<'ctx> {
     context: &'ctx Context,
     array: Array<'ctx>,
+    subarrays: Vec<Subarray<'ctx>>,
     // This is a bit gross but the buffer sizes must out-live the query.
     // That's very C-like, Rust wants to use slices or something, so we do this
     // in order to pin the size to a fixed address
@@ -82,6 +87,7 @@ impl<'ctx> Builder<'ctx> {
                 query: Query {
                     context,
                     array,
+                    subarrays: vec![],
                     result_buffers: HashMap::new(),
                     raw: RawQuery::Owned(c_query),
                 },
@@ -103,6 +109,10 @@ impl<'ctx> Builder<'ctx> {
         } else {
             Err(self.query.context.expect_last_error())
         }
+    }
+
+    pub fn add_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx>> {
+        SubarrayBuilder::for_query(self)
     }
 
     pub fn dimension_buffer_typed<DT: DomainType>(
