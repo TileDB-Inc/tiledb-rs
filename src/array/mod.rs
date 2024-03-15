@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::context::Context;
@@ -31,8 +32,31 @@ impl Mode {
     }
 }
 
+pub(crate) struct RawArray {
+    ffi: *mut ffi::tiledb_array_t,
+}
+
+impl RawArray {
+    pub fn new(ffi: *mut ffi::tiledb_array_t) -> Self {
+        RawArray { ffi }
+    }
+}
+
+impl Deref for RawArray {
+    type Target = *mut ffi::tiledb_array_t;
+    fn deref(&self) -> &Self::Target {
+        &self.ffi
+    }
+}
+
+impl Drop for RawArray {
+    fn drop(&mut self) {
+        unsafe { ffi::tiledb_array_free(&mut self.ffi) }
+    }
+}
+
 pub struct Array {
-    _wrapped: *mut ffi::tiledb_array_t,
+    raw: RawArray,
 }
 
 impl Array {
@@ -78,7 +102,7 @@ impl Array {
             == ffi::TILEDB_OK
         {
             Ok(Array {
-                _wrapped: array_raw,
+                raw: RawArray::new(array_raw),
             })
         } else {
             Err(context.expect_last_error())
