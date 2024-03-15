@@ -21,6 +21,7 @@ mod object;
 mod query;
 mod schema;
 mod string;
+mod subarray;
 mod types;
 
 pub use array::*;
@@ -42,4 +43,5 @@ pub use object::*;
 pub use query::*;
 pub use schema::*;
 pub use string::*;
+pub use subarray::*;
 pub use types::*;
