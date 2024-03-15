@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::array::Layout;
@@ -31,6 +32,10 @@ impl Drop for RawQuery {
 pub struct Query<'ctx> {
     context: &'ctx Context,
     array: Array<'ctx>,
+    // This is a bit gross but the buffer sizes must out-live the query.
+    // That's very C-like, Rust wants to use slices or something, so we do this
+    // in order to pin the size to a fixed address
+    result_buffers: HashMap<String, Box<u64>>,
     raw: RawQuery,
 }
 
@@ -77,6 +82,7 @@ impl<'ctx> Builder<'ctx> {
                 query: Query {
                     context,
                     array,
+                    result_buffers: HashMap::new(),
                     raw: RawQuery::Owned(c_query),
                 },
             })
@@ -100,7 +106,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn dimension_buffer_typed<DT: DomainType>(
-        self,
+        mut self,
         name: &str,
         data: &mut [DT],
     ) -> TileDBResult<Self> {
@@ -112,10 +118,12 @@ impl<'ctx> Builder<'ctx> {
             std::mem::transmute::<&mut DT, *mut std::ffi::c_void>(&mut data[0])
         };
 
+        let mut c_size = Box::new(
+            (data.len() * std::mem::size_of::<DT>()).try_into().unwrap(),
+        );
+
         // TODO: this is not safe because the C API keeps a pointer to the size
         // and may write back to it
-        let mut c_size: u64 =
-            (data.len() * std::mem::size_of::<DT>()).try_into().unwrap();
 
         let c_ret = unsafe {
             ffi::tiledb_query_set_data_buffer(
@@ -123,10 +131,11 @@ impl<'ctx> Builder<'ctx> {
                 c_query,
                 c_name.as_ptr(),
                 c_bufptr,
-                &mut c_size,
+                &mut *c_size,
             )
         };
         if c_ret == ffi::TILEDB_OK {
+            self.query.result_buffers.insert(String::from(name), c_size);
             Ok(self)
         } else {
             Err(self.query.context.expect_last_error())
