@@ -1,5 +1,7 @@
 extern crate tiledb_sys as ffi;
 
+use std::ops::Deref;
+
 pub use tiledb_sys::Datatype;
 
 use crate::context::Context;
@@ -7,13 +9,38 @@ use crate::error::Error;
 use crate::filter_list::FilterList;
 use crate::Result as TileDBResult;
 
+pub(crate) struct RawAttribute {
+    ffi: *mut ffi::tiledb_attribute_t,
+}
+
+impl RawAttribute {
+    pub fn new(ffi: *mut ffi::tiledb_attribute_t) -> Self {
+        RawAttribute { ffi }
+    }
+}
+
+impl Deref for RawAttribute {
+    type Target = *mut ffi::tiledb_attribute_t;
+    fn deref(&self) -> &Self::Target {
+        &self.ffi
+    }
+}
+
+impl Drop for RawAttribute {
+    fn drop(&mut self) {
+        unsafe {
+            ffi::tiledb_attribute_free(&mut self.ffi);
+        }
+    }
+}
+
 pub struct Attribute {
-    wrapped: *mut ffi::tiledb_attribute_t,
+    raw: RawAttribute,
 }
 
 impl Attribute {
     pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_attribute_t {
-        self.wrapped
+        *self.raw
     }
 
     pub fn new(
@@ -21,20 +48,20 @@ impl Attribute {
         name: &str,
         datatype: Datatype,
     ) -> TileDBResult<Attribute> {
-        let mut attr = Attribute {
-            wrapped: std::ptr::null_mut::<ffi::tiledb_attribute_t>(),
-        };
+        let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
         let c_name = cstring!(name);
         let res = unsafe {
             ffi::tiledb_attribute_alloc(
                 ctx.as_mut_ptr(),
                 c_name.as_c_str().as_ptr(),
                 datatype as u32,
-                &mut attr.wrapped,
+                &mut c_attr,
             )
         };
         if res == ffi::TILEDB_OK {
-            Ok(attr)
+            Ok(Attribute {
+                raw: RawAttribute::new(c_attr),
+            })
         } else {
             Err(ctx.expect_last_error())
         }
@@ -45,7 +72,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_get_name(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 &mut c_name,
             )
         };
@@ -62,7 +89,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_get_type(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 &mut c_dtype,
             )
         };
@@ -86,7 +113,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_set_nullable(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 nullable,
             )
         };
@@ -102,7 +129,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_get_nullable(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 &mut c_nullable,
             )
         };
@@ -121,7 +148,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_set_filter_list(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 filter_list.as_mut_ptr(),
             )
         };
@@ -137,7 +164,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_get_filter_list(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 flist.as_mut_ptr_ptr(),
             )
         };
@@ -165,7 +192,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_set_cell_val_num(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 c_num,
             )
         };
@@ -181,7 +208,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_val_num(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 &mut c_num,
             )
         };
@@ -197,7 +224,7 @@ impl Attribute {
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_size(
                 ctx.as_mut_ptr(),
-                self.wrapped,
+                *self.raw,
                 &mut c_size,
             )
         };
@@ -205,17 +232,6 @@ impl Attribute {
             Ok(c_size as u64)
         } else {
             Err(ctx.expect_last_error())
-        }
-    }
-}
-
-impl Drop for Attribute {
-    fn drop(&mut self) {
-        if self.wrapped.is_null() {
-            return;
-        }
-        unsafe {
-            ffi::tiledb_attribute_free(&mut self.wrapped);
         }
     }
 }
