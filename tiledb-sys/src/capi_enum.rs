@@ -43,6 +43,21 @@ pub const tiledb_layout_t_TILEDB_HILBERT: tiledb_layout_t = 4;
 #[doc = " Tile or cell layout."]
 pub type tiledb_layout_t = ::std::os::raw::c_uint;
 
+#[doc = " Query failed"]
+pub const tiledb_query_status_t_TILEDB_FAILED: tiledb_query_status_t = 0;
+#[doc = " Query completed (all data has been read)"]
+pub const tiledb_query_status_t_TILEDB_COMPLETED: tiledb_query_status_t = 1;
+#[doc = " Query is in progress"]
+pub const tiledb_query_status_t_TILEDB_INPROGRESS: tiledb_query_status_t = 2;
+#[doc = " Query completed (but not all data has been read)"]
+pub const tiledb_query_status_t_TILEDB_INCOMPLETE: tiledb_query_status_t = 3;
+#[doc = " Query not initialized."]
+pub const tiledb_query_status_t_TILEDB_UNINITIALIZED: tiledb_query_status_t = 4;
+#[doc = " Query initialized (strategy created)"]
+pub const tiledb_query_status_t_TILEDB_INITIALIZED: tiledb_query_status_t = 5;
+#[doc = " Query status."]
+pub type tiledb_query_status_t = ::std::os::raw::c_uint;
+
 #[doc = " No encryption."]
 pub const tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION:
     tiledb_encryption_type_t = 0;
