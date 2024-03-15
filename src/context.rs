@@ -6,6 +6,20 @@ use crate::config::Config;
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
+pub enum ObjectType {
+    Array,
+    Group,
+}
+
+impl ObjectType {
+    pub(crate) fn capi_enum(&self) -> ffi::tiledb_object_t {
+        match *self {
+            ObjectType::Array => ffi::tiledb_object_t_TILEDB_ARRAY,
+            ObjectType::Group => ffi::tiledb_object_t_TILEDB_GROUP,
+        }
+    }
+}
+
 pub struct Context {
     _wrapped: *mut ffi::tiledb_ctx_t,
 }
@@ -112,6 +126,28 @@ impl Context {
 
         if res == ffi::TILEDB_OK {
             Ok(())
+        } else {
+            Err(self.expect_last_error())
+        }
+    }
+
+    pub fn object_type(&self, name: &str) -> TileDBResult<Option<ObjectType>> {
+        let c_name = cstring!(name);
+        let mut c_objtype: ffi::tiledb_object_t = out_ptr!();
+
+        let c_ret = unsafe {
+            ffi::tiledb_object_type(
+                self.as_mut_ptr(),
+                c_name.as_ptr(),
+                &mut c_objtype,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(match c_objtype {
+                ffi::tiledb_object_t_TILEDB_ARRAY => Some(ObjectType::Array),
+                ffi::tiledb_object_t_TILEDB_GROUP => Some(ObjectType::Group),
+                _ => None,
+            })
         } else {
             Err(self.expect_last_error())
         }

@@ -5,6 +5,21 @@ use tiledb::Result as TileDBResult;
 const QUICKSTART_DENSE_ARRAY_URI: &'static str = "quickstart_dense_array";
 const QUICKSTART_ATTRIBUTE_NAME: &'static str = "a";
 
+fn array_exists() -> bool {
+    let tdb = match tiledb::context::Context::new() {
+        Err(_) => return false,
+        Ok(tdb) => tdb,
+    };
+
+    if let Ok(Some(tiledb::context::ObjectType::Array)) =
+        tdb.object_type(QUICKSTART_DENSE_ARRAY_URI)
+    {
+        true
+    } else {
+        false
+    }
+}
+
 fn create_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
@@ -73,6 +88,8 @@ fn write_array() -> TileDBResult<()> {
 }
 
 fn main() {
-    create_array().expect("Failed to create array");
+    if !array_exists() {
+        create_array().expect("Failed to create array");
+    }
     write_array().expect("Failed to write array");
 }
