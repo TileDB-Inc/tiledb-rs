@@ -1,8 +1,9 @@
 use std::convert::TryFrom;
 use std::ops::Deref;
 
+use crate::array::attribute::RawAttribute;
 use crate::array::domain::RawDomain;
-use crate::array::{Attribute, Domain};
+use crate::array::{Attribute, Domain, Layout};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
@@ -126,6 +127,66 @@ impl<'ctx> Schema<'ctx> {
         }
     }
 
+    pub fn array_type(&self) -> ArrayType {
+        let c_context = self.context.as_mut_ptr();
+        let c_schema = *self.raw;
+        let mut c_atype: ffi::tiledb_array_type_t = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_array_type(
+                c_context,
+                c_schema,
+                &mut c_atype,
+            )
+        };
+        assert_eq!(ffi::TILEDB_OK, c_ret); // Rust API should prevent sanity check error
+        ArrayType::try_from(c_atype).expect("Invalid response from C API")
+    }
+
+    pub fn capacity(&self) -> u64 {
+        let c_context = self.context.as_mut_ptr();
+        let c_schema = *self.raw;
+        let mut c_capacity: u64 = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_capacity(
+                c_context,
+                c_schema,
+                &mut c_capacity,
+            )
+        };
+        assert_eq!(ffi::TILEDB_OK, c_ret); // Rust API should prevent sanity check error
+        c_capacity
+    }
+
+    pub fn cell_order(&self) -> Layout {
+        let c_context = self.context.as_mut_ptr();
+        let c_schema = *self.raw;
+        let mut c_cell_order: ffi::tiledb_layout_t = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_cell_order(
+                c_context,
+                c_schema,
+                &mut c_cell_order,
+            )
+        };
+        assert_eq!(ffi::TILEDB_OK, c_ret); // Rust API should prevent sanity check error
+        Layout::try_from(c_cell_order).expect("Invalid response from C API")
+    }
+
+    pub fn tile_order(&self) -> Layout {
+        let c_context = self.context.as_mut_ptr();
+        let c_schema = *self.raw;
+        let mut c_tile_order: ffi::tiledb_layout_t = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_tile_order(
+                c_context,
+                c_schema,
+                &mut c_tile_order,
+            )
+        };
+        assert_eq!(ffi::TILEDB_OK, c_ret); // Rust API should prevent sanity check error
+        Layout::try_from(c_tile_order).expect("Invalid response from C API")
+    }
+
     pub fn allows_duplicates(&self) -> bool {
         let mut c_ret: std::os::raw::c_int = out_ptr!();
         if unsafe {
@@ -139,6 +200,41 @@ impl<'ctx> Schema<'ctx> {
             c_ret != 0
         } else {
             unreachable!("Rust API design should prevent sanity check failure")
+        }
+    }
+
+    pub fn nattributes(&self) -> usize {
+        let c_context = self.context.as_mut_ptr();
+        let c_schema = *self.raw;
+        let mut c_nattrs: u32 = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_attribute_num(
+                c_context,
+                c_schema,
+                &mut c_nattrs,
+            )
+        };
+        assert_eq!(ffi::TILEDB_OK, c_ret); // Rust API should prevent sanity check error
+        c_nattrs as usize
+    }
+
+    pub fn attribute(&self, index: usize) -> TileDBResult<Attribute> {
+        let c_context = self.context.as_mut_ptr();
+        let c_schema = *self.raw;
+        let c_index = index as u32;
+        let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_attribute_from_index(
+                c_context,
+                c_schema,
+                c_index,
+                &mut c_attr,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(Attribute::from((self.context, RawAttribute::Owned(c_attr))))
+        } else {
+            Err(self.context.expect_last_error())
         }
     }
 }
@@ -182,6 +278,51 @@ impl<'ctx> Builder<'ctx> {
                 raw: RawSchema::Owned(c_schema),
             },
         })
+    }
+
+    pub fn capacity(self, capacity: u64) -> TileDBResult<Self> {
+        let c_context = self.schema.context.as_mut_ptr();
+        let c_schema = *self.schema.raw;
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_set_capacity(c_context, c_schema, capacity)
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.schema.context.expect_last_error())
+        }
+    }
+
+    pub fn cell_order(self, order: Layout) -> TileDBResult<Self> {
+        let c_context = self.schema.context.as_mut_ptr();
+        let c_schema = *self.schema.raw;
+        let c_order = order.capi_enum();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_set_cell_order(
+                c_context, c_schema, c_order,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.schema.context.expect_last_error())
+        }
+    }
+
+    pub fn tile_order(self, order: Layout) -> TileDBResult<Self> {
+        let c_context = self.schema.context.as_mut_ptr();
+        let c_schema = *self.schema.raw;
+        let c_order = order.capi_enum();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_set_tile_order(
+                c_context, c_schema, c_order,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.schema.context.expect_last_error())
+        }
     }
 
     pub fn allow_duplicates(self, allow: bool) -> TileDBResult<Self> {
@@ -233,7 +374,7 @@ mod tests {
 
     use crate::array::schema::*;
     use crate::array::tests::*;
-    use crate::array::{DimensionBuilder, DomainBuilder};
+    use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
     use crate::context::Context;
     use crate::Datatype;
 
@@ -266,6 +407,49 @@ mod tests {
 
         let s: Schema = b.into();
         assert_eq!(0, s.version());
+    }
+
+    #[test]
+    fn test_array_type() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        {
+            let s: Schema =
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                    .unwrap()
+                    .build();
+            let t = s.array_type();
+            assert_eq!(ArrayType::Dense, t);
+        }
+
+        {
+            let s: Schema =
+                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                    .unwrap()
+                    .build();
+            let t = s.array_type();
+            assert_eq!(ArrayType::Sparse, t);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_capacity() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        {
+            let cap_in = 100;
+            let s: Schema =
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                    .unwrap()
+                    .capacity(cap_in)
+                    .unwrap()
+                    .build();
+            let cap_out = s.capacity();
+            assert_eq!(cap_in, cap_out);
+        }
+        Ok(())
     }
 
     #[test]
@@ -346,6 +530,124 @@ mod tests {
 
         // Make sure we can remove the array we created.
         tmp_dir.close()?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_layout() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        {
+            let s: Schema =
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                    .unwrap()
+                    .tile_order(Layout::RowMajor)
+                    .unwrap()
+                    .cell_order(Layout::RowMajor)
+                    .unwrap()
+                    .build();
+            let tile = s.tile_order();
+            let cell = s.cell_order();
+            assert_eq!(Layout::RowMajor, tile);
+            assert_eq!(Layout::RowMajor, cell);
+        }
+        {
+            let s: Schema =
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                    .unwrap()
+                    .tile_order(Layout::ColumnMajor)
+                    .unwrap()
+                    .cell_order(Layout::ColumnMajor)
+                    .unwrap()
+                    .build();
+            let tile = s.tile_order();
+            let cell = s.cell_order();
+            assert_eq!(Layout::ColumnMajor, tile);
+            assert_eq!(Layout::ColumnMajor, cell);
+        }
+        {
+            let r = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                .unwrap()
+                .tile_order(Layout::Hilbert);
+            assert!(r.is_err());
+        }
+        {
+            let r = Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                .unwrap()
+                .tile_order(Layout::Hilbert);
+            assert!(r.is_err());
+        }
+        {
+            let r = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                .unwrap()
+                .cell_order(Layout::Hilbert);
+            assert!(r.is_err());
+        }
+        {
+            let s: Schema =
+                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                    .unwrap()
+                    .cell_order(Layout::Hilbert)
+                    .unwrap()
+                    .build();
+            let cell = s.cell_order();
+            assert_eq!(Layout::Hilbert, cell);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_attributes() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        {
+            let s: Schema =
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?.build();
+            assert_eq!(0, s.nattributes());
+        }
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                    .add_attribute(a1)?
+                    .build()
+            };
+            assert_eq!(1, s.nattributes());
+
+            let a1 = s.attribute(0)?;
+            assert_eq!(Datatype::Int32, a1.datatype()?);
+            assert_eq!("a1", a1.name()?);
+
+            let a2 = s.attribute(1);
+            assert!(a2.is_err());
+        }
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                let a2 =
+                    AttributeBuilder::new(&c, "a2", Datatype::Float64)?.build();
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                    .add_attribute(a1)?
+                    .add_attribute(a2)?
+                    .build()
+            };
+            assert_eq!(2, s.nattributes());
+
+            let a1 = s.attribute(0)?;
+            assert_eq!(Datatype::Int32, a1.datatype()?);
+            assert_eq!("a1", a1.name()?);
+
+            let a2 = s.attribute(1)?;
+            assert_eq!(Datatype::Float64, a2.datatype()?);
+            assert_eq!("a2", a2.name()?);
+
+            let a3 = s.attribute(2);
+            assert!(a3.is_err());
+        }
 
         Ok(())
     }

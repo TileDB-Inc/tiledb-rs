@@ -47,11 +47,12 @@ fn create_array() -> TileDBResult<()> {
             .build()
     };
 
-    let attribute_a = tiledb::array::Attribute::new(
+    let attribute_a = tiledb::array::AttributeBuilder::new(
         &tdb,
         QUICKSTART_ATTRIBUTE_NAME,
         tiledb::Datatype::Int32,
-    )?;
+    )?
+    .build();
 
     let schema = tiledb::array::SchemaBuilder::new(
         &tdb,

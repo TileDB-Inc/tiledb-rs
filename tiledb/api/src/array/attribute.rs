@@ -1,5 +1,6 @@
 extern crate tiledb_sys as ffi;
 
+use std::convert::From;
 use std::ops::Deref;
 
 pub use tiledb_sys::Datatype;
@@ -10,89 +11,56 @@ use crate::error::Error;
 use crate::filter_list::FilterList;
 use crate::Result as TileDBResult;
 
-pub(crate) struct RawAttribute {
-    ffi: *mut ffi::tiledb_attribute_t,
-}
-
-impl RawAttribute {
-    pub fn new(ffi: *mut ffi::tiledb_attribute_t) -> Self {
-        RawAttribute { ffi }
-    }
+pub(crate) enum RawAttribute {
+    Owned(*mut ffi::tiledb_attribute_t),
 }
 
 impl Deref for RawAttribute {
     type Target = *mut ffi::tiledb_attribute_t;
     fn deref(&self) -> &Self::Target {
-        &self.ffi
+        let RawAttribute::Owned(ref ffi) = *self;
+        ffi
     }
 }
 
 impl Drop for RawAttribute {
     fn drop(&mut self) {
+        let RawAttribute::Owned(ref mut ffi) = *self;
         unsafe {
-            ffi::tiledb_attribute_free(&mut self.ffi);
+            ffi::tiledb_attribute_free(ffi);
         }
     }
 }
 
-pub struct Attribute {
+pub struct Attribute<'ctx> {
+    context: &'ctx Context,
     raw: RawAttribute,
 }
 
-impl Attribute {
+impl<'ctx> Attribute<'ctx> {
     pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_attribute_t {
         *self.raw
     }
 
-    pub fn new(
-        ctx: &Context,
-        name: &str,
-        datatype: Datatype,
-    ) -> TileDBResult<Attribute> {
-        let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
-        let c_name = cstring!(name);
-        let res = unsafe {
-            ffi::tiledb_attribute_alloc(
-                ctx.as_mut_ptr(),
-                c_name.as_c_str().as_ptr(),
-                datatype as u32,
-                &mut c_attr,
-            )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(Attribute {
-                raw: RawAttribute::new(c_attr),
-            })
-        } else {
-            Err(ctx.expect_last_error())
-        }
-    }
-
-    pub fn name(&self, ctx: &Context) -> TileDBResult<String> {
+    pub fn name(&self) -> TileDBResult<String> {
+        let c_context = self.context.as_mut_ptr();
         let mut c_name = std::ptr::null::<std::ffi::c_char>();
         let res = unsafe {
-            ffi::tiledb_attribute_get_name(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                &mut c_name,
-            )
+            ffi::tiledb_attribute_get_name(c_context, *self.raw, &mut c_name)
         };
         if res == ffi::TILEDB_OK {
             let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
             Ok(String::from(c_name.to_string_lossy()))
         } else {
-            Err(ctx.expect_last_error())
+            Err(self.context.expect_last_error())
         }
     }
 
-    pub fn datatype(&self, ctx: &Context) -> TileDBResult<Datatype> {
+    pub fn datatype(&self) -> TileDBResult<Datatype> {
+        let c_context = self.context.as_mut_ptr();
         let mut c_dtype: std::ffi::c_uint = 0;
         let res = unsafe {
-            ffi::tiledb_attribute_get_type(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                &mut c_dtype,
-            )
+            ffi::tiledb_attribute_get_type(c_context, *self.raw, &mut c_dtype)
         };
         if res == ffi::TILEDB_OK {
             if let Some(dtype) = Datatype::from_u32(c_dtype) {
@@ -101,70 +69,30 @@ impl Attribute {
                 Err(Error::from("Invalid Datatype value returned by TileDB"))
             }
         } else {
-            Err(ctx.expect_last_error())
+            Err(self.context.expect_last_error())
         }
     }
 
-    pub fn set_nullable(
-        &self,
-        ctx: &Context,
-        nullable: bool,
-    ) -> TileDBResult<()> {
-        let nullable: u8 = if nullable { 1 } else { 0 };
-        let res = unsafe {
-            ffi::tiledb_attribute_set_nullable(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                nullable,
-            )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(ctx.expect_last_error())
-        }
-    }
-
-    pub fn get_nullable(&self, ctx: &Context) -> TileDBResult<bool> {
+    pub fn is_nullable(&self) -> bool {
+        let c_context = self.context.as_mut_ptr();
         let mut c_nullable: std::ffi::c_uchar = 0;
-        let res = unsafe {
+        let c_ret = unsafe {
             ffi::tiledb_attribute_get_nullable(
-                ctx.as_mut_ptr(),
+                c_context,
                 *self.raw,
                 &mut c_nullable,
             )
         };
-        if res == ffi::TILEDB_OK {
-            Ok(c_nullable == 1)
-        } else {
-            Err(ctx.expect_last_error())
-        }
+        assert_eq!(ffi::TILEDB_OK, c_ret); // Rust API should prevent sanity check failure
+        c_nullable == 1
     }
 
-    pub fn set_filter_list(
-        &self,
-        ctx: &Context,
-        filter_list: &FilterList,
-    ) -> TileDBResult<()> {
-        let res = unsafe {
-            ffi::tiledb_attribute_set_filter_list(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                filter_list.as_mut_ptr(),
-            )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(ctx.expect_last_error())
-        }
-    }
-
-    pub fn get_filter_list(&self, ctx: &Context) -> TileDBResult<FilterList> {
+    pub fn filter_list(&self) -> TileDBResult<FilterList> {
+        let c_context = self.context.as_mut_ptr();
         let mut flist = FilterList::default();
         let res = unsafe {
             ffi::tiledb_attribute_get_filter_list(
-                ctx.as_mut_ptr(),
+                c_context,
                 *self.raw,
                 flist.as_mut_ptr_ptr(),
             )
@@ -172,59 +100,35 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(flist)
         } else {
-            Err(ctx.expect_last_error())
+            Err(self.context.expect_last_error())
         }
     }
 
-    pub fn set_var_sized(&self, ctx: &Context) -> TileDBResult<()> {
-        self.set_cell_val_num(ctx, u32::MAX)
+    pub fn is_var_sized(&self) -> TileDBResult<bool> {
+        self.cell_val_num().map(|num| num == u32::MAX)
     }
 
-    pub fn is_var_sized(&self, ctx: &Context) -> TileDBResult<bool> {
-        self.get_cell_val_num(ctx).map(|num| num == u32::MAX)
-    }
-
-    pub fn set_cell_val_num(
-        &self,
-        ctx: &Context,
-        num: u32,
-    ) -> TileDBResult<()> {
-        let c_num = num as std::ffi::c_uint;
-        let res = unsafe {
-            ffi::tiledb_attribute_set_cell_val_num(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                c_num,
-            )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(ctx.expect_last_error())
-        }
-    }
-
-    pub fn get_cell_val_num(&self, ctx: &Context) -> TileDBResult<u32> {
+    pub fn cell_val_num(&self) -> TileDBResult<u32> {
+        let c_context = self.context.as_mut_ptr();
         let mut c_num: std::ffi::c_uint = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_val_num(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                &mut c_num,
+                c_context, *self.raw, &mut c_num,
             )
         };
         if res == ffi::TILEDB_OK {
             Ok(c_num as u32)
         } else {
-            Err(ctx.expect_last_error())
+            Err(self.context.expect_last_error())
         }
     }
 
-    pub fn get_cell_size(&self, ctx: &Context) -> TileDBResult<u64> {
+    pub fn cell_size(&self) -> TileDBResult<u64> {
+        let c_context = self.context.as_mut_ptr();
         let mut c_size: std::ffi::c_ulonglong = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_size(
-                ctx.as_mut_ptr(),
+                c_context,
                 *self.raw,
                 &mut c_size,
             )
@@ -232,60 +136,27 @@ impl Attribute {
         if res == ffi::TILEDB_OK {
             Ok(c_size as u64)
         } else {
-            Err(ctx.expect_last_error())
+            Err(self.context.expect_last_error())
         }
     }
 
-    // This currently does not support setting multi-value cells.
-    pub fn set_fill_value<Conv: CAPIConverter + 'static>(
-        &self,
-        ctx: &Context,
-        value: Conv,
-    ) -> TileDBResult<()> {
-        let c_val: Conv::CAPIType = value.to_capi();
-
-        if !self.datatype(ctx)?.is_compatible_type::<Conv>() {
-            return Err(Error::from(format!(
-                "Attribute type mismatch: expected {}, found {}",
-                self.datatype(ctx)?,
-                std::any::type_name::<Conv>()
-            )));
-        }
-
-        let res = unsafe {
-            ffi::tiledb_attribute_set_fill_value(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
-                std::mem::size_of::<Conv::CAPIType>() as u64,
-            )
-        };
-
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(ctx.expect_last_error())
-        }
-    }
-
-    pub fn get_fill_value<Conv: CAPIConverter>(
-        &self,
-        ctx: &Context,
-    ) -> TileDBResult<Conv> {
+    pub fn fill_value<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
+        let c_context = self.context.as_mut_ptr();
+        let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
 
         let res = unsafe {
             ffi::tiledb_attribute_get_fill_value(
-                ctx.as_mut_ptr(),
-                *self.raw,
+                c_context,
+                c_attr,
                 &mut c_ptr,
                 &mut c_size,
             )
         };
 
         if res != ffi::TILEDB_OK {
-            return Err(ctx.expect_last_error());
+            return Err(self.context.expect_last_error());
         }
 
         if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
@@ -297,52 +168,19 @@ impl Attribute {
         Ok(Conv::to_rust(&c_val))
     }
 
-    // This currently does not support setting multi-value cells.
-    pub fn set_fill_value_nullable<Conv: CAPIConverter + 'static>(
+    pub fn fill_value_nullable<Conv: CAPIConverter>(
         &self,
-        ctx: &Context,
-        value: Conv,
-        validity: u8,
-    ) -> TileDBResult<()> {
-        let c_val: Conv::CAPIType = value.to_capi();
-
-        if !self.datatype(ctx)?.is_compatible_type::<Conv>() {
-            return Err(Error::from(format!(
-                "Attribute type mismatch: expected {}, found {}",
-                self.datatype(ctx)?,
-                std::any::type_name::<Conv>()
-            )));
-        }
-
-        let res = unsafe {
-            ffi::tiledb_attribute_set_fill_value_nullable(
-                ctx.as_mut_ptr(),
-                *self.raw,
-                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
-                std::mem::size_of::<Conv::CAPIType>() as u64,
-                validity,
-            )
-        };
-
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(ctx.expect_last_error())
-        }
-    }
-
-    pub fn get_fill_value_nullable<Conv: CAPIConverter>(
-        &self,
-        ctx: &Context,
-    ) -> TileDBResult<(Conv, u8)> {
+    ) -> TileDBResult<(Conv, bool)> {
+        let c_context = self.context.as_mut_ptr();
+        let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
         let mut c_validity: u8 = 0;
 
         let res = unsafe {
             ffi::tiledb_attribute_get_fill_value_nullable(
-                ctx.as_mut_ptr(),
-                *self.raw,
+                c_context,
+                c_attr,
                 &mut c_ptr,
                 &mut c_size,
                 &mut c_validity,
@@ -350,7 +188,7 @@ impl Attribute {
         };
 
         if res != ffi::TILEDB_OK {
-            return Err(ctx.expect_last_error());
+            return Err(self.context.expect_last_error());
         }
 
         if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
@@ -359,7 +197,178 @@ impl Attribute {
 
         let c_val: Conv::CAPIType = unsafe { *c_ptr.cast::<Conv::CAPIType>() };
 
-        Ok((Conv::to_rust(&c_val), c_validity))
+        Ok((Conv::to_rust(&c_val), c_validity != 0))
+    }
+}
+
+impl<'ctx> From<(&'ctx Context, RawAttribute)> for Attribute<'ctx> {
+    fn from(value: (&'ctx Context, RawAttribute)) -> Self {
+        Attribute {
+            context: value.0,
+            raw: value.1,
+        }
+    }
+}
+
+pub struct Builder<'ctx> {
+    attr: Attribute<'ctx>,
+}
+
+impl<'ctx> Builder<'ctx> {
+    pub fn new(
+        context: &'ctx Context,
+        name: &str,
+        datatype: Datatype,
+    ) -> TileDBResult<Self> {
+        let c_context = context.as_mut_ptr();
+        let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
+        let c_name = cstring!(name);
+        let res = unsafe {
+            ffi::tiledb_attribute_alloc(
+                c_context,
+                c_name.as_c_str().as_ptr(),
+                datatype as u32,
+                &mut c_attr,
+            )
+        };
+        if res == ffi::TILEDB_OK {
+            Ok(Builder {
+                attr: Attribute {
+                    context,
+                    raw: RawAttribute::Owned(c_attr),
+                },
+            })
+        } else {
+            Err(context.expect_last_error())
+        }
+    }
+
+    pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
+        let c_context = self.attr.context.as_mut_ptr();
+        let c_num = num as std::ffi::c_uint;
+        let res = unsafe {
+            ffi::tiledb_attribute_set_cell_val_num(
+                c_context,
+                *self.attr.raw,
+                c_num,
+            )
+        };
+        if res == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.attr.context.expect_last_error())
+        }
+    }
+
+    pub fn var_sized(self) -> TileDBResult<Self> {
+        self.cell_val_num(u32::MAX)
+    }
+
+    pub fn nullability(self, nullable: bool) -> TileDBResult<Self> {
+        let c_context = self.attr.context.as_mut_ptr();
+        let c_nullable: u8 = if nullable { 1 } else { 0 };
+        let res = unsafe {
+            ffi::tiledb_attribute_set_nullable(
+                c_context,
+                *self.attr.raw,
+                c_nullable,
+            )
+        };
+        if res == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.attr.context.expect_last_error())
+        }
+    }
+
+    // This currently does not support setting multi-value cells.
+    pub fn fill_value<Conv: CAPIConverter + 'static>(
+        self,
+        value: Conv,
+    ) -> TileDBResult<Self> {
+        if !self.attr.datatype()?.is_compatible_type::<Conv>() {
+            return Err(Error::from(format!(
+                "Attribute type mismatch: expected {}, found {}",
+                self.attr.datatype()?,
+                std::any::type_name::<Conv>()
+            )));
+        }
+
+        let c_context = self.attr.context.as_mut_ptr();
+        let c_attr = *self.attr.raw;
+        let c_val: Conv::CAPIType = value.to_capi();
+
+        let res = unsafe {
+            ffi::tiledb_attribute_set_fill_value(
+                c_context,
+                c_attr,
+                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
+                std::mem::size_of::<Conv::CAPIType>() as u64,
+            )
+        };
+
+        if res == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.attr.context.expect_last_error())
+        }
+    }
+
+    // This currently does not support setting multi-value cells.
+    pub fn fill_value_nullability<Conv: CAPIConverter + 'static>(
+        self,
+        value: Conv,
+        nullable: bool,
+    ) -> TileDBResult<Self> {
+        if !self.attr.datatype()?.is_compatible_type::<Conv>() {
+            return Err(Error::from(format!(
+                "Attribute type mismatch: expected {}, found {}",
+                self.attr.datatype()?,
+                std::any::type_name::<Conv>()
+            )));
+        }
+
+        let c_context = self.attr.context.as_mut_ptr();
+        let c_attr = *self.attr.raw;
+        let c_val: Conv::CAPIType = value.to_capi();
+        let c_nullable: u8 = if nullable { 1 } else { 0 };
+
+        let res = unsafe {
+            ffi::tiledb_attribute_set_fill_value_nullable(
+                c_context,
+                c_attr,
+                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
+                std::mem::size_of::<Conv::CAPIType>() as u64,
+                c_nullable,
+            )
+        };
+
+        if res == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.attr.context.expect_last_error())
+        }
+    }
+
+    pub fn filter_list(self, filter_list: &FilterList) -> TileDBResult<Self> {
+        let c_context = self.attr.context.as_mut_ptr();
+        let res = unsafe {
+            ffi::tiledb_attribute_set_filter_list(
+                c_context,
+                *self.attr.raw,
+                // TODO: does the C API copy this? Or alias the pointer? Safety is not obvious
+                filter_list.as_mut_ptr(),
+            )
+        };
+        if res == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.attr.context.expect_last_error())
+        }
+    }
+
+    pub fn build(self) -> Attribute<'ctx> {
+        self.attr
     }
 }
 
@@ -372,158 +381,206 @@ mod test {
     #[test]
     fn attribute_alloc() {
         let ctx = Context::new().expect("Error creating context instance.");
-        Attribute::new(&ctx, "foo", Datatype::UInt64)
+        Builder::new(&ctx, "foo", Datatype::UInt64)
             .expect("Error creating attribute instance.");
     }
 
     #[test]
     fn attribute_get_name_and_type() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "xkcd", Datatype::UInt32)
-            .expect("Error creating attribute instance.");
+        let attr = Builder::new(&ctx, "xkcd", Datatype::UInt32)
+            .expect("Error creating attribute instance.")
+            .build();
 
-        let name = attr.name(&ctx).expect("Error getting attribute name.");
+        let name = attr.name().expect("Error getting attribute name.");
         assert_eq!(&name, "xkcd");
 
-        let dtype = attr
-            .datatype(&ctx)
-            .expect("Error getting attribute datatype.");
+        let dtype = attr.datatype().expect("Error getting attribute datatype.");
         assert_eq!(dtype, Datatype::UInt32);
     }
 
     #[test]
     fn attribute_set_nullable() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "foo", Datatype::UInt64)
-            .expect("Error creating attribute instance.");
 
-        let nullable = attr
-            .get_nullable(&ctx)
-            .expect("Error getting attribute nullability.");
-        assert!(!nullable);
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt64)
+                .expect("Error creating attribute instance.")
+                .build();
 
-        attr.set_nullable(&ctx, true)
-            .expect("Error setting attribute nullability.");
+            let nullable = attr.is_nullable();
+            assert!(!nullable);
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt64)
+                .expect("Error creating attribute instance.")
+                .nullability(true)
+                .expect("Error setting attribute nullability.")
+                .build();
 
-        let nullable = attr
-            .get_nullable(&ctx)
-            .expect("Error getting attribute nullability.");
-        assert!(nullable);
+            let nullable = attr.is_nullable();
+            assert!(nullable);
+        }
     }
 
     #[test]
     fn attribute_get_set_filter_list() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "foo", Datatype::UInt8)
-            .expect("Error creating attribute instance.");
 
-        let flist1 = attr
-            .get_filter_list(&ctx)
-            .expect("Error getting attribute filter list.");
-        let nfilters = flist1
-            .get_num_filters(&ctx)
-            .expect("Error getting number of filters.");
-        assert_eq!(nfilters, 0);
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt8)
+                .expect("Error creating attribute instance.")
+                .build();
 
-        let f1 = Filter::new(&ctx, FilterType::NONE)
-            .expect("Error creating filter 1.");
-        let f2 = Filter::new(&ctx, FilterType::BIT_WIDTH_REDUCTION)
-            .expect("Error creating filter 2.");
-        let f3 = Filter::new(&ctx, FilterType::ZSTD)
-            .expect("Error creating filter 3.");
-        let mut flist2 =
-            FilterList::new(&ctx).expect("Error creating filter list.");
-        flist2
-            .add_filter(&ctx, &f1)
-            .expect("Error adding filter 1 to list.");
-        flist2
-            .add_filter(&ctx, &f2)
-            .expect("Error adding filter 2 to list.");
-        flist2
-            .add_filter(&ctx, &f3)
-            .expect("Error adding filter 3 to list.");
+            let flist1 = attr
+                .filter_list()
+                .expect("Error getting attribute filter list.");
+            let nfilters = flist1
+                .get_num_filters(&ctx)
+                .expect("Error getting number of filters.");
+            assert_eq!(nfilters, 0);
+        }
 
-        attr.set_filter_list(&ctx, &flist2)
-            .expect("Error setting filter list.");
+        {
+            let f1 = Filter::new(&ctx, FilterType::NONE)
+                .expect("Error creating filter 1.");
+            let f2 = Filter::new(&ctx, FilterType::BIT_WIDTH_REDUCTION)
+                .expect("Error creating filter 2.");
+            let f3 = Filter::new(&ctx, FilterType::ZSTD)
+                .expect("Error creating filter 3.");
+            let mut flist2 =
+                FilterList::new(&ctx).expect("Error creating filter list.");
+            flist2
+                .add_filter(&ctx, &f1)
+                .expect("Error adding filter 1 to list.");
+            flist2
+                .add_filter(&ctx, &f2)
+                .expect("Error adding filter 2 to list.");
+            flist2
+                .add_filter(&ctx, &f3)
+                .expect("Error adding filter 3 to list.");
 
-        let flist3 = attr
-            .get_filter_list(&ctx)
-            .expect("Error getting filter list.");
-        let nfilters = flist3
-            .get_num_filters(&ctx)
-            .expect("Error getting number of filters.");
-        assert_eq!(nfilters, 3);
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt8)
+                .expect("Error creating attribute instance.")
+                .filter_list(&flist2)
+                .expect("Error setting filter list.")
+                .build();
+
+            let flist3 =
+                attr.filter_list().expect("Error getting filter list.");
+            let nfilters = flist3
+                .get_num_filters(&ctx)
+                .expect("Error getting number of filters.");
+            assert_eq!(nfilters, 3);
+        }
     }
 
     #[test]
     fn attribute_cell_val_size() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let attr = Attribute::new(&ctx, "foo", Datatype::UInt16)
-            .expect("Error creating attribute instance.");
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
+                .expect("Error creating attribute instance.")
+                .build();
 
-        let num = attr
-            .get_cell_val_num(&ctx)
-            .expect("Error getting cell val num.");
-        assert_eq!(num, 1);
-        let size = attr
-            .get_cell_size(&ctx)
-            .expect("Error getting attribute cell size.");
-        assert_eq!(size, 2);
-
-        attr.set_cell_val_num(&ctx, 3)
-            .expect("Error setting cell val num.");
-        let num = attr
-            .get_cell_val_num(&ctx)
-            .expect("Error getting cell val num.");
-        assert_eq!(num, 3);
-        let size = attr
-            .get_cell_size(&ctx)
-            .expect("Error getting attribute cell size.");
-        assert_eq!(size, 6);
-
-        attr.set_cell_val_num(&ctx, u32::MAX)
-            .expect("Error setting cell val size.");
-        let is_var = attr
-            .is_var_sized(&ctx)
-            .expect("Error getting attribute var sized-ness.");
-        assert!(is_var);
-
-        attr.set_cell_val_num(&ctx, 42)
-            .expect("Error setting cell val num.");
-        let num = attr
-            .get_cell_val_num(&ctx)
-            .expect("Error getting cell val num.");
-        assert_eq!(num, 42);
-        let size = attr
-            .get_cell_size(&ctx)
-            .expect("Error getting cell val size.");
-        assert_eq!(size, 84);
-
-        attr.set_var_sized(&ctx)
-            .expect("Error setting attribute to var sized.");
-        let num = attr
-            .get_cell_val_num(&ctx)
-            .expect("Error getting cell val num.");
-        assert_eq!(num, u32::MAX);
-        let size = attr
-            .get_cell_size(&ctx)
-            .expect("Error getting cell val size.");
-        assert_eq!(size, u64::MAX);
+            let num = attr.cell_val_num().expect("Error getting cell val num.");
+            assert_eq!(num, 1);
+            let size = attr
+                .cell_size()
+                .expect("Error getting attribute cell size.");
+            assert_eq!(size, 2);
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
+                .expect("Error creating attribute instance.")
+                .cell_val_num(3)
+                .expect("Error setting cell val num.")
+                .build();
+            let num = attr.cell_val_num().expect("Error getting cell val num.");
+            assert_eq!(num, 3);
+            let size = attr
+                .cell_size()
+                .expect("Error getting attribute cell size.");
+            assert_eq!(size, 6);
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
+                .expect("Error creating attribute instance.")
+                .cell_val_num(u32::MAX)
+                .expect("Error setting cell val size.")
+                .build();
+            let is_var = attr
+                .is_var_sized()
+                .expect("Error getting attribute var sized-ness.");
+            assert!(is_var);
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
+                .expect("Error creating attribute instance.")
+                .cell_val_num(42)
+                .expect("Error setting cell val num.")
+                .build();
+            let num = attr.cell_val_num().expect("Error getting cell val num.");
+            assert_eq!(num, 42);
+            let size = attr.cell_size().expect("Error getting cell val size.");
+            assert_eq!(size, 84);
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
+                .expect("Error creating attribute instance.")
+                .var_sized()
+                .expect("Error setting var sized.")
+                .build();
+            let num = attr.cell_val_num().expect("Error getting cell val num.");
+            assert_eq!(num, u32::MAX);
+            let size = attr.cell_size().expect("Error getting cell val size.");
+            assert_eq!(size, u64::MAX);
+        }
     }
 
     #[test]
     fn attribute_test_set_fill_value_error() -> TileDBResult<()> {
         let ctx = Context::new()?;
-        let attr = Attribute::new(&ctx, "foo", Datatype::UInt32)?;
-        attr.set_nullable(&ctx, true)?;
 
-        assert!(attr.set_fill_value(&ctx, 5_i32).is_err());
-        assert!(attr.set_fill_value(&ctx, 5_u32).is_err());
-        assert!(attr.set_fill_value(&ctx, 1.0_f64).is_err());
+        // nullable
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(true)?
+                .fill_value(5_i32);
+            assert!(attr.is_err());
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(true)?
+                .fill_value(5_u32);
+            assert!(attr.is_err());
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(true)?
+                .fill_value(1.0_f64);
+            assert!(attr.is_err());
+        }
 
-        attr.set_nullable(&ctx, false)?;
-        assert!(attr.set_fill_value_nullable(&ctx, 5_i32, 1).is_err());
-        assert!(attr.set_fill_value_nullable(&ctx, 1.0_f64, 0).is_err());
+        // non-nullable
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(false)?
+                .fill_value_nullability(5_i32, true);
+            assert!(attr.is_err());
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(false)?
+                .fill_value_nullability(5_i32, true);
+            assert!(attr.is_err());
+        }
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(false)?
+                .fill_value_nullability(1.0_f64, false);
+            assert!(attr.is_err());
+        }
 
         Ok(())
     }
@@ -531,15 +588,24 @@ mod test {
     #[test]
     fn attribute_test_fill_value() -> TileDBResult<()> {
         let ctx = Context::new()?;
-        let attr = Attribute::new(&ctx, "foo", Datatype::UInt32)?;
 
-        let val: u32 = attr.get_fill_value(&ctx)?;
-        assert_eq!(val, u32::MAX);
+        // default
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?.build();
 
-        assert!(attr.set_fill_value(&ctx, 5_u32).is_ok());
+            let val: u32 = attr.fill_value()?;
+            assert_eq!(val, u32::MAX);
+        }
 
-        let val: u32 = attr.get_fill_value(&ctx)?;
-        assert_eq!(val, 5);
+        // override
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .fill_value(5_u32)?
+                .build();
+
+            let val: u32 = attr.fill_value()?;
+            assert_eq!(val, 5);
+        }
 
         Ok(())
     }
@@ -547,18 +613,29 @@ mod test {
     #[test]
     fn attribute_test_fill_value_nullable() -> TileDBResult<()> {
         let ctx = Context::new()?;
-        let attr = Attribute::new(&ctx, "foo", Datatype::UInt32)?;
-        attr.set_nullable(&ctx, true)?;
 
-        let (val, validity): (u32, u8) = attr.get_fill_value_nullable(&ctx)?;
-        assert_eq!(val, u32::MAX);
-        assert_eq!(validity, 0);
+        // default fill value
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(true)?
+                .build();
 
-        assert!(attr.set_fill_value_nullable(&ctx, 5_u32, 12).is_ok());
+            let (val, validity): (u32, bool) = attr.fill_value_nullable()?;
+            assert_eq!(val, u32::MAX);
+            assert!(!validity);
+        }
 
-        let (val, validity): (u32, u8) = attr.get_fill_value_nullable(&ctx)?;
-        assert_eq!(val, 5);
-        assert_eq!(validity, 12);
+        // overridden
+        {
+            let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?
+                .nullability(true)?
+                .fill_value_nullability(5_u32, true)?
+                .build();
+
+            let (val, validity): (u32, bool) = attr.fill_value_nullable()?;
+            assert_eq!(val, 5);
+            assert!(validity);
+        }
 
         Ok(())
     }

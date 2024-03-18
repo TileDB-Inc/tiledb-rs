@@ -9,7 +9,7 @@ mod dimension;
 mod domain;
 mod schema;
 
-pub use attribute::Attribute;
+pub use attribute::{Attribute, Builder as AttributeBuilder};
 pub use dimension::{Builder as DimensionBuilder, Dimension};
 pub use domain::{Builder as DomainBuilder, Domain};
 pub use schema::{ArrayType, Builder as SchemaBuilder, Schema};
@@ -209,7 +209,9 @@ pub mod tests {
         let s: Schema = SchemaBuilder::new(context, ArrayType::Sparse, d)
             .unwrap()
             .add_attribute(
-                Attribute::new(context, "a", Datatype::UInt64).unwrap(),
+                AttributeBuilder::new(context, "a", Datatype::UInt64)
+                    .unwrap()
+                    .build(),
             )
             .unwrap()
             .into();
