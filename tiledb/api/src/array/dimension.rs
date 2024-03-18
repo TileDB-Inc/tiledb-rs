@@ -8,7 +8,6 @@ use crate::Result as TileDBResult;
 
 pub(crate) enum RawDimension {
     Owned(*mut ffi::tiledb_dimension_t),
-    Borrowed(*mut ffi::tiledb_dimension_t),
 }
 
 impl Deref for RawDimension {
@@ -16,16 +15,14 @@ impl Deref for RawDimension {
     fn deref(&self) -> &Self::Target {
         match *self {
             RawDimension::Owned(ref ffi) => ffi,
-            RawDimension::Borrowed(ref ffi) => ffi,
         }
     }
 }
 
 impl Drop for RawDimension {
     fn drop(&mut self) {
-        if let RawDimension::Owned(ref mut ffi) = *self {
-            unsafe { ffi::tiledb_dimension_free(ffi) }
-        }
+        let RawDimension::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_dimension_free(ffi) }
     }
 }
 
@@ -37,6 +34,15 @@ pub struct Dimension<'ctx> {
 impl<'ctx> Dimension<'ctx> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_dimension_t {
         *self.raw
+    }
+
+    /// Read from the C API whatever we need to use this dimension from Rust
+    pub(crate) fn load(
+        context: &'ctx Context,
+        raw: RawDimension,
+    ) -> TileDBResult<Self> {
+        // TODO: ???
+        Ok(Dimension { context, raw })
     }
 
     pub fn datatype(&self) -> Datatype {

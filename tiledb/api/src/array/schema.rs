@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use crate::array::domain::RawDomain;
 use crate::array::{Attribute, Domain};
 use crate::context::Context;
 use crate::Result as TileDBResult;
@@ -20,39 +21,85 @@ impl ArrayType {
 
 /// Wrapper for the CAPI handle.
 /// Ensures that the CAPI structure is freed.
-pub(crate) struct RawSchema {
-    ffi: *mut ffi::tiledb_array_schema_t,
-}
-
-impl RawSchema {
-    pub fn new(ffi: *mut ffi::tiledb_array_schema_t) -> Self {
-        RawSchema { ffi }
-    }
+pub(crate) enum RawSchema {
+    Owned(*mut ffi::tiledb_array_schema_t),
 }
 
 impl Deref for RawSchema {
     type Target = *mut ffi::tiledb_array_schema_t;
 
     fn deref(&self) -> &Self::Target {
-        &self.ffi
+        let RawSchema::Owned(ref ffi) = *self;
+        ffi
     }
 }
 
 impl Drop for RawSchema {
     fn drop(&mut self) {
-        unsafe { ffi::tiledb_array_schema_free(&mut self.ffi) }
+        unsafe {
+            let RawSchema::Owned(ref mut ffi) = *self;
+            ffi::tiledb_array_schema_free(ffi)
+        }
     }
 }
 
 pub struct Schema<'ctx> {
     context: &'ctx Context,
     raw: RawSchema,
-    _domain: Domain<'ctx>,
+    domain: Domain<'ctx>,
 }
 
 impl<'ctx> Schema<'ctx> {
+    pub(crate) fn new(
+        context: &'ctx Context,
+        raw: RawSchema,
+    ) -> TileDBResult<Self> {
+        let c_context: *mut ffi::tiledb_ctx_t = context.as_mut_ptr();
+        let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_domain(c_context, *raw, &mut c_domain)
+        };
+        if c_ret == ffi::TILEDB_ERR {
+            Err(context.expect_last_error())
+        } else {
+            // TODO: do we need an integrity check, or are we happy to assume this gives us a valid
+            // schema?
+            Ok(Schema {
+                context,
+                raw,
+                domain: Domain::load(context, RawDomain::Owned(c_domain))?,
+            })
+        }
+    }
+
     pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_array_schema_t {
         *self.raw
+    }
+
+    pub fn domain(&self) -> &Domain<'ctx> {
+        &self.domain
+    }
+
+    /// Retrieve the schema of an array from storage
+    pub fn load(context: &'ctx Context, uri: &str) -> TileDBResult<Self> {
+        let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
+        {
+            let c_context: *mut ffi::tiledb_ctx_t = context.as_mut_ptr();
+            let c_uri = cstring!(uri);
+
+            let c_ret = unsafe {
+                ffi::tiledb_array_schema_load(
+                    c_context,
+                    c_uri.as_ptr(),
+                    &mut c_schema,
+                )
+            };
+            if c_ret == ffi::TILEDB_ERR {
+                return Err(context.expect_last_error());
+            }
+        }
+
+        Self::new(context, RawSchema::Owned(c_schema))
     }
 
     pub fn version(&self) -> i64 {
@@ -124,8 +171,8 @@ impl<'ctx> Builder<'ctx> {
         Ok(Builder {
             schema: Schema {
                 context,
-                raw: RawSchema::new(c_schema),
-                _domain: domain,
+                raw: RawSchema::Owned(c_schema),
+                domain,
             },
         })
     }
@@ -174,7 +221,11 @@ impl<'ctx> From<Builder<'ctx>> for Schema<'ctx> {
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+    use tempdir::TempDir;
+
     use crate::array::schema::*;
+    use crate::array::tests::*;
     use crate::array::{DimensionBuilder, DomainBuilder};
     use crate::context::Context;
     use crate::Datatype;
@@ -254,5 +305,41 @@ mod tests {
             let s: Schema = b.into();
             assert!(s.allows_duplicates());
         }
+    }
+
+    #[test]
+    fn test_load() -> io::Result<()> {
+        let tmp_dir = TempDir::new("tiledb_array_schema_test_load")?;
+
+        let c: Context = Context::new().unwrap();
+
+        let r = create_quickstart_dense(&tmp_dir, &c);
+        assert!(r.is_ok());
+
+        let schema = Schema::load(&c, &r.unwrap())
+            .expect("Could not open quickstart_dense schema");
+
+        let domain = schema.domain();
+
+        let rows = domain.dimension(0).expect("Error reading rows dimension");
+        assert_eq!(Datatype::Int32, rows.datatype());
+        // TODO: add method to check min/max
+
+        let cols = domain.dimension(1).expect("Error reading cols dimension");
+        assert_eq!(Datatype::Int32, rows.datatype());
+        // TODO: add method to check min/max
+
+        let rows_domain = rows.domain::<i32>().unwrap();
+        assert_eq!(rows_domain[0], 1);
+        assert_eq!(rows_domain[1], 4);
+
+        let cols_domain = cols.domain::<i32>().unwrap();
+        assert_eq!(cols_domain[0], 1);
+        assert_eq!(cols_domain[1], 4);
+
+        // Make sure we can remove the array we created.
+        tmp_dir.close()?;
+
+        Ok(())
     }
 }

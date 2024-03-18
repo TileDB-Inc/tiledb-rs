@@ -1,3 +1,4 @@
+use std::cell::UnsafeCell;
 use std::ops::Deref;
 
 use crate::array::{dimension::RawDimension, Dimension};
@@ -27,12 +28,29 @@ impl Drop for RawDomain {
 pub struct Domain<'ctx> {
     context: &'ctx Context,
     raw: RawDomain,
-    dimensions: Vec<Dimension<'ctx>>,
+
+    /// Array dimensions attached to this domain.
+    /// These must not be freed until the Domain is.
+    /// UnsafeCell is used for interior mutability so that when a dimension
+    /// is queried we can stash it here and
+    dimensions: UnsafeCell<Vec<Option<Dimension<'ctx>>>>,
 }
 
 impl<'ctx> Domain<'ctx> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_domain_t {
         *self.raw
+    }
+
+    /// Read from the C API whatever we need to use this domain from Rust
+    pub(crate) fn load(
+        context: &'ctx Context,
+        raw: RawDomain,
+    ) -> TileDBResult<Self> {
+        Ok(Domain {
+            context,
+            raw,
+            dimensions: UnsafeCell::new(vec![]),
+        })
     }
 
     pub fn ndim(&self) -> u32 {
@@ -49,24 +67,30 @@ impl<'ctx> Domain<'ctx> {
         ndim
     }
 
-    pub fn dimension(&self, idx: u32) -> TileDBResult<Dimension<'ctx>> {
-        let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
-        let c_ret = unsafe {
-            ffi::tiledb_domain_get_dimension_from_index(
-                self.context.as_mut_ptr(),
-                *self.raw,
-                idx,
-                &mut c_dimension,
-            )
-        };
-        if c_ret == ffi::TILEDB_OK {
-            Ok(Dimension {
-                context: self.context,
-                raw: RawDimension::Borrowed(c_dimension),
-            })
-        } else {
-            Err(self.context.expect_last_error())
+    pub fn dimension(&self, idx: usize) -> TileDBResult<&Dimension<'ctx>> {
+        let known_dims = unsafe { &mut *self.dimensions.get() };
+        if idx >= known_dims.len() {
+            let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
+            let c_idx = idx.try_into().unwrap();
+            let c_ret = unsafe {
+                ffi::tiledb_domain_get_dimension_from_index(
+                    self.context.as_mut_ptr(),
+                    *self.raw,
+                    c_idx,
+                    &mut c_dimension,
+                )
+            };
+            if c_ret == ffi::TILEDB_OK {
+                known_dims.resize_with(idx + 1, || None);
+                known_dims[idx] = Some(Dimension::load(
+                    self.context,
+                    RawDimension::Owned(c_dimension),
+                )?);
+            } else {
+                return Err(self.context.expect_last_error());
+            }
         }
+        Ok(known_dims[idx].as_ref().unwrap())
     }
 }
 
@@ -85,7 +109,7 @@ impl<'ctx> Builder<'ctx> {
                 domain: Domain {
                     context,
                     raw: RawDomain::Owned(c_domain),
-                    dimensions: Vec::new(),
+                    dimensions: UnsafeCell::new(vec![]),
                 },
             })
         } else {
@@ -94,7 +118,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn add_dimension(
-        mut self,
+        self,
         dimension: Dimension<'ctx>,
     ) -> TileDBResult<Self> {
         let c_context = self.domain.context.as_mut_ptr();
@@ -105,7 +129,7 @@ impl<'ctx> Builder<'ctx> {
             ffi::tiledb_domain_add_dimension(c_context, c_domain, c_dim)
         };
         if c_ret == ffi::TILEDB_OK {
-            self.domain.dimensions.push(dimension);
+            unsafe { &mut *self.domain.dimensions.get() }.push(Some(dimension));
             Ok(self)
         } else {
             Err(self.domain.context.expect_last_error())
