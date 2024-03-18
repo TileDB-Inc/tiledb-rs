@@ -20,9 +20,8 @@ impl Deref for RawSubarray {
 
 impl Drop for RawSubarray {
     fn drop(&mut self) {
-        if let RawSubarray::Owned(ref mut ffi) = *self {
-            unsafe { ffi::tiledb_subarray_free(ffi) }
-        }
+        let RawSubarray::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_subarray_free(ffi) };
     }
 }
 
@@ -66,12 +65,8 @@ impl<'ctx> Builder<'ctx> {
         let c_context = self.subarray.context.as_mut_ptr();
         let c_subarray = *self.subarray.raw;
 
-        let c_start: *const std::ffi::c_void = unsafe {
-            std::mem::transmute::<&DT, *const std::ffi::c_void>(&range[0])
-        };
-        let c_end: *const std::ffi::c_void = unsafe {
-            std::mem::transmute::<&DT, *const std::ffi::c_void>(&range[1])
-        };
+        let c_start = &range[0] as *const DT as *const std::ffi::c_void;
+        let c_end = &range[1] as *const DT as *const std::ffi::c_void;
 
         let c_ret = unsafe {
             ffi::tiledb_subarray_add_range(

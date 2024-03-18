@@ -27,9 +27,8 @@ impl Deref for RawQuery {
 
 impl Drop for RawQuery {
     fn drop(&mut self) {
-        if let RawQuery::Owned(ref mut ffi) = *self {
-            unsafe { ffi::tiledb_query_free(ffi) }
-        }
+        let RawQuery::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_query_free(ffi) };
     }
 }
 
@@ -124,13 +123,10 @@ impl<'ctx> Builder<'ctx> {
         let c_query = *self.query.raw;
         let c_name = cstring!(name);
 
-        let c_bufptr = unsafe {
-            std::mem::transmute::<&mut DT, *mut std::ffi::c_void>(&mut data[0])
-        };
+        let c_bufptr = &mut data[0] as *mut DT as *mut std::ffi::c_void;
 
-        let mut c_size = Box::new(
-            (data.len() * std::mem::size_of::<DT>()).try_into().unwrap(),
-        );
+        let mut c_size =
+            Box::new((std::mem::size_of_val(data)).try_into().unwrap());
 
         // TODO: this is not safe because the C API keeps a pointer to the size
         // and may write back to it
@@ -157,8 +153,8 @@ impl<'ctx> Builder<'ctx> {
     }
 }
 
-impl<'ctx> Into<Query<'ctx>> for Builder<'ctx> {
-    fn into(self) -> Query<'ctx> {
-        self.build()
+impl<'ctx> From<Builder<'ctx>> for Query<'ctx> {
+    fn from(builder: Builder<'ctx>) -> Query<'ctx> {
+        builder.build()
     }
 }

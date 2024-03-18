@@ -51,9 +51,9 @@ impl Display for Error {
     }
 }
 
-impl Into<String> for Error {
-    fn into(self) -> String {
-        self.get_message()
+impl From<Error> for String {
+    fn from(error: Error) -> String {
+        error.get_message()
     }
 }
 
