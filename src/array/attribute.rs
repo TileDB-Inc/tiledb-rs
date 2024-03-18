@@ -5,6 +5,7 @@ use std::ops::Deref;
 pub use tiledb_sys::Datatype;
 
 use crate::context::Context;
+use crate::datatype::DomainType;
 use crate::error::Error;
 use crate::filter_list::FilterList;
 use crate::Result as TileDBResult;
@@ -234,6 +235,67 @@ impl Attribute {
             Err(ctx.expect_last_error())
         }
     }
+
+    // This currently does not support setting multi-value cells.
+    pub fn set_fill_value<DT: DomainType>(
+        &self,
+        ctx: &Context,
+        value: DT,
+    ) -> TileDBResult<()> {
+        let c_val: DT::CApiType = value.as_capi();
+
+        if DT::DATATYPE != self.datatype(ctx)? {
+            return Err(Error::from(format!(
+                "Dimension type mismatch: expected {}, found {}",
+                self.datatype(ctx)?,
+                DT::DATATYPE
+            )));
+        }
+
+        let res = unsafe {
+            ffi::tiledb_attribute_set_fill_value(
+                ctx.as_mut_ptr(),
+                *self.raw,
+                &c_val as *const DT::CApiType as *const std::ffi::c_void,
+                std::mem::size_of::<DT::CApiType>() as u64,
+            )
+        };
+
+        if res == ffi::TILEDB_OK {
+            Ok(())
+        } else {
+            Err(ctx.expect_last_error())
+        }
+    }
+
+    pub fn get_fill_value<DT: DomainType>(
+        &self,
+        ctx: &Context,
+    ) -> TileDBResult<DT> {
+        let mut c_ptr: *const std::ffi::c_void = out_ptr!();
+        let mut c_size: u64 = 0;
+
+        let res = unsafe {
+            ffi::tiledb_attribute_get_fill_value(
+                ctx.as_mut_ptr(),
+                *self.raw,
+                &mut c_ptr,
+                &mut c_size,
+            )
+        };
+
+        if res != ffi::TILEDB_OK {
+            return Err(ctx.expect_last_error());
+        }
+
+        if c_size != std::mem::size_of::<DT::CApiType>() as u64 {
+            return Err(Error::from("Invalid value size returned by TileDB"));
+        }
+
+        let c_val: DT::CApiType = unsafe { *c_ptr.cast::<DT::CApiType>() };
+
+        Ok(DT::from_capi(&c_val))
+    }
 }
 
 #[cfg(test)]
@@ -382,5 +444,34 @@ mod test {
             .get_cell_size(&ctx)
             .expect("Error getting cell val size.");
         assert_eq!(size, u64::MAX);
+    }
+
+    #[test]
+    fn attribute_test_set_fill_value_error() -> TileDBResult<()> {
+        let ctx = Context::new()?;
+        let attr = Attribute::new(&ctx, "foo", Datatype::UInt32)?;
+        attr.set_nullable(&ctx, true)?;
+
+        assert!(attr.set_fill_value(&ctx, 5_i32).is_err());
+        assert!(attr.set_fill_value(&ctx, 5_u32).is_err());
+        assert!(attr.set_fill_value(&ctx, 1.0_f64).is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn attribute_test_set_fill_value() -> TileDBResult<()> {
+        let ctx = Context::new()?;
+        let attr = Attribute::new(&ctx, "foo", Datatype::UInt32)?;
+
+        let val: u32 = attr.get_fill_value(&ctx)?;
+        assert_eq!(val, u32::MAX);
+
+        assert!(attr.set_fill_value(&ctx, 5_u32).is_ok());
+
+        let val: u32 = attr.get_fill_value(&ctx)?;
+        assert_eq!(val, 5);
+
+        Ok(())
     }
 }
