@@ -3,7 +3,7 @@ pub use ffi::Datatype;
 pub trait DomainType {
     const DATATYPE: Datatype;
 
-    type CApiType;
+    type CApiType: Default + Copy;
 
     fn as_capi(&self) -> Self::CApiType;
     fn from_capi(capi: &Self::CApiType) -> Self;
@@ -13,6 +13,20 @@ impl DomainType for i32 {
     const DATATYPE: Datatype = Datatype::Int32;
 
     type CApiType = std::ffi::c_int;
+
+    fn as_capi(&self) -> Self::CApiType {
+        *self as Self::CApiType
+    }
+
+    fn from_capi(capi: &Self::CApiType) -> Self {
+        *capi as Self
+    }
+}
+
+impl DomainType for u32 {
+    const DATATYPE: Datatype = Datatype::UInt32;
+
+    type CApiType = std::ffi::c_uint;
 
     fn as_capi(&self) -> Self::CApiType {
         *self as Self::CApiType
