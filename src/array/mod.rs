@@ -165,14 +165,24 @@ mod tests {
 
         // "quickstart_dense" example
         let d: Domain = {
-            let rows: Dimension =
-                DimensionBuilder::new::<i32>(&c, "rows", &[1, 4], &4)
-                    .expect("Error constructing rows dimension")
-                    .build();
-            let cols: Dimension =
-                DimensionBuilder::new::<i32>(&c, "cols", &[1, 4], &4)
-                    .expect("Error constructing cols dimension")
-                    .build();
+            let rows: Dimension = DimensionBuilder::new::<i32>(
+                &c,
+                "rows",
+                Datatype::Int32,
+                &[1, 4],
+                &4,
+            )
+            .expect("Error constructing rows dimension")
+            .build();
+            let cols: Dimension = DimensionBuilder::new::<i32>(
+                &c,
+                "cols",
+                Datatype::Int32,
+                &[1, 4],
+                &4,
+            )
+            .expect("Error constructing cols dimension")
+            .build();
 
             DomainBuilder::new(&c)
                 .unwrap()

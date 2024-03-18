@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use crate::array::Layout;
 use crate::context::Context;
-use crate::datatype::DomainType;
+use crate::convert::CAPIConverter;
 use crate::{Array, Result as TileDBResult};
 
 pub use crate::query::subarray::{Builder as SubarrayBuilder, Subarray};
@@ -114,16 +114,16 @@ impl<'ctx> Builder<'ctx> {
         SubarrayBuilder::for_query(self)
     }
 
-    pub fn dimension_buffer_typed<DT: DomainType>(
+    pub fn dimension_buffer_typed<Conv: CAPIConverter>(
         mut self,
         name: &str,
-        data: &mut [DT],
+        data: &mut [Conv],
     ) -> TileDBResult<Self> {
         let c_context = self.query.context.as_mut_ptr();
         let c_query = *self.query.raw;
         let c_name = cstring!(name);
 
-        let c_bufptr = &mut data[0] as *mut DT as *mut std::ffi::c_void;
+        let c_bufptr = &mut data[0] as *mut Conv as *mut std::ffi::c_void;
 
         let mut c_size =
             Box::new((std::mem::size_of_val(data)).try_into().unwrap());

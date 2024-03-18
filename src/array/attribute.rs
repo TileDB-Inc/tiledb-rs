@@ -5,7 +5,7 @@ use std::ops::Deref;
 pub use tiledb_sys::Datatype;
 
 use crate::context::Context;
-use crate::datatype::DomainType;
+use crate::convert::CAPIConverter;
 use crate::error::Error;
 use crate::filter_list::FilterList;
 use crate::Result as TileDBResult;
@@ -237,18 +237,18 @@ impl Attribute {
     }
 
     // This currently does not support setting multi-value cells.
-    pub fn set_fill_value<DT: DomainType>(
+    pub fn set_fill_value<Conv: CAPIConverter + 'static>(
         &self,
         ctx: &Context,
-        value: DT,
+        value: Conv,
     ) -> TileDBResult<()> {
-        let c_val: DT::CApiType = value.as_capi();
+        let c_val: Conv::CAPIType = value.to_capi();
 
-        if DT::DATATYPE != self.datatype(ctx)? {
+        if !self.datatype(ctx)?.is_compatible_type::<Conv>() {
             return Err(Error::from(format!(
                 "Attribute type mismatch: expected {}, found {}",
                 self.datatype(ctx)?,
-                DT::DATATYPE
+                std::any::type_name::<Conv>()
             )));
         }
 
@@ -256,8 +256,8 @@ impl Attribute {
             ffi::tiledb_attribute_set_fill_value(
                 ctx.as_mut_ptr(),
                 *self.raw,
-                &c_val as *const DT::CApiType as *const std::ffi::c_void,
-                std::mem::size_of::<DT::CApiType>() as u64,
+                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
+                std::mem::size_of::<Conv::CAPIType>() as u64,
             )
         };
 
@@ -268,10 +268,10 @@ impl Attribute {
         }
     }
 
-    pub fn get_fill_value<DT: DomainType>(
+    pub fn get_fill_value<Conv: CAPIConverter>(
         &self,
         ctx: &Context,
-    ) -> TileDBResult<DT> {
+    ) -> TileDBResult<Conv> {
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
 
@@ -288,13 +288,13 @@ impl Attribute {
             return Err(ctx.expect_last_error());
         }
 
-        if c_size != std::mem::size_of::<DT::CApiType>() as u64 {
+        if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
             return Err(Error::from("Invalid value size returned by TileDB"));
         }
 
-        let c_val: DT::CApiType = unsafe { *c_ptr.cast::<DT::CApiType>() };
+        let c_val: Conv::CAPIType = unsafe { *c_ptr.cast::<Conv::CAPIType>() };
 
-        Ok(DT::from_capi(&c_val))
+        Ok(Conv::to_rust(&c_val))
     }
 
     // This currently does not support setting multi-value cells.

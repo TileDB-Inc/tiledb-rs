@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::context::Context;
-use crate::datatype::DomainType;
+use crate::convert::CAPIConverter;
 use crate::query::Builder as QueryBuilder;
 use crate::Result as TileDBResult;
 
@@ -57,16 +57,16 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn dimension_range_typed<DT: DomainType>(
+    pub fn dimension_range_typed<Conv: CAPIConverter>(
         self,
         idx: u32,
-        range: &[DT; 2],
+        range: &[Conv; 2],
     ) -> TileDBResult<QueryBuilder<'ctx>> {
         let c_context = self.subarray.context.as_mut_ptr();
         let c_subarray = *self.subarray.raw;
 
-        let c_start = &range[0] as *const DT as *const std::ffi::c_void;
-        let c_end = &range[1] as *const DT as *const std::ffi::c_void;
+        let c_start = &range[0] as *const Conv as *const std::ffi::c_void;
+        let c_end = &range[1] as *const Conv as *const std::ffi::c_void;
 
         let c_ret = unsafe {
             ffi::tiledb_subarray_add_range(

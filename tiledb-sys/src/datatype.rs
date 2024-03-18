@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use crate::constants::TILEDB_OK;
@@ -17,6 +18,7 @@ extern "C" {
     pub fn tiledb_datatype_size(type_: u32) -> u64;
 }
 
+#[allow(non_snake_case)]
 pub type tiledb_datatype_t = ::std::os::raw::c_uint;
 
 // When I find the time, I should come back and turn these into a macro
@@ -207,6 +209,97 @@ impl Datatype {
             _ => None,
         }
     }
+
+    pub fn is_compatible_type<T: 'static>(&self) -> bool {
+        let tid = TypeId::of::<T>();
+        if tid == TypeId::of::<f32>() {
+            match self {
+                Datatype::Float32 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<f64>() {
+            match self {
+                Datatype::Float64 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<i8>() {
+            match self {
+                Datatype::Char => true,
+                Datatype::Int8 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<u8>() {
+            match self {
+                Datatype::Any => true,
+                Datatype::Blob => true,
+                Datatype::Boolean => true,
+                Datatype::GeometryWkb => true,
+                Datatype::GeometryWkt => true,
+                Datatype::StringAscii => true,
+                Datatype::StringUtf8 => true,
+                Datatype::UInt8 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<i16>() {
+            match self {
+                Datatype::Int16 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<u16>() {
+            match self {
+                Datatype::StringUtf16 => true,
+                Datatype::StringUcs2 => true,
+                Datatype::UInt16 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<i32>() {
+            match self {
+                Datatype::Int32 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<u32>() {
+            match self {
+                Datatype::StringUtf32 => true,
+                Datatype::StringUcs4 => true,
+                Datatype::UInt32 => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<i64>() {
+            match self {
+                Datatype::Int64 => true,
+                Datatype::DateTimeYear => true,
+                Datatype::DateTimeMonth => true,
+                Datatype::DateTimeWeek => true,
+                Datatype::DateTimeDay => true,
+                Datatype::DateTimeHour => true,
+                Datatype::DateTimeMinute => true,
+                Datatype::DateTimeSecond => true,
+                Datatype::DateTimeMillisecond => true,
+                Datatype::DateTimeMicrosecond => true,
+                Datatype::DateTimeNanosecond => true,
+                Datatype::DateTimePicosecond => true,
+                Datatype::DateTimeFemtosecond => true,
+                Datatype::DateTimeAttosecond => true,
+                Datatype::TimeHour => true,
+                Datatype::TimeMinute => true,
+                Datatype::TimeSecond => true,
+                Datatype::TimeMillisecond => true,
+                Datatype::TimeMicrosecond => true,
+                Datatype::TimeNanosecond => true,
+                Datatype::TimePicosecond => true,
+                Datatype::TimeFemtosecond => true,
+                Datatype::TimeAttosecond => true,
+                _ => false,
+            }
+        } else if tid == TypeId::of::<u64>() {
+            match self {
+                Datatype::UInt64 => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
 }
 
 impl Display for Datatype {
@@ -224,10 +317,80 @@ impl Display for Datatype {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn datatype_test() {
         for i in 0..256 {
-            println!("{}", i);
+            println!("I: {}", i);
+            if i <= 43 {
+                let dt = Datatype::from_u32(i as u32)
+                    .expect("Error converting value to Datatype");
+                assert_ne!(
+                    format!("{}", dt),
+                    "<UNKNOWN DATA TYPE>".to_string()
+                );
+                assert!(check_valid(&dt));
+            } else {
+                assert!(Datatype::from_u32(i as u32).is_none());
+            }
         }
+    }
+
+    fn check_valid(dt: &Datatype) -> bool {
+        let v0: f32 = 0.0;
+        let v1: f64 = 0.0;
+        let v2: i8 = 0;
+        let v3: u8 = 0;
+        let v4: i16 = 0;
+        let v5: u16 = 0;
+        let v6: i32 = 0;
+        let v7: u32 = 0;
+        let v8: i64 = 0;
+        let v9: u64 = 0;
+
+        let mut count = 0;
+
+        if dt.is_compatible_type::<f32>() {
+            count += 1;
+        }
+
+        if dt.is_compatible_type::<f64>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<i8>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<u8>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<i16>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<u16>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<i32>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<u32>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<i64>() {
+            count += 1;
+        }
+
+        if dt.is_valid::<u64>() {
+            count += 1;
+        }
+
+        count == 1
     }
 }
