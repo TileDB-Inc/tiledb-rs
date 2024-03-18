@@ -149,22 +149,17 @@ impl Drop for Array<'_> {
 
 #[cfg(test)]
 mod tests {
-    extern crate lazy_static;
-    extern crate tempdir;
+    use std::io;
+    use tempdir::TempDir;
 
     use crate::array::*;
     use crate::context::Context;
     use crate::Datatype;
-    use lazy_static::lazy_static;
-
-    lazy_static! {
-        static ref DIR: tempdir::TempDir =
-            tempdir::TempDir::new("tiledb-rs.array").unwrap();
-    }
 
     #[test]
-    fn test_array_create() {
-        let arr_path = DIR.path().join("test_array_create");
+    fn test_array_create() -> io::Result<()> {
+        let tmp_dir = TempDir::new("test_rs_bdelit")?;
+        let arr_dir = tmp_dir.path().join("create_test");
 
         let c: Context = Context::new().unwrap();
 
@@ -196,6 +191,11 @@ mod tests {
 
         // domain not set
         // TODO
-        assert!(Array::create(&c, arr_path.to_str().unwrap(), s).is_ok());
+        assert!(Array::create(&c, arr_dir.to_str().unwrap(), s).is_ok());
+
+        // Make sure we can remove the array we created.
+        tmp_dir.close()?;
+
+        Ok(())
     }
 }
