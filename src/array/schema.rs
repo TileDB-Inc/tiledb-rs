@@ -177,12 +177,19 @@ mod tests {
     use crate::array::schema::*;
     use crate::array::{DimensionBuilder, DomainBuilder};
     use crate::context::Context;
+    use crate::Datatype;
 
     /// Helper function to make a Domain which isn't needed for the purposes of the test
     fn unused_domain(c: &Context) -> Domain {
-        let dim = DimensionBuilder::new::<i32>(c, "test", &[-100, 100], &100)
-            .unwrap()
-            .build();
+        let dim = DimensionBuilder::new::<i32>(
+            c,
+            "test",
+            Datatype::Int32,
+            &[-100, 100],
+            &100,
+        )
+        .unwrap()
+        .build();
         DomainBuilder::new(c)
             .unwrap()
             .add_dimension(dim)

@@ -127,7 +127,7 @@ impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
 mod tests {
     use crate::array::domain::Builder;
     use crate::array::*;
-    use crate::datatype::*;
+    use crate::Datatype;
 
     #[test]
     fn test_add_dimension() {
@@ -150,6 +150,7 @@ mod tests {
                 DimensionBuilder::new::<i32>(
                     &context,
                     "d1",
+                    Datatype::Int32,
                     &dim_domain,
                     &extent,
                 )
@@ -179,6 +180,7 @@ mod tests {
                 DimensionBuilder::new::<i32>(
                     &context,
                     "d1",
+                    Datatype::Int32,
                     &dim1_domain,
                     &extent,
                 )
@@ -191,6 +193,7 @@ mod tests {
                 DimensionBuilder::new::<f64>(
                     &context,
                     "d2",
+                    Datatype::Float64,
                     &dim2_domain,
                     &extent,
                 )

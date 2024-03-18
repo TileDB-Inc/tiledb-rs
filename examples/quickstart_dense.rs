@@ -1,5 +1,6 @@
 extern crate tiledb;
 
+use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
 const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense_array";
@@ -25,6 +26,7 @@ fn create_array() -> TileDBResult<()> {
             tiledb::array::DimensionBuilder::new::<i32>(
                 &tdb,
                 "rows",
+                Datatype::Int32,
                 &[1, 4],
                 &4,
             )?
@@ -33,6 +35,7 @@ fn create_array() -> TileDBResult<()> {
             tiledb::array::DimensionBuilder::new::<i32>(
                 &tdb,
                 "columns",
+                Datatype::Int32,
                 &[1, 4],
                 &4,
             )?

@@ -1,9 +1,9 @@
 use std::ops::Deref;
 
 use crate::context::Context;
-use crate::datatype::{Datatype, DomainType};
-use crate::error::Error;
+use crate::convert::CAPIConverter;
 use crate::filter_list::FilterList;
+use crate::Datatype;
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawDimension {
@@ -56,18 +56,10 @@ impl<'ctx> Dimension<'ctx> {
         Datatype::from_capi_enum(c_datatype)
     }
 
-    pub fn domain<DT: DomainType>(&self) -> TileDBResult<[DT; 2]> {
+    pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
         let c_context = self.context.as_mut_ptr();
         let c_dimension = self.capi();
         let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
-
-        if DT::DATATYPE != self.datatype() {
-            return Err(Error::from(format!(
-                "Dimension type mismatch: expected {}, found {}",
-                self.datatype(),
-                DT::DATATYPE
-            )));
-        }
 
         let c_ret = unsafe {
             ffi::tiledb_dimension_get_domain(
@@ -80,10 +72,10 @@ impl<'ctx> Dimension<'ctx> {
         // the only errors are possible via mis-use of the C API, which Rust prevents
         assert_eq!(ffi::TILEDB_OK, c_ret);
 
-        let c_domain: &[DT::CApiType; 2] =
-            unsafe { &*c_domain_ptr.cast::<[DT::CApiType; 2]>() };
+        let c_domain: &[Conv::CAPIType; 2] =
+            unsafe { &*c_domain_ptr.cast::<[Conv::CAPIType; 2]>() };
 
-        Ok([DT::from_capi(&c_domain[0]), DT::from_capi(&c_domain[1])])
+        Ok([Conv::to_rust(&c_domain[0]), Conv::to_rust(&c_domain[1])])
     }
 
     pub fn filters(&self) -> FilterList {
@@ -113,20 +105,21 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     // TODO: extent might be optional?
     // and it
-    pub fn new<DT: DomainType>(
+    pub fn new<Conv: CAPIConverter>(
         context: &'ctx Context,
         name: &str,
-        domain: &[DT; 2],
-        extent: &DT,
+        datatype: Datatype,
+        domain: &[Conv; 2],
+        extent: &Conv,
     ) -> TileDBResult<Self> {
         let c_context = context.as_mut_ptr();
-        let c_datatype = DT::DATATYPE.capi_enum();
+        let c_datatype = datatype.capi_enum();
 
         let c_name = cstring!(name);
 
-        let c_domain: [DT::CApiType; 2] =
-            [domain[0].as_capi(), domain[1].as_capi()];
-        let c_extent: DT::CApiType = extent.as_capi();
+        let c_domain: [Conv::CAPIType; 2] =
+            [domain[0].to_capi(), domain[1].to_capi()];
+        let c_extent: Conv::CAPIType = extent.to_capi();
 
         let mut c_dimension: *mut ffi::tiledb_dimension_t =
             std::ptr::null_mut();
@@ -136,10 +129,9 @@ impl<'ctx> Builder<'ctx> {
                 c_context,
                 c_name.as_ptr(),
                 c_datatype,
-                &c_domain[0] as *const <DT as DomainType>::CApiType
+                &c_domain[0] as *const <Conv>::CAPIType
                     as *const std::ffi::c_void,
-                &c_extent as *const <DT as DomainType>::CApiType
-                    as *const std::ffi::c_void,
+                &c_extent as *const <Conv>::CAPIType as *const std::ffi::c_void,
                 &mut c_dimension,
             )
         } == ffi::TILEDB_OK
@@ -197,6 +189,7 @@ mod tests {
             Builder::new::<i32>(
                 &context,
                 "test_dimension_alloc",
+                Datatype::Int32,
                 &domain,
                 &extent,
             )
@@ -210,6 +203,7 @@ mod tests {
             let b = Builder::new::<i32>(
                 &context,
                 "test_dimension_alloc",
+                Datatype::Int32,
                 &domain,
                 &extent,
             );
@@ -223,6 +217,7 @@ mod tests {
             let b = Builder::new::<i32>(
                 &context,
                 "test_dimension_alloc",
+                Datatype::Int32,
                 &domain,
                 &extent,
             );
@@ -241,6 +236,7 @@ mod tests {
             let dim = Builder::new::<i32>(
                 &context,
                 "test_dimension_domain",
+                Datatype::Int32,
                 &domain_in,
                 &extent,
             )
@@ -266,6 +262,7 @@ mod tests {
             let dimension: Dimension = Builder::new::<i32>(
                 &context,
                 "test_dimension_alloc",
+                Datatype::Int32,
                 &domain,
                 &extent,
             )
@@ -286,6 +283,7 @@ mod tests {
             let dimension: Dimension = Builder::new::<i32>(
                 &context,
                 "test_dimension_alloc",
+                Datatype::Int32,
                 &domain,
                 &extent,
             )
