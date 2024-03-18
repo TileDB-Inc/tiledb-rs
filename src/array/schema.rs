@@ -47,7 +47,7 @@ impl Drop for RawSchema {
 pub struct Schema<'ctx> {
     context: &'ctx Context,
     raw: RawSchema,
-    domain: Domain<'ctx>,
+    _domain: Domain<'ctx>,
 }
 
 impl<'ctx> Schema<'ctx> {
@@ -125,7 +125,7 @@ impl<'ctx> Builder<'ctx> {
             schema: Schema {
                 context,
                 raw: RawSchema::new(c_schema),
-                domain,
+                _domain: domain,
             },
         })
     }
@@ -166,9 +166,9 @@ impl<'ctx> Builder<'ctx> {
     }
 }
 
-impl<'ctx> Into<Schema<'ctx>> for Builder<'ctx> {
-    fn into(self) -> Schema<'ctx> {
-        self.build()
+impl<'ctx> From<Builder<'ctx>> for Schema<'ctx> {
+    fn from(builder: Builder<'ctx>) -> Schema<'ctx> {
+        builder.build()
     }
 }
 
@@ -179,11 +179,11 @@ mod tests {
     use crate::context::Context;
 
     /// Helper function to make a Domain which isn't needed for the purposes of the test
-    fn unused_domain<'ctx>(c: &'ctx Context) -> Domain<'ctx> {
-        let dim = DimensionBuilder::new::<i32>(&c, "test", &[-100, 100], &100)
+    fn unused_domain(c: &Context) -> Domain {
+        let dim = DimensionBuilder::new::<i32>(c, "test", &[-100, 100], &100)
             .unwrap()
             .build();
-        DomainBuilder::new(&c)
+        DomainBuilder::new(c)
             .unwrap()
             .add_dimension(dim)
             .unwrap()

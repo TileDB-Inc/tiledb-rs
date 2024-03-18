@@ -80,11 +80,9 @@ impl<'ctx> Dimension<'ctx> {
         // the only errors are possible via mis-use of the C API, which Rust prevents
         assert_eq!(ffi::TILEDB_OK, c_ret);
 
-        let c_domain: &[DT::CApiType; 2] = unsafe {
-            std::mem::transmute::<*const std::ffi::c_void, &[DT::CApiType; 2]>(
-                c_domain_ptr,
-            )
-        };
+        let c_domain: &[DT::CApiType; 2] =
+            unsafe { &*c_domain_ptr.cast::<[DT::CApiType; 2]>() };
+
         Ok([DT::from_capi(&c_domain[0]), DT::from_capi(&c_domain[1])])
     }
 
@@ -138,12 +136,10 @@ impl<'ctx> Builder<'ctx> {
                 c_context,
                 c_name.as_ptr(),
                 c_datatype,
-                std::mem::transmute::<&DT::CApiType, *const std::ffi::c_void>(
-                    &c_domain[0],
-                ),
-                std::mem::transmute::<&DT::CApiType, *const std::ffi::c_void>(
-                    &c_extent,
-                ),
+                &c_domain[0] as *const <DT as DomainType>::CApiType
+                    as *const std::ffi::c_void,
+                &c_extent as *const <DT as DomainType>::CApiType
+                    as *const std::ffi::c_void,
                 &mut c_dimension,
             )
         } == ffi::TILEDB_OK
@@ -179,9 +175,9 @@ impl<'ctx> Builder<'ctx> {
     }
 }
 
-impl<'ctx> Into<Dimension<'ctx>> for Builder<'ctx> {
-    fn into(self) -> Dimension<'ctx> {
-        self.build()
+impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
+    fn from(builder: Builder<'ctx>) -> Dimension<'ctx> {
+        builder.build()
     }
 }
 

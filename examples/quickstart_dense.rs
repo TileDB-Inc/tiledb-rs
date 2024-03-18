@@ -2,8 +2,8 @@ extern crate tiledb;
 
 use tiledb::Result as TileDBResult;
 
-const QUICKSTART_DENSE_ARRAY_URI: &'static str = "quickstart_dense_array";
-const QUICKSTART_ATTRIBUTE_NAME: &'static str = "a";
+const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense_array";
+const QUICKSTART_ATTRIBUTE_NAME: &str = "a";
 
 fn array_exists() -> bool {
     let tdb = match tiledb::context::Context::new() {
@@ -11,13 +11,10 @@ fn array_exists() -> bool {
         Ok(tdb) => tdb,
     };
 
-    if let Ok(Some(tiledb::context::ObjectType::Array)) =
-        tdb.object_type(QUICKSTART_DENSE_ARRAY_URI)
-    {
-        true
-    } else {
-        false
-    }
+    matches!(
+        tdb.object_type(QUICKSTART_DENSE_ARRAY_URI),
+        Ok(Some(tiledb::context::ObjectType::Array))
+    )
 }
 
 fn create_array() -> TileDBResult<()> {
@@ -111,7 +108,7 @@ fn read_array() -> TileDBResult<()> {
             .dimension_range_typed::<i32>(1, &[2, 4])?
             .build();
 
-    query.submit().map(|_| ());
+    query.submit()?;
 
     for value in results {
         print!("{} ", value)

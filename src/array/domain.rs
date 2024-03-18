@@ -6,7 +6,6 @@ use crate::Result as TileDBResult;
 
 pub(crate) enum RawDomain {
     Owned(*mut ffi::tiledb_domain_t),
-    Borrowed(*mut ffi::tiledb_domain_t),
 }
 
 impl Deref for RawDomain {
@@ -14,16 +13,14 @@ impl Deref for RawDomain {
     fn deref(&self) -> &Self::Target {
         match *self {
             RawDomain::Owned(ref ffi) => ffi,
-            RawDomain::Borrowed(ref ffi) => ffi,
         }
     }
 }
 
 impl Drop for RawDomain {
     fn drop(&mut self) {
-        if let RawDomain::Owned(ref mut ffi) = *self {
-            unsafe { ffi::tiledb_domain_free(ffi) }
-        }
+        let RawDomain::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_domain_free(ffi) };
     }
 }
 
@@ -120,9 +117,9 @@ impl<'ctx> Builder<'ctx> {
     }
 }
 
-impl<'ctx> Into<Domain<'ctx>> for Builder<'ctx> {
-    fn into(self) -> Domain<'ctx> {
-        self.build()
+impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
+    fn from(builder: Builder<'ctx>) -> Domain<'ctx> {
+        builder.build()
     }
 }
 

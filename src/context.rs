@@ -11,15 +11,6 @@ pub enum ObjectType {
     Group,
 }
 
-impl ObjectType {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_object_t {
-        match *self {
-            ObjectType::Array => ffi::tiledb_object_t_TILEDB_ARRAY,
-            ObjectType::Group => ffi::tiledb_object_t_TILEDB_GROUP,
-        }
-    }
-}
-
 pub struct Context {
     _wrapped: *mut ffi::tiledb_ctx_t,
 }
