@@ -1,10 +1,11 @@
-[package]
-name = "tiledb"
-version = "0.1.0"
+[workspace]
+members = [ "tiledb-api", "tiledb-sys" ]
+resolver = "2"
+
+[workspace.package]
 edition = "2021"
+rust-version = "1.72"
+version = "0.1.0"
 
-[dependencies]
-tiledb-sys = {version = "0.1.0", path = "tiledb-sys" }
-
-[dev-dependencies]
-tempdir = "0.3.7"
+[workspace.dependencies]
+tiledb-sys = { path = "tiledb-sys", version = "0.1.0" }
