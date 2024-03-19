@@ -27,12 +27,16 @@ impl Drop for RawDomain {
 pub struct Domain<'ctx> {
     context: &'ctx Context,
     raw: RawDomain,
-    dimensions: Vec<Dimension<'ctx>>,
 }
 
 impl<'ctx> Domain<'ctx> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_domain_t {
         *self.raw
+    }
+
+    /// Read from the C API whatever we need to use this domain from Rust
+    pub(crate) fn new(context: &'ctx Context, raw: RawDomain) -> Self {
+        Domain { context, raw }
     }
 
     pub fn ndim(&self) -> u32 {
@@ -49,21 +53,32 @@ impl<'ctx> Domain<'ctx> {
         ndim
     }
 
-    pub fn dimension(&self, idx: u32) -> TileDBResult<Dimension<'ctx>> {
+    pub fn dimension(&self, idx: usize) -> TileDBResult<Dimension<'ctx>> {
+        let c_context = self.context.as_mut_ptr();
+        let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
+        let c_idx = match idx.try_into() {
+            Ok(idx) => idx,
+            Err(e) => {
+                return Err(crate::error::Error::from(format!(
+                    "Invalid dimension: {}",
+                    e
+                )))
+            }
+        };
         let c_ret = unsafe {
             ffi::tiledb_domain_get_dimension_from_index(
-                self.context.as_mut_ptr(),
-                *self.raw,
-                idx,
+                c_context,
+                c_domain,
+                c_idx,
                 &mut c_dimension,
             )
         };
         if c_ret == ffi::TILEDB_OK {
-            Ok(Dimension {
-                context: self.context,
-                raw: RawDimension::Borrowed(c_dimension),
-            })
+            Ok(Dimension::new(
+                self.context,
+                RawDimension::Owned(c_dimension),
+            ))
         } else {
             Err(self.context.expect_last_error())
         }
@@ -85,7 +100,6 @@ impl<'ctx> Builder<'ctx> {
                 domain: Domain {
                     context,
                     raw: RawDomain::Owned(c_domain),
-                    dimensions: Vec::new(),
                 },
             })
         } else {
@@ -94,7 +108,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn add_dimension(
-        mut self,
+        self,
         dimension: Dimension<'ctx>,
     ) -> TileDBResult<Self> {
         let c_context = self.domain.context.as_mut_ptr();
@@ -105,7 +119,6 @@ impl<'ctx> Builder<'ctx> {
             ffi::tiledb_domain_add_dimension(c_context, c_domain, c_dim)
         };
         if c_ret == ffi::TILEDB_OK {
-            self.domain.dimensions.push(dimension);
             Ok(self)
         } else {
             Err(self.domain.context.expect_last_error())

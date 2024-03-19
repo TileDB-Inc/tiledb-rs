@@ -148,7 +148,7 @@ impl Drop for Array<'_> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use std::io;
     use tempdir::TempDir;
 
@@ -156,17 +156,15 @@ mod tests {
     use crate::context::Context;
     use crate::Datatype;
 
-    #[test]
-    fn test_array_create() -> io::Result<()> {
-        let tmp_dir = TempDir::new("test_rs_bdelit")?;
-        let arr_dir = tmp_dir.path().join("create_test");
-
-        let c: Context = Context::new().unwrap();
-
-        // "quickstart_dense" example
+    /// Create the array used in the "quickstart_dense" example
+    pub fn create_quickstart_dense(
+        dir: &TempDir,
+        context: &Context,
+    ) -> TileDBResult<String> {
+        let arr_dir = dir.path().join("quickstart_dense");
         let d: Domain = {
             let rows: Dimension = DimensionBuilder::new::<i32>(
-                &c,
+                context,
                 "rows",
                 Datatype::Int32,
                 &[1, 4],
@@ -175,7 +173,7 @@ mod tests {
             .expect("Error constructing rows dimension")
             .build();
             let cols: Dimension = DimensionBuilder::new::<i32>(
-                &c,
+                context,
                 "cols",
                 Datatype::Int32,
                 &[1, 4],
@@ -184,7 +182,7 @@ mod tests {
             .expect("Error constructing cols dimension")
             .build();
 
-            DomainBuilder::new(&c)
+            DomainBuilder::new(context)
                 .unwrap()
                 .add_dimension(rows)
                 .unwrap()
@@ -193,15 +191,29 @@ mod tests {
                 .build()
         };
 
-        let s: Schema = SchemaBuilder::new(&c, ArrayType::Sparse, d)
+        let s: Schema = SchemaBuilder::new(context, ArrayType::Sparse, d)
             .unwrap()
-            .add_attribute(Attribute::new(&c, "a", Datatype::UInt64).unwrap())
+            .add_attribute(
+                Attribute::new(context, "a", Datatype::UInt64).unwrap(),
+            )
             .unwrap()
             .into();
 
         // domain not set
         // TODO
-        assert!(Array::create(&c, arr_dir.to_str().unwrap(), s).is_ok());
+        Array::create(context, arr_dir.to_str().unwrap(), s)?;
+
+        Ok(String::from(arr_dir.to_str().unwrap()))
+    }
+
+    #[test]
+    fn test_array_create() -> io::Result<()> {
+        let tmp_dir = TempDir::new("test_rs_bdelit")?;
+
+        let c: Context = Context::new().unwrap();
+
+        let r = create_quickstart_dense(&tmp_dir, &c);
+        assert!(r.is_ok());
 
         // Make sure we can remove the array we created.
         tmp_dir.close()?;
