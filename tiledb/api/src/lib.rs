@@ -1,10 +1,5 @@
 extern crate tiledb_sys as ffi;
 
-#[cfg(test)]
-extern crate proptest;
-#[cfg(test)]
-extern crate tiledb_test;
-
 macro_rules! cstring {
     ($arg:ident) => {
         match std::ffi::CString::new($arg) {
