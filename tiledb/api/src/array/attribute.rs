@@ -378,11 +378,15 @@ mod test {
     use crate::filter::Filter;
     pub use tiledb_sys::FilterType;
 
-    #[test]
-    fn attribute_alloc() {
-        let ctx = Context::new().expect("Error creating context instance.");
-        Builder::new(&ctx, "foo", Datatype::UInt64)
-            .expect("Error creating attribute instance.");
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn attribute_alloc(dt in tiledb_test::datatype::arbitrary()) {
+            let ctx = Context::new().expect("Error creating context instance.");
+            Builder::new(&ctx, "foo", dt)
+                .expect("Error creating attribute instance.");
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
 [workspace]
-members = [ "tiledb/api", "tiledb/arrow", "tiledb/sys" ]
+members = [ "tiledb/api", "tiledb/arrow", "tiledb/sys", "tiledb/test" ]
 resolver = "2"
 
 [workspace.package]
@@ -10,3 +10,4 @@ version = "0.1.0"
 [workspace.dependencies]
 tiledb = { path = "tiledb/api", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
+tiledb-test = { path = "tiledb/test", version = "0.1.0" }

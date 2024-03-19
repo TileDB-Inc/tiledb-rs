@@ -1,0 +1,12 @@
+[package]
+name = "tiledb-test"
+version = { workspace = true }
+edition = { workspace = true }
+
+[lib]
+name = "tiledb_test"
+path = "src/lib.rs"
+
+[dependencies]
+proptest = "1.0.0"
+tiledb = { workspace = true }

@@ -10,3 +10,4 @@ tiledb = { workspace = true }
 
 [dev-dependencies]
 proptest = "1.0.0"
+tiledb-test = { workspace = true }
