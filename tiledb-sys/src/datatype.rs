@@ -338,17 +338,6 @@ mod tests {
     }
 
     fn check_valid(dt: &Datatype) -> bool {
-        let v0: f32 = 0.0;
-        let v1: f64 = 0.0;
-        let v2: i8 = 0;
-        let v3: u8 = 0;
-        let v4: i16 = 0;
-        let v5: u16 = 0;
-        let v6: i32 = 0;
-        let v7: u32 = 0;
-        let v8: i64 = 0;
-        let v9: u64 = 0;
-
         let mut count = 0;
 
         if dt.is_compatible_type::<f32>() {
@@ -359,35 +348,35 @@ mod tests {
             count += 1;
         }
 
-        if dt.is_valid::<i8>() {
+        if dt.is_compatible_type::<i8>() {
             count += 1;
         }
 
-        if dt.is_valid::<u8>() {
+        if dt.is_compatible_type::<u8>() {
             count += 1;
         }
 
-        if dt.is_valid::<i16>() {
+        if dt.is_compatible_type::<i16>() {
             count += 1;
         }
 
-        if dt.is_valid::<u16>() {
+        if dt.is_compatible_type::<u16>() {
             count += 1;
         }
 
-        if dt.is_valid::<i32>() {
+        if dt.is_compatible_type::<i32>() {
             count += 1;
         }
 
-        if dt.is_valid::<u32>() {
+        if dt.is_compatible_type::<u32>() {
             count += 1;
         }
 
-        if dt.is_valid::<i64>() {
+        if dt.is_compatible_type::<i64>() {
             count += 1;
         }
 
-        if dt.is_valid::<u64>() {
+        if dt.is_compatible_type::<u64>() {
             count += 1;
         }
 
