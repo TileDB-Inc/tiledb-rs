@@ -11,4 +11,6 @@ path = "src/lib.rs"
 tiledb-sys = { workspace = true }
 
 [dev-dependencies]
+proptest = "1.0.0"
 tempdir = "0.3.7"
+tiledb-test = { workspace = true }
