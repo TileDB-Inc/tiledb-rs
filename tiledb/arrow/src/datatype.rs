@@ -48,7 +48,7 @@ pub fn arrow_type_physical(
         }
         tiledb::Datatype::DateTimeNanosecond => {
             Some(arrow_schema::DataType::Timestamp(
-                arrow_schema::TimeUnit::Microsecond,
+                arrow_schema::TimeUnit::Nanosecond,
                 None,
             ))
         }
@@ -92,6 +92,28 @@ pub fn tiledb_type_physical(
         arrow_schema::DataType::UInt64 => Some(tiledb::Datatype::UInt64),
         arrow_schema::DataType::Float32 => Some(tiledb::Datatype::Float32),
         arrow_schema::DataType::Float64 => Some(tiledb::Datatype::Float64),
+        arrow_schema::DataType::Timestamp(
+            arrow_schema::TimeUnit::Second,
+            None,
+        ) => Some(tiledb::Datatype::DateTimeSecond),
+        arrow_schema::DataType::Timestamp(
+            arrow_schema::TimeUnit::Millisecond,
+            None,
+        ) => Some(tiledb::Datatype::DateTimeMillisecond),
+        arrow_schema::DataType::Timestamp(
+            arrow_schema::TimeUnit::Microsecond,
+            None,
+        ) => Some(tiledb::Datatype::DateTimeMicrosecond),
+        arrow_schema::DataType::Timestamp(
+            arrow_schema::TimeUnit::Nanosecond,
+            None,
+        ) => Some(tiledb::Datatype::DateTimeNanosecond),
+        arrow_schema::DataType::Time64(arrow_schema::TimeUnit::Microsecond) => {
+            Some(tiledb::Datatype::TimeMicrosecond)
+        }
+        arrow_schema::DataType::Time64(arrow_schema::TimeUnit::Nanosecond) => {
+            Some(tiledb::Datatype::TimeNanosecond)
+        }
         _ => None, // TODO
     }
 }
@@ -112,7 +134,8 @@ mod tests {
                     // TODO: assert that `tdb_dt` is variable-length
                 }
 
-                // TODO: invertibility
+                let inverted_dt = tiledb_type_physical(&arrow_dt);
+                assert_eq!(Some(tdb_dt), inverted_dt);
             }
         }
     }
