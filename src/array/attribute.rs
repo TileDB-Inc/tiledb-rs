@@ -246,7 +246,7 @@ impl Attribute {
 
         if DT::DATATYPE != self.datatype(ctx)? {
             return Err(Error::from(format!(
-                "Dimension type mismatch: expected {}, found {}",
+                "Attribute type mismatch: expected {}, found {}",
                 self.datatype(ctx)?,
                 DT::DATATYPE
             )));
@@ -295,6 +295,71 @@ impl Attribute {
         let c_val: DT::CApiType = unsafe { *c_ptr.cast::<DT::CApiType>() };
 
         Ok(DT::from_capi(&c_val))
+    }
+
+    // This currently does not support setting multi-value cells.
+    pub fn set_fill_value_nullable<Conv: CAPIConverter + 'static>(
+        &self,
+        ctx: &Context,
+        value: Conv,
+        validity: u8,
+    ) -> TileDBResult<()> {
+        let c_val: Conv::CAPIType = value.to_capi();
+
+        if !self.datatype(ctx)?.is_compatible_type::<Conv>() {
+            return Err(Error::from(format!(
+                "Attribute type mismatch: expected {}, found {}",
+                self.datatype(ctx)?,
+                std::any::type_name::<Conv>()
+            )));
+        }
+
+        let res = unsafe {
+            ffi::tiledb_attribute_set_fill_value_nullable(
+                ctx.as_mut_ptr(),
+                *self.raw,
+                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
+                std::mem::size_of::<Conv::CAPIType>() as u64,
+                validity,
+            )
+        };
+
+        if res == ffi::TILEDB_OK {
+            Ok(())
+        } else {
+            Err(ctx.expect_last_error())
+        }
+    }
+
+    pub fn get_fill_value_nullable<Conv: CAPIConverter>(
+        &self,
+        ctx: &Context,
+    ) -> TileDBResult<(Conv, u8)> {
+        let mut c_ptr: *const std::ffi::c_void = out_ptr!();
+        let mut c_size: u64 = 0;
+        let mut c_validity: u8 = 0;
+
+        let res = unsafe {
+            ffi::tiledb_attribute_get_fill_value_nullable(
+                ctx.as_mut_ptr(),
+                *self.raw,
+                &mut c_ptr,
+                &mut c_size,
+                &mut c_validity,
+            )
+        };
+
+        if res != ffi::TILEDB_OK {
+            return Err(ctx.expect_last_error());
+        }
+
+        if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
+            return Err(Error::from("Invalid value size returned by TileDB"));
+        }
+
+        let c_val: Conv::CAPIType = unsafe { *c_ptr.cast::<Conv::CAPIType>() };
+
+        Ok((Conv::to_rust(&c_val), c_validity))
     }
 }
 
@@ -456,11 +521,15 @@ mod test {
         assert!(attr.set_fill_value(&ctx, 5_u32).is_err());
         assert!(attr.set_fill_value(&ctx, 1.0_f64).is_err());
 
+        attr.set_nullable(&ctx, false)?;
+        assert!(attr.set_fill_value_nullable(&ctx, 5_i32, 1).is_err());
+        assert!(attr.set_fill_value_nullable(&ctx, 1.0_f64, 0).is_err());
+
         Ok(())
     }
 
     #[test]
-    fn attribute_test_set_fill_value() -> TileDBResult<()> {
+    fn attribute_test_fill_value() -> TileDBResult<()> {
         let ctx = Context::new()?;
         let attr = Attribute::new(&ctx, "foo", Datatype::UInt32)?;
 
@@ -471,6 +540,25 @@ mod test {
 
         let val: u32 = attr.get_fill_value(&ctx)?;
         assert_eq!(val, 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn attribute_test_fill_value_nullable() -> TileDBResult<()> {
+        let ctx = Context::new()?;
+        let attr = Attribute::new(&ctx, "foo", Datatype::UInt32)?;
+        attr.set_nullable(&ctx, true)?;
+
+        let (val, validity): (u32, u8) = attr.get_fill_value_nullable(&ctx)?;
+        assert_eq!(val, u32::MAX);
+        assert_eq!(validity, 0);
+
+        assert!(attr.set_fill_value_nullable(&ctx, 5_u32, 12).is_ok());
+
+        let (val, validity): (u32, u8) = attr.get_fill_value_nullable(&ctx)?;
+        assert_eq!(val, 5);
+        assert_eq!(validity, 12);
 
         Ok(())
     }
