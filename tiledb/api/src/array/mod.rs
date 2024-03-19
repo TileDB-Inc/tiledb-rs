@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::ops::Deref;
 
 use crate::context::Context;
@@ -8,7 +9,7 @@ mod dimension;
 mod domain;
 mod schema;
 
-pub use attribute::Attribute;
+pub use attribute::{Attribute, Builder as AttributeBuilder};
 pub use dimension::{Builder as DimensionBuilder, Dimension};
 pub use domain::{Builder as DomainBuilder, Domain};
 pub use schema::{ArrayType, Builder as SchemaBuilder, Schema};
@@ -31,6 +32,7 @@ impl Mode {
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub enum Layout {
     Unordered,
     RowMajor,
@@ -45,6 +47,19 @@ impl Layout {
             Layout::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
             Layout::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
             Layout::Hilbert => ffi::tiledb_layout_t_TILEDB_HILBERT,
+        }
+    }
+}
+
+impl TryFrom<ffi::tiledb_layout_t> for Layout {
+    type Error = crate::error::Error;
+    fn try_from(value: ffi::tiledb_layout_t) -> TileDBResult<Self> {
+        match value {
+            ffi::tiledb_layout_t_TILEDB_UNORDERED => Ok(Layout::Unordered),
+            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(Layout::RowMajor),
+            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(Layout::ColumnMajor),
+            ffi::tiledb_layout_t_TILEDB_HILBERT => Ok(Layout::Hilbert),
+            _ => Err(Self::Error::from(format!("Invalid layout: {}", value))),
         }
     }
 }
@@ -194,7 +209,9 @@ pub mod tests {
         let s: Schema = SchemaBuilder::new(context, ArrayType::Sparse, d)
             .unwrap()
             .add_attribute(
-                Attribute::new(context, "a", Datatype::UInt64).unwrap(),
+                AttributeBuilder::new(context, "a", Datatype::UInt64)
+                    .unwrap()
+                    .build(),
             )
             .unwrap()
             .into();
