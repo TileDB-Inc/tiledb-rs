@@ -192,7 +192,13 @@ mod tests {
         // enabled. These tests failing most likely means a non "standard"
         // build of libtiledb.{so,dylib,dll}
         assert!(ctx.is_supported_fs(ffi::Filesystem::MEMFS));
-        assert!(!ctx.is_supported_fs(ffi::Filesystem::HDFS));
+
+        // On GitHub Actions, we use the release tarball which enables all
+        // backends. Thus we skip this test when running in CI.
+        let var = std::env::var("GITHUB_ACTIONS").unwrap_or(String::from(""));
+        if var != *"true" {
+            assert!(!ctx.is_supported_fs(ffi::Filesystem::HDFS));
+        }
     }
 
     #[test]
