@@ -1,3 +1,4 @@
+use std::convert::TryFrom;
 use std::ops::Deref;
 
 use crate::array::domain::RawDomain;
@@ -5,6 +6,7 @@ use crate::array::{Attribute, Domain};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
+#[derive(Debug, PartialEq)]
 pub enum ArrayType {
     Dense,
     Sparse,
@@ -15,6 +17,19 @@ impl ArrayType {
         match *self {
             ArrayType::Dense => ffi::tiledb_array_type_t_TILEDB_DENSE,
             ArrayType::Sparse => ffi::tiledb_array_type_t_TILEDB_SPARSE,
+        }
+    }
+}
+
+impl TryFrom<ffi::tiledb_array_type_t> for ArrayType {
+    type Error = crate::error::Error;
+    fn try_from(value: ffi::tiledb_array_type_t) -> TileDBResult<Self> {
+        match value {
+            ffi::tiledb_array_type_t_TILEDB_DENSE => Ok(ArrayType::Dense),
+            ffi::tiledb_array_type_t_TILEDB_SPARSE => Ok(ArrayType::Sparse),
+            _ => {
+                Err(Self::Error::from(format!("Invalid array type: {}", value)))
+            }
         }
     }
 }
