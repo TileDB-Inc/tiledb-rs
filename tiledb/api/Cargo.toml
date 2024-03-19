@@ -1,5 +1,5 @@
 [package]
-name = "tiledb-api"
+name = "tiledb"
 version = { workspace = true }
 edition = { workspace = true }
 

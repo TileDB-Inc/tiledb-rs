@@ -6,7 +6,7 @@ edition = { workspace = true }
 [dependencies]
 arrow = { version = "50.0.0", features = ["prettyprint"] }
 arrow-schema = { version = "50.0.0", default-features = false }
-tiledb-api = { workspace = true }
+tiledb = { workspace = true }
 
 [dev-dependencies]
 proptest = "1.0.0"
