@@ -1,0 +1,4 @@
+[package]
+name = "tiledb-sys"
+version = { workspace = true }
+edition = { workspace = true }
