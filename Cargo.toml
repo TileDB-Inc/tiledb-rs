@@ -1,5 +1,5 @@
 [workspace]
-members = [ "tiledb-api", "tiledb-sys" ]
+members = [ "tiledb-api", "tiledb-arrow", "tiledb-sys" ]
 resolver = "2"
 
 [workspace.package]
@@ -8,4 +8,5 @@ rust-version = "1.72"
 version = "0.1.0"
 
 [workspace.dependencies]
+tiledb-api = { path = "tiledb-api", version = "0.1.0" }
 tiledb-sys = { path = "tiledb-sys", version = "0.1.0" }

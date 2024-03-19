@@ -1,0 +1,7 @@
+[package]
+name = "tiledb-arrow"
+version = { workspace = true }
+edition = { workspace = true }
+
+[dependencies]
+tiledb-api = { workspace = true }
