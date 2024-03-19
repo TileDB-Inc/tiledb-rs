@@ -232,7 +232,7 @@ impl<'ctx> Schema<'ctx> {
             )
         };
         if c_ret == ffi::TILEDB_OK {
-            Ok(Attribute::from((self.context, RawAttribute::Owned(c_attr))))
+            Ok(Attribute::new(self.context, RawAttribute::Owned(c_attr)))
         } else {
             Err(self.context.expect_last_error())
         }
