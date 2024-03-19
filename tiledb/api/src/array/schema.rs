@@ -46,60 +46,53 @@ impl Drop for RawSchema {
 pub struct Schema<'ctx> {
     context: &'ctx Context,
     raw: RawSchema,
-    domain: Domain<'ctx>,
 }
 
 impl<'ctx> Schema<'ctx> {
-    pub(crate) fn new(
-        context: &'ctx Context,
-        raw: RawSchema,
-    ) -> TileDBResult<Self> {
-        let c_context: *mut ffi::tiledb_ctx_t = context.as_mut_ptr();
-        let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
-        let c_ret = unsafe {
-            ffi::tiledb_array_schema_get_domain(c_context, *raw, &mut c_domain)
-        };
-        if c_ret == ffi::TILEDB_ERR {
-            Err(context.expect_last_error())
-        } else {
-            // TODO: do we need an integrity check, or are we happy to assume this gives us a valid
-            // schema?
-            Ok(Schema {
-                context,
-                raw,
-                domain: Domain::load(context, RawDomain::Owned(c_domain))?,
-            })
-        }
+    pub(crate) fn new(context: &'ctx Context, raw: RawSchema) -> Self {
+        Schema { context, raw }
     }
 
     pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_array_schema_t {
         *self.raw
     }
 
-    pub fn domain(&self) -> &Domain<'ctx> {
-        &self.domain
+    pub fn domain(&self) -> TileDBResult<Domain<'ctx>> {
+        let c_context: *mut ffi::tiledb_ctx_t = self.context.as_mut_ptr();
+        let c_schema = *self.raw;
+        let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_get_domain(
+                c_context,
+                c_schema,
+                &mut c_domain,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(Domain::new(self.context, RawDomain::Owned(c_domain)))
+        } else {
+            Err(self.context.expect_last_error())
+        }
     }
 
     /// Retrieve the schema of an array from storage
     pub fn load(context: &'ctx Context, uri: &str) -> TileDBResult<Self> {
+        let c_context: *mut ffi::tiledb_ctx_t = context.as_mut_ptr();
+        let c_uri = cstring!(uri);
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
-        {
-            let c_context: *mut ffi::tiledb_ctx_t = context.as_mut_ptr();
-            let c_uri = cstring!(uri);
 
-            let c_ret = unsafe {
-                ffi::tiledb_array_schema_load(
-                    c_context,
-                    c_uri.as_ptr(),
-                    &mut c_schema,
-                )
-            };
-            if c_ret == ffi::TILEDB_ERR {
-                return Err(context.expect_last_error());
-            }
+        let c_ret = unsafe {
+            ffi::tiledb_array_schema_load(
+                c_context,
+                c_uri.as_ptr(),
+                &mut c_schema,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(Schema::new(context, RawSchema::Owned(c_schema)))
+        } else {
+            Err(context.expect_last_error())
         }
-
-        Self::new(context, RawSchema::Owned(c_schema))
     }
 
     pub fn version(&self) -> i64 {
@@ -172,7 +165,6 @@ impl<'ctx> Builder<'ctx> {
             schema: Schema {
                 context,
                 raw: RawSchema::Owned(c_schema),
-                domain,
             },
         })
     }
@@ -319,7 +311,7 @@ mod tests {
         let schema = Schema::load(&c, &r.unwrap())
             .expect("Could not open quickstart_dense schema");
 
-        let domain = schema.domain();
+        let domain = schema.domain().expect("Error reading domain");
 
         let rows = domain.dimension(0).expect("Error reading rows dimension");
         assert_eq!(Datatype::Int32, rows.datatype());

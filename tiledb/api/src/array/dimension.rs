@@ -37,12 +37,8 @@ impl<'ctx> Dimension<'ctx> {
     }
 
     /// Read from the C API whatever we need to use this dimension from Rust
-    pub(crate) fn load(
-        context: &'ctx Context,
-        raw: RawDimension,
-    ) -> TileDBResult<Self> {
-        // TODO: ???
-        Ok(Dimension { context, raw })
+    pub(crate) fn new(context: &'ctx Context, raw: RawDimension) -> Self {
+        Dimension { context, raw }
     }
 
     pub fn datatype(&self) -> Datatype {
