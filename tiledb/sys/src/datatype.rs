@@ -119,7 +119,7 @@ pub enum Datatype {
 
 impl Datatype {
     pub fn size(&self) -> u64 {
-        let copy = (*self).clone();
+        let copy = *self;
         unsafe { tiledb_datatype_size(copy as tiledb_datatype_t) }
     }
 
@@ -133,7 +133,7 @@ impl Datatype {
     }
 
     pub fn to_string(&self) -> Option<String> {
-        let copy = (*self).clone();
+        let copy = *self;
         let c_dtype = copy as tiledb_datatype_t;
         let mut c_str = std::ptr::null::<std::os::raw::c_char>();
         let res = unsafe { tiledb_datatype_to_str(c_dtype, &mut c_str) };
@@ -213,89 +213,66 @@ impl Datatype {
     pub fn is_compatible_type<T: 'static>(&self) -> bool {
         let tid = TypeId::of::<T>();
         if tid == TypeId::of::<f32>() {
-            match self {
-                Datatype::Float32 => true,
-                _ => false,
-            }
+            matches!(*self, Datatype::Float32)
         } else if tid == TypeId::of::<f64>() {
-            match self {
-                Datatype::Float64 => true,
-                _ => false,
-            }
+            matches!(*self, Datatype::Float64)
         } else if tid == TypeId::of::<i8>() {
-            match self {
-                Datatype::Char => true,
-                Datatype::Int8 => true,
-                _ => false,
-            }
+            matches!(*self, Datatype::Char | Datatype::Int8)
         } else if tid == TypeId::of::<u8>() {
-            match self {
-                Datatype::Any => true,
-                Datatype::Blob => true,
-                Datatype::Boolean => true,
-                Datatype::GeometryWkb => true,
-                Datatype::GeometryWkt => true,
-                Datatype::StringAscii => true,
-                Datatype::StringUtf8 => true,
-                Datatype::UInt8 => true,
-                _ => false,
-            }
+            matches!(
+                *self,
+                Datatype::Any
+                    | Datatype::Blob
+                    | Datatype::Boolean
+                    | Datatype::GeometryWkb
+                    | Datatype::GeometryWkt
+                    | Datatype::StringAscii
+                    | Datatype::StringUtf8
+                    | Datatype::UInt8
+            )
         } else if tid == TypeId::of::<i16>() {
-            match self {
-                Datatype::Int16 => true,
-                _ => false,
-            }
+            matches!(*self, Datatype::Int16)
         } else if tid == TypeId::of::<u16>() {
-            match self {
-                Datatype::StringUtf16 => true,
-                Datatype::StringUcs2 => true,
-                Datatype::UInt16 => true,
-                _ => false,
-            }
+            matches!(
+                *self,
+                Datatype::StringUtf16 | Datatype::StringUcs2 | Datatype::UInt16
+            )
         } else if tid == TypeId::of::<i32>() {
-            match self {
-                Datatype::Int32 => true,
-                _ => false,
-            }
+            matches!(*self, Datatype::Int32)
         } else if tid == TypeId::of::<u32>() {
-            match self {
-                Datatype::StringUtf32 => true,
-                Datatype::StringUcs4 => true,
-                Datatype::UInt32 => true,
-                _ => false,
-            }
+            matches!(
+                *self,
+                Datatype::StringUtf32 | Datatype::StringUcs4 | Datatype::UInt32
+            )
         } else if tid == TypeId::of::<i64>() {
-            match self {
-                Datatype::Int64 => true,
-                Datatype::DateTimeYear => true,
-                Datatype::DateTimeMonth => true,
-                Datatype::DateTimeWeek => true,
-                Datatype::DateTimeDay => true,
-                Datatype::DateTimeHour => true,
-                Datatype::DateTimeMinute => true,
-                Datatype::DateTimeSecond => true,
-                Datatype::DateTimeMillisecond => true,
-                Datatype::DateTimeMicrosecond => true,
-                Datatype::DateTimeNanosecond => true,
-                Datatype::DateTimePicosecond => true,
-                Datatype::DateTimeFemtosecond => true,
-                Datatype::DateTimeAttosecond => true,
-                Datatype::TimeHour => true,
-                Datatype::TimeMinute => true,
-                Datatype::TimeSecond => true,
-                Datatype::TimeMillisecond => true,
-                Datatype::TimeMicrosecond => true,
-                Datatype::TimeNanosecond => true,
-                Datatype::TimePicosecond => true,
-                Datatype::TimeFemtosecond => true,
-                Datatype::TimeAttosecond => true,
-                _ => false,
-            }
+            matches!(
+                *self,
+                Datatype::Int64
+                    | Datatype::DateTimeYear
+                    | Datatype::DateTimeMonth
+                    | Datatype::DateTimeWeek
+                    | Datatype::DateTimeDay
+                    | Datatype::DateTimeHour
+                    | Datatype::DateTimeMinute
+                    | Datatype::DateTimeSecond
+                    | Datatype::DateTimeMillisecond
+                    | Datatype::DateTimeMicrosecond
+                    | Datatype::DateTimeNanosecond
+                    | Datatype::DateTimePicosecond
+                    | Datatype::DateTimeFemtosecond
+                    | Datatype::DateTimeAttosecond
+                    | Datatype::TimeHour
+                    | Datatype::TimeMinute
+                    | Datatype::TimeSecond
+                    | Datatype::TimeMillisecond
+                    | Datatype::TimeMicrosecond
+                    | Datatype::TimeNanosecond
+                    | Datatype::TimePicosecond
+                    | Datatype::TimeFemtosecond
+                    | Datatype::TimeAttosecond
+            )
         } else if tid == TypeId::of::<u64>() {
-            match self {
-                Datatype::UInt64 => true,
-                _ => false,
-            }
+            matches!(*self, Datatype::UInt64)
         } else {
             false
         }
