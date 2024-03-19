@@ -57,7 +57,15 @@ impl<'ctx> Domain<'ctx> {
         let c_context = self.context.as_mut_ptr();
         let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
-        let c_idx = idx.try_into().unwrap();
+        let c_idx = match idx.try_into() {
+            Ok(idx) => idx,
+            Err(e) => {
+                return Err(crate::error::Error::from(format!(
+                    "Invalid dimension: {}",
+                    e
+                )))
+            }
+        };
         let c_ret = unsafe {
             ffi::tiledb_domain_get_dimension_from_index(
                 c_context,
