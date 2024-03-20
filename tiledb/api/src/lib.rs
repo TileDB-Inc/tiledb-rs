@@ -1,3 +1,4 @@
+extern crate serde_json;
 extern crate tiledb_sys as ffi;
 
 macro_rules! cstring {
@@ -24,6 +25,7 @@ pub mod array;
 pub mod config;
 pub mod context;
 pub mod convert;
+pub mod datatype;
 pub mod error;
 pub mod filter;
 pub mod filter_list;

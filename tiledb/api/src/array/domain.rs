@@ -1,3 +1,5 @@
+use serde_json::json;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use crate::array::{dimension::RawDimension, Dimension};
@@ -39,7 +41,7 @@ impl<'ctx> Domain<'ctx> {
         Domain { context, raw }
     }
 
-    pub fn ndim(&self) -> u32 {
+    pub fn ndim(&self) -> usize {
         let mut ndim: u32 = out_ptr!();
         let c_ret = unsafe {
             ffi::tiledb_domain_get_ndim(
@@ -50,7 +52,7 @@ impl<'ctx> Domain<'ctx> {
         };
         // the only errors are possible via mis-use of the C API, which Rust prevents
         assert_eq!(ffi::TILEDB_OK, c_ret);
-        ndim
+        ndim as usize
     }
 
     pub fn dimension(&self, idx: usize) -> TileDBResult<Dimension<'ctx>> {
@@ -82,6 +84,25 @@ impl<'ctx> Domain<'ctx> {
         } else {
             Err(self.context.expect_last_error())
         }
+    }
+}
+
+impl<'ctx> Debug for Domain<'ctx> {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let json = json!({
+            "dimensions": (0..self.ndim())
+                .map(|d| {
+                    serde_json::value::Value::String(match self.dimension(d) {
+                        Ok(d) => format!("{:?}", d),
+                        Err(e) => format!("<{}>", e),
+                    })
+                })
+                .collect::<Vec<_>>(),
+            "raw": format!("{:p}", *self.raw)
+                /* TODO: what other fields? */
+        });
+
+        write!(f, "{}", json)
     }
 }
 

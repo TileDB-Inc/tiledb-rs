@@ -1,3 +1,16 @@
+pub trait CAPISameRepr: Copy + Default {}
+
+impl CAPISameRepr for u8 {}
+impl CAPISameRepr for u16 {}
+impl CAPISameRepr for u32 {}
+impl CAPISameRepr for u64 {}
+impl CAPISameRepr for i8 {}
+impl CAPISameRepr for i16 {}
+impl CAPISameRepr for i32 {}
+impl CAPISameRepr for i64 {}
+impl CAPISameRepr for f32 {}
+impl CAPISameRepr for f64 {}
+
 pub trait CAPIConverter {
     type CAPIType: Default + Copy;
 
@@ -5,38 +18,14 @@ pub trait CAPIConverter {
     fn to_rust(value: &Self::CAPIType) -> Self;
 }
 
-impl CAPIConverter for i32 {
-    type CAPIType = std::ffi::c_int;
+impl<T: CAPISameRepr> CAPIConverter for T {
+    type CAPIType = Self;
 
     fn to_capi(&self) -> Self::CAPIType {
-        *self as Self::CAPIType
+        *self
     }
 
-    fn to_rust(value: &Self::CAPIType) -> Self {
-        *value as Self
-    }
-}
-
-impl CAPIConverter for u32 {
-    type CAPIType = std::ffi::c_uint;
-
-    fn to_capi(&self) -> Self::CAPIType {
-        *self as Self::CAPIType
-    }
-
-    fn to_rust(value: &Self::CAPIType) -> Self {
-        *value as Self
-    }
-}
-
-impl CAPIConverter for f64 {
-    type CAPIType = std::ffi::c_double;
-
-    fn to_capi(&self) -> Self::CAPIType {
-        *self as Self::CAPIType
-    }
-
-    fn to_rust(value: &Self::CAPIType) -> Self {
-        *value as Self
+    fn to_rust(value: &Self::CAPIType) -> T {
+        *value
     }
 }

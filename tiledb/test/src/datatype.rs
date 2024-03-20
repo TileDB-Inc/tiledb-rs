@@ -48,3 +48,20 @@ pub fn arbitrary() -> impl Strategy<Value = tiledb::Datatype> {
         Just(tiledb::Datatype::GeometryWkt),
     ]
 }
+
+/// Choose an arbitrary datatype which satisifes the CAPIConverter trait
+// TODO: make sure to keep this list up to date as we add more types
+pub fn arbitrary_conv() -> impl Strategy<Value = tiledb::Datatype> {
+    prop_oneof![
+        Just(tiledb::Datatype::Int8),
+        Just(tiledb::Datatype::Int16),
+        Just(tiledb::Datatype::Int32),
+        Just(tiledb::Datatype::Int64),
+        Just(tiledb::Datatype::UInt8),
+        Just(tiledb::Datatype::UInt16),
+        Just(tiledb::Datatype::UInt32),
+        Just(tiledb::Datatype::UInt64),
+        Just(tiledb::Datatype::Float32),
+        Just(tiledb::Datatype::Float64),
+    ]
+}

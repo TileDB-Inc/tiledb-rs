@@ -118,6 +118,17 @@ pub fn tiledb_type_physical(
     }
 }
 
+pub fn is_same_physical_type(
+    tdb_dt: &tiledb::Datatype,
+    arrow_dt: &arrow_schema::DataType,
+) -> bool {
+    if let Some(tdb_to_arrow) = arrow_type_physical(tdb_dt) {
+        tdb_to_arrow == *arrow_dt
+    } else {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,6 +138,7 @@ mod tests {
         #[test]
         fn test_physical(tdb_dt in tiledb_test::datatype::arbitrary()) {
             if let Some(arrow_dt) = arrow_type_physical(&tdb_dt) {
+                assert!(is_same_physical_type(&tdb_dt, &arrow_dt));
                 if let Some(adt_width) = arrow_dt.primitive_width() {
                     let tdb_width : usize = tdb_dt.size().try_into().unwrap();
                     assert_eq!(adt_width, tdb_width);
