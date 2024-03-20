@@ -1,4 +1,13 @@
 #[macro_export]
+
+/// Apply a generic function `$func` to data which implements `$datatype` and then run
+/// the expression `$then` on the result.
+/// The `$then` expression may use the function name as an identifier for the function result.
+
+// note to developers: this is mimicking the C++ code
+//      template <class Fn, class... Args>
+//      inline auto apply_with_type(Fn&& f, Datatype type, Args&&... args)
+//
 macro_rules! fn_typed {
     ($func:ident, $datatype:expr$(, $arg:expr)* => $then:expr) => {{
         type Datatype = $crate::Datatype;

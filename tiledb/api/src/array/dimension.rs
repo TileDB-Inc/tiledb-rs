@@ -1,6 +1,7 @@
-use serde_json::json;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
+
+use serde_json::json;
 
 use crate::context::Context;
 use crate::convert::CAPIConverter;
@@ -107,7 +108,10 @@ impl<'ctx> Debug for Dimension<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let json = json!({
             "datatype": format!("{}", self.datatype()),
-            "domain": fn_typed!(self.domain, self.datatype() => match domain { Ok(x) => format!("{:?}", x), Err(e) => format!("<{}>", e) }),
+            "domain": fn_typed!(self.domain, self.datatype() => match domain {
+                Ok(x) => format!("{:?}", x),
+                Err(e) => format!("<{}>", e)
+            }),
             /* TODO: filters */
             "raw": format!("{:p}", *self.raw)
         });
