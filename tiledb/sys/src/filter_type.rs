@@ -16,24 +16,24 @@ extern "C" {
 // TileDB declares 17 as DEPRECATED, I've just elided that enum member here.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FilterType {
-    NONE = 0,
-    GZIP = 1,
-    ZSTD = 2,
-    LZ4 = 3,
-    RLE = 4,
-    BZIP2 = 5,
-    DOUBLE_DELTA = 6,
-    BIT_WIDTH_REDUCTION = 7,
-    BITSHUFFLE = 8,
-    BYTESHUFFLE = 9,
-    POSITIVE_DELTA = 10,
-    CHECKSUM_MD5 = 12,
-    CHECKSUM_SHA256 = 13,
-    DICTIONARY = 14,
-    SCALE_FLOAT = 15,
-    XOR = 16,
-    WEBP = 18,
-    DELTA = 19,
+    None = 0,
+    Gzip = 1,
+    Zstd = 2,
+    Lz4 = 3,
+    Rle = 4,
+    Bzip2 = 5,
+    DoubleDelta = 6,
+    BitWidthReduction = 7,
+    BitShuffle = 8,
+    ByteShuffle = 9,
+    PositiveDelta = 10,
+    ChecksumMD5 = 12,
+    ChecksumSHA256 = 13,
+    Dictionary = 14,
+    ScaleFloat = 15,
+    Xor = 16,
+    WebP = 18,
+    Delta = 19,
 }
 
 impl FilterType {
@@ -53,6 +53,7 @@ impl FilterType {
     pub fn from_string(fs: &str) -> Option<FilterType> {
         let c_ftype =
             std::ffi::CString::new(fs).expect("Error creating CString");
+        std::ffi::CString::new(fs).expect("Error creating CString");
         let mut c_ret: u32 = 0;
         let res = unsafe {
             tiledb_filter_type_from_str(c_ftype.as_c_str().as_ptr(), &mut c_ret)
@@ -67,24 +68,24 @@ impl FilterType {
 
     pub fn from_u32(ft: u32) -> Option<FilterType> {
         match ft {
-            0 => Some(FilterType::NONE),
-            1 => Some(FilterType::GZIP),
-            2 => Some(FilterType::ZSTD),
-            3 => Some(FilterType::LZ4),
-            4 => Some(FilterType::RLE),
-            5 => Some(FilterType::BZIP2),
-            6 => Some(FilterType::DOUBLE_DELTA),
-            7 => Some(FilterType::BIT_WIDTH_REDUCTION),
-            8 => Some(FilterType::BITSHUFFLE),
-            9 => Some(FilterType::BYTESHUFFLE),
-            10 => Some(FilterType::POSITIVE_DELTA),
-            12 => Some(FilterType::CHECKSUM_MD5),
-            13 => Some(FilterType::CHECKSUM_SHA256),
-            14 => Some(FilterType::DICTIONARY),
-            15 => Some(FilterType::SCALE_FLOAT),
-            16 => Some(FilterType::XOR),
-            18 => Some(FilterType::WEBP),
-            19 => Some(FilterType::DELTA),
+            0 => Some(FilterType::None),
+            1 => Some(FilterType::Gzip),
+            2 => Some(FilterType::Zstd),
+            3 => Some(FilterType::Lz4),
+            4 => Some(FilterType::Rle),
+            5 => Some(FilterType::Bzip2),
+            6 => Some(FilterType::DoubleDelta),
+            7 => Some(FilterType::BitWidthReduction),
+            8 => Some(FilterType::BitShuffle),
+            9 => Some(FilterType::ByteShuffle),
+            10 => Some(FilterType::PositiveDelta),
+            12 => Some(FilterType::ChecksumMD5),
+            13 => Some(FilterType::ChecksumSHA256),
+            14 => Some(FilterType::Dictionary),
+            15 => Some(FilterType::ScaleFloat),
+            16 => Some(FilterType::Xor),
+            18 => Some(FilterType::WebP),
+            19 => Some(FilterType::Delta),
             _ => None,
         }
     }
