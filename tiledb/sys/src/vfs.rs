@@ -18,7 +18,7 @@ pub type LSCallback = ::std::option::Option<
 
 pub type LSRecursiveCallback = ::std::option::Option<
     unsafe extern "C" fn(
-        path: *const std::os::raw::c_char,
+        path: *const std::os::raw::c_uchar,
         path_len: usize,
         object_size: u64,
         callback_data: *mut ::std::os::raw::c_void,
