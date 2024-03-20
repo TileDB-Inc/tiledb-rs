@@ -1,4 +1,6 @@
+use serde_json::json;
 use std::convert::TryFrom;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use crate::array::attribute::RawAttribute;
@@ -7,7 +9,7 @@ use crate::array::{Attribute, Domain, Layout};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ArrayType {
     Dense,
     Sparse,
@@ -236,6 +238,29 @@ impl<'ctx> Schema<'ctx> {
         } else {
             Err(self.context.expect_last_error())
         }
+    }
+}
+
+impl<'ctx> Debug for Schema<'ctx> {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let json = json!({
+            "array_type": format!("{:?}", self.array_type()),
+            "capacity": self.capacity(),
+            "cell_order": format!("{:?}", self.cell_order()),
+            "tile_order": format!("{:?}", self.tile_order()),
+            "allows_duplicates": self.allows_duplicates(),
+            "domain": match self.domain() {
+                Ok(d) => format!("{:?}", d),
+                Err(e) => format!("<{}>", e)
+            },
+            "attributes": (0.. self.nattributes()).map(|a| match self.attribute(a) {
+                Ok(a) => format!("{:?}", a),
+                Err(e) => format!("<Error retrieving attribute {}: {}>", a, e)
+            }).collect::<Vec<String>>(),
+            "version": self.version(),
+            "raw": format!("{:p}", *self.raw),
+        });
+        write!(f, "{}", json)
     }
 }
 
