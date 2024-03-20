@@ -8,6 +8,9 @@ use tiledb::Result as TileDBResult;
 
 use crate::strategy::LifetimeBoundStrategy;
 
+/// Construct a strategy to generate valid (domain, extent) pairs.
+/// A valid output satisfies
+/// `lower < lower + extent <= upper < upper + extent <= type_limit`.
 fn arbitrary_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], T)>
 where
     T: Num
@@ -21,18 +24,23 @@ where
         + 'static,
     std::ops::Range<T>: Strategy<Value = T>,
 {
+    /*
+     * First generate the upper bound.
+     * Then generate the lower bound.
+     * Then generate the extent.
+     */
     let one = <T as num_traits::One>::one();
     let lower_limit = <T as Bounded>::min_value();
     let upper_limit = <T as Bounded>::max_value();
     std::ops::Range::<T> {
-        start: lower_limit + one + one,
-        end: upper_limit - one,
+        start: lower_limit + one + one + one, // Needs this much space for lower bound
+        end: upper_limit - one, // The extent is at least one, so we cannot match the upper limit
     }
     .prop_flat_map(move |upper_bound| {
         (
             std::ops::Range::<T> {
                 start: lower_limit + one,
-                end: upper_bound - one,
+                end: upper_bound - one, // extent is at least one, cannot match upper bound
             },
             Just(upper_bound),
         )
