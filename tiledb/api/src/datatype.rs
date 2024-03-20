@@ -1,51 +1,161 @@
 #[macro_export]
 macro_rules! fn_typed {
-    ($obj:ident.$func:ident, $datatype:expr$(, $arg:expr)* => $then:expr) => {
+    ($func:ident, $datatype:expr$(, $arg:expr)* => $then:expr) => {{
+        type Datatype = $crate::Datatype;
         match $datatype {
-            crate::Datatype::Int8 => $then($obj.$func::<i8>()),
-            crate::Datatype::Int16 => $then($obj.$func::<i16>()),
-            crate::Datatype::Int32 => $then($obj.$func::<i32>()),
-            crate::Datatype::Int64 => $then($obj.$func::<i64>()),
-            crate::Datatype::UInt8 => $then($obj.$func::<u8>()),
-            crate::Datatype::UInt16 => $then($obj.$func::<u16>()),
-            crate::Datatype::UInt32 => $then($obj.$func::<u32>()),
-            crate::Datatype::UInt64 => $then($obj.$func::<u64>()),
-            crate::Datatype::Float32 => $then($obj.$func::<f32>()),
-            crate::Datatype::Float64 => $then($obj.$func::<f64>()),
-            crate::Datatype::Char => unimplemented!(),
-            crate::Datatype::StringAscii => unimplemented!(),
-            crate::Datatype::StringUtf8 => unimplemented!(),
-            crate::Datatype::StringUtf16 => unimplemented!(),
-            crate::Datatype::StringUtf32 => unimplemented!(),
-            crate::Datatype::StringUcs2 => unimplemented!(),
-            crate::Datatype::StringUcs4 => unimplemented!(),
-            crate::Datatype::Any => unimplemented!(),
-            crate::Datatype::DateTimeYear => unimplemented!(),
-            crate::Datatype::DateTimeMonth => unimplemented!(),
-            crate::Datatype::DateTimeWeek => unimplemented!(),
-            crate::Datatype::DateTimeDay => unimplemented!(),
-            crate::Datatype::DateTimeHour => unimplemented!(),
-            crate::Datatype::DateTimeMinute => unimplemented!(),
-            crate::Datatype::DateTimeSecond => unimplemented!(),
-            crate::Datatype::DateTimeMillisecond => unimplemented!(),
-            crate::Datatype::DateTimeMicrosecond => unimplemented!(),
-            crate::Datatype::DateTimeNanosecond => unimplemented!(),
-            crate::Datatype::DateTimePicosecond => unimplemented!(),
-            crate::Datatype::DateTimeFemtosecond => unimplemented!(),
-            crate::Datatype::DateTimeAttosecond => unimplemented!(),
-            crate::Datatype::TimeHour => unimplemented!(),
-            crate::Datatype::TimeMinute => unimplemented!(),
-            crate::Datatype::TimeSecond => unimplemented!(),
-            crate::Datatype::TimeMillisecond => unimplemented!(),
-            crate::Datatype::TimeMicrosecond => unimplemented!(),
-            crate::Datatype::TimeNanosecond => unimplemented!(),
-            crate::Datatype::TimePicosecond => unimplemented!(),
-            crate::Datatype::TimeFemtosecond => unimplemented!(),
-            crate::Datatype::TimeAttosecond => unimplemented!(),
-            crate::Datatype::Blob => unimplemented!(),
-            crate::Datatype::Boolean => unimplemented!(),
-            crate::Datatype::GeometryWkb => unimplemented!(),
-            crate::Datatype::GeometryWkt => unimplemented!(),
+            Datatype::Int8 => {
+                let $func = $func::<i8>();
+                $then
+            }
+            Datatype::Int16 => {
+                let $func = $func::<i16>();
+                $then
+            }
+            Datatype::Int32 => {
+                let $func = $func::<i32>();
+                $then
+            }
+            Datatype::Int64 => {
+                let $func = $func::<i64>();
+                $then
+            }
+            Datatype::UInt8 => {
+                let $func = $func::<u8>();
+                $then
+            }
+            Datatype::UInt16 => {
+                let $func = $func::<u16>();
+                $then
+            }
+            Datatype::UInt32 => {
+                let $func = $func::<u32>();
+                $then
+            }
+            Datatype::UInt64 => {
+                let $func = $func::<u64>();
+                $then
+            }
+            Datatype::Float32 => {
+                let $func = $func::<f32>();
+                $then
+            }
+            Datatype::Float64 => {
+                let $func = $func::<f64>();
+                $then
+            }
+            Datatype::Char => unimplemented!(),
+            Datatype::StringAscii => unimplemented!(),
+            Datatype::StringUtf8 => unimplemented!(),
+            Datatype::StringUtf16 => unimplemented!(),
+            Datatype::StringUtf32 => unimplemented!(),
+            Datatype::StringUcs2 => unimplemented!(),
+            Datatype::StringUcs4 => unimplemented!(),
+            Datatype::Any => unimplemented!(),
+            Datatype::DateTimeYear => unimplemented!(),
+            Datatype::DateTimeMonth => unimplemented!(),
+            Datatype::DateTimeWeek => unimplemented!(),
+            Datatype::DateTimeDay => unimplemented!(),
+            Datatype::DateTimeHour => unimplemented!(),
+            Datatype::DateTimeMinute => unimplemented!(),
+            Datatype::DateTimeSecond => unimplemented!(),
+            Datatype::DateTimeMillisecond => unimplemented!(),
+            Datatype::DateTimeMicrosecond => unimplemented!(),
+            Datatype::DateTimeNanosecond => unimplemented!(),
+            Datatype::DateTimePicosecond => unimplemented!(),
+            Datatype::DateTimeFemtosecond => unimplemented!(),
+            Datatype::DateTimeAttosecond => unimplemented!(),
+            Datatype::TimeHour => unimplemented!(),
+            Datatype::TimeMinute => unimplemented!(),
+            Datatype::TimeSecond => unimplemented!(),
+            Datatype::TimeMillisecond => unimplemented!(),
+            Datatype::TimeMicrosecond => unimplemented!(),
+            Datatype::TimeNanosecond => unimplemented!(),
+            Datatype::TimePicosecond => unimplemented!(),
+            Datatype::TimeFemtosecond => unimplemented!(),
+            Datatype::TimeAttosecond => unimplemented!(),
+            Datatype::Blob => unimplemented!(),
+            Datatype::Boolean => unimplemented!(),
+            Datatype::GeometryWkb => unimplemented!(),
+            Datatype::GeometryWkt => unimplemented!(),
         }
-    };
+    }};
+    ($obj:ident.$func:ident, $datatype:expr$(, $arg:expr)* => $then:expr) => {{
+        type Datatype = $crate::Datatype;
+        match $datatype {
+            Datatype::Int8 => {
+                let $func = $obj.$func::<i8>();
+                $then
+            }
+            Datatype::Int16 => {
+                let $func = $obj.$func::<i16>();
+                $then
+            }
+            Datatype::Int32 => {
+                let $func = $obj.$func::<i32>();
+                $then
+            }
+            Datatype::Int64 => {
+                let $func = $obj.$func::<i64>();
+                $then
+            }
+            Datatype::UInt8 => {
+                let $func = $obj.$func::<u8>();
+                $then
+            }
+            Datatype::UInt16 => {
+                let $func = $obj.$func::<u16>();
+                $then
+            }
+            Datatype::UInt32 => {
+                let $func = $obj.$func::<u32>();
+                $then
+            }
+            Datatype::UInt64 => {
+                let $func = $obj.$func::<u64>();
+                $then
+            }
+            Datatype::Float32 => {
+                let $func = $obj.$func::<f32>();
+                $then
+            }
+            Datatype::Float64 => {
+                let $func = $obj.$func::<f64>();
+                $then
+            }
+            Datatype::Char => unimplemented!(),
+            Datatype::StringAscii => unimplemented!(),
+            Datatype::StringUtf8 => unimplemented!(),
+            Datatype::StringUtf16 => unimplemented!(),
+            Datatype::StringUtf32 => unimplemented!(),
+            Datatype::StringUcs2 => unimplemented!(),
+            Datatype::StringUcs4 => unimplemented!(),
+            Datatype::Any => unimplemented!(),
+            Datatype::DateTimeYear => unimplemented!(),
+            Datatype::DateTimeMonth => unimplemented!(),
+            Datatype::DateTimeWeek => unimplemented!(),
+            Datatype::DateTimeDay => unimplemented!(),
+            Datatype::DateTimeHour => unimplemented!(),
+            Datatype::DateTimeMinute => unimplemented!(),
+            Datatype::DateTimeSecond => unimplemented!(),
+            Datatype::DateTimeMillisecond => unimplemented!(),
+            Datatype::DateTimeMicrosecond => unimplemented!(),
+            Datatype::DateTimeNanosecond => unimplemented!(),
+            Datatype::DateTimePicosecond => unimplemented!(),
+            Datatype::DateTimeFemtosecond => unimplemented!(),
+            Datatype::DateTimeAttosecond => unimplemented!(),
+            Datatype::TimeHour => unimplemented!(),
+            Datatype::TimeMinute => unimplemented!(),
+            Datatype::TimeSecond => unimplemented!(),
+            Datatype::TimeMillisecond => unimplemented!(),
+            Datatype::TimeMicrosecond => unimplemented!(),
+            Datatype::TimeNanosecond => unimplemented!(),
+            Datatype::TimePicosecond => unimplemented!(),
+            Datatype::TimeFemtosecond => unimplemented!(),
+            Datatype::TimeAttosecond => unimplemented!(),
+            Datatype::Blob => unimplemented!(),
+            Datatype::Boolean => unimplemented!(),
+            Datatype::GeometryWkb => unimplemented!(),
+            Datatype::GeometryWkt => unimplemented!(),
+        }
+    }};
 }

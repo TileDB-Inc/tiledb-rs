@@ -107,7 +107,7 @@ impl<'ctx> Debug for Dimension<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let json = json!({
             "datatype": format!("{}", self.datatype()),
-            "domain": fn_typed!(self.domain, self.datatype() => |x| match x { Ok(x) => format!("{:?}", x), Err(e) => format!("<{}>", e) }),
+            "domain": fn_typed!(self.domain, self.datatype() => match domain { Ok(x) => format!("{:?}", x), Err(e) => format!("<{}>", e) }),
             /* TODO: filters */
             "raw": format!("{:p}", *self.raw)
         });
