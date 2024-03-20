@@ -4,6 +4,7 @@ use std::convert::From;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use serde_json::json;
 pub use tiledb_sys::Datatype;
 
 use crate::context::Context;
@@ -208,21 +209,21 @@ impl<'ctx> Attribute<'ctx> {
 
 impl<'ctx> Debug for Attribute<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(
-            f,
-            "{{ \"name\": \"{}\", \"type\": \"{}\", \"address\": \"0x{:?}\" }}",
-            match self.name() {
+        let json = json!({
+            "name": match self.name() {
                 Ok(name) => name,
                 Err(e) => format!("<error reading name: {}>", e),
             },
-            match self.datatype() {
+            "datatype": match self.datatype() {
                 Ok(dt) => dt
                     .to_string()
                     .unwrap_or(String::from("<unrecognized datatype>")),
                 Err(e) => format!("<error reading datatype: {}>", e),
             },
-            *self.raw
-        )
+            /* TODO: other fields */
+            "raw": format!("{:p}", *self.raw)
+        });
+        write!(f, "{}", json)
     }
 }
 
