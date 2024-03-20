@@ -4,43 +4,43 @@ macro_rules! fn_typed {
         type Datatype = $crate::Datatype;
         match $datatype {
             Datatype::Int8 => {
-                let $func = $func::<i8>();
+                let $func = $func::<i8>($($arg,)*);
                 $then
             }
             Datatype::Int16 => {
-                let $func = $func::<i16>();
+                let $func = $func::<i16>($($arg,)*);
                 $then
             }
             Datatype::Int32 => {
-                let $func = $func::<i32>();
+                let $func = $func::<i32>($($arg,)*);
                 $then
             }
             Datatype::Int64 => {
-                let $func = $func::<i64>();
+                let $func = $func::<i64>($($arg,)*);
                 $then
             }
             Datatype::UInt8 => {
-                let $func = $func::<u8>();
+                let $func = $func::<u8>($($arg,)*);
                 $then
             }
             Datatype::UInt16 => {
-                let $func = $func::<u16>();
+                let $func = $func::<u16>($($arg,)*);
                 $then
             }
             Datatype::UInt32 => {
-                let $func = $func::<u32>();
+                let $func = $func::<u32>($($arg,)*);
                 $then
             }
             Datatype::UInt64 => {
-                let $func = $func::<u64>();
+                let $func = $func::<u64>($($arg,)*);
                 $then
             }
             Datatype::Float32 => {
-                let $func = $func::<f32>();
+                let $func = $func::<f32>($($arg,)*);
                 $then
             }
             Datatype::Float64 => {
-                let $func = $func::<f64>();
+                let $func = $func::<f64>($($arg,)*);
                 $then
             }
             Datatype::Char => unimplemented!(),
@@ -83,43 +83,43 @@ macro_rules! fn_typed {
         type Datatype = $crate::Datatype;
         match $datatype {
             Datatype::Int8 => {
-                let $func = $obj.$func::<i8>();
+                let $func = $obj.$func::<i8>($($arg,)*);
                 $then
             }
             Datatype::Int16 => {
-                let $func = $obj.$func::<i16>();
+                let $func = $obj.$func::<i16>($($arg,)*);
                 $then
             }
             Datatype::Int32 => {
-                let $func = $obj.$func::<i32>();
+                let $func = $obj.$func::<i32>($($arg,)*);
                 $then
             }
             Datatype::Int64 => {
-                let $func = $obj.$func::<i64>();
+                let $func = $obj.$func::<i64>($($arg,)*);
                 $then
             }
             Datatype::UInt8 => {
-                let $func = $obj.$func::<u8>();
+                let $func = $obj.$func::<u8>($($arg,)*);
                 $then
             }
             Datatype::UInt16 => {
-                let $func = $obj.$func::<u16>();
+                let $func = $obj.$func::<u16>($($arg,)*);
                 $then
             }
             Datatype::UInt32 => {
-                let $func = $obj.$func::<u32>();
+                let $func = $obj.$func::<u32>($($arg,)*);
                 $then
             }
             Datatype::UInt64 => {
-                let $func = $obj.$func::<u64>();
+                let $func = $obj.$func::<u64>($($arg,)*);
                 $then
             }
             Datatype::Float32 => {
-                let $func = $obj.$func::<f32>();
+                let $func = $obj.$func::<f32>($($arg,)*);
                 $then
             }
             Datatype::Float64 => {
-                let $func = $obj.$func::<f64>();
+                let $func = $obj.$func::<f64>($($arg,)*);
                 $then
             }
             Datatype::Char => unimplemented!(),
