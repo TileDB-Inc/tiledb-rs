@@ -1,3 +1,4 @@
+extern crate serde_json;
 extern crate tiledb_sys as ffi;
 
 macro_rules! cstring {
