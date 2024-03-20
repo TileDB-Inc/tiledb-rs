@@ -56,21 +56,19 @@ where
                         upper_bound - lower_bound
                     };
 
-                    let extent_bound =
-                        if upper_limit - extent_limit < upper_bound {
-                            upper_limit - upper_bound
-                        } else {
-                            extent_limit
-                        };
-                    extent_bound
+                    if upper_limit - extent_limit < upper_bound {
+                        upper_limit - upper_bound
+                    } else {
+                        extent_limit
+                    }
                 },
             },
         )
     })
 }
 
-pub fn arbitrary<'ctx>(
-    context: &'ctx Context,
+pub fn arbitrary(
+    context: &Context,
 ) -> impl Strategy<Value = TileDBResult<Dimension>> {
     (
         crate::datatype::arbitrary_conv(),

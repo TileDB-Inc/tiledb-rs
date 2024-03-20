@@ -89,13 +89,8 @@ impl<'ctx> Domain<'ctx> {
 
 impl<'ctx> Debug for Domain<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut json = json!({
-            "raw": format!("{:p}", *self.raw)
-                /* TODO: what other fields? */
-        });
-
-        json["dimensions"] = serde_json::value::Value::Array(
-            (0..self.ndim())
+        let json = json!({
+            "dimensions": (0..self.ndim())
                 .map(|d| {
                     serde_json::value::Value::String(match self.dimension(d) {
                         Ok(d) => format!("{:?}", d),
@@ -103,7 +98,9 @@ impl<'ctx> Debug for Domain<'ctx> {
                     })
                 })
                 .collect::<Vec<_>>(),
-        );
+            "raw": format!("{:p}", *self.raw)
+                /* TODO: what other fields? */
+        });
 
         write!(f, "{}", json)
     }

@@ -1010,9 +1010,9 @@ name = "tiledb"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "serde_json",
  "tempdir",
  "tiledb-sys",
- "tiledb-test",
 ]
 
 [[package]]
@@ -1034,6 +1034,7 @@ version = "0.1.0"
 name = "tiledb-test"
 version = "0.1.0"
 dependencies = [
+ "num-traits",
  "proptest",
  "tiledb",
 ]
