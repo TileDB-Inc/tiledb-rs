@@ -8,5 +8,6 @@ name = "tiledb_test"
 path = "src/lib.rs"
 
 [dependencies]
+num-traits = "0.2"
 proptest = "1.0.0"
 tiledb = { workspace = true }

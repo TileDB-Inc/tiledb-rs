@@ -19,8 +19,9 @@ pub fn arbitrary(context: &Context) -> impl Strategy<Value = Attribute> {
 mod tests {
     use super::*;
 
+    /// Test that the arbitrary attribute construction always succeeds
     #[test]
-    fn attribute_alloc() {
+    fn attribute_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|(_ in arbitrary(&ctx))| {});
