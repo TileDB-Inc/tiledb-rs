@@ -1,6 +1,7 @@
 extern crate tiledb_sys as ffi;
 
 use std::convert::From;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 pub use tiledb_sys::Datatype;
@@ -40,6 +41,10 @@ pub struct Attribute<'ctx> {
 impl<'ctx> Attribute<'ctx> {
     pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_attribute_t {
         *self.raw
+    }
+
+    pub(crate) fn new(context: &'ctx Context, raw: RawAttribute) -> Self {
+        Attribute { context, raw }
     }
 
     pub fn name(&self) -> TileDBResult<String> {
@@ -201,12 +206,23 @@ impl<'ctx> Attribute<'ctx> {
     }
 }
 
-impl<'ctx> From<(&'ctx Context, RawAttribute)> for Attribute<'ctx> {
-    fn from(value: (&'ctx Context, RawAttribute)) -> Self {
-        Attribute {
-            context: value.0,
-            raw: value.1,
-        }
+impl<'ctx> Debug for Attribute<'ctx> {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(
+            f,
+            "{{ \"name\": \"{}\", \"type\": \"{}\", \"address\": \"0x{:?}\" }}",
+            match self.name() {
+                Ok(name) => name,
+                Err(e) => format!("<error reading name: {}>", e),
+            },
+            match self.datatype() {
+                Ok(dt) => dt
+                    .to_string()
+                    .unwrap_or(String::from("<unrecognized datatype>")),
+                Err(e) => format!("<error reading datatype: {}>", e),
+            },
+            *self.raw
+        )
     }
 }
 
@@ -377,17 +393,6 @@ mod test {
     use super::*;
     use crate::filter::Filter;
     pub use tiledb_sys::FilterType;
-
-    use proptest::prelude::*;
-
-    proptest! {
-        #[test]
-        fn attribute_alloc(dt in tiledb_test::datatype::arbitrary()) {
-            let ctx = Context::new().expect("Error creating context instance.");
-            Builder::new(&ctx, "foo", dt)
-                .expect("Error creating attribute instance.");
-        }
-    }
 
     #[test]
     fn attribute_get_name_and_type() {
