@@ -32,8 +32,8 @@ jobs:
           set -e pipefail
           mkdir -p /opt/tiledb
           cd /opt/tiledb
-          wget -q ${RELEASES_URL}/2.21.0-rc1/tiledb-linux-x86_64-2.21.0-rc1-0ea9c13.tar.gz
-          wget -q ${RELEASES_URL}/2.21.0-rc1/tiledb-linux-x86_64-2.21.0-rc1-0ea9c13.tar.gz.sha256
+          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz
+          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz.sha256
           sha256sum tiledb*.sha256
           tar -C /opt/tiledb -xzf tiledb*.tar.gz
       - name: Lint

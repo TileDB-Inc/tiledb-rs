@@ -23,6 +23,8 @@ mod schema;
 mod string;
 mod subarray;
 mod types;
+mod version;
+mod vfs;
 
 pub use array::*;
 pub use attribute::*;
@@ -45,3 +47,5 @@ pub use schema::*;
 pub use string::*;
 pub use subarray::*;
 pub use types::*;
+pub use version::*;
+pub use vfs::*;

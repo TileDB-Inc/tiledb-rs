@@ -5,6 +5,18 @@ pub type capi_status_t = i32;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_array_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_array_schema_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_attribute_t {
     _unused: [u8; 0],
 }
@@ -29,6 +41,18 @@ pub struct tiledb_ctx_t {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_dimension_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_domain_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_error_t {
     _unused: [u8; 0],
 }
@@ -47,42 +71,36 @@ pub struct tiledb_filter_list_t {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_query_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_query_condition_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_string_t {
     _unused: [u8; 0],
 }
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct tiledb_array_t {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
 pub struct tiledb_subarray_t {
     _unused: [u8; 0],
 }
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct tiledb_dimension_t {
+pub struct tiledb_vfs_t {
     _unused: [u8; 0],
 }
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
-pub struct tiledb_array_schema_t {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct tiledb_domain_t {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct tiledb_query_t {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct tiledb_query_condition_t {
+pub struct tiledb_vfs_fh_t {
     _unused: [u8; 0],
 }
