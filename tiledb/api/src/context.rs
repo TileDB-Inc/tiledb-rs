@@ -193,12 +193,8 @@ mod tests {
         // build of libtiledb.{so,dylib,dll}
         assert!(ctx.is_supported_fs(ffi::Filesystem::MEMFS));
 
-        // On GitHub Actions, we use the release tarball which enables all
-        // backends. Thus we skip this test when running in CI.
-        let var = std::env::var("GITHUB_ACTIONS").unwrap_or(String::from(""));
-        if var != *"true" {
-            assert!(!ctx.is_supported_fs(ffi::Filesystem::HDFS));
-        }
+        // We can't guarantee that any VFS backend is not present so any test
+        // for an unsupported backend is guaranteed to fail somewhere.
     }
 
     #[test]
