@@ -29,6 +29,19 @@ pub mod filter;
 pub mod filter_list;
 pub mod query;
 pub mod string;
+pub mod vfs;
+
+pub fn version() -> (i32, i32, i32) {
+    let mut major: i32 = 0;
+    let mut minor: i32 = 0;
+    let mut patch: i32 = 0;
+
+    unsafe {
+        ffi::tiledb_version(&mut major, &mut minor, &mut patch);
+    }
+
+    (major, minor, patch)
+}
 
 pub use array::Array;
 pub use ffi::Datatype;
