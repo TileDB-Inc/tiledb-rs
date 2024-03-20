@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::context::Context;
 use crate::convert::CAPIConverter;
-use crate::filter_list::FilterList;
+use crate::filter_list::{FilterList, RawFilterList};
 use crate::fn_typed;
 use crate::Datatype;
 use crate::Result as TileDBResult;
@@ -100,7 +100,10 @@ impl<'ctx> Dimension<'ctx> {
         // only fails if dimension is invalid, which Rust API will prevent
         assert_eq!(ffi::TILEDB_OK, c_ret);
 
-        FilterList { _wrapped: c_fl }
+        FilterList {
+            context: self.context,
+            raw: RawFilterList::Owned(c_fl),
+        }
     }
 }
 
@@ -197,7 +200,8 @@ impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
 #[cfg(test)]
 mod tests {
     use crate::array::dimension::*;
-    use crate::filter::Filter;
+    use crate::filter::*;
+    use crate::filter_list::Builder as FilterListBuilder;
 
     #[test]
     fn test_dimension_alloc() {
@@ -273,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dimension_filter_list() {
+    fn test_dimension_filter_list() -> TileDBResult<()> {
         let context = Context::new().unwrap();
 
         // none set
@@ -291,16 +295,22 @@ mod tests {
             .into();
 
             let fl = dimension.filters();
-            assert_eq!(0, fl.get_num_filters(&context).unwrap());
+            assert_eq!(0, fl.get_num_filters().unwrap());
         }
 
         // with some
         {
             let domain: [i32; 2] = [1, 4];
             let extent: i32 = 4;
-            let lz4 = Filter::new(&context, ffi::FilterType::LZ4).unwrap();
-            let mut fl = FilterList::new(&context).unwrap();
-            fl.add_filter(&context, &lz4).unwrap();
+            let fl = FilterListBuilder::new(&context)?
+                .add_filter(
+                    CompressionFilterBuilder::new(
+                        &context,
+                        CompressionType::Lz4,
+                    )?
+                    .build(),
+                )?
+                .build();
             let dimension: Dimension = Builder::new::<i32>(
                 &context,
                 "test_dimension_alloc",
@@ -314,13 +324,12 @@ mod tests {
             .into();
 
             let fl = dimension.filters();
-            assert_eq!(1, fl.get_num_filters(&context).unwrap());
+            assert_eq!(1, fl.get_num_filters().unwrap());
 
-            let outlz4 = fl.get_filter(&context, 0).unwrap();
-            assert_eq!(
-                ffi::FilterType::LZ4,
-                outlz4.get_type(&context).unwrap()
-            );
+            let outlz4 = fl.get_filter(0).unwrap();
+            assert_eq!(ffi::FilterType::Lz4, outlz4.get_type().unwrap());
         }
+
+        Ok(())
     }
 }

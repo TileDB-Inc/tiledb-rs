@@ -10,7 +10,7 @@ pub use tiledb_sys::Datatype;
 use crate::context::Context;
 use crate::convert::CAPIConverter;
 use crate::error::Error;
-use crate::filter_list::FilterList;
+use crate::filter_list::{FilterList, RawFilterList};
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawAttribute {
@@ -93,7 +93,7 @@ impl<'ctx> Attribute<'ctx> {
         c_nullable == 1
     }
 
-    pub fn filter_list(&self) -> TileDBResult<FilterList> {
+    pub fn filter_list(&self) -> TileDBResult<FilterList<'ctx>> {
         let c_context = self.context.capi();
         let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
         let res = unsafe {
@@ -104,7 +104,10 @@ impl<'ctx> Attribute<'ctx> {
             )
         };
         if res == ffi::TILEDB_OK {
-            Ok(FilterList { _wrapped: c_flist })
+            Ok(FilterList {
+                context: self.context,
+                raw: RawFilterList::Owned(c_flist),
+            })
         } else {
             Err(self.context.expect_last_error())
         }
@@ -392,8 +395,8 @@ impl<'ctx> Builder<'ctx> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::filter::Filter;
-    pub use tiledb_sys::FilterType;
+    use crate::filter::*;
+    use crate::filter_list::Builder as FilterListBuilder;
 
     #[test]
     fn attribute_get_name_and_type() {
@@ -434,7 +437,7 @@ mod test {
     }
 
     #[test]
-    fn attribute_get_set_filter_list() {
+    fn attribute_get_set_filter_list() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context instance.");
 
         {
@@ -446,29 +449,21 @@ mod test {
                 .filter_list()
                 .expect("Error getting attribute filter list.");
             let nfilters = flist1
-                .get_num_filters(&ctx)
+                .get_num_filters()
                 .expect("Error getting number of filters.");
             assert_eq!(nfilters, 0);
         }
 
         {
-            let f1 = Filter::new(&ctx, FilterType::NONE)
-                .expect("Error creating filter 1.");
-            let f2 = Filter::new(&ctx, FilterType::BIT_WIDTH_REDUCTION)
-                .expect("Error creating filter 2.");
-            let f3 = Filter::new(&ctx, FilterType::ZSTD)
-                .expect("Error creating filter 3.");
-            let mut flist2 =
-                FilterList::new(&ctx).expect("Error creating filter list.");
-            flist2
-                .add_filter(&ctx, &f1)
-                .expect("Error adding filter 1 to list.");
-            flist2
-                .add_filter(&ctx, &f2)
-                .expect("Error adding filter 2 to list.");
-            flist2
-                .add_filter(&ctx, &f3)
-                .expect("Error adding filter 3 to list.");
+            let flist2 = FilterListBuilder::new(&ctx)
+                .expect("Error creating filter list builder.")
+                .add_filter(NoopFilterBuilder::new(&ctx)?.build())?
+                .add_filter(BitWidthReductionFilterBuilder::new(&ctx)?.build())?
+                .add_filter(
+                    CompressionFilterBuilder::new(&ctx, CompressionType::Zstd)?
+                        .build(),
+                )?
+                .build();
 
             let attr = Builder::new(&ctx, "foo", Datatype::UInt8)
                 .expect("Error creating attribute instance.")
@@ -479,10 +474,12 @@ mod test {
             let flist3 =
                 attr.filter_list().expect("Error getting filter list.");
             let nfilters = flist3
-                .get_num_filters(&ctx)
+                .get_num_filters()
                 .expect("Error getting number of filters.");
             assert_eq!(nfilters, 3);
         }
+
+        Ok(())
     }
 
     #[test]
