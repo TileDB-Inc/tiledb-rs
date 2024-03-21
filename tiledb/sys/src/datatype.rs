@@ -277,6 +277,93 @@ impl Datatype {
             false
         }
     }
+
+    /// Returns whether this type is an integral type (i.e. integer)
+    // Keep in sync with sm/enums/datatype.h::datatype_is_integer
+    pub fn is_integral_type(&self) -> bool {
+        matches!(
+            *self,
+            Datatype::Boolean
+                | Datatype::Int8
+                | Datatype::Int16
+                | Datatype::Int32
+                | Datatype::Int64
+                | Datatype::UInt8
+                | Datatype::UInt16
+                | Datatype::UInt32
+                | Datatype::UInt64
+        )
+    }
+
+    /// Returns whether this type is a variable-length string type
+    // Keep in sync with sm/enums/datatype.h::datatype_is_string
+    pub fn is_string_type(&self) -> bool {
+        matches!(
+            *self,
+            Datatype::StringAscii
+                | Datatype::StringUtf8
+                | Datatype::StringUtf16
+                | Datatype::StringUtf32
+                | Datatype::StringUcs2
+                | Datatype::StringUcs4
+        )
+    }
+
+    /// Returns whether this type is a DateTime type of any resolution
+    // Keep in sync with sm/enums/datatype.h::datatype_is_datetime
+    pub fn is_datetime_type(&self) -> bool {
+        matches!(
+            *self,
+            Datatype::DateTimeYear
+                | Datatype::DateTimeMonth
+                | Datatype::DateTimeWeek
+                | Datatype::DateTimeDay
+                | Datatype::DateTimeHour
+                | Datatype::DateTimeMinute
+                | Datatype::DateTimeSecond
+                | Datatype::DateTimeMillisecond
+                | Datatype::DateTimeMicrosecond
+                | Datatype::DateTimeNanosecond
+                | Datatype::DateTimePicosecond
+                | Datatype::DateTimeFemtosecond
+                | Datatype::DateTimeAttosecond
+        )
+    }
+
+    /// Returns whether this type is a Time type of any resolution
+    // Keep in sync with sm/enums/datatype.h::datatype_is_time
+    pub fn is_time_type(&self) -> bool {
+        matches!(
+            *self,
+            Datatype::TimeHour
+                | Datatype::TimeMinute
+                | Datatype::TimeSecond
+                | Datatype::TimeMillisecond
+                | Datatype::TimeMicrosecond
+                | Datatype::TimeNanosecond
+                | Datatype::TimePicosecond
+                | Datatype::TimeFemtosecond
+                | Datatype::TimeAttosecond
+        )
+    }
+
+    /// Returns whether this type can be used as a dimension type of a sparse array
+    pub fn is_allowed_dimension_type_sparse(&self) -> bool {
+        self.is_integral_type()
+            || self.is_datetime_type()
+            || self.is_time_type()
+            || matches!(
+                *self,
+                Datatype::Float32 | Datatype::Float64 | Datatype::StringAscii
+            )
+    }
+
+    /// Returns whether this type can be used as a dimension type of a dense array
+    pub fn is_allowed_dimension_type_dense(&self) -> bool {
+        self.is_integral_type()
+            || self.is_datetime_type()
+            || self.is_time_type()
+    }
 }
 
 impl Display for Datatype {
