@@ -48,7 +48,7 @@ impl<'ctx> Query<'ctx> {
     // if you can re-submit the query then Self makes sense.
     // if not then Array makes more sense
     pub fn submit(self) -> TileDBResult<Self> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_query = *self.raw;
         let c_ret = unsafe { ffi::tiledb_query_submit(c_context, c_query) };
         if c_ret == ffi::TILEDB_OK {
@@ -69,7 +69,7 @@ impl<'ctx> Builder<'ctx> {
         array: Array<'ctx>,
         query_type: QueryType,
     ) -> TileDBResult<Self> {
-        let c_context = context.as_mut_ptr();
+        let c_context = context.capi();
         let c_array = array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
@@ -97,7 +97,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn layout(self, layout: Layout) -> TileDBResult<Self> {
-        let c_context = self.query.context.as_mut_ptr();
+        let c_context = self.query.context.capi();
         let c_query = *self.query.raw;
         let c_layout = layout.capi_enum();
         let c_ret = unsafe {
@@ -119,7 +119,7 @@ impl<'ctx> Builder<'ctx> {
         name: &str,
         data: &mut [Conv],
     ) -> TileDBResult<Self> {
-        let c_context = self.query.context.as_mut_ptr();
+        let c_context = self.query.context.capi();
         let c_query = *self.query.raw;
         let c_name = cstring!(name);
 

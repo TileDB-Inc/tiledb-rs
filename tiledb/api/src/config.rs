@@ -1,42 +1,75 @@
-extern crate tiledb_sys as ffi;
+use std::ops::Deref;
 
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
-pub struct Config {
-    _wrapped: *mut ffi::tiledb_config_t,
+pub(crate) enum RawConfig {
+    Owned(*mut ffi::tiledb_config_t),
 }
 
-pub struct ConfigIterator<'a> {
-    cfg: &'a Config,
-    _wrapped: *mut ffi::tiledb_config_iter_t,
+impl Deref for RawConfig {
+    type Target = *mut ffi::tiledb_config_t;
+    fn deref(&self) -> &Self::Target {
+        let RawConfig::Owned(ref ffi) = *self;
+        ffi
+    }
+}
+
+impl Drop for RawConfig {
+    fn drop(&mut self) {
+        let RawConfig::Owned(ref mut ffi) = *self;
+        unsafe {
+            ffi::tiledb_config_free(ffi);
+        }
+    }
+}
+
+pub(crate) enum RawConfigIter {
+    Owned(*mut ffi::tiledb_config_iter_t),
+}
+
+impl Deref for RawConfigIter {
+    type Target = *mut ffi::tiledb_config_iter_t;
+    fn deref(&self) -> &Self::Target {
+        let RawConfigIter::Owned(ref ffi) = *self;
+        ffi
+    }
+}
+
+impl Drop for RawConfigIter {
+    fn drop(&mut self) {
+        let RawConfigIter::Owned(ref mut ffi) = *self;
+        unsafe {
+            ffi::tiledb_config_iter_free(ffi);
+        }
+    }
+}
+
+pub struct Config {
+    pub(crate) raw: RawConfig,
+}
+
+pub struct ConfigIterator<'cfg> {
+    pub(crate) _cfg: &'cfg Config,
+    pub(crate) raw: RawConfigIter,
 }
 
 impl Config {
+    pub fn capi(&self) -> *mut ffi::tiledb_config_t {
+        *self.raw
+    }
+
     pub fn new() -> TileDBResult<Config> {
-        let mut cfg = Config {
-            _wrapped: std::ptr::null_mut::<ffi::tiledb_config_t>(),
-        };
+        let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
-        let res = unsafe {
-            ffi::tiledb_config_alloc(
-                &mut cfg._wrapped as *mut *mut ffi::tiledb_config_t,
-                &mut c_err,
-            )
-        };
+        let res = unsafe { ffi::tiledb_config_alloc(&mut c_cfg, &mut c_err) };
         if res == ffi::TILEDB_OK {
-            Ok(cfg)
+            Ok(Config {
+                raw: RawConfig::Owned(c_cfg),
+            })
         } else {
             Err(Error::from(c_err))
         }
-    }
-
-    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_config_t {
-        self._wrapped
-    }
-
-    pub fn as_mut_ptr_ptr(&mut self) -> *mut *mut ffi::tiledb_config_t {
-        &mut self._wrapped
     }
 
     pub fn set(&mut self, key: &str, val: &str) -> TileDBResult<()> {
@@ -47,7 +80,7 @@ impl Config {
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_set(
-                self._wrapped,
+                *self.raw,
                 c_key.as_c_str().as_ptr(),
                 c_val.as_c_str().as_ptr(),
                 &mut c_err,
@@ -68,7 +101,7 @@ impl Config {
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_get(
-                self._wrapped,
+                *self.raw,
                 c_key.as_c_str().as_ptr(),
                 &mut val as *mut *const std::os::raw::c_char,
                 &mut c_err,
@@ -90,7 +123,7 @@ impl Config {
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_unset(
-                self._wrapped,
+                *self.raw,
                 c_key.as_c_str().as_ptr(),
                 &mut c_err,
             )
@@ -108,7 +141,7 @@ impl Config {
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_load_from_file(
-                self._wrapped,
+                *self.raw,
                 c_path.as_c_str().as_ptr(),
                 &mut c_err,
             )
@@ -126,7 +159,7 @@ impl Config {
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_save_to_file(
-                self._wrapped,
+                *self.raw,
                 c_path.as_c_str().as_ptr(),
                 &mut c_err,
             )
@@ -139,28 +172,11 @@ impl Config {
     }
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            _wrapped: std::ptr::null_mut::<ffi::tiledb_config_t>(),
-        }
-    }
-}
-
-impl Drop for Config {
-    fn drop(&mut self) {
-        if self._wrapped.is_null() {
-            return;
-        }
-        unsafe { ffi::tiledb_config_free(&mut self._wrapped) }
-    }
-}
-
 impl PartialEq for Config {
     fn eq(&self, other: &Self) -> bool {
         let mut eq: u8 = 0;
         let res = unsafe {
-            ffi::tiledb_config_compare(self._wrapped, other._wrapped, &mut eq)
+            ffi::tiledb_config_compare(*self.raw, *other.raw, &mut eq)
         };
         if res == ffi::TILEDB_OK {
             eq == 1
@@ -170,48 +186,35 @@ impl PartialEq for Config {
     }
 }
 
-impl<'a> IntoIterator for &'a Config {
+impl<'cfg> IntoIterator for &'cfg Config {
     type Item = (String, String);
-    type IntoIter = ConfigIterator<'a>;
+    type IntoIter = ConfigIterator<'cfg>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let mut iter = ConfigIterator {
-            cfg: self,
-            _wrapped: std::ptr::null_mut::<ffi::tiledb_config_iter_t>(),
-        };
+        let mut c_iter: *mut ffi::tiledb_config_iter_t = out_ptr!();
         let c_path = std::ptr::null::<std::os::raw::c_char>();
-        let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
+        let mut c_err: *mut ffi::tiledb_error_t = out_ptr!();
         let res = unsafe {
             ffi::tiledb_config_iter_alloc(
-                iter.cfg._wrapped,
+                *self.raw,
                 c_path,
-                &mut iter._wrapped,
+                &mut c_iter,
                 &mut c_err,
             )
         };
 
         if res == ffi::TILEDB_OK {
-            iter
+            ConfigIterator {
+                _cfg: self,
+                raw: RawConfigIter::Owned(c_iter),
+            }
         } else {
             panic!("Not entirely sure what to do here.")
         }
     }
 }
 
-impl<'a> Drop for ConfigIterator<'a> {
-    fn drop(&mut self) {
-        if self._wrapped.is_null() {
-            return;
-        }
-        unsafe {
-            ffi::tiledb_config_iter_free(
-                &mut self._wrapped as *mut *mut ffi::tiledb_config_iter_t,
-            )
-        }
-    }
-}
-
-impl<'a> Iterator for ConfigIterator<'a> {
+impl<'cfg> Iterator for ConfigIterator<'cfg> {
     type Item = (String, String);
     fn next(&mut self) -> Option<Self::Item> {
         let mut c_key = std::ptr::null::<std::os::raw::c_char>();
@@ -219,7 +222,7 @@ impl<'a> Iterator for ConfigIterator<'a> {
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let mut done: i32 = 0;
         let res = unsafe {
-            ffi::tiledb_config_iter_done(self._wrapped, &mut done, &mut c_err)
+            ffi::tiledb_config_iter_done(*self.raw, &mut done, &mut c_err)
         };
 
         if res != ffi::TILEDB_OK || done != 0 {
@@ -228,7 +231,7 @@ impl<'a> Iterator for ConfigIterator<'a> {
 
         let res = unsafe {
             ffi::tiledb_config_iter_here(
-                self._wrapped,
+                *self.raw,
                 &mut c_key as *mut *const std::os::raw::c_char,
                 &mut c_val as *mut *const std::os::raw::c_char,
                 &mut c_err,
@@ -248,7 +251,7 @@ impl<'a> Iterator for ConfigIterator<'a> {
             unsafe {
                 // TODO: Ignoring the errors here since I have no idea how we'd
                 // do anything abou them.
-                ffi::tiledb_config_iter_next(self._wrapped, &mut c_err);
+                ffi::tiledb_config_iter_next(*self.raw, &mut c_err);
             }
 
             Some((key, val))

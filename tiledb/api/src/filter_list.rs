@@ -9,26 +9,22 @@ pub struct FilterList {
 }
 
 impl FilterList {
+    pub fn capi(&self) -> *mut ffi::tiledb_filter_list_t {
+        self._wrapped
+    }
+
     pub fn new(ctx: &Context) -> TileDBResult<FilterList> {
         let mut flist = FilterList {
             _wrapped: std::ptr::null_mut::<ffi::tiledb_filter_list_t>(),
         };
         let res = unsafe {
-            ffi::tiledb_filter_list_alloc(ctx.as_mut_ptr(), &mut flist._wrapped)
+            ffi::tiledb_filter_list_alloc(ctx.capi(), &mut flist._wrapped)
         };
         if res == ffi::TILEDB_OK {
             Ok(flist)
         } else {
             Err(ctx.expect_last_error())
         }
-    }
-
-    pub fn as_mut_ptr(&self) -> *mut ffi::tiledb_filter_list_t {
-        self._wrapped
-    }
-
-    pub fn as_mut_ptr_ptr(&mut self) -> *mut *mut ffi::tiledb_filter_list_t {
-        &mut self._wrapped
     }
 
     pub fn add_filter(
@@ -38,7 +34,7 @@ impl FilterList {
     ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_list_add_filter(
-                ctx.as_mut_ptr(),
+                ctx.capi(),
                 self._wrapped,
                 filter.capi(),
             )
@@ -54,7 +50,7 @@ impl FilterList {
         let mut num: u32 = 0;
         let res = unsafe {
             ffi::tiledb_filter_list_get_nfilters(
-                ctx.as_mut_ptr(),
+                ctx.capi(),
                 self._wrapped,
                 &mut num,
             )
@@ -74,7 +70,7 @@ impl FilterList {
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let res = unsafe {
             ffi::tiledb_filter_list_get_filter_from_index(
-                ctx.as_mut_ptr(),
+                ctx.capi(),
                 self._wrapped,
                 index,
                 &mut c_filter,
@@ -96,7 +92,7 @@ impl FilterList {
     ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_list_set_max_chunk_size(
-                ctx.as_mut_ptr(),
+                ctx.capi(),
                 self._wrapped,
                 size,
             )
@@ -112,7 +108,7 @@ impl FilterList {
         let mut size: u32 = 0;
         let res = unsafe {
             ffi::tiledb_filter_list_get_max_chunk_size(
-                ctx.as_mut_ptr(),
+                ctx.capi(),
                 self._wrapped,
                 &mut size,
             )

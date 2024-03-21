@@ -46,7 +46,7 @@ impl<'ctx> Dimension<'ctx> {
     }
 
     pub fn datatype(&self) -> Datatype {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_dimension = self.capi();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let c_ret = unsafe {
@@ -63,7 +63,7 @@ impl<'ctx> Dimension<'ctx> {
     }
 
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_dimension = self.capi();
         let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
 
@@ -87,7 +87,7 @@ impl<'ctx> Dimension<'ctx> {
     pub fn filters(&self) -> FilterList {
         let mut c_fl: *mut ffi::tiledb_filter_list_t = out_ptr!();
 
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_dimension = self.capi();
         let c_ret = unsafe {
             ffi::tiledb_dimension_get_filter_list(
@@ -133,7 +133,7 @@ impl<'ctx> Builder<'ctx> {
         domain: &[Conv; 2],
         extent: &Conv,
     ) -> TileDBResult<Self> {
-        let c_context = context.as_mut_ptr();
+        let c_context = context.capi();
         let c_datatype = datatype.capi_enum();
 
         let c_name = cstring!(name);
@@ -169,9 +169,9 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn filters(self, filters: FilterList) -> TileDBResult<Self> {
-        let c_context = self.dim.context.as_mut_ptr();
+        let c_context = self.dim.context.capi();
         let c_dimension = self.dim.capi();
-        let c_fl = filters.as_mut_ptr();
+        let c_fl = filters.capi();
 
         if unsafe {
             ffi::tiledb_dimension_set_filter_list(c_context, c_dimension, c_fl)

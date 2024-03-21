@@ -40,7 +40,7 @@ pub struct Attribute<'ctx> {
 }
 
 impl<'ctx> Attribute<'ctx> {
-    pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_attribute_t {
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_attribute_t {
         *self.raw
     }
 
@@ -49,7 +49,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn name(&self) -> TileDBResult<String> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let mut c_name = std::ptr::null::<std::ffi::c_char>();
         let res = unsafe {
             ffi::tiledb_attribute_get_name(c_context, *self.raw, &mut c_name)
@@ -63,7 +63,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let mut c_dtype: std::ffi::c_uint = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_type(c_context, *self.raw, &mut c_dtype)
@@ -80,7 +80,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn is_nullable(&self) -> bool {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let mut c_nullable: std::ffi::c_uchar = 0;
         let c_ret = unsafe {
             ffi::tiledb_attribute_get_nullable(
@@ -94,17 +94,17 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn filter_list(&self) -> TileDBResult<FilterList> {
-        let c_context = self.context.as_mut_ptr();
-        let mut flist = FilterList::default();
+        let c_context = self.context.capi();
+        let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
         let res = unsafe {
             ffi::tiledb_attribute_get_filter_list(
                 c_context,
                 *self.raw,
-                flist.as_mut_ptr_ptr(),
+                &mut c_flist,
             )
         };
         if res == ffi::TILEDB_OK {
-            Ok(flist)
+            Ok(FilterList { _wrapped: c_flist })
         } else {
             Err(self.context.expect_last_error())
         }
@@ -115,7 +115,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<u32> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let mut c_num: std::ffi::c_uint = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_val_num(
@@ -130,7 +130,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn cell_size(&self) -> TileDBResult<u64> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let mut c_size: std::ffi::c_ulonglong = 0;
         let res = unsafe {
             ffi::tiledb_attribute_get_cell_size(
@@ -147,7 +147,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn fill_value<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
@@ -177,7 +177,7 @@ impl<'ctx> Attribute<'ctx> {
     pub fn fill_value_nullable<Conv: CAPIConverter>(
         &self,
     ) -> TileDBResult<(Conv, bool)> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
@@ -237,7 +237,7 @@ impl<'ctx> Builder<'ctx> {
         name: &str,
         datatype: Datatype,
     ) -> TileDBResult<Self> {
-        let c_context = context.as_mut_ptr();
+        let c_context = context.capi();
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
         let c_name = cstring!(name);
         let res = unsafe {
@@ -261,7 +261,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
-        let c_context = self.attr.context.as_mut_ptr();
+        let c_context = self.attr.context.capi();
         let c_num = num as std::ffi::c_uint;
         let res = unsafe {
             ffi::tiledb_attribute_set_cell_val_num(
@@ -282,7 +282,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn nullability(self, nullable: bool) -> TileDBResult<Self> {
-        let c_context = self.attr.context.as_mut_ptr();
+        let c_context = self.attr.context.capi();
         let c_nullable: u8 = if nullable { 1 } else { 0 };
         let res = unsafe {
             ffi::tiledb_attribute_set_nullable(
@@ -311,7 +311,7 @@ impl<'ctx> Builder<'ctx> {
             )));
         }
 
-        let c_context = self.attr.context.as_mut_ptr();
+        let c_context = self.attr.context.capi();
         let c_attr = *self.attr.raw;
         let c_val: Conv::CAPIType = value.to_capi();
 
@@ -345,7 +345,7 @@ impl<'ctx> Builder<'ctx> {
             )));
         }
 
-        let c_context = self.attr.context.as_mut_ptr();
+        let c_context = self.attr.context.capi();
         let c_attr = *self.attr.raw;
         let c_val: Conv::CAPIType = value.to_capi();
         let c_nullable: u8 = if nullable { 1 } else { 0 };
@@ -368,13 +368,13 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn filter_list(self, filter_list: &FilterList) -> TileDBResult<Self> {
-        let c_context = self.attr.context.as_mut_ptr();
+        let c_context = self.attr.context.capi();
         let res = unsafe {
             ffi::tiledb_attribute_set_filter_list(
                 c_context,
                 *self.attr.raw,
                 // TODO: does the C API copy this? Or alias the pointer? Safety is not obvious
-                filter_list.as_mut_ptr(),
+                filter_list.capi(),
             )
         };
         if res == ffi::TILEDB_OK {

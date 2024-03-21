@@ -93,6 +93,10 @@ pub struct Array<'ctx> {
 }
 
 impl<'ctx> Array<'ctx> {
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_t {
+        *self.raw
+    }
+
     pub fn create(
         context: &'ctx Context,
         name: &str,
@@ -101,9 +105,9 @@ impl<'ctx> Array<'ctx> {
         let c_name = cstring!(name);
         if unsafe {
             ffi::tiledb_array_create(
-                context.as_mut_ptr(),
+                context.capi(),
                 c_name.as_ptr(),
-                schema.as_mut_ptr(),
+                schema.capi(),
             )
         } == ffi::TILEDB_OK
         {
@@ -118,7 +122,7 @@ impl<'ctx> Array<'ctx> {
         uri: &str,
         mode: Mode,
     ) -> TileDBResult<Self> {
-        let ctx = context.as_mut_ptr();
+        let ctx = context.capi();
         let mut array_raw: *mut ffi::tiledb_array_t = std::ptr::null_mut();
 
         let c_uri = cstring!(uri);
@@ -142,15 +146,11 @@ impl<'ctx> Array<'ctx> {
             Err(context.expect_last_error())
         }
     }
-
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_t {
-        *self.raw
-    }
 }
 
 impl Drop for Array<'_> {
     fn drop(&mut self) {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_array = *self.raw;
         let c_ret = unsafe { ffi::tiledb_array_close(c_context, c_array) };
         if c_ret != ffi::TILEDB_OK {
