@@ -4,8 +4,7 @@ use tiledb::context::Context;
 use tiledb::Result as TileDBResult;
 
 pub fn arbitrary_array_type() -> impl Strategy<Value = ArrayType> {
-    // TODO: implement Domain scenario for Dense arrays
-    Just(ArrayType::Sparse)
+    prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]
 }
 
 pub fn arbitrary(

@@ -1,10 +1,10 @@
 use num_traits::{Bounded, Num};
 use proptest::prelude::*;
 use std::fmt::Debug;
-use tiledb::array::{Dimension, DimensionBuilder};
+use tiledb::array::{ArrayType, Dimension, DimensionBuilder};
 use tiledb::context::Context;
-use tiledb::fn_typed;
 use tiledb::Result as TileDBResult;
+use tiledb::{fn_typed, Datatype};
 
 use crate::strategy::LifetimeBoundStrategy;
 
@@ -75,32 +75,50 @@ where
     })
 }
 
+pub fn arbitrary_for_type(
+    context: &Context,
+    datatype: Datatype,
+) -> impl Strategy<Value = TileDBResult<Dimension>> {
+    fn_typed!(arbitrary_range_and_extent, datatype =>
+        (crate::attribute::arbitrary_name(), arbitrary_range_and_extent).prop_map(move |(name, values)| {
+            DimensionBuilder::new(context, name.as_ref(), datatype, &values.0, &values.1)
+                .map(|b| b.build())
+    }).bind())
+}
+
 pub fn arbitrary(
     context: &Context,
+    array_type: ArrayType,
 ) -> impl Strategy<Value = TileDBResult<Dimension>> {
-    (
-        crate::datatype::arbitrary_conv(),
-        crate::attribute::arbitrary_name(),
-    )
-        .prop_flat_map(|(dt, name)| {
-            fn_typed!(arbitrary_range_and_extent, dt =>
-                (Just(dt), Just(name), arbitrary_range_and_extent).prop_map(|(dt, name, values)| {
-                    DimensionBuilder::new(context, name.as_ref(), dt, &values.0, &values.1)
-                        .map(|b| b.build())
-            }).bind())
-        })
+    match array_type {
+        ArrayType::Dense => {
+            crate::datatype::arbitrary_for_dense_dimension().boxed()
+        }
+        ArrayType::Sparse => crate::datatype::arbitrary_implemented().boxed(),
+    }
+    .prop_flat_map(|dt| arbitrary_for_type(context, dt))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Test that the arbitrary dimension construction always succeeds
+    /// Test that the arbitrary dimension dense array construction always succeeds
     #[test]
-    fn dimension_arbitrary() {
+    fn dimension_arbitrary_dense() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in arbitrary(&ctx))| {
+        proptest!(|(maybe_dimension in arbitrary(&ctx, ArrayType::Dense))| {
+            maybe_dimension.expect("Error constructing arbitrary dimension");
+        });
+    }
+
+    /// Test that the arbitrary dimension sparse array construction always succeeds
+    #[test]
+    fn dimension_arbitrary_sparse() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(maybe_dimension in arbitrary(&ctx, ArrayType::Sparse))| {
             maybe_dimension.expect("Error constructing arbitrary dimension");
         });
     }

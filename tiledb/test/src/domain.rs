@@ -13,20 +13,30 @@ pub fn arbitrary(
     const MAX_DIMENSIONS: usize = 8;
 
     match array_type {
-        ArrayType::Dense => unimplemented!(),
+        ArrayType::Dense => crate::datatype::arbitrary_for_dense_dimension()
+            .prop_flat_map(|dimension_type| {
+                proptest::collection::vec(
+                    crate::dimension::arbitrary_for_type(
+                        context,
+                        dimension_type,
+                    ),
+                    MIN_DIMENSIONS..=MAX_DIMENSIONS,
+                )
+            })
+            .bind(),
         ArrayType::Sparse => proptest::collection::vec(
-            crate::dimension::arbitrary(context),
+            crate::dimension::arbitrary(context, array_type),
             MIN_DIMENSIONS..=MAX_DIMENSIONS,
         )
-        .prop_map(|dimensions| {
-            let mut d = DomainBuilder::new(context)?;
-            for dim in dimensions {
-                d = d.add_dimension(dim?)?;
-            }
-            Ok(d.build())
-        })
         .bind(),
     }
+    .prop_map(|dimensions| {
+        let mut d = DomainBuilder::new(context)?;
+        for dim in dimensions {
+            d = d.add_dimension(dim?)?;
+        }
+        Ok(d.build())
+    })
 }
 
 #[cfg(test)]
