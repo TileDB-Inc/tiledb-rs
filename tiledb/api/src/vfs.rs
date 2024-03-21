@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 pub use ffi::VFSMode;
 
-use crate::config::Config;
+use crate::config::{Config, RawConfig};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
@@ -66,11 +66,7 @@ impl<'ctx> VFS<'ctx> {
     pub fn new(ctx: &'ctx Context, config: &Config) -> TileDBResult<VFS<'ctx>> {
         let mut c_vfs: *mut ffi::tiledb_vfs_t = out_ptr!();
         let res = unsafe {
-            ffi::tiledb_vfs_alloc(
-                ctx.as_mut_ptr(),
-                config.as_mut_ptr(),
-                &mut c_vfs,
-            )
+            ffi::tiledb_vfs_alloc(ctx.capi(), config.capi(), &mut c_vfs)
         };
         if res == ffi::TILEDB_OK {
             Ok(VFS {
@@ -83,22 +79,23 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn get_config(&self) -> TileDBResult<Config> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
-        let mut config = Config::default();
-        let res = unsafe {
-            ffi::tiledb_vfs_get_config(c_ctx, c_vfs, config.as_mut_ptr_ptr())
-        };
+        let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
+        let res =
+            unsafe { ffi::tiledb_vfs_get_config(c_ctx, c_vfs, &mut c_cfg) };
 
         if res == ffi::TILEDB_OK {
-            Ok(config)
+            Ok(Config {
+                raw: RawConfig::Owned(c_cfg),
+            })
         } else {
             Err(self.context.expect_last_error())
         }
     }
 
     pub fn is_bucket(&self, uri: &str) -> TileDBResult<bool> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_bucket: i32 = 0;
@@ -119,7 +116,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn is_empty_bucket(&self, uri: &str) -> TileDBResult<bool> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_empty: i32 = 0;
@@ -140,7 +137,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn create_bucket(&self, uri: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res = unsafe {
@@ -155,7 +152,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn remove_bucket(&self, uri: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res = unsafe {
@@ -170,7 +167,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn empty_bucket(&self, uri: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res = unsafe {
@@ -185,7 +182,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn is_dir(&self, uri: &str) -> TileDBResult<bool> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_dir: i32 = 0;
@@ -201,7 +198,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn dir_size(&self, uri: &str) -> TileDBResult<u64> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_size: u64 = 0;
@@ -217,7 +214,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn create_dir(&self, uri: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res =
@@ -231,7 +228,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn remove_dir(&self, uri: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res =
@@ -245,7 +242,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn copy_dir(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
@@ -266,7 +263,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn move_dir(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
@@ -287,7 +284,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn is_file(&self, uri: &str) -> TileDBResult<bool> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_file: i32 = 0;
@@ -308,7 +305,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn file_size(&self, uri: &str) -> TileDBResult<u64> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_size: u64 = 0;
@@ -324,7 +321,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn touch(&self, uri: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res =
@@ -347,7 +344,7 @@ impl<'ctx> VFS<'ctx> {
         mode: VFSMode,
     ) -> TileDBResult<VFSHandle<'ctx>> {
         let mut c_fh: *mut ffi::tiledb_vfs_fh_t = out_ptr!();
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res = unsafe {
@@ -365,7 +362,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn remove_file(&self, uri: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let res = unsafe {
@@ -380,7 +377,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn copy_file(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
@@ -401,7 +398,7 @@ impl<'ctx> VFS<'ctx> {
     }
 
     pub fn move_file(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
@@ -425,7 +422,7 @@ impl<'ctx> VFS<'ctx> {
     where
         F: FnMut(&str) -> VFSLsStatus,
     {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
 
@@ -458,7 +455,7 @@ impl<'ctx> VFS<'ctx> {
     where
         F: FnMut(&str, u64) -> VFSLsStatus,
     {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
 
@@ -553,7 +550,7 @@ extern "C" fn vfs_ls_recursive_cb_handler(
 
 impl<'ctx> VFSHandle<'ctx> {
     pub fn is_closed(&self) -> TileDBResult<bool> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_fh = *self.raw;
         let mut c_is_closed: i32 = 0;
         let res = unsafe {
@@ -568,7 +565,7 @@ impl<'ctx> VFSHandle<'ctx> {
     }
 
     pub fn close(&self) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_fh = *self.raw;
         let res = unsafe { ffi::tiledb_vfs_close(c_ctx, c_fh) };
 
@@ -580,7 +577,7 @@ impl<'ctx> VFSHandle<'ctx> {
     }
 
     pub fn read(&self, offset: u64, buffer: &mut [u8]) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_fh = *self.raw;
         let res = unsafe {
             ffi::tiledb_vfs_read(
@@ -600,7 +597,7 @@ impl<'ctx> VFSHandle<'ctx> {
     }
 
     pub fn write(&self, buffer: &[u8]) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_fh = *self.raw;
         let res = unsafe {
             ffi::tiledb_vfs_write(
@@ -619,7 +616,7 @@ impl<'ctx> VFSHandle<'ctx> {
     }
 
     pub fn sync(&self) -> TileDBResult<()> {
-        let c_ctx = self.context.as_mut_ptr();
+        let c_ctx = self.context.capi();
         let c_fh = *self.raw;
         let res = unsafe { ffi::tiledb_vfs_sync(c_ctx, c_fh) };
 

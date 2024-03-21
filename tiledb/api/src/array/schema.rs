@@ -67,16 +67,16 @@ pub struct Schema<'ctx> {
 }
 
 impl<'ctx> Schema<'ctx> {
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_schema_t {
+        *self.raw
+    }
+
     pub(crate) fn new(context: &'ctx Context, raw: RawSchema) -> Self {
         Schema { context, raw }
     }
 
-    pub(crate) fn as_mut_ptr(&self) -> *mut ffi::tiledb_array_schema_t {
-        *self.raw
-    }
-
     pub fn domain(&self) -> TileDBResult<Domain<'ctx>> {
-        let c_context: *mut ffi::tiledb_ctx_t = self.context.as_mut_ptr();
+        let c_context: *mut ffi::tiledb_ctx_t = self.context.capi();
         let c_schema = *self.raw;
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
         let c_ret = unsafe {
@@ -95,7 +95,7 @@ impl<'ctx> Schema<'ctx> {
 
     /// Retrieve the schema of an array from storage
     pub fn load(context: &'ctx Context, uri: &str) -> TileDBResult<Self> {
-        let c_context: *mut ffi::tiledb_ctx_t = context.as_mut_ptr();
+        let c_context: *mut ffi::tiledb_ctx_t = context.capi();
         let c_uri = cstring!(uri);
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
 
@@ -117,8 +117,8 @@ impl<'ctx> Schema<'ctx> {
         let mut c_ret: std::os::raw::c_int = out_ptr!();
         if unsafe {
             ffi::tiledb_array_schema_get_allows_dups(
-                self.context.as_mut_ptr(),
-                self.as_mut_ptr(),
+                self.context.capi(),
+                self.capi(),
                 &mut c_ret,
             )
         } == ffi::TILEDB_OK
@@ -130,7 +130,7 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn array_type(&self) -> ArrayType {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_atype: ffi::tiledb_array_type_t = out_ptr!();
         let c_ret = unsafe {
@@ -145,7 +145,7 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn capacity(&self) -> u64 {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_capacity: u64 = out_ptr!();
         let c_ret = unsafe {
@@ -160,7 +160,7 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn cell_order(&self) -> Layout {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_cell_order: ffi::tiledb_layout_t = out_ptr!();
         let c_ret = unsafe {
@@ -175,7 +175,7 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn tile_order(&self) -> Layout {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_tile_order: ffi::tiledb_layout_t = out_ptr!();
         let c_ret = unsafe {
@@ -193,8 +193,8 @@ impl<'ctx> Schema<'ctx> {
         let mut c_ret: std::os::raw::c_int = out_ptr!();
         if unsafe {
             ffi::tiledb_array_schema_get_allows_dups(
-                self.context.as_mut_ptr(),
-                self.as_mut_ptr(),
+                self.context.capi(),
+                self.capi(),
                 &mut c_ret,
             )
         } == ffi::TILEDB_OK
@@ -206,7 +206,7 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn nattributes(&self) -> usize {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_nattrs: u32 = out_ptr!();
         let c_ret = unsafe {
@@ -221,7 +221,7 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn attribute(&self, index: usize) -> TileDBResult<Attribute> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let c_index = index as u32;
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
@@ -274,7 +274,7 @@ impl<'ctx> Builder<'ctx> {
         array_type: ArrayType,
         domain: Domain<'ctx>,
     ) -> TileDBResult<Self> {
-        let c_context = context.as_mut_ptr();
+        let c_context = context.capi();
         let c_array_type = array_type.capi_enum();
         let mut c_schema: *mut ffi::tiledb_array_schema_t =
             std::ptr::null_mut();
@@ -306,7 +306,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn capacity(self, capacity: u64) -> TileDBResult<Self> {
-        let c_context = self.schema.context.as_mut_ptr();
+        let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
         let c_ret = unsafe {
             ffi::tiledb_array_schema_set_capacity(c_context, c_schema, capacity)
@@ -319,7 +319,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn cell_order(self, order: Layout) -> TileDBResult<Self> {
-        let c_context = self.schema.context.as_mut_ptr();
+        let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
         let c_order = order.capi_enum();
         let c_ret = unsafe {
@@ -335,7 +335,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn tile_order(self, order: Layout) -> TileDBResult<Self> {
-        let c_context = self.schema.context.as_mut_ptr();
+        let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
         let c_order = order.capi_enum();
         let c_ret = unsafe {
@@ -354,7 +354,7 @@ impl<'ctx> Builder<'ctx> {
         let c_allow = if allow { 1 } else { 0 };
         if unsafe {
             ffi::tiledb_array_schema_set_allows_dups(
-                self.schema.context.as_mut_ptr(),
+                self.schema.context.capi(),
                 *self.schema.raw,
                 c_allow,
             )
@@ -369,9 +369,9 @@ impl<'ctx> Builder<'ctx> {
     pub fn add_attribute(self, attr: Attribute) -> TileDBResult<Self> {
         if unsafe {
             ffi::tiledb_array_schema_add_attribute(
-                self.schema.context.as_mut_ptr(),
+                self.schema.context.capi(),
                 *self.schema.raw,
-                attr.as_mut_ptr(),
+                attr.capi(),
             )
         } == ffi::TILEDB_OK
         {

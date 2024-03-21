@@ -37,7 +37,7 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     pub(crate) fn for_query(query: QueryBuilder<'ctx>) -> TileDBResult<Self> {
         let context = query.query.context;
-        let c_context = context.as_mut_ptr();
+        let c_context = context.capi();
         let c_array = query.query.array.capi();
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
 
@@ -62,7 +62,7 @@ impl<'ctx> Builder<'ctx> {
         idx: u32,
         range: &[Conv; 2],
     ) -> TileDBResult<QueryBuilder<'ctx>> {
-        let c_context = self.subarray.context.as_mut_ptr();
+        let c_context = self.subarray.context.capi();
         let c_subarray = *self.subarray.raw;
 
         let c_start = &range[0] as *const Conv as *const std::ffi::c_void;
@@ -86,7 +86,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     fn build(mut self) -> TileDBResult<QueryBuilder<'ctx>> {
-        let c_context = self.subarray.context.as_mut_ptr();
+        let c_context = self.subarray.context.capi();
         let c_query = *self.query.query.raw;
         let c_subarray = *self.subarray.raw;
 

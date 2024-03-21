@@ -45,7 +45,7 @@ impl<'ctx> Domain<'ctx> {
         let mut ndim: u32 = out_ptr!();
         let c_ret = unsafe {
             ffi::tiledb_domain_get_ndim(
-                self.context.as_mut_ptr(),
+                self.context.capi(),
                 *self.raw,
                 &mut ndim,
             )
@@ -56,7 +56,7 @@ impl<'ctx> Domain<'ctx> {
     }
 
     pub fn dimension(&self, idx: usize) -> TileDBResult<Dimension<'ctx>> {
-        let c_context = self.context.as_mut_ptr();
+        let c_context = self.context.capi();
         let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
         let c_idx = match idx.try_into() {
@@ -113,9 +113,8 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
-        let c_ret = unsafe {
-            ffi::tiledb_domain_alloc(context.as_mut_ptr(), &mut c_domain)
-        };
+        let c_ret =
+            unsafe { ffi::tiledb_domain_alloc(context.capi(), &mut c_domain) };
         if c_ret == ffi::TILEDB_OK {
             Ok(Builder {
                 domain: Domain {
@@ -132,7 +131,7 @@ impl<'ctx> Builder<'ctx> {
         self,
         dimension: Dimension<'ctx>,
     ) -> TileDBResult<Self> {
-        let c_context = self.domain.context.as_mut_ptr();
+        let c_context = self.domain.context.capi();
         let c_domain = *self.domain.raw;
         let c_dim = dimension.capi();
 

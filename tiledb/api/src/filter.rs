@@ -43,7 +43,7 @@ impl Filter {
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let ftype = filter_type as u32;
         let res = unsafe {
-            ffi::tiledb_filter_alloc(ctx.as_mut_ptr(), ftype, &mut c_filter)
+            ffi::tiledb_filter_alloc(ctx.capi(), ftype, &mut c_filter)
         };
         if res == ffi::TILEDB_OK {
             Ok(Filter {
@@ -61,11 +61,7 @@ impl Filter {
     pub fn get_type(&self, ctx: &Context) -> TileDBResult<FilterType> {
         let mut c_ftype: u32 = 0;
         let res = unsafe {
-            ffi::tiledb_filter_get_type(
-                ctx.as_mut_ptr(),
-                self.capi(),
-                &mut c_ftype,
-            )
+            ffi::tiledb_filter_get_type(ctx.capi(), self.capi(), &mut c_ftype)
         };
         if res == ffi::TILEDB_OK {
             let ftype = FilterType::from_u32(c_ftype);
@@ -339,7 +335,7 @@ impl Filter {
     ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_set_option(
-                ctx.as_mut_ptr(),
+                ctx.capi(),
                 self.capi(),
                 fopt as u32,
                 val,
@@ -360,7 +356,7 @@ impl Filter {
     ) -> TileDBResult<()> {
         let res = unsafe {
             ffi::tiledb_filter_get_option(
-                ctx.as_mut_ptr(),
+                ctx.capi(),
                 self.capi(),
                 fopt as u32,
                 val,
