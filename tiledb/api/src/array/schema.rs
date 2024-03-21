@@ -9,7 +9,7 @@ use crate::array::{Attribute, Domain, Layout};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ArrayType {
     Dense,
     Sparse,

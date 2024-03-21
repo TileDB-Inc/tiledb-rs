@@ -49,9 +49,10 @@ pub fn arbitrary() -> impl Strategy<Value = tiledb::Datatype> {
     ]
 }
 
-/// Choose an arbitrary datatype which satisifes the CAPIConverter trait
+/// Choose an arbitrary datatype which is implemented
+/// (satisfies CAPIConv, and has cases in fn_typed)
 // TODO: make sure to keep this list up to date as we add more types
-pub fn arbitrary_conv() -> impl Strategy<Value = tiledb::Datatype> {
+pub fn arbitrary_implemented() -> impl Strategy<Value = tiledb::Datatype> {
     prop_oneof![
         Just(tiledb::Datatype::Int8),
         Just(tiledb::Datatype::Int16),
@@ -64,4 +65,12 @@ pub fn arbitrary_conv() -> impl Strategy<Value = tiledb::Datatype> {
         Just(tiledb::Datatype::Float32),
         Just(tiledb::Datatype::Float64),
     ]
+}
+
+pub fn arbitrary_for_dense_dimension() -> impl Strategy<Value = tiledb::Datatype>
+{
+    arbitrary_implemented().prop_filter(
+        "Type is not a valid dimension type for dense arrays",
+        |dt| dt.is_allowed_dimension_type_dense(),
+    )
 }
