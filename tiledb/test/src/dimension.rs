@@ -95,7 +95,7 @@ pub fn arbitrary(
 mod tests {
     use super::*;
 
-    /// Test that the arbitrary attribute construction always succeeds
+    /// Test that the arbitrary dimension construction always succeeds
     #[test]
     fn dimension_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
