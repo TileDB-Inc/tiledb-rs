@@ -12,11 +12,13 @@ pub fn arbitrary_name() -> impl Strategy<Value = String> {
 }
 
 pub fn arbitrary(context: &Context) -> impl Strategy<Value = Attribute> {
-    (arbitrary_name(), crate::datatype::arbitrary()).prop_map(|(name, dt)| {
-        AttributeBuilder::new(context, name.as_ref(), dt)
-            .expect("Error building attribute")
-            .build()
-    })
+    (arbitrary_name(), crate::datatype::arbitrary_implemented()).prop_map(
+        |(name, dt)| {
+            AttributeBuilder::new(context, name.as_ref(), dt)
+                .expect("Error building attribute")
+                .build()
+        },
+    )
 }
 
 #[cfg(test)]
@@ -29,5 +31,14 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|(_ in arbitrary(&ctx))| {});
+    }
+
+    #[test]
+    fn attribute_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(attr in arbitrary(&ctx))| {
+            assert_eq!(attr, attr);
+        });
     }
 }

@@ -8,9 +8,10 @@ use serde_json::json;
 pub use tiledb_sys::Datatype;
 
 use crate::context::Context;
-use crate::convert::CAPIConverter;
+use crate::convert::{BitsEq, CAPIConverter};
 use crate::error::Error;
 use crate::filter_list::{FilterList, RawFilterList};
+use crate::fn_typed;
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawAttribute {
@@ -213,20 +214,107 @@ impl<'ctx> Attribute<'ctx> {
 impl<'ctx> Debug for Attribute<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let json = json!({
-            "name": match self.name() {
-                Ok(name) => name,
-                Err(e) => format!("<error reading name: {}>", e),
-            },
+            "name": self.name(),
             "datatype": match self.datatype() {
                 Ok(dt) => dt
                     .to_string()
                     .unwrap_or(String::from("<unrecognized datatype>")),
                 Err(e) => format!("<error reading datatype: {}>", e),
             },
-            /* TODO: other fields */
+            "nullable": self.is_nullable(),
+            "cell_val_num": self.cell_val_num(),
+            "fill": if self.is_nullable() {
+                    Some(if let Ok(dt) = self.datatype() {
+                        fn_typed!(dt, DT, match self.fill_value_nullable::<DT>() {
+                            Ok((value, nullable)) => json!({
+                                "value": value.to_string(),
+                                "nullable": nullable
+                            }),
+                            Err(e) => serde_json::value::Value::String(format!("<error reading fill value: {}>", e))
+                        })
+                    } else {
+                    serde_json::value::Value::String(String::from("<Could not resolve datatype>"))
+                    })
+                } else {
+                    None
+                },
+            /*
+            TODO
+            "filters": match self.filter_list() {
+                Ok(fl) => format!("{:?}", fl),
+                Err(e) => format!("<error reading filters: {}>", e)
+            },
+            */
             "raw": format!("{:p}", *self.raw)
         });
         write!(f, "{}", json)
+    }
+}
+
+impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
+    fn eq(&self, other: &Attribute<'c2>) -> bool {
+        let names_match = match (self.name(), other.name()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !names_match {
+            return false;
+        }
+
+        let types_match = match (self.datatype(), other.datatype()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !types_match {
+            return false;
+        }
+
+        let nullable_match = self.is_nullable() == other.is_nullable();
+        if !nullable_match {
+            return false;
+        }
+
+        /*
+        let filter_match = match (self.filter_list(), other.filter_list()) {
+            (Ok(mine), Ok(theirs)) => unimplemented!(),
+            _ => false,
+        };
+        if !filter_match {
+            return false;
+        }
+        */
+
+        let cell_val_match = match (self.cell_val_num(), other.cell_val_num()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !cell_val_match {
+            return false;
+        }
+
+        let fill_value_match = if self.is_nullable() {
+            fn_typed!(self.datatype().unwrap(), DT, {
+                match (
+                    self.fill_value_nullable::<DT>(),
+                    other.fill_value_nullable::<DT>(),
+                ) {
+                    (Ok(mine), Ok(theirs)) => mine.bits_eq(&theirs),
+                    _ => false,
+                }
+            })
+        } else {
+            fn_typed!(self.datatype().unwrap(), DT, {
+                match (self.fill_value::<DT>(), other.fill_value::<DT>()) {
+                    (Ok(mine), Ok(theirs)) => mine.bits_eq(&theirs),
+                    _ => false,
+                }
+            })
+        };
+        if !fill_value_match {
+            return false;
+        }
+
+        true
     }
 }
 
@@ -645,5 +733,122 @@ mod test {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn attribute_eq() {
+        let ctx = Context::new().unwrap();
+
+        let start_attr =
+            |name: &str, dt: Datatype, nullable: bool| -> Builder {
+                Builder::new(&ctx, name, dt)
+                    .unwrap()
+                    .nullability(nullable)
+                    .unwrap()
+            };
+
+        let default_name = "foo";
+        let default_dt = Datatype::Int32;
+        let default_nullable = false;
+
+        let default_attr =
+            || start_attr(default_name, default_dt, default_nullable);
+
+        let base = default_attr().build();
+
+        // reflexive
+        {
+            let other = default_attr().build();
+            assert_eq!(base, other);
+        }
+
+        // change name
+        {
+            let other = start_attr("bar", default_dt, default_nullable).build();
+            assert_ne!(base, other);
+        }
+
+        // change type
+        {
+            let other =
+                start_attr(default_name, Datatype::Float64, default_nullable)
+                    .build();
+            assert_ne!(base, other);
+        }
+
+        // change nullable
+        {
+            let other =
+                start_attr(default_name, default_dt, !default_nullable).build();
+            assert_ne!(base, other);
+        }
+
+        // change cellval
+        {
+            let other = start_attr(default_name, default_dt, default_nullable)
+                .cell_val_num((base.cell_val_num().unwrap() + 1) * 2)
+                .expect("Error setting cell val num")
+                .build();
+            assert_ne!(base, other);
+        }
+
+        // change fill val when the attribute is not nullable
+        {
+            let other = default_attr()
+                .fill_value(3i32)
+                .expect("Error setting fill value")
+                .build();
+
+            assert_ne!(base, other);
+        }
+
+        // change fill val when the attribute *is* nullable
+        {
+            let default_attr = || default_attr().nullability(false).unwrap();
+            let base = default_attr().build();
+
+            let other = default_attr()
+                .fill_value(3i32)
+                .expect("Error setting fill value")
+                .build();
+
+            assert_ne!(base, other);
+        }
+
+        // change fill nullable
+        {
+            let default_attr = || default_attr().nullability(true).unwrap();
+            let base = default_attr().build();
+
+            let (base_fill_value, base_fill_nullable) =
+                base.fill_value_nullable::<i32>().unwrap();
+            {
+                let other = default_attr()
+                    .fill_value_nullability(base_fill_value, base_fill_nullable)
+                    .expect("Error setting fill value")
+                    .build();
+                assert_eq!(base, other);
+            }
+            {
+                let other = default_attr()
+                    .fill_value_nullability(
+                        base_fill_value,
+                        !base_fill_nullable,
+                    )
+                    .expect("Error setting fill value")
+                    .build();
+                assert_ne!(base, other);
+            }
+            {
+                let other = default_attr()
+                    .fill_value_nullability(
+                        (base_fill_value / 2) + 1,
+                        base_fill_nullable,
+                    )
+                    .expect("Error setting fill value")
+                    .build();
+                assert_ne!(base, other);
+            }
+        }
     }
 }
