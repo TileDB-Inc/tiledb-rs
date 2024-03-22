@@ -160,6 +160,84 @@ impl FilterData {
             FilterData::Xor => ffi::FilterType::Xor,
         }
     }
+
+    /// Returns the output datatype when this filter is applied to the input type.
+    /// If the filter cannot accept the requested input type, None is returned.
+    pub fn transform_datatype(&self, input: &Datatype) -> Option<Datatype> {
+        /*
+         * Note to developers, this code should be kept in sync with
+         * tiledb/sm/filters/filter/ functions
+         * - `accepts_input_datatype`
+         * - `output_datatype`
+         *
+         * Those functions are not part of the external C API.
+         */
+        match *self {
+            FilterData::None => Some(*input),
+            FilterData::BitShuffle => Some(*input),
+            FilterData::ByteShuffle => Some(*input),
+            FilterData::Checksum(_) => Some(*input),
+            FilterData::BitWidthReduction { .. }
+            | FilterData::PositiveDelta { .. } => {
+                if input.is_integral_type()
+                    || input.is_datetime_type()
+                    || input.is_time_type()
+                    || input.is_byte_type()
+                {
+                    Some(*input)
+                } else {
+                    None
+                }
+            }
+            FilterData::Compression(CompressionData {
+                kind,
+                reinterpret_datatype,
+                ..
+            }) => match kind {
+                CompressionType::Delta | CompressionType::DoubleDelta => {
+                    // these filters do not accept floating point
+                    if input.is_real_type() {
+                        None
+                    } else if reinterpret_datatype == Some(Datatype::Any) {
+                        Some(*input)
+                    } else {
+                        reinterpret_datatype
+                    }
+                }
+                _ => Some(*input),
+            },
+            FilterData::ScaleFloat { byte_width, .. } => {
+                let input_size = input.size() as usize;
+                if input_size == std::mem::size_of::<f32>()
+                    || input_size == std::mem::size_of::<f64>()
+                {
+                    match byte_width {
+                        1 => Some(Datatype::Int8),
+                        2 => Some(Datatype::Int16),
+                        4 => Some(Datatype::Int32),
+                        8 => Some(Datatype::Int64),
+                        _ => None,
+                    }
+                } else {
+                    None
+                }
+            }
+            FilterData::WebP { .. } => {
+                if *input == Datatype::UInt8 {
+                    Some(Datatype::UInt8)
+                } else {
+                    None
+                }
+            }
+            FilterData::Xor => match input.size() {
+                1 => Some(Datatype::Int8),
+                2 => Some(Datatype::Int16),
+                4 => Some(Datatype::Int32),
+                8 => Some(Datatype::Int64),
+                _ => None,
+            },
+        }
+    }
 }
 
 pub(crate) enum RawFilter {
