@@ -295,6 +295,12 @@ impl Datatype {
         )
     }
 
+    /// Returns whether this type is a real number (i.e. floating point)
+    // Keep in sync with sm/enums/datatype.h::datatype_is_real
+    pub fn is_real_type(&self) -> bool {
+        matches!(*self, Datatype::Float32 | Datatype::Float64)
+    }
+
     /// Returns whether this type is a variable-length string type
     // Keep in sync with sm/enums/datatype.h::datatype_is_string
     pub fn is_string_type(&self) -> bool {
@@ -344,6 +350,15 @@ impl Datatype {
                 | Datatype::TimePicosecond
                 | Datatype::TimeFemtosecond
                 | Datatype::TimeAttosecond
+        )
+    }
+
+    /// Returns whether this type is a byte
+    // Keep in sync with sm/enums/datatype.h:datatype_is_byte
+    pub fn is_byte_type(&self) -> bool {
+        matches!(
+            *self,
+            Datatype::Boolean | Datatype::GeometryWkb | Datatype::GeometryWkt
         )
     }
 
