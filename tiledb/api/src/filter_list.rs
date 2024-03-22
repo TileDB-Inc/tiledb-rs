@@ -68,6 +68,12 @@ impl<'ctx> FilterList<'ctx> {
         }
     }
 
+    pub fn to_vec(&self) -> TileDBResult<Vec<Filter<'ctx>>> {
+        (0..self.get_num_filters()?)
+            .map(|f| self.get_filter(f))
+            .collect()
+    }
+
     pub fn get_max_chunk_size(&self, ctx: &Context) -> TileDBResult<u32> {
         let mut size: u32 = 0;
         let res = unsafe {
