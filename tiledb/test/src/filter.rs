@@ -2,6 +2,7 @@ use proptest::prelude::*;
 use proptest::strategy::Just;
 use tiledb::context::Context;
 use tiledb::filter::*;
+use tiledb::filter_list::FilterList;
 use tiledb::{Datatype, Result as TileDBResult};
 
 pub fn arbitrary_bitwidthreduction() -> impl Strategy<Value = FilterData> {
@@ -111,6 +112,22 @@ pub fn arbitrary(
     .prop_map(|filter| Filter::create(context, filter))
 }
 
+pub fn arbitrary_list(
+    context: &Context,
+) -> impl Strategy<Value = TileDBResult<FilterList>> {
+    const MIN_FILTERS: usize = 0;
+    const MAX_FILTERS: usize = 4;
+
+    proptest::collection::vec(arbitrary(context), MIN_FILTERS..=MAX_FILTERS)
+        .prop_map(|filters| {
+            let mut b = tiledb::filter_list::Builder::new(context)?;
+            for filter in filters {
+                b = b.add_filter(filter?)?;
+            }
+            Ok(b.build())
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +138,13 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|(_ in arbitrary(&ctx))| {});
+    }
+
+    #[test]
+    fn filter_list_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(_ in arbitrary_list(&ctx))| {});
     }
 
     #[test]
