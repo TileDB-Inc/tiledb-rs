@@ -8,6 +8,7 @@ name = "tiledb"
 path = "src/lib.rs"
 
 [dependencies]
+serde = "1.0.136"
 serde_json = "1.0.114"
 tiledb-sys = { workspace = true }
 

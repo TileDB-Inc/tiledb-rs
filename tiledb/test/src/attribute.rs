@@ -32,4 +32,13 @@ mod tests {
 
         proptest!(|(_ in arbitrary(&ctx))| {});
     }
+
+    #[test]
+    fn attribute_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(attr in arbitrary(&ctx))| {
+            assert_eq!(attr, attr);
+        });
+    }
 }

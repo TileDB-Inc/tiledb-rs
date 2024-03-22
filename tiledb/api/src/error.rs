@@ -4,6 +4,8 @@ use std::convert::Into;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
 
+use serde::{Serialize, Serializer};
+
 pub(crate) enum ErrorData {
     Native(*mut ffi::tiledb_error_t),
     Custom(String),
@@ -95,6 +97,15 @@ impl Drop for Error {
         if let ErrorData::Native(ref mut cptr) = self.data {
             unsafe { ffi::tiledb_error_free(cptr) }
         }
+    }
+}
+
+impl Serialize for Error {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        format!("<{}>", self.get_message()).serialize(serializer)
     }
 }
 
