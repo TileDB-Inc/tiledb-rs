@@ -12,11 +12,13 @@ pub fn arbitrary_name() -> impl Strategy<Value = String> {
 }
 
 pub fn arbitrary(context: &Context) -> impl Strategy<Value = Attribute> {
-    (arbitrary_name(), crate::datatype::arbitrary()).prop_map(|(name, dt)| {
-        AttributeBuilder::new(context, name.as_ref(), dt)
-            .expect("Error building attribute")
-            .build()
-    })
+    (arbitrary_name(), crate::datatype::arbitrary_implemented()).prop_map(
+        |(name, dt)| {
+            AttributeBuilder::new(context, name.as_ref(), dt)
+                .expect("Error building attribute")
+                .build()
+        },
+    )
 }
 
 #[cfg(test)]
