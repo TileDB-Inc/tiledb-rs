@@ -1,4 +1,4 @@
-use tiledb_sys::Datatype;
+use tiledb::Datatype;
 use tiledb_sys::Filesystem;
 use tiledb_sys::FilterOption;
 use tiledb_sys::FilterType;
@@ -6,8 +6,8 @@ use tiledb_sys::FilterType;
 #[test]
 fn datatype_roundtrips() {
     for i in 0..256 {
-        let maybe_dt = Datatype::from_u32(i);
-        if maybe_dt.is_some() {
+        let maybe_dt = Datatype::try_from(i);
+        if maybe_dt.is_ok() {
             let dt = maybe_dt.unwrap();
             let dt_str = dt.to_string().expect("Error creating string.");
             let str_dt = Datatype::from_string(&dt_str)

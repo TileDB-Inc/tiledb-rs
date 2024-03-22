@@ -47,6 +47,6 @@ pub fn version() -> (i32, i32, i32) {
 }
 
 pub use array::Array;
-pub use ffi::Datatype;
+pub use datatype::Datatype;
 pub use query::{Builder as QueryBuilder, Query, QueryType};
 pub type Result<T> = std::result::Result<T, error::Error>;

@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use crate::context::Context;
@@ -84,6 +85,52 @@ impl<'ctx> FilterList<'ctx> {
     }
 }
 
+impl<'ctx> Debug for FilterList<'ctx> {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let nfilters = match self.get_num_filters() {
+            Ok(n) => n,
+            Err(e) => return write!(f, "<error reading filter list: {}>", e),
+        };
+        write!(f, "[")?;
+        for fi in 0..nfilters {
+            match self.get_filter(fi) {
+                Ok(fd) => match fd.filter_data() {
+                    Ok(fd) => write!(f, "{:?},", fd)?,
+                    Err(e) => {
+                        write!(f, "<error reading filter {}: {}>", fi, e)?
+                    }
+                },
+                Err(e) => write!(f, "<error reading filter {}: {}>", fi, e)?,
+            };
+        }
+        write!(f, "]")
+    }
+}
+
+impl<'c1, 'c2> PartialEq<FilterList<'c2>> for FilterList<'c1> {
+    fn eq(&self, other: &FilterList<'c2>) -> bool {
+        let size_match = match (self.get_num_filters(), other.get_num_filters())
+        {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !size_match {
+            return false;
+        }
+
+        for f in 0..self.get_num_filters().unwrap() {
+            let filter_match = match (self.get_filter(f), other.get_filter(f)) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            };
+            if !filter_match {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 pub struct Builder<'ctx> {
     filter_list: FilterList<'ctx>,
 }
@@ -165,10 +212,12 @@ mod test {
 
         let flist = Builder::new(&ctx)
             .expect("Error creating filter list instance.")
-            .add_filter(
-                CompressionFilterBuilder::new(&ctx, CompressionType::Zstd)?
-                    .build(),
-            )?
+            .add_filter(Filter::create(
+                &ctx,
+                FilterData::Compression(CompressionData::new(
+                    CompressionType::Zstd,
+                )),
+            )?)?
             .build();
 
         let nfilters = flist
@@ -183,18 +232,19 @@ mod test {
     fn filter_list_get_filter() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context instance.");
         let flist = Builder::new(&ctx)?
-            .add_filter(NoopFilterBuilder::new(&ctx)?.build())?
-            .add_filter(
-                CompressionFilterBuilder::new(
-                    &ctx,
+            .add_filter(Filter::create(&ctx, FilterData::None)?)?
+            .add_filter(Filter::create(
+                &ctx,
+                FilterData::Compression(CompressionData::new(
                     CompressionType::Dictionary,
-                )?
-                .build(),
-            )?
-            .add_filter(
-                CompressionFilterBuilder::new(&ctx, CompressionType::Zstd)?
-                    .build(),
-            )?
+                )),
+            )?)?
+            .add_filter(Filter::create(
+                &ctx,
+                FilterData::Compression(CompressionData::new(
+                    CompressionType::Zstd,
+                )),
+            )?)?
             .build();
 
         let nfilters = flist
@@ -205,8 +255,14 @@ mod test {
         let filter4 = flist
             .get_filter(1)
             .expect("Error getting filter at index 1");
-        let ftype = filter4.get_type().expect("Error getting filter type.");
-        assert_eq!(ftype, ffi::FilterType::Dictionary);
+        let ftype = filter4.filter_data().expect("Error getting filter data");
+        assert!(matches!(
+            ftype,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Dictionary,
+                ..
+            })
+        ));
 
         Ok(())
     }

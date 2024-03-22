@@ -1,8 +1,50 @@
-use std::any::TypeId;
-use std::fmt::{Display, Formatter, Result as FmtResult};
-
-use crate::constants::TILEDB_OK;
 use crate::types::capi_return_t;
+
+pub const tiledb_datatype_t_TILEDB_INT32: tiledb_datatype_t = 0;
+pub const tiledb_datatype_t_TILEDB_INT64: tiledb_datatype_t = 1;
+pub const tiledb_datatype_t_TILEDB_FLOAT32: tiledb_datatype_t = 2;
+pub const tiledb_datatype_t_TILEDB_FLOAT64: tiledb_datatype_t = 3;
+pub const tiledb_datatype_t_TILEDB_CHAR: tiledb_datatype_t = 4;
+pub const tiledb_datatype_t_TILEDB_INT8: tiledb_datatype_t = 5;
+pub const tiledb_datatype_t_TILEDB_UINT8: tiledb_datatype_t = 6;
+pub const tiledb_datatype_t_TILEDB_INT16: tiledb_datatype_t = 7;
+pub const tiledb_datatype_t_TILEDB_UINT16: tiledb_datatype_t = 8;
+pub const tiledb_datatype_t_TILEDB_UINT32: tiledb_datatype_t = 9;
+pub const tiledb_datatype_t_TILEDB_UINT64: tiledb_datatype_t = 10;
+pub const tiledb_datatype_t_TILEDB_STRING_ASCII: tiledb_datatype_t = 11;
+pub const tiledb_datatype_t_TILEDB_STRING_UTF8: tiledb_datatype_t = 12;
+pub const tiledb_datatype_t_TILEDB_STRING_UTF16: tiledb_datatype_t = 13;
+pub const tiledb_datatype_t_TILEDB_STRING_UTF32: tiledb_datatype_t = 14;
+pub const tiledb_datatype_t_TILEDB_STRING_UCS2: tiledb_datatype_t = 15;
+pub const tiledb_datatype_t_TILEDB_STRING_UCS4: tiledb_datatype_t = 16;
+pub const tiledb_datatype_t_TILEDB_ANY: tiledb_datatype_t = 17;
+pub const tiledb_datatype_t_TILEDB_DATETIME_YEAR: tiledb_datatype_t = 18;
+pub const tiledb_datatype_t_TILEDB_DATETIME_MONTH: tiledb_datatype_t = 19;
+pub const tiledb_datatype_t_TILEDB_DATETIME_WEEK: tiledb_datatype_t = 20;
+pub const tiledb_datatype_t_TILEDB_DATETIME_DAY: tiledb_datatype_t = 21;
+pub const tiledb_datatype_t_TILEDB_DATETIME_HR: tiledb_datatype_t = 22;
+pub const tiledb_datatype_t_TILEDB_DATETIME_MIN: tiledb_datatype_t = 23;
+pub const tiledb_datatype_t_TILEDB_DATETIME_SEC: tiledb_datatype_t = 24;
+pub const tiledb_datatype_t_TILEDB_DATETIME_MS: tiledb_datatype_t = 25;
+pub const tiledb_datatype_t_TILEDB_DATETIME_US: tiledb_datatype_t = 26;
+pub const tiledb_datatype_t_TILEDB_DATETIME_NS: tiledb_datatype_t = 27;
+pub const tiledb_datatype_t_TILEDB_DATETIME_PS: tiledb_datatype_t = 28;
+pub const tiledb_datatype_t_TILEDB_DATETIME_FS: tiledb_datatype_t = 29;
+pub const tiledb_datatype_t_TILEDB_DATETIME_AS: tiledb_datatype_t = 30;
+pub const tiledb_datatype_t_TILEDB_TIME_HR: tiledb_datatype_t = 31;
+pub const tiledb_datatype_t_TILEDB_TIME_MIN: tiledb_datatype_t = 32;
+pub const tiledb_datatype_t_TILEDB_TIME_SEC: tiledb_datatype_t = 33;
+pub const tiledb_datatype_t_TILEDB_TIME_MS: tiledb_datatype_t = 34;
+pub const tiledb_datatype_t_TILEDB_TIME_US: tiledb_datatype_t = 35;
+pub const tiledb_datatype_t_TILEDB_TIME_NS: tiledb_datatype_t = 36;
+pub const tiledb_datatype_t_TILEDB_TIME_PS: tiledb_datatype_t = 37;
+pub const tiledb_datatype_t_TILEDB_TIME_FS: tiledb_datatype_t = 38;
+pub const tiledb_datatype_t_TILEDB_TIME_AS: tiledb_datatype_t = 39;
+pub const tiledb_datatype_t_TILEDB_BLOB: tiledb_datatype_t = 40;
+pub const tiledb_datatype_t_TILEDB_BOOL: tiledb_datatype_t = 41;
+pub const tiledb_datatype_t_TILEDB_GEOM_WKB: tiledb_datatype_t = 42;
+pub const tiledb_datatype_t_TILEDB_GEOM_WKT: tiledb_datatype_t = 43;
+pub type tiledb_datatype_t = ::std::os::raw::c_uint;
 
 extern "C" {
     pub fn tiledb_datatype_to_str(
@@ -16,434 +58,4 @@ extern "C" {
     ) -> capi_return_t;
 
     pub fn tiledb_datatype_size(type_: u32) -> u64;
-}
-
-#[allow(non_snake_case)]
-pub type tiledb_datatype_t = ::std::os::raw::c_uint;
-
-// When I find the time, I should come back and turn these into a macro
-// so that we can auto-generate the Datatype::from_u32 generation.
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[repr(u64)]
-pub enum Datatype {
-    #[doc = " 32-bit signed integer"]
-    Int32 = 0,
-    #[doc = " 64-bit signed integer"]
-    Int64 = 1,
-    #[doc = " 32-bit floating point value"]
-    Float32 = 2,
-    #[doc = " 64-bit floating point value"]
-    Float64 = 3,
-    #[doc = " Character"]
-    Char = 4,
-    #[doc = " 8-bit signed integer"]
-    Int8 = 5,
-    #[doc = " 8-bit unsigned integer"]
-    UInt8 = 6,
-    #[doc = " 16-bit signed integer"]
-    Int16 = 7,
-    #[doc = " 16-bit unsigned integer"]
-    UInt16 = 8,
-    #[doc = " 32-bit unsigned integer"]
-    UInt32 = 9,
-    #[doc = " 64-bit unsigned integer"]
-    UInt64 = 10,
-    #[doc = " ASCII string"]
-    StringAscii = 11,
-    #[doc = " UTF-8 string"]
-    StringUtf8 = 12,
-    #[doc = " UTF-16 string"]
-    StringUtf16 = 13,
-    #[doc = " UTF-32 string"]
-    StringUtf32 = 14,
-    #[doc = " UCS2 string"]
-    StringUcs2 = 15,
-    #[doc = " UCS4 string"]
-    StringUcs4 = 16,
-    #[doc = " This can be any datatype. Must store (type tag, value) pairs."]
-    Any = 17,
-    #[doc = " Datetime with year resolution"]
-    DateTimeYear = 18,
-    #[doc = " Datetime with month resolution"]
-    DateTimeMonth = 19,
-    #[doc = " Datetime with week resolution"]
-    DateTimeWeek = 20,
-    #[doc = " Datetime with day resolution"]
-    DateTimeDay = 21,
-    #[doc = " Datetime with hour resolution"]
-    DateTimeHour = 22,
-    #[doc = " Datetime with minute resolution"]
-    DateTimeMinute = 23,
-    #[doc = " Datetime with second resolution"]
-    DateTimeSecond = 24,
-    #[doc = " Datetime with millisecond resolution"]
-    DateTimeMillisecond = 25,
-    #[doc = " Datetime with microsecond resolution"]
-    DateTimeMicrosecond = 26,
-    #[doc = " Datetime with nanosecond resolution"]
-    DateTimeNanosecond = 27,
-    #[doc = " Datetime with picosecond resolution"]
-    DateTimePicosecond = 28,
-    #[doc = " Datetime with femtosecond resolution"]
-    DateTimeFemtosecond = 29,
-    #[doc = " Datetime with attosecond resolution"]
-    DateTimeAttosecond = 30,
-    #[doc = " Time with hour resolution"]
-    TimeHour = 31,
-    #[doc = " Time with minute resolution"]
-    TimeMinute = 32,
-    #[doc = " Time with second resolution"]
-    TimeSecond = 33,
-    #[doc = " Time with millisecond resolution"]
-    TimeMillisecond = 34,
-    #[doc = " Time with microsecond resolution"]
-    TimeMicrosecond = 35,
-    #[doc = " Time with nanosecond resolution"]
-    TimeNanosecond = 36,
-    #[doc = " Time with picosecond resolution"]
-    TimePicosecond = 37,
-    #[doc = " Time with femtosecond resolution"]
-    TimeFemtosecond = 38,
-    #[doc = " Time with attosecond resolution"]
-    TimeAttosecond = 39,
-    #[doc = " std::byte"]
-    Blob = 40,
-    #[doc = " Boolean"]
-    Boolean = 41,
-    #[doc = " Geometry data in well-known binary (WKB) format, stored as std::byte"]
-    GeometryWkb = 42,
-    #[doc = " Geometry data in well-known text (WKT) format, stored as std::byte"]
-    GeometryWkt = 43,
-}
-
-impl Datatype {
-    pub fn size(&self) -> u64 {
-        let copy = *self;
-        unsafe { tiledb_datatype_size(copy as tiledb_datatype_t) }
-    }
-
-    /// TODO: this should not be exposed outside of the tiledb-rs library
-    pub fn capi_enum(&self) -> tiledb_datatype_t {
-        *self as tiledb_datatype_t
-    }
-
-    pub fn from_capi_enum(c_datatype: tiledb_datatype_t) -> Self {
-        Self::from_u32(c_datatype).unwrap()
-    }
-
-    pub fn to_string(&self) -> Option<String> {
-        let copy = *self;
-        let c_dtype = copy as tiledb_datatype_t;
-        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
-        let res = unsafe { tiledb_datatype_to_str(c_dtype, &mut c_str) };
-        if res == TILEDB_OK {
-            let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
-            Some(String::from(c_msg.to_string_lossy()))
-        } else {
-            None
-        }
-    }
-
-    pub fn from_string(dtype: &str) -> Option<Datatype> {
-        let c_dtype =
-            std::ffi::CString::new(dtype).expect("Error creating CString");
-        let mut c_ret: u32 = 0;
-        let res = unsafe {
-            tiledb_datatype_from_str(c_dtype.as_c_str().as_ptr(), &mut c_ret)
-        };
-
-        if res == TILEDB_OK {
-            Datatype::from_u32(c_ret)
-        } else {
-            None
-        }
-    }
-
-    pub fn from_u32(dtype: u32) -> Option<Datatype> {
-        match dtype {
-            0 => Some(Datatype::Int32),
-            1 => Some(Datatype::Int64),
-            2 => Some(Datatype::Float32),
-            3 => Some(Datatype::Float64),
-            4 => Some(Datatype::Char),
-            5 => Some(Datatype::Int8),
-            6 => Some(Datatype::UInt8),
-            7 => Some(Datatype::Int16),
-            8 => Some(Datatype::UInt16),
-            9 => Some(Datatype::UInt32),
-            10 => Some(Datatype::UInt64),
-            11 => Some(Datatype::StringAscii),
-            12 => Some(Datatype::StringUtf8),
-            13 => Some(Datatype::StringUtf16),
-            14 => Some(Datatype::StringUtf32),
-            15 => Some(Datatype::StringUcs2),
-            16 => Some(Datatype::StringUcs4),
-            17 => Some(Datatype::Any),
-            18 => Some(Datatype::DateTimeYear),
-            19 => Some(Datatype::DateTimeMonth),
-            20 => Some(Datatype::DateTimeWeek),
-            21 => Some(Datatype::DateTimeDay),
-            22 => Some(Datatype::DateTimeHour),
-            23 => Some(Datatype::DateTimeMinute),
-            24 => Some(Datatype::DateTimeSecond),
-            25 => Some(Datatype::DateTimeMillisecond),
-            26 => Some(Datatype::DateTimeMicrosecond),
-            27 => Some(Datatype::DateTimeNanosecond),
-            28 => Some(Datatype::DateTimePicosecond),
-            29 => Some(Datatype::DateTimeFemtosecond),
-            30 => Some(Datatype::DateTimeAttosecond),
-            31 => Some(Datatype::TimeHour),
-            32 => Some(Datatype::TimeMinute),
-            33 => Some(Datatype::TimeSecond),
-            34 => Some(Datatype::TimeMillisecond),
-            35 => Some(Datatype::TimeMicrosecond),
-            36 => Some(Datatype::TimeNanosecond),
-            37 => Some(Datatype::TimePicosecond),
-            38 => Some(Datatype::TimeFemtosecond),
-            39 => Some(Datatype::TimeAttosecond),
-            40 => Some(Datatype::Blob),
-            41 => Some(Datatype::Boolean),
-            42 => Some(Datatype::GeometryWkb),
-            43 => Some(Datatype::GeometryWkt),
-            _ => None,
-        }
-    }
-
-    pub fn is_compatible_type<T: 'static>(&self) -> bool {
-        let tid = TypeId::of::<T>();
-        if tid == TypeId::of::<f32>() {
-            matches!(*self, Datatype::Float32)
-        } else if tid == TypeId::of::<f64>() {
-            matches!(*self, Datatype::Float64)
-        } else if tid == TypeId::of::<i8>() {
-            matches!(*self, Datatype::Char | Datatype::Int8)
-        } else if tid == TypeId::of::<u8>() {
-            matches!(
-                *self,
-                Datatype::Any
-                    | Datatype::Blob
-                    | Datatype::Boolean
-                    | Datatype::GeometryWkb
-                    | Datatype::GeometryWkt
-                    | Datatype::StringAscii
-                    | Datatype::StringUtf8
-                    | Datatype::UInt8
-            )
-        } else if tid == TypeId::of::<i16>() {
-            matches!(*self, Datatype::Int16)
-        } else if tid == TypeId::of::<u16>() {
-            matches!(
-                *self,
-                Datatype::StringUtf16 | Datatype::StringUcs2 | Datatype::UInt16
-            )
-        } else if tid == TypeId::of::<i32>() {
-            matches!(*self, Datatype::Int32)
-        } else if tid == TypeId::of::<u32>() {
-            matches!(
-                *self,
-                Datatype::StringUtf32 | Datatype::StringUcs4 | Datatype::UInt32
-            )
-        } else if tid == TypeId::of::<i64>() {
-            matches!(
-                *self,
-                Datatype::Int64
-                    | Datatype::DateTimeYear
-                    | Datatype::DateTimeMonth
-                    | Datatype::DateTimeWeek
-                    | Datatype::DateTimeDay
-                    | Datatype::DateTimeHour
-                    | Datatype::DateTimeMinute
-                    | Datatype::DateTimeSecond
-                    | Datatype::DateTimeMillisecond
-                    | Datatype::DateTimeMicrosecond
-                    | Datatype::DateTimeNanosecond
-                    | Datatype::DateTimePicosecond
-                    | Datatype::DateTimeFemtosecond
-                    | Datatype::DateTimeAttosecond
-                    | Datatype::TimeHour
-                    | Datatype::TimeMinute
-                    | Datatype::TimeSecond
-                    | Datatype::TimeMillisecond
-                    | Datatype::TimeMicrosecond
-                    | Datatype::TimeNanosecond
-                    | Datatype::TimePicosecond
-                    | Datatype::TimeFemtosecond
-                    | Datatype::TimeAttosecond
-            )
-        } else if tid == TypeId::of::<u64>() {
-            matches!(*self, Datatype::UInt64)
-        } else {
-            false
-        }
-    }
-
-    /// Returns whether this type is an integral type (i.e. integer)
-    // Keep in sync with sm/enums/datatype.h::datatype_is_integer
-    pub fn is_integral_type(&self) -> bool {
-        matches!(
-            *self,
-            Datatype::Boolean
-                | Datatype::Int8
-                | Datatype::Int16
-                | Datatype::Int32
-                | Datatype::Int64
-                | Datatype::UInt8
-                | Datatype::UInt16
-                | Datatype::UInt32
-                | Datatype::UInt64
-        )
-    }
-
-    /// Returns whether this type is a variable-length string type
-    // Keep in sync with sm/enums/datatype.h::datatype_is_string
-    pub fn is_string_type(&self) -> bool {
-        matches!(
-            *self,
-            Datatype::StringAscii
-                | Datatype::StringUtf8
-                | Datatype::StringUtf16
-                | Datatype::StringUtf32
-                | Datatype::StringUcs2
-                | Datatype::StringUcs4
-        )
-    }
-
-    /// Returns whether this type is a DateTime type of any resolution
-    // Keep in sync with sm/enums/datatype.h::datatype_is_datetime
-    pub fn is_datetime_type(&self) -> bool {
-        matches!(
-            *self,
-            Datatype::DateTimeYear
-                | Datatype::DateTimeMonth
-                | Datatype::DateTimeWeek
-                | Datatype::DateTimeDay
-                | Datatype::DateTimeHour
-                | Datatype::DateTimeMinute
-                | Datatype::DateTimeSecond
-                | Datatype::DateTimeMillisecond
-                | Datatype::DateTimeMicrosecond
-                | Datatype::DateTimeNanosecond
-                | Datatype::DateTimePicosecond
-                | Datatype::DateTimeFemtosecond
-                | Datatype::DateTimeAttosecond
-        )
-    }
-
-    /// Returns whether this type is a Time type of any resolution
-    // Keep in sync with sm/enums/datatype.h::datatype_is_time
-    pub fn is_time_type(&self) -> bool {
-        matches!(
-            *self,
-            Datatype::TimeHour
-                | Datatype::TimeMinute
-                | Datatype::TimeSecond
-                | Datatype::TimeMillisecond
-                | Datatype::TimeMicrosecond
-                | Datatype::TimeNanosecond
-                | Datatype::TimePicosecond
-                | Datatype::TimeFemtosecond
-                | Datatype::TimeAttosecond
-        )
-    }
-
-    /// Returns whether this type can be used as a dimension type of a sparse array
-    pub fn is_allowed_dimension_type_sparse(&self) -> bool {
-        self.is_integral_type()
-            || self.is_datetime_type()
-            || self.is_time_type()
-            || matches!(
-                *self,
-                Datatype::Float32 | Datatype::Float64 | Datatype::StringAscii
-            )
-    }
-
-    /// Returns whether this type can be used as a dimension type of a dense array
-    pub fn is_allowed_dimension_type_dense(&self) -> bool {
-        self.is_integral_type()
-            || self.is_datetime_type()
-            || self.is_time_type()
-    }
-}
-
-impl Display for Datatype {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(
-            f,
-            "{}",
-            match self.to_string() {
-                Some(s) => s,
-                None => String::from("<UNKNOWN DATA TYPE>"),
-            }
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn datatype_test() {
-        for i in 0..256 {
-            println!("I: {}", i);
-            if i <= 43 {
-                let dt = Datatype::from_u32(i as u32)
-                    .expect("Error converting value to Datatype");
-                assert_ne!(
-                    format!("{}", dt),
-                    "<UNKNOWN DATA TYPE>".to_string()
-                );
-                assert!(check_valid(&dt));
-            } else {
-                assert!(Datatype::from_u32(i as u32).is_none());
-            }
-        }
-    }
-
-    fn check_valid(dt: &Datatype) -> bool {
-        let mut count = 0;
-
-        if dt.is_compatible_type::<f32>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<f64>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<i8>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<u8>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<i16>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<u16>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<i32>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<u32>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<i64>() {
-            count += 1;
-        }
-
-        if dt.is_compatible_type::<u64>() {
-            count += 1;
-        }
-
-        count == 1
-    }
 }
