@@ -196,12 +196,20 @@ impl FilterData {
             }) => match kind {
                 CompressionType::Delta | CompressionType::DoubleDelta => {
                     // these filters do not accept floating point
-                    if input.is_real_type() {
+                    let check_type =
+                        if let Some(Datatype::Any) = reinterpret_datatype {
+                            *input
+                        } else if let Some(reinterpret_datatype) =
+                            reinterpret_datatype
+                        {
+                            reinterpret_datatype
+                        } else {
+                            return None;
+                        };
+                    if check_type.is_real_type() {
                         None
-                    } else if reinterpret_datatype == Some(Datatype::Any) {
-                        Some(*input)
                     } else {
-                        reinterpret_datatype
+                        Some(check_type)
                     }
                 }
                 _ => Some(*input),
