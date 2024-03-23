@@ -588,20 +588,6 @@ impl<'c1, 'c2> PartialEq<Filter<'c2>> for Filter<'c1> {
             (Ok(mine), Ok(theirs)) => mine == theirs,
             _ => false,
         }
-
-        /*
-        let types_match = match (self.get_type(), other.get_type()) {
-            (Ok(mine), Ok(theirs)) => mine == theirs
-        };
-        if !types_match {
-            return false;
-        }
-
-        use ffi::FilterType;
-        match self.get_type().unwrap() {
-            FilterType::None =>
-        }
-        */
     }
 }
 
