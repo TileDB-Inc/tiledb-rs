@@ -123,14 +123,33 @@ pub fn tiledb_attribute<'ctx>(
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use proptest::prelude::*;
+
+    pub fn arbitrary_arrow_field() -> impl Strategy<Value = arrow_schema::Field>
+    {
+        (
+            tiledb_test::attribute::arbitrary_name(),
+            crate::datatype::tests::arbitrary_arrow_invertible(),
+            proptest::prelude::any::<bool>(),
+        )
+            .prop_map(|(name, data_type, nullable)| {
+                arrow_schema::Field::new(name, data_type, nullable)
+            })
+
+        /*
+         * TODO: generate arbitrary metadata?
+         * Without doing so the test does not demonstrate that metadata is preserved.
+         * Which the CAPI doesn't appear to offer a way to do anyway.
+         */
+    }
 
     #[test]
     fn test_invertibility() -> TileDBResult<()> {
         let c: TileDBContext = TileDBContext::new()?;
 
+        /* tiledb => arrow => tiledb */
         proptest!(|(tdb_in in tiledb_test::attribute::arbitrary(&c))| {
             let tdb_in = tdb_in.expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_field) = arrow_field(&tdb_in).expect("Error reading tiledb attribute") {
@@ -140,7 +159,28 @@ mod tests {
             }
         });
 
-        // TODO: go the other direction
+        /* arrow => tiledb => arrow */
+        proptest!(|(arrow_in in arbitrary_arrow_field())| {
+            let tdb = tiledb_attribute(&c, &arrow_in);
+            assert!(tdb.is_ok());
+            let tdb = tdb.unwrap();
+            assert!(tdb.is_some());
+            let tdb = tdb.unwrap().build();
+            let arrow_out = arrow_field(&tdb);
+            assert!(arrow_out.is_ok());
+            let arrow_out = arrow_out.unwrap();
+            assert!(arrow_out.is_some());
+            let arrow_out = {
+                let arrow_out = arrow_out.unwrap();
+                let metadata = {
+                    let mut metadata = arrow_out.metadata().clone();
+                    metadata.remove("tiledb");
+                    metadata
+                };
+                arrow_out.with_metadata(metadata)
+            };
+            assert_eq!(arrow_in, arrow_out);
+        });
 
         Ok(())
     }
