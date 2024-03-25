@@ -10,4 +10,5 @@ path = "src/lib.rs"
 [dependencies]
 num-traits = "0.2"
 proptest = "1.0.0"
+serde_json = { workspace = true }
 tiledb = { workspace = true }

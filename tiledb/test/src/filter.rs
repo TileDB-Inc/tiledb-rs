@@ -251,6 +251,18 @@ mod tests {
         });
     }
 
+    /// Test that ScaleFloat serialization is invertible, because floating point sadness
+    #[test]
+    fn filter_scalefloat_serde() {
+        proptest!(|(scalefloat_in in arbitrary_scalefloat())| {
+            let json = serde_json::to_string(&scalefloat_in)
+                .expect("Error serializing");
+            let scalefloat_out = serde_json::from_str(&json)
+                .expect("Error deserializing");
+            assert_eq!(scalefloat_in, scalefloat_out);
+        });
+    }
+
     #[test]
     fn filter_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");

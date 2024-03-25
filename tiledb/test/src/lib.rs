@@ -1,5 +1,6 @@
 extern crate num_traits;
 extern crate proptest;
+extern crate serde_json;
 extern crate tiledb;
 
 pub mod attribute;

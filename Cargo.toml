@@ -8,6 +8,7 @@ rust-version = "1.72"
 version = "0.1.0"
 
 [workspace.dependencies]
+serde_json = { version = "1.0.114", features = ["float_roundtrip"] }
 tiledb = { path = "tiledb/api", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
 tiledb-test = { path = "tiledb/test", version = "0.1.0" }
