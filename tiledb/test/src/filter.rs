@@ -123,17 +123,17 @@ pub fn arbitrary_data_for_datatype(
         })
 }
 
-pub fn arbitrary_for_datatype<'ctx>(
-    context: &'ctx Context,
+pub fn arbitrary_for_datatype(
+    context: &Context,
     input_datatype: Datatype,
-) -> impl Strategy<Value = TileDBResult<Filter<'ctx>>> {
+) -> impl Strategy<Value = TileDBResult<Filter>> {
     arbitrary_data_for_datatype(input_datatype)
         .prop_map(|filter| Filter::create(context, filter))
 }
 
-pub fn arbitrary<'ctx>(
-    context: &'ctx Context,
-) -> impl Strategy<Value = TileDBResult<Filter<'ctx>>> {
+pub fn arbitrary(
+    context: &Context,
+) -> impl Strategy<Value = TileDBResult<Filter>> {
     arbitrary_data().prop_map(|filter| Filter::create(context, filter))
 }
 
@@ -155,10 +155,10 @@ fn arbitrary_pipeline(
     }
 }
 
-pub fn arbitrary_list_for_datatype<'ctx>(
-    context: &'ctx Context,
+pub fn arbitrary_list_for_datatype(
+    context: &Context,
     datatype: Datatype,
-) -> impl Strategy<Value = TileDBResult<FilterList<'ctx>>> {
+) -> impl Strategy<Value = TileDBResult<FilterList>> {
     const MIN_FILTERS: usize = 0;
     const MAX_FILTERS: usize = 4;
 
@@ -186,9 +186,9 @@ pub fn arbitrary_list_for_datatype<'ctx>(
     })
 }
 
-pub fn arbitrary_list<'ctx>(
-    context: &'ctx Context,
-) -> impl Strategy<Value = TileDBResult<FilterList<'ctx>>> {
+pub fn arbitrary_list(
+    context: &Context,
+) -> impl Strategy<Value = TileDBResult<FilterList>> {
     crate::datatype::arbitrary()
         .prop_flat_map(|dt| arbitrary_list_for_datatype(context, dt))
 }

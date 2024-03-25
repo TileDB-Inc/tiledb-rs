@@ -81,11 +81,12 @@ impl CompressionData {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub enum ScaleFloatByteWidth {
     I8,
     I16,
     I32,
+    #[default] // keep in sync with tiledb/sm/filter/float_scaling_filter.h
     I64,
 }
 
@@ -106,13 +107,6 @@ impl ScaleFloatByteWidth {
             Self::I32 => Datatype::Int32,
             Self::I64 => Datatype::Int64,
         }
-    }
-}
-
-impl Default for ScaleFloatByteWidth {
-    fn default() -> Self {
-        // keep in sync with tiledb/sm/filter/float_scaling_filter.h
-        ScaleFloatByteWidth::I64
     }
 }
 
