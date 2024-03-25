@@ -427,31 +427,29 @@ impl<'ctx> Filter<'ctx> {
             return Err(self.context.expect_last_error());
         }
 
-        let get_compression_data =
-            |compression_type| -> TileDBResult<FilterData> {
-                Ok(FilterData::Compression(CompressionData {
-                    kind: compression_type,
-                    level: Some(self.get_option::<i32>(
-                        ffi::FilterOption::COMPRESSION_LEVEL,
-                    )?),
-                    reinterpret_datatype: Some({
-                        let dtype = self.get_option::<std::ffi::c_uchar>(
-                            ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
-                        )?;
-                        match Datatype::try_from(
-                            dtype as ffi::tiledb_datatype_t,
-                        ) {
-                            Ok(dtype) => dtype,
-                            Err(_) => {
-                                return Err(Error::from(format!(
-                                "Invalid compression reinterpret datatype: {}",
-                                dtype
-                            )))
-                            }
-                        }
-                    }),
-                }))
-            };
+        let get_compression_data = |kind| -> TileDBResult<FilterData> {
+            let level = Some(
+                self.get_option::<i32>(ffi::FilterOption::COMPRESSION_LEVEL)?,
+            );
+            let reinterpret_datatype = Some({
+                let dtype = self.get_option::<std::ffi::c_uchar>(
+                    ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
+                )?;
+                Datatype::try_from(dtype as ffi::tiledb_datatype_t).map_err(
+                    |_| {
+                        Error::from(format!(
+                            "Invalid compression reinterpret datatype: {}",
+                            dtype
+                        ))
+                    },
+                )?
+            });
+            Ok(FilterData::Compression(CompressionData {
+                kind,
+                level,
+                reinterpret_datatype,
+            }))
+        };
 
         match ffi::FilterType::from_u32(c_ftype) {
             None => Err(crate::error::Error::from(format!(
