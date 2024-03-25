@@ -57,25 +57,26 @@ pub fn arbitrary_positivedelta() -> impl Strategy<Value = FilterData> {
     const MIN_WINDOW: u32 = 8;
     const MAX_WINDOW: u32 = 1024;
 
-    (MIN_WINDOW..=MAX_WINDOW)
-        .prop_map(|max_window| FilterData::PositiveDelta { max_window })
+    (MIN_WINDOW..=MAX_WINDOW).prop_map(|max_window| FilterData::PositiveDelta {
+        max_window: Some(max_window),
+    })
 }
 
 pub fn arbitrary_scalefloat() -> impl Strategy<Value = FilterData> {
     (
         prop_oneof![
-            Just(std::mem::size_of::<i8>()),
-            Just(std::mem::size_of::<i16>()),
-            Just(std::mem::size_of::<i32>()),
-            Just(std::mem::size_of::<i64>()),
+            Just(ScaleFloatByteWidth::I8),
+            Just(ScaleFloatByteWidth::I16),
+            Just(ScaleFloatByteWidth::I32),
+            Just(ScaleFloatByteWidth::I64),
         ],
         proptest::num::f64::NORMAL,
         proptest::num::f64::NORMAL,
     )
         .prop_map(|(byte_width, factor, offset)| FilterData::ScaleFloat {
-            byte_width: byte_width as u64,
-            factor,
-            offset,
+            byte_width: Some(byte_width),
+            factor: Some(factor),
+            offset: Some(offset),
         })
 }
 
@@ -92,9 +93,9 @@ pub fn arbitrary_webp() -> impl Strategy<Value = FilterData> {
         0f32..=100f32,
     )
         .prop_map(|(input_format, lossless, quality)| FilterData::WebP {
-            input_format,
-            lossless,
-            quality,
+            input_format: Some(input_format),
+            lossless: Some(lossless),
+            quality: Some(quality),
         })
 }
 

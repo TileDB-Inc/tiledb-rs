@@ -81,6 +81,57 @@ impl CompressionData {
     }
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
+pub enum ScaleFloatByteWidth {
+    I8,
+    I16,
+    I32,
+    I64,
+}
+
+impl ScaleFloatByteWidth {
+    pub(crate) fn capi_enum(&self) -> usize {
+        match *self {
+            Self::I8 => std::mem::size_of::<i8>(),
+            Self::I16 => std::mem::size_of::<i16>(),
+            Self::I32 => std::mem::size_of::<i32>(),
+            Self::I64 => std::mem::size_of::<i64>(),
+        }
+    }
+
+    pub fn output_datatype(&self) -> Datatype {
+        match *self {
+            Self::I8 => Datatype::Int8,
+            Self::I16 => Datatype::Int16,
+            Self::I32 => Datatype::Int32,
+            Self::I64 => Datatype::Int64,
+        }
+    }
+}
+
+impl Default for ScaleFloatByteWidth {
+    fn default() -> Self {
+        // keep in sync with tiledb/sm/filter/float_scaling_filter.h
+        ScaleFloatByteWidth::I64
+    }
+}
+
+impl TryFrom<std::ffi::c_ulonglong> for ScaleFloatByteWidth {
+    type Error = crate::error::Error;
+    fn try_from(value: std::ffi::c_ulonglong) -> TileDBResult<Self> {
+        match value {
+            1 => Ok(Self::I8),
+            2 => Ok(Self::I16),
+            4 => Ok(Self::I32),
+            8 => Ok(Self::I64),
+            v => Err(Self::Error::from(format!(
+                "Invalid scale float byte width: {}",
+                v
+            ))),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum FilterData {
     None,
@@ -92,17 +143,17 @@ pub enum FilterData {
     Checksum(ChecksumType),
     Compression(CompressionData),
     PositiveDelta {
-        max_window: u32,
+        max_window: Option<u32>,
     },
     ScaleFloat {
-        byte_width: u64,
-        factor: f64,
-        offset: f64,
+        byte_width: Option<ScaleFloatByteWidth>,
+        factor: Option<f64>,
+        offset: Option<f64>,
     },
     WebP {
-        input_format: WebPFilterInputFormat,
-        lossless: bool,
-        quality: f32,
+        input_format: Option<WebPFilterInputFormat>,
+        lossless: Option<bool>,
+        quality: Option<f32>,
     },
     Xor,
 }
@@ -219,13 +270,11 @@ impl FilterData {
                 if input_size == std::mem::size_of::<f32>()
                     || input_size == std::mem::size_of::<f64>()
                 {
-                    match byte_width {
-                        1 => Some(Datatype::Int8),
-                        2 => Some(Datatype::Int16),
-                        4 => Some(Datatype::Int32),
-                        8 => Some(Datatype::Int64),
-                        _ => None,
-                    }
+                    Some(
+                        byte_width
+                            .unwrap_or(ScaleFloatByteWidth::default())
+                            .output_datatype(),
+                    )
                 } else {
                     None
                 }
@@ -341,72 +390,87 @@ impl<'ctx> Filter<'ctx> {
                 }
             }
             FilterData::PositiveDelta { max_window } => {
-                let c_size = max_window as std::ffi::c_uint;
-                Self::set_option(
-                    context,
-                    *raw,
-                    ffi::FilterOption::POSITIVE_DELTA_MAX_WINDOW,
-                    c_size,
-                )?;
+                if let Some(max_window) = max_window {
+                    let c_size = max_window as std::ffi::c_uint;
+                    Self::set_option(
+                        context,
+                        *raw,
+                        ffi::FilterOption::POSITIVE_DELTA_MAX_WINDOW,
+                        c_size,
+                    )?;
+                }
             }
             FilterData::ScaleFloat {
                 byte_width,
                 factor,
                 offset,
             } => {
-                let c_width = byte_width as std::ffi::c_ulonglong;
-                Self::set_option(
-                    context,
-                    *raw,
-                    ffi::FilterOption::SCALE_FLOAT_BYTEWIDTH,
-                    c_width,
-                )?;
+                if let Some(byte_width) = byte_width {
+                    let c_width = byte_width.capi_enum();
+                    Self::set_option(
+                        context,
+                        *raw,
+                        ffi::FilterOption::SCALE_FLOAT_BYTEWIDTH,
+                        c_width,
+                    )?;
+                }
 
-                let c_factor = factor as std::ffi::c_double;
-                Self::set_option(
-                    context,
-                    *raw,
-                    ffi::FilterOption::SCALE_FLOAT_FACTOR,
-                    c_factor,
-                )?;
+                if let Some(factor) = factor {
+                    let c_factor = factor as std::ffi::c_double;
+                    Self::set_option(
+                        context,
+                        *raw,
+                        ffi::FilterOption::SCALE_FLOAT_FACTOR,
+                        c_factor,
+                    )?;
+                }
 
-                let c_offset = offset as std::ffi::c_double;
-                Self::set_option(
-                    context,
-                    c_filter,
-                    ffi::FilterOption::SCALE_FLOAT_OFFSET,
-                    c_offset,
-                )?;
+                if let Some(offset) = offset {
+                    let c_offset = offset as std::ffi::c_double;
+                    Self::set_option(
+                        context,
+                        c_filter,
+                        ffi::FilterOption::SCALE_FLOAT_OFFSET,
+                        c_offset,
+                    )?;
+                }
             }
             FilterData::WebP {
                 input_format,
                 lossless,
                 quality,
             } => {
-                let c_format = input_format.capi_enum() as std::ffi::c_uchar;
-                Self::set_option(
-                    context,
-                    *raw,
-                    ffi::FilterOption::WEBP_INPUT_FORMAT,
-                    c_format,
-                )?;
+                if let Some(input_format) = input_format {
+                    let c_format =
+                        input_format.capi_enum() as std::ffi::c_uchar;
+                    Self::set_option(
+                        context,
+                        *raw,
+                        ffi::FilterOption::WEBP_INPUT_FORMAT,
+                        c_format,
+                    )?;
+                }
 
-                let c_lossless: std::ffi::c_uchar =
-                    if lossless { 1 } else { 0 };
-                Self::set_option(
-                    context,
-                    *raw,
-                    ffi::FilterOption::WEBP_LOSSLESS,
-                    c_lossless,
-                )?;
+                if let Some(lossless) = lossless {
+                    let c_lossless: std::ffi::c_uchar =
+                        if lossless { 1 } else { 0 };
+                    Self::set_option(
+                        context,
+                        *raw,
+                        ffi::FilterOption::WEBP_LOSSLESS,
+                        c_lossless,
+                    )?;
+                }
 
-                let c_quality = quality as std::ffi::c_float;
-                Self::set_option(
-                    context,
-                    *raw,
-                    ffi::FilterOption::WEBP_QUALITY,
-                    c_quality,
-                )?;
+                if let Some(quality) = quality {
+                    let c_quality = quality as std::ffi::c_float;
+                    Self::set_option(
+                        context,
+                        *raw,
+                        ffi::FilterOption::WEBP_QUALITY,
+                        c_quality,
+                    )?;
+                }
             }
             FilterData::Xor => (),
         };
@@ -493,9 +557,9 @@ impl<'ctx> Filter<'ctx> {
             }
             Some(ffi::FilterType::PositiveDelta) => {
                 Ok(FilterData::PositiveDelta {
-                    max_window: self.get_option::<std::ffi::c_uint>(
+                    max_window: Some(self.get_option::<std::ffi::c_uint>(
                         ffi::FilterOption::POSITIVE_DELTA_MAX_WINDOW,
-                    )?,
+                    )?),
                 })
             }
             Some(ffi::FilterType::ChecksumMD5) => {
@@ -505,28 +569,32 @@ impl<'ctx> Filter<'ctx> {
                 Ok(FilterData::Checksum(ChecksumType::Sha256))
             }
             Some(ffi::FilterType::ScaleFloat) => Ok(FilterData::ScaleFloat {
-                byte_width: self.get_option::<std::ffi::c_ulonglong>(
-                    ffi::FilterOption::SCALE_FLOAT_BYTEWIDTH,
-                )?,
-                factor: self.get_option::<std::ffi::c_double>(
+                byte_width: Some(ScaleFloatByteWidth::try_from(
+                    self.get_option::<std::ffi::c_ulonglong>(
+                        ffi::FilterOption::SCALE_FLOAT_BYTEWIDTH,
+                    )?,
+                )?),
+                factor: Some(self.get_option::<std::ffi::c_double>(
                     ffi::FilterOption::SCALE_FLOAT_FACTOR,
-                )?,
-                offset: self.get_option::<std::ffi::c_double>(
+                )?),
+                offset: Some(self.get_option::<std::ffi::c_double>(
                     ffi::FilterOption::SCALE_FLOAT_OFFSET,
-                )?,
+                )?),
             }),
             Some(ffi::FilterType::WebP) => Ok(FilterData::WebP {
-                input_format: WebPFilterInputFormat::try_from(
+                input_format: Some(WebPFilterInputFormat::try_from(
                     self.get_option::<u32>(
                         ffi::FilterOption::WEBP_INPUT_FORMAT,
                     )?,
-                )?,
-                lossless: self.get_option::<std::ffi::c_uchar>(
-                    ffi::FilterOption::WEBP_LOSSLESS,
-                )? != 0,
-                quality: self.get_option::<std::ffi::c_float>(
+                )?),
+                lossless: Some(
+                    self.get_option::<std::ffi::c_uchar>(
+                        ffi::FilterOption::WEBP_LOSSLESS,
+                    )? != 0,
+                ),
+                quality: Some(self.get_option::<std::ffi::c_float>(
                     ffi::FilterOption::WEBP_QUALITY,
-                )?,
+                )?),
             }),
         }
     }
@@ -593,6 +661,91 @@ impl<'c1, 'c2> PartialEq<Filter<'c2>> for Filter<'c1> {
 mod tests {
     use super::*;
 
+    /// Ensure that we can construct a filter from all options using default settings
+    #[test]
+    fn filter_default_construct() {
+        let ctx = Context::new().expect("Error creating context");
+
+        // bit width reduction
+        {
+            let f = Filter::create(
+                &ctx,
+                FilterData::BitWidthReduction { max_window: None },
+            )
+            .expect("Error creating bit width filter");
+            assert!(matches!(
+                f.filter_data(),
+                Ok(FilterData::BitWidthReduction { .. })
+            ));
+        }
+
+        // compression
+        {
+            let f = Filter::create(
+                &ctx,
+                FilterData::Compression(CompressionData::new(
+                    CompressionType::Lz4,
+                )),
+            )
+            .expect("Error creating compression filter");
+
+            assert!(matches!(
+                f.filter_data(),
+                Ok(FilterData::Compression(CompressionData {
+                    kind: CompressionType::Lz4,
+                    ..
+                }))
+            ));
+        }
+
+        // positive delta
+        {
+            let f = Filter::create(
+                &ctx,
+                FilterData::PositiveDelta { max_window: None },
+            )
+            .expect("Error creating positive delta filter");
+
+            assert!(matches!(
+                f.filter_data(),
+                Ok(FilterData::PositiveDelta { .. })
+            ));
+        }
+
+        // scale float
+        {
+            let f = Filter::create(
+                &ctx,
+                FilterData::ScaleFloat {
+                    byte_width: None,
+                    factor: None,
+                    offset: None,
+                },
+            )
+            .expect("Error creating scale float filter");
+
+            assert!(matches!(
+                f.filter_data(),
+                Ok(FilterData::ScaleFloat { .. })
+            ));
+        }
+
+        // webp
+        {
+            let f = Filter::create(
+                &ctx,
+                FilterData::WebP {
+                    input_format: None,
+                    lossless: None,
+                    quality: None,
+                },
+            )
+            .expect("Error creating webp filter");
+
+            assert!(matches!(f.filter_data(), Ok(FilterData::WebP { .. })));
+        }
+    }
+
     #[test]
     fn filter_get_set_compression_options() {
         let ctx = Context::new().expect("Error creating context instance.");
@@ -642,13 +795,17 @@ mod tests {
     #[test]
     fn filter_get_set_positive_delta_options() {
         let ctx = Context::new().expect("Error creating context instance.");
-        let f =
-            Filter::create(&ctx, FilterData::PositiveDelta { max_window: 75 })
-                .expect("Error creating positive delta filter.");
+        let f = Filter::create(
+            &ctx,
+            FilterData::PositiveDelta {
+                max_window: Some(75),
+            },
+        )
+        .expect("Error creating positive delta filter.");
 
         match f.filter_data().expect("Error reading filter data") {
             FilterData::PositiveDelta { max_window } => {
-                assert_eq!(75, max_window)
+                assert_eq!(Some(75), max_window)
             }
             _ => unreachable!(),
         }
@@ -660,9 +817,9 @@ mod tests {
         let f = Filter::create(
             &ctx,
             FilterData::ScaleFloat {
-                byte_width: 2,
-                factor: 0.643,
-                offset: 0.24,
+                byte_width: Some(ScaleFloatByteWidth::I16),
+                factor: Some(0.643),
+                offset: Some(0.24),
             },
         )
         .expect("Error creating scale float filter");
@@ -673,9 +830,9 @@ mod tests {
                 factor,
                 offset,
             } => {
-                assert_eq!(byte_width, 2);
-                assert_eq!(factor, 0.643);
-                assert_eq!(offset, 0.24);
+                assert_eq!(Some(ScaleFloatByteWidth::I16), byte_width);
+                assert_eq!(Some(0.643), factor);
+                assert_eq!(Some(0.24), offset);
             }
             _ => unreachable!(),
         }
@@ -687,9 +844,9 @@ mod tests {
         let f = Filter::create(
             &ctx,
             FilterData::WebP {
-                input_format: WebPFilterInputFormat::Bgra,
-                lossless: true,
-                quality: 0.712,
+                input_format: Some(WebPFilterInputFormat::Bgra),
+                lossless: Some(true),
+                quality: Some(0.712),
             },
         )
         .expect("Error creating webp filter");
@@ -700,9 +857,9 @@ mod tests {
                 lossless,
                 quality,
             } => {
-                assert_eq!(0.712, quality);
-                assert_eq!(WebPFilterInputFormat::Bgra, input_format);
-                assert!(lossless);
+                assert_eq!(Some(0.712), quality);
+                assert_eq!(Some(WebPFilterInputFormat::Bgra), input_format);
+                assert_eq!(Some(true), lossless);
             }
             _ => unreachable!(),
         }
