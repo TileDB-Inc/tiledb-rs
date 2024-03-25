@@ -448,7 +448,7 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn filter_list(self, filter_list: FilterList) -> TileDBResult<Self> {
+    pub fn filter_list(self, filter_list: &FilterList) -> TileDBResult<Self> {
         let c_context = self.attr.context.capi();
         let res = unsafe {
             ffi::tiledb_attribute_set_filter_list(
@@ -550,7 +550,7 @@ mod test {
 
             let attr = Builder::new(&ctx, "foo", Datatype::UInt8)
                 .expect("Error creating attribute instance.")
-                .filter_list(flist2)
+                .filter_list(&flist2)
                 .expect("Error setting filter list.")
                 .build();
 

@@ -24,7 +24,7 @@ pub fn arbitrary(
             )
                 .prop_map(|(name, dt, filters)| {
                     Ok(AttributeBuilder::new(context, name.as_ref(), dt)?
-                        .filter_list(filters?)?
+                        .filter_list(&filters?)?
                         .build())
                 })
         },
