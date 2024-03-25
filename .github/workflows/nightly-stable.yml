@@ -15,12 +15,18 @@ jobs:
       - name: Install TileDB
         run: |
           set -e pipefail
+          exec 2>&1 >(tee ${TILEDB_INSTALL_LOG})
+          set -x
           mkdir -p /opt/tiledb
           cd /opt/tiledb
           wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz
           wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz.sha256
           sha256sum tiledb*.sha256
           tar -C /opt/tiledb -xzf tiledb*.tar.gz
+      - name: Install TileDB Log Dump
+        if: ${{ failure() }}
+        run: |
+          cat ${TILEDB_INSTALL_LOG}
       - name: Check Formatting
         run: cargo fmt --quiet --check
       - name: Update Dependencies
