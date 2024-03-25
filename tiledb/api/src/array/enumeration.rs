@@ -5,6 +5,7 @@ use serde_json::json;
 
 use crate::column::{Column, TryAsColumn};
 use crate::context::Context;
+use crate::fn_typed;
 use crate::string::{RawTDBString, TDBString};
 use crate::Datatype;
 use crate::Result as TileDBResult;
@@ -246,21 +247,42 @@ impl<'data> TryAsColumn<'data> for Enumeration<'data> {
 impl<'ctx> Debug for Enumeration<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let name = self.name().map_err(|_| fmt::Error)?;
-        let dtype = self
-            .datatype()
-            .map_err(|_| fmt::Error)?
-            .to_string()
-            .unwrap_or("<unknown datatype>".to_owned());
+        let dtype = self.datatype().map_err(|_| fmt::Error)?;
+
+        let dtype_string =
+            dtype.to_string().unwrap_or("<unknown datatype>".to_owned());
         let cell_val_num = self.cell_val_num().map_err(|_| fmt::Error)?;
         let ordered = self.ordered().map_err(|_| fmt::Error)?;
+        let col = self.try_as_column().map_err(|_| fmt::Error)?;
 
-        // TODO: Add enumeration values display.
+        let is_strings =
+            matches!(dtype, Datatype::StringAscii | Datatype::StringUtf8);
+
+        let values = if cell_val_num == u32::MAX && is_strings {
+            let result = col.to_string_vec(dtype, cell_val_num);
+            if result.is_ok() {
+                json!(result.unwrap())
+            } else {
+                json!(col
+                    .to_boxed_u8_vec(dtype, cell_val_num)
+                    .map_err(|_| fmt::Error)?)
+            }
+        } else if cell_val_num == u32::MAX {
+            json!(col
+                .to_boxed_u8_vec(dtype, cell_val_num)
+                .map_err(|_| fmt::Error)?)
+        } else {
+            fn_typed!(col.to_vec, dtype, dtype, cell_val_num =>
+                json!(to_vec.map_err(|_| fmt::Error)?)
+            )
+        };
 
         let json = json!({
             "name": name,
-            "datatype": dtype,
+            "datatype": dtype_string,
             "cell_val_num": cell_val_num,
-            "ordered": ordered
+            "ordered": ordered,
+            "values": values
         });
         write!(f, "{}", json)
     }
@@ -301,7 +323,13 @@ impl<'c1, 'c2> PartialEq<Enumeration<'c2>> for Enumeration<'c1> {
             return false;
         }
 
-        // TODO: Match data and offsets
+        let cols_match = match (self.try_as_column(), other.try_as_column()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !cols_match {
+            return false;
+        }
 
         true
     }
@@ -500,6 +528,31 @@ mod tests {
         assert_eq!(enmr1.cell_val_num()?, enmr2.cell_val_num()?);
         assert_eq!(enmr1.ordered()?, enmr2.ordered()?);
 
+        Ok(())
+    }
+
+    #[test]
+    fn json_int_test() -> TileDBResult<()> {
+        let ctx = Context::new()?;
+        let enmr = Builder::new(&ctx, "foo", Datatype::Int32)
+            .build(vec![1, 2, 3].as_column())?;
+
+        let jsonstr = format!("{:?}", enmr);
+        assert!(jsonstr.contains("[1,2,3]"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn json_str_test() -> TileDBResult<()> {
+        let ctx = Context::new()?;
+        let enmr = Builder::new(&ctx, "foo", Datatype::StringAscii)
+            .var_sized()
+            .build(vec!["foo", "bar", "baz"].as_column())?;
+
+        let jsonstr = format!("{:?}", enmr);
+        assert!(jsonstr.contains("[\"foo\",\"bar\",\"baz\"]"));
+        println!("{}", jsonstr);
         Ok(())
     }
 }

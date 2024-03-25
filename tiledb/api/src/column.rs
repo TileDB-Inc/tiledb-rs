@@ -276,6 +276,32 @@ impl<'data> Column<'data> {
     }
 }
 
+impl<'c1, 'c2> PartialEq<Column<'c2>> for Column<'c1> {
+    fn eq(&self, other: &Column<'c2>) -> bool {
+        if self.num_values() != other.num_values() {
+            return false;
+        }
+
+        if self.value_size() != other.value_size() {
+            return false;
+        }
+
+        if self.data() != other.data() {
+            return false;
+        }
+
+        let offsets_match = match (self.offsets(), other.offsets()) {
+            (Some(mine), Some(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !offsets_match {
+            return false;
+        }
+
+        true
+    }
+}
+
 /// The AsColumn trait provides an auto-conversion from common datatypes into
 /// the columnar format used by TileDB.
 ///
