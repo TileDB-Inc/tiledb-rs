@@ -5,7 +5,6 @@ use serde_json::json;
 
 use crate::column::{Column, TryAsColumn};
 use crate::context::Context;
-use crate::fn_typed;
 use crate::string::{RawTDBString, TDBString};
 use crate::Datatype;
 use crate::Result as TileDBResult;
@@ -255,34 +254,12 @@ impl<'ctx> Debug for Enumeration<'ctx> {
         let ordered = self.ordered().map_err(|_| fmt::Error)?;
         let col = self.try_as_column().map_err(|_| fmt::Error)?;
 
-        let is_strings =
-            matches!(dtype, Datatype::StringAscii | Datatype::StringUtf8);
-
-        let values = if cell_val_num == u32::MAX && is_strings {
-            let result = col.to_string_vec(dtype, cell_val_num);
-            if result.is_ok() {
-                json!(result.unwrap())
-            } else {
-                json!(col
-                    .to_boxed_u8_vec(dtype, cell_val_num)
-                    .map_err(|_| fmt::Error)?)
-            }
-        } else if cell_val_num == u32::MAX {
-            json!(col
-                .to_boxed_u8_vec(dtype, cell_val_num)
-                .map_err(|_| fmt::Error)?)
-        } else {
-            fn_typed!(col.to_vec, dtype, dtype, cell_val_num =>
-                json!(to_vec.map_err(|_| fmt::Error)?)
-            )
-        };
-
         let json = json!({
             "name": name,
             "datatype": dtype_string,
             "cell_val_num": cell_val_num,
             "ordered": ordered,
-            "values": values
+            "values": col.to_json(dtype, cell_val_num).map_err(|_| fmt::Error)?,
         });
         write!(f, "{}", json)
     }

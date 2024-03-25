@@ -1,4 +1,8 @@
+use serde_json::json;
+use serde_json::value::Value as JsonValue;
+
 use crate::error::Error;
+use crate::fn_typed;
 use crate::Datatype;
 use crate::Result as TileDBResult;
 
@@ -273,6 +277,30 @@ impl<'data> Column<'data> {
             Column::Referenced(_) => false,
             Column::Allocated(_) => true,
         }
+    }
+
+    pub fn to_json(
+        &self,
+        datatype: Datatype,
+        cell_val_num: u32,
+    ) -> TileDBResult<JsonValue> {
+        let is_strings =
+            matches!(datatype, Datatype::StringAscii | Datatype::StringUtf8);
+
+        return if cell_val_num == u32::MAX && is_strings {
+            let result = self.to_string_vec(datatype, cell_val_num);
+            if result.is_ok() {
+                Ok(json!(result.unwrap()))
+            } else {
+                Ok(json!(self.to_boxed_u8_vec(datatype, cell_val_num)?))
+            }
+        } else if cell_val_num == u32::MAX {
+            Ok(json!(self.to_boxed_u8_vec(datatype, cell_val_num)?))
+        } else {
+            Ok(fn_typed!(self.to_vec, datatype, datatype, cell_val_num =>
+                json!(to_vec?)
+            ))
+        };
     }
 }
 
