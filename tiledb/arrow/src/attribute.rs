@@ -45,6 +45,7 @@ mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         proptest!(|(attr in tiledb_test::attribute::arbitrary(&c))| {
+            let attr = attr.expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_field) = arrow_field(&attr).expect("Error reading tiledb attribute") {
                 assert_eq!(attr.name()?, *arrow_field.name());
                 assert!(crate::datatype::is_same_physical_type(&attr.datatype()?, arrow_field.data_type()));

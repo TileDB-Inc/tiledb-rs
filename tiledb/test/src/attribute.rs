@@ -1,6 +1,7 @@
 use proptest::prelude::*;
 use tiledb::array::{Attribute, AttributeBuilder};
 use tiledb::context::Context;
+use tiledb::Result as TileDBResult;
 
 pub fn arbitrary_name() -> impl Strategy<Value = String> {
     proptest::string::string_regex("[a-zA-Z0-9_]*")
@@ -11,12 +12,21 @@ pub fn arbitrary_name() -> impl Strategy<Value = String> {
         )
 }
 
-pub fn arbitrary(context: &Context) -> impl Strategy<Value = Attribute> {
-    (arbitrary_name(), crate::datatype::arbitrary_implemented()).prop_map(
+pub fn arbitrary(
+    context: &Context,
+) -> impl Strategy<Value = TileDBResult<Attribute>> {
+    (arbitrary_name(), crate::datatype::arbitrary_implemented()).prop_flat_map(
         |(name, dt)| {
-            AttributeBuilder::new(context, name.as_ref(), dt)
-                .expect("Error building attribute")
-                .build()
+            (
+                Just(name),
+                Just(dt),
+                crate::filter::arbitrary_list_for_datatype(context, dt),
+            )
+                .prop_map(|(name, dt, filters)| {
+                    Ok(AttributeBuilder::new(context, name.as_ref(), dt)?
+                        .filter_list(&filters?)?
+                        .build())
+                })
         },
     )
 }
@@ -30,7 +40,9 @@ mod tests {
     fn attribute_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(_ in arbitrary(&ctx))| {});
+        proptest!(|(attr in arbitrary(&ctx))| {
+            attr.expect("Error constructing arbitrary attribute");
+        });
     }
 
     #[test]
@@ -38,6 +50,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|(attr in arbitrary(&ctx))| {
+            let attr = attr.expect("Error constructing arbitrary attribute");
             assert_eq!(attr, attr);
         });
     }

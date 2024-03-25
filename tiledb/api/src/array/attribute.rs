@@ -5,14 +5,13 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde_json::json;
-pub use tiledb_sys::Datatype;
 
 use crate::context::Context;
 use crate::convert::{BitsEq, CAPIConverter};
 use crate::error::Error;
 use crate::filter_list::{FilterList, RawFilterList};
 use crate::fn_typed;
-use crate::Result as TileDBResult;
+use crate::{Datatype, Result as TileDBResult};
 
 pub(crate) enum RawAttribute {
     Owned(*mut ffi::tiledb_attribute_t),
@@ -70,11 +69,7 @@ impl<'ctx> Attribute<'ctx> {
             ffi::tiledb_attribute_get_type(c_context, *self.raw, &mut c_dtype)
         };
         if res == ffi::TILEDB_OK {
-            if let Some(dtype) = Datatype::from_u32(c_dtype) {
-                Ok(dtype)
-            } else {
-                Err(Error::from("Invalid Datatype value returned by TileDB"))
-            }
+            Datatype::try_from(c_dtype)
         } else {
             Err(self.context.expect_last_error())
         }
@@ -238,13 +233,10 @@ impl<'ctx> Debug for Attribute<'ctx> {
                 } else {
                     None
                 },
-            /*
-            TODO
             "filters": match self.filter_list() {
                 Ok(fl) => format!("{:?}", fl),
                 Err(e) => format!("<error reading filters: {}>", e)
             },
-            */
             "raw": format!("{:p}", *self.raw)
         });
         write!(f, "{}", json)
@@ -274,15 +266,13 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
             return false;
         }
 
-        /*
         let filter_match = match (self.filter_list(), other.filter_list()) {
-            (Ok(mine), Ok(theirs)) => unimplemented!(),
+            (Ok(mine), Ok(theirs)) => mine == theirs,
             _ => false,
         };
         if !filter_match {
             return false;
         }
-        */
 
         let cell_val_match = match (self.cell_val_num(), other.cell_val_num()) {
             (Ok(mine), Ok(theirs)) => mine == theirs,
@@ -545,12 +535,17 @@ mod test {
         {
             let flist2 = FilterListBuilder::new(&ctx)
                 .expect("Error creating filter list builder.")
-                .add_filter(NoopFilterBuilder::new(&ctx)?.build())?
-                .add_filter(BitWidthReductionFilterBuilder::new(&ctx)?.build())?
-                .add_filter(
-                    CompressionFilterBuilder::new(&ctx, CompressionType::Zstd)?
-                        .build(),
-                )?
+                .add_filter(Filter::create(&ctx, FilterData::None)?)?
+                .add_filter(Filter::create(
+                    &ctx,
+                    FilterData::BitWidthReduction { max_window: None },
+                )?)?
+                .add_filter(Filter::create(
+                    &ctx,
+                    FilterData::Compression(CompressionData::new(
+                        CompressionType::Zstd,
+                    )),
+                )?)?
                 .build();
 
             let attr = Builder::new(&ctx, "foo", Datatype::UInt8)

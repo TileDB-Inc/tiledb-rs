@@ -59,7 +59,7 @@ impl<'ctx> Dimension<'ctx> {
 
         assert_eq!(ffi::TILEDB_OK, c_ret);
 
-        Datatype::from_capi_enum(c_datatype)
+        Datatype::try_from(c_datatype).expect("Invalid dimension type")
     }
 
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
@@ -303,13 +303,12 @@ mod tests {
             let domain: [i32; 2] = [1, 4];
             let extent: i32 = 4;
             let fl = FilterListBuilder::new(&context)?
-                .add_filter(
-                    CompressionFilterBuilder::new(
-                        &context,
+                .add_filter(Filter::create(
+                    &context,
+                    FilterData::Compression(CompressionData::new(
                         CompressionType::Lz4,
-                    )?
-                    .build(),
-                )?
+                    )),
+                )?)?
                 .build();
             let dimension: Dimension = Builder::new::<i32>(
                 &context,
@@ -327,7 +326,13 @@ mod tests {
             assert_eq!(1, fl.get_num_filters().unwrap());
 
             let outlz4 = fl.get_filter(0).unwrap();
-            assert_eq!(ffi::FilterType::Lz4, outlz4.get_type().unwrap());
+            match outlz4.filter_data().expect("Error reading filter data") {
+                FilterData::Compression(CompressionData {
+                    kind: CompressionType::Lz4,
+                    ..
+                }) => (),
+                _ => unreachable!(),
+            }
         }
 
         Ok(())

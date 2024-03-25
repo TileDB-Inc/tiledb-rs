@@ -25,7 +25,7 @@ pub fn arbitrary(
             let mut b = SchemaBuilder::new(context, array_type, domain?)?;
             for attr in attrs {
                 /* TODO: how to ensure no duplicate names, assuming that matters? */
-                b = b.add_attribute(attr)?
+                b = b.add_attribute(attr?)?
             }
 
             Ok(b.build())
