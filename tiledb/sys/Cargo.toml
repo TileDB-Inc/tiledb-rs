@@ -2,3 +2,6 @@
 name = "tiledb-sys"
 version = { workspace = true }
 edition = { workspace = true }
+
+[build-dependencies]
+pkg-config = "0.3.30"
