@@ -2,7 +2,7 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use crate::context::Context;
-use crate::filter::{Filter, RawFilter};
+use crate::filter::{Filter, FilterData, RawFilter};
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawFilterList {
@@ -187,6 +187,11 @@ impl<'ctx> Builder<'ctx> {
         } else {
             Err(self.filter_list.context.expect_last_error())
         }
+    }
+
+    pub fn add_filter_data(self, filter: FilterData) -> TileDBResult<Self> {
+        let ctx = self.filter_list.context;
+        self.add_filter(Filter::create(ctx, filter)?)
     }
 
     pub fn build(self) -> FilterList<'ctx> {

@@ -7,6 +7,8 @@ use crate::context::Context;
 use crate::error::Error;
 use crate::{Datatype, Result as TileDBResult};
 
+pub use crate::filter_list::{Builder as FilterListBuilder, FilterList};
+
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CompressionType {
     Bzip2,

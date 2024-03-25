@@ -1,5 +1,7 @@
 extern crate arrow;
 extern crate arrow_schema;
+extern crate serde;
+extern crate serde_json;
 extern crate tiledb;
 
 #[cfg(test)]

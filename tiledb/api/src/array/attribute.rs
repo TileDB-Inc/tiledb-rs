@@ -341,6 +341,10 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
+    pub fn context(&self) -> &'ctx Context {
+        self.attr.context
+    }
+
     pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
         let c_context = self.attr.context.capi();
         let c_num = num as std::ffi::c_uint;
