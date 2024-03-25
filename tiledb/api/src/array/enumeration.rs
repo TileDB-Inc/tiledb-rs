@@ -60,7 +60,7 @@ impl<'ctx> Enumeration<'ctx> {
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
-        let mut dtype: ffi::tiledb_datatype_t = 0;
+        let mut dtype: ffi::tiledb_datatype_t = out_ptr!();
         let res = unsafe {
             ffi::tiledb_enumeration_get_type(
                 self.context.capi(),
@@ -128,7 +128,7 @@ impl<'ctx> Enumeration<'ctx> {
         // std::slice::from_raw_parts because that breaks how Option<&[T]>::None
         // is represented.
         if ptr.is_null() {
-            ptr = 0x1 as *const std::ffi::c_uchar;
+            ptr = std::ptr::NonNull::dangling().as_ptr();
         }
 
         if res == ffi::TILEDB_OK {
@@ -157,7 +157,7 @@ impl<'ctx> Enumeration<'ctx> {
         // std::slice::from_raw_parts because that breaks how Option<&[T]>::None
         // is represented.
         if ptr.is_null() {
-            ptr = 0x1 as *const std::ffi::c_ulonglong;
+            ptr = std::ptr::NonNull::dangling().as_ptr();
         }
 
         // The size returned is the number of bytes, where from_raw_parts
@@ -179,12 +179,12 @@ impl<'ctx> Enumeration<'ctx> {
         // Rust semantics require that slice pointers aren't nullptr so that
         // nullptr can be used to distinguish between Some and None. The stdlib
         // empty slices all appear to return 0x1 which is mentioned in the docs
-        // as a valid strategy. For our situation, we just use a zero length to
-        // indicate when we should pass nullptr.
-        let offsets_ptr = if column.offsets().is_empty() {
-            std::ptr::null_mut()
+        // as a valid strategy.
+        let (offsets_ptr, offsets_len) = if column.offsets().is_none() {
+            (std::ptr::null_mut() as *const u64, 0u64)
         } else {
-            column.offsets().as_ptr()
+            let offsets = column.offsets().unwrap();
+            (offsets.as_ptr(), std::mem::size_of_val(offsets) as u64)
         };
 
         // An important note here is that the Enumeration allocator copies the
@@ -199,7 +199,7 @@ impl<'ctx> Enumeration<'ctx> {
                 column.data().as_ptr() as *const std::ffi::c_void,
                 column.data().len() as u64,
                 offsets_ptr as *const std::ffi::c_void,
-                column.offsets().len() as u64,
+                offsets_len,
                 &mut c_new_enmr,
             )
         };
@@ -235,7 +235,10 @@ impl<'data> TryAsColumn<'data> for Enumeration<'data> {
         };
 
         Ok(Column::from_references(
-            num_values, value_size, data, offsets,
+            num_values,
+            value_size,
+            data,
+            Some(offsets),
         ))
     }
 }
@@ -350,16 +353,16 @@ impl<'ctx> Builder<'ctx> {
         // Rust semantics require that slice pointers aren't nullptr so that
         // nullptr can be used to distinguish between Some and None. The stdlib
         // empty slices all appear to return 0x1 which is mentioned in the docs
-        // as a valid strategy. For our situation, we just use a zero length to
-        // indicate when we should pass nullptr.
-        let offsets_ptr = if column.offsets().is_empty() {
-            std::ptr::null_mut()
+        // as a valid strategy.
+        let (offsets_ptr, offsets_len) = if column.offsets().is_none() {
+            (std::ptr::null_mut() as *const u64, 0u64)
         } else {
-            column.offsets().as_ptr()
+            let offsets = column.offsets().unwrap();
+            (offsets.as_ptr(), std::mem::size_of_val(offsets) as u64)
         };
 
         // An important note here is that the Enumeration allocator copies the
-        // contents of data of offsets rather than assumes ownership. That
+        // contents of data and offsets rather than assumes ownership. That
         // means this is safe as those bytes are guaranteed to be alive until
         // we drop self at the end of this method after returning from
         // tiledb_enumeration_alloc.
@@ -373,7 +376,7 @@ impl<'ctx> Builder<'ctx> {
                 column.data().as_ptr() as *const std::ffi::c_void,
                 column.data().len() as u64,
                 offsets_ptr as *const std::ffi::c_void,
-                std::mem::size_of_val(column.offsets()) as u64,
+                offsets_len,
                 &mut c_enmr,
             )
         };
@@ -470,8 +473,8 @@ mod tests {
         assert_eq!(col.data()[7], b'a');
         assert_eq!(col.data()[8], b'z');
         assert_eq!(col.data()[9], b'b');
-        assert_eq!(col.offsets()[0], 0);
-        assert_eq!(col.offsets()[2], 6);
+        assert_eq!(col.offsets().expect("Invalid offsets")[0], 0);
+        assert_eq!(col.offsets().expect("Invalid offsets")[2], 6);
 
         assert_eq!(
             col.to_string_vec(enmr.datatype()?, enmr.cell_val_num()?)?,

@@ -9,7 +9,7 @@ pub struct ReferenceColumn<'data> {
     num_values: u64,
     value_size: u64,
     data: &'data [u8],
-    offsets: &'data [u64],
+    offsets: Option<&'data [u64]>,
 }
 
 /// If a column requires allocating a linearized buffer (i.e., when passing a
@@ -19,7 +19,7 @@ pub struct AllocatedColumn {
     num_values: u64,
     value_size: u64,
     data: Box<[u8]>,
-    offsets: Box<[u64]>,
+    offsets: Option<Box<[u64]>>,
 }
 
 /// The Column struct is used to represent a column of data in TileDB. A column
@@ -39,13 +39,22 @@ impl<'data> Column<'data> {
         num_values: u64,
         value_size: u64,
         data: &'data [u8],
-        offsets: &'data [u64],
+        offsets: Option<&'data [u64]>,
     ) -> Self {
+        let offsets = if offsets.is_some() {
+            if !offsets.unwrap().is_empty() {
+                offsets
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         Column::Referenced(ReferenceColumn {
             num_values,
             value_size,
             data,
-            offsets,
+            offsets: offsets,
         })
     }
 
@@ -53,8 +62,17 @@ impl<'data> Column<'data> {
         num_values: u64,
         value_size: u64,
         data: Box<[u8]>,
-        offsets: Box<[u64]>,
+        offsets: Option<Box<[u64]>>,
     ) -> Self {
+        let offsets = if offsets.is_some() {
+            if !offsets.as_ref().unwrap().is_empty() {
+                offsets
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         Column::Allocated(AllocatedColumn {
             num_values,
             value_size,
@@ -100,7 +118,15 @@ impl<'data> Column<'data> {
 
         // At this point we're ready to create our Vec to return. For now
         // I'm going to cowboy it a bit and assume that alignment is
-        // correct.
+        // correct and/or not an issue for slices. To my knowledge, the
+        // alignment requirements are triggered when we give Rust a pointer
+        // to memory that it then takes over managing. I.e., if C++ allocated
+        // something that we then tell Rust to deallocate. In those instances
+        // Rust has specific alignment requirements due to its Allocator.
+        //
+        // Half the reason for using slices is to avoid that whole issue. The
+        // goal is to let Rust manage Rust memory, and let C++ manage C++
+        // memory.
         let vals: &[T] = unsafe {
             std::slice::from_raw_parts(
                 self.data().as_ptr() as *const T,
@@ -129,16 +155,16 @@ impl<'data> Column<'data> {
             return Err(Error::from("Use to_vec<T> for fixed sized data."));
         }
 
-        if self.offsets().is_empty() {
+        if self.offsets().is_none() {
             return Ok(Vec::new());
         }
 
         let mut ret: Vec<String> = Vec::new();
 
         let data = self.data();
-        let offsets = self.offsets();
+        let offsets = self.offsets().unwrap();
         let num_offsets = offsets.len();
-        for (idx, offset) in self.offsets().iter().enumerate() {
+        for (idx, offset) in offsets.iter().enumerate() {
             let len = if idx == num_offsets - 1 {
                 self.data().len() as u64 - *offset
             } else {
@@ -180,16 +206,16 @@ impl<'data> Column<'data> {
             return Err(Error::from("Use to_vec<T> for fixed sized data."));
         }
 
-        if self.offsets().is_empty() {
+        if self.offsets().is_none() {
             return Ok(Vec::new());
         }
 
         let mut ret: Vec<Box<[u8]>> = Vec::new();
 
         let data = self.data();
-        let offsets = self.offsets();
+        let offsets = self.offsets().unwrap();
         let num_offsets = offsets.len();
-        for (idx, offset) in self.offsets().iter().enumerate() {
+        for (idx, offset) in offsets.iter().enumerate() {
             let len = if idx == num_offsets - 1 {
                 self.data().len() as u64 - *offset
             } else {
@@ -227,14 +253,17 @@ impl<'data> Column<'data> {
         }
     }
 
-    pub fn offsets(&self) -> &[u64] {
+    pub fn offsets(&self) -> Option<&[u64]> {
         match self {
             Column::Referenced(col) => col.offsets,
-            Column::Allocated(col) => unsafe {
-                std::slice::from_raw_parts(
-                    col.offsets.as_ptr(),
-                    self.num_values() as usize,
-                )
+            Column::Allocated(col) => match &col.offsets {
+                Some(offsets) => unsafe {
+                    Some(std::slice::from_raw_parts(
+                        offsets.as_ptr(),
+                        self.num_values() as usize,
+                    ))
+                },
+                None => None,
             },
         }
     }
@@ -297,7 +326,7 @@ macro_rules! derive_primitive_as_column {
                     self.len() as u64,
                     std::mem::size_of::<$typename>() as u64,
                     data,
-                    &[0u64; 0],
+                    Some(&[0u64; 0]),
                 )
             }
         }
@@ -316,7 +345,7 @@ macro_rules! derive_primitive_as_column {
                     self.len() as u64,
                     std::mem::size_of::<$typename>() as u64,
                     data,
-                    &[0u64; 0],
+                    Some(&[0u64; 0]),
                 )
             }
         }
@@ -342,14 +371,24 @@ macro_rules! derive_strings_as_column {
         impl AsColumn<'_> for &[$typename] {
             fn as_column(&self) -> Column {
                 let (data, offsets) = strings_to_buffers(self);
-                Column::from_allocations(self.len() as u64, 1, data, offsets)
+                Column::from_allocations(
+                    self.len() as u64,
+                    1,
+                    data,
+                    Some(offsets),
+                )
             }
         }
 
         impl AsColumn<'_> for Vec<$typename> {
             fn as_column(&self) -> Column {
                 let (data, offsets) = strings_to_buffers(self);
-                Column::from_allocations(self.len() as u64, 1, data, offsets)
+                Column::from_allocations(
+                    self.len() as u64,
+                    1,
+                    data,
+                    Some(offsets),
+                )
             }
         }
     };
@@ -394,7 +433,7 @@ mod tests {
         assert_eq!(col.data().len(), 5 * std::mem::size_of::<u32>());
         assert_eq!(col.data()[0], 1u8);
         assert_eq!(col.data()[16], 5u8);
-        assert_eq!(col.offsets().len(), 0);
+        assert!(col.offsets().is_none());
         assert!(!col.is_allocated());
     }
 
@@ -409,8 +448,8 @@ mod tests {
         assert_eq!(col.data()[6], b'b');
         assert_eq!(col.data()[7], b'a');
         assert_eq!(col.data()[8], b'z');
-        assert_eq!(col.offsets().len(), 4);
-        assert_eq!(col.offsets()[1], 3);
+        assert_eq!(col.offsets().expect("Invalid offsets").len(), 4);
+        assert_eq!(col.offsets().expect("Invalid offsets")[1], 3);
         assert!(col.is_allocated());
     }
 }
