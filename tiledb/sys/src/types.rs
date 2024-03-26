@@ -53,6 +53,12 @@ pub struct tiledb_domain_t {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_enumeration_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_error_t {
     _unused: [u8; 0],
 }
