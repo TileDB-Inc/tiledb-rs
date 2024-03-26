@@ -160,15 +160,77 @@ impl<'ctx> Dimension<'ctx> {
 impl<'ctx> Debug for Dimension<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let json = json!({
+            "name": self.name(),
             "datatype": format!("{}", self.datatype()),
+            "cell_val_num": self.cell_val_num(),
             "domain": fn_typed!(self.domain, self.datatype() => match domain {
-                Ok(x) => format!("{:?}", x),
-                Err(e) => format!("<{}>", e)
+                Ok(x) => json!(x),
+                Err(e) => json!(e)
             }),
-            /* TODO: filters */
+            "extent": fn_typed!(self.extent, self.datatype() => match extent {
+                Ok(x) => json!(x),
+                Err(e) => json!(e),
+            }),
+            "filters": format!("{:?}", self.filters()),
             "raw": format!("{:p}", *self.raw)
         });
         write!(f, "{}", json)
+    }
+}
+
+impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
+    fn eq(&self, other: &Dimension<'c2>) -> bool {
+        let name_match = match (self.name(), other.name()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !name_match {
+            return false;
+        }
+
+        let type_match = self.datatype() == other.datatype();
+        if !type_match {
+            return false;
+        }
+
+        let cell_val_match = match (self.cell_val_num(), other.cell_val_num()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !cell_val_match {
+            return false;
+        }
+
+        let domain_match = fn_typed!(
+            self.datatype(),
+            DT,
+            match (self.domain::<DT>(), other.domain::<DT>()) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            }
+        );
+        if !domain_match {
+            return false;
+        }
+
+        let extent_match = fn_typed!(
+            self.datatype(),
+            DT,
+            match (self.extent::<DT>(), other.extent::<DT>()) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            }
+        );
+        if !extent_match {
+            return false;
+        }
+
+        let filters_match = self.filters() == other.filters();
+        if !filters_match {
+            return false;
+        }
+
+        true
     }
 }
 

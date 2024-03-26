@@ -86,7 +86,7 @@ pub fn arbitrary_for_type(
     }).bind())
 }
 
-pub fn arbitrary(
+pub fn arbitrary_for_array_type(
     context: &Context,
     array_type: ArrayType,
 ) -> impl Strategy<Value = TileDBResult<Dimension>> {
@@ -99,27 +99,34 @@ pub fn arbitrary(
     .prop_flat_map(|dt| arbitrary_for_type(context, dt))
 }
 
+pub fn arbitrary(
+    context: &Context,
+) -> impl Strategy<Value = TileDBResult<Dimension>> {
+    prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
+        .prop_flat_map(|at| arbitrary_for_array_type(context, at))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Test that the arbitrary dimension dense array construction always succeeds
+    /// Test that the arbitrary dimension construction always succeeds
     #[test]
-    fn dimension_arbitrary_dense() {
+    fn dimension_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in arbitrary(&ctx, ArrayType::Dense))| {
+        proptest!(|(maybe_dimension in arbitrary(&ctx))| {
             maybe_dimension.expect("Error constructing arbitrary dimension");
         });
     }
 
-    /// Test that the arbitrary dimension sparse array construction always succeeds
     #[test]
-    fn dimension_arbitrary_sparse() {
+    fn dimension_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in arbitrary(&ctx, ArrayType::Sparse))| {
-            maybe_dimension.expect("Error constructing arbitrary dimension");
+        proptest!(|(maybe_dimension in arbitrary(&ctx))| {
+            let dimension = maybe_dimension.expect("Error constructing arbitrary attribute");
+            assert_eq!(dimension, dimension);
         });
     }
 }

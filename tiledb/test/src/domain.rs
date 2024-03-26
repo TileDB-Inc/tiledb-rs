@@ -25,7 +25,7 @@ pub fn arbitrary(
             })
             .bind(),
         ArrayType::Sparse => proptest::collection::vec(
-            crate::dimension::arbitrary(context, array_type),
+            crate::dimension::arbitrary_for_array_type(context, array_type),
             MIN_DIMENSIONS..=MAX_DIMENSIONS,
         )
         .bind(),
