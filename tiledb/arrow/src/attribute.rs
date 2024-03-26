@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tiledb::context::Context as TileDBContext;
 use tiledb::filter::{FilterData, FilterListBuilder};
-use tiledb::{error::Error as TileDBError, Result as TileDBResult};
+use tiledb::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 
 use crate::datatype::{arrow_type_physical, tiledb_type_physical};
 
@@ -36,19 +37,35 @@ impl FilterMetadata {
     }
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct FillValueMetadata {
+    pub data: serde_json::value::Value,
+    pub nullable: bool,
+}
+
 /// Encapsulates fields of a TileDB attribute which are not part of an Arrow field
 #[derive(Deserialize, Serialize)]
 pub struct AttributeMetadata {
-    cell_val_num: u32,
-    fill_value: Vec<u8>,
-    filters: FilterMetadata,
+    pub cell_val_num: u32,
+    pub fill_value: FillValueMetadata,
+    pub filters: FilterMetadata,
 }
 
 impl AttributeMetadata {
     pub fn new(attr: &tiledb::array::Attribute) -> TileDBResult<Self> {
         Ok(AttributeMetadata {
             cell_val_num: attr.cell_val_num()?,
-            fill_value: vec![], /* TODO */
+            fill_value: fn_typed!(
+                attr.fill_value_nullable,
+                attr.datatype()? =>
+                {
+                    let (fill_value, fill_nullable) = fill_value_nullable?;
+                    FillValueMetadata {
+                        data: json!(fill_value),
+                        nullable: fill_nullable
+                    }
+            }
+            ),
             filters: FilterMetadata::new(&attr.filter_list()?)?,
         })
     }
@@ -62,7 +79,20 @@ impl AttributeMetadata {
             .filters
             .apply(FilterListBuilder::new(builder.context())?)?
             .build();
-        builder.cell_val_num(self.cell_val_num)?.filter_list(&fl)
+        fn_typed!(builder.datatype()?, AT, {
+            let fill_value =
+                serde_json::from_value::<AT>(self.fill_value.data.clone())
+                    .map_err(|e| {
+                        TileDBError::from(format!(
+                            "Error deserializing attribute fill value: {}",
+                            e
+                        ))
+                    })?;
+            builder
+                .cell_val_num(self.cell_val_num)?
+                .filter_list(&fl)?
+                .fill_value_nullability(fill_value, self.fill_value.nullable)
+        })
     }
 }
 
@@ -131,7 +161,7 @@ pub mod tests {
     {
         (
             tiledb_test::attribute::arbitrary_name(),
-            crate::datatype::tests::arbitrary_arrow_invertible(),
+            crate::datatype::tests::arbitrary_arrow_implemented(),
             proptest::prelude::any::<bool>(),
         )
             .prop_map(|(name, data_type, nullable)| {
@@ -146,7 +176,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_invertibility() -> TileDBResult<()> {
+    fn test_tiledb_arrow_tiledb() -> TileDBResult<()> {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
@@ -159,6 +189,12 @@ pub mod tests {
             }
         });
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_arrow_tiledb_arrow() -> TileDBResult<()> {
+        let c: TileDBContext = TileDBContext::new()?;
         /* arrow => tiledb => arrow */
         proptest!(|(arrow_in in arbitrary_arrow_field())| {
             let tdb = tiledb_attribute(&c, &arrow_in);

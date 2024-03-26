@@ -350,6 +350,10 @@ impl<'ctx> Builder<'ctx> {
         self.attr.context
     }
 
+    pub fn datatype(&self) -> TileDBResult<Datatype> {
+        self.attr.datatype()
+    }
+
     pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
         let c_context = self.attr.context.capi();
         let c_num = num as std::ffi::c_uint;
@@ -369,6 +373,10 @@ impl<'ctx> Builder<'ctx> {
 
     pub fn var_sized(self) -> TileDBResult<Self> {
         self.cell_val_num(u32::MAX)
+    }
+
+    pub fn is_nullable(&self) -> bool {
+        self.attr.is_nullable()
     }
 
     pub fn nullability(self, nullable: bool) -> TileDBResult<Self> {
