@@ -25,9 +25,10 @@ jobs:
           echo "cd /opt/tiledb"
           cd /opt/tiledb
           echo "Getting release"
-          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz
+          https://github.com/TileDB-Inc/TileDB/releases/download/2.21.1/tiledb-linux-x86_64-2.21.1-acd5c50.tar.gz
+          wget -q ${RELEASES_URL}/2.21.1/tiledb-linux-x86_64-2.21.1-acd5c50.tar.gz
           echo "Getting checksum"
-          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz.sha256
+          wget -q ${RELEASES_URL}/2.21.1/tiledb-linux-x86_64-2.21.1-acd5c50.tar.gz.sha256
           echo "Checking checksum"
           sha256sum tiledb*.sha256
           echo "Untarring"
