@@ -1023,6 +1023,8 @@ dependencies = [
  "arrow",
  "arrow-schema",
  "proptest",
+ "serde",
+ "serde_json",
  "tiledb",
  "tiledb-test",
 ]
@@ -1037,6 +1039,7 @@ version = "0.1.0"
 dependencies = [
  "num-traits",
  "proptest",
+ "serde_json",
  "tiledb",
 ]
 
