@@ -18,22 +18,16 @@ jobs:
       - name: Install TileDB
         run: |
           set -e pipefail
-          echo "Starting"
-          set -x
-          echo "Make directory /opt/tiledb"
           mkdir -p /opt/tiledb
-          echo "cd /opt/tiledb"
           cd /opt/tiledb
           echo "Getting release"
-          https://github.com/TileDB-Inc/TileDB/releases/download/2.21.1/tiledb-linux-x86_64-2.21.1-acd5c50.tar.gz
-          wget -q ${RELEASES_URL}/2.21.1/tiledb-linux-x86_64-2.21.1-acd5c50.tar.gz
+          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz
           echo "Getting checksum"
-          wget -q ${RELEASES_URL}/2.21.1/tiledb-linux-x86_64-2.21.1-acd5c50.tar.gz.sha256
+          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz.sha256
           echo "Checking checksum"
           sha256sum tiledb*.sha256
           echo "Untarring"
           tar -C /opt/tiledb -xzf tiledb*.tar.gz
-          echo "Done"
       - name: Install TileDB Log Dump
         if: ${{ failure() }}
         run: |
