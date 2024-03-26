@@ -9,6 +9,9 @@ on:
 
 name: Stable Build and Test Nightly
 
+env:
+  RELEASES_URL: "https://github.com/TileDB-Inc/TileDB/releases/download"
+
 jobs:
   update_build_and_test:
     runs-on: ubuntu-latest
@@ -20,13 +23,9 @@ jobs:
           set -e pipefail
           mkdir -p /opt/tiledb
           cd /opt/tiledb
-          echo "Getting release"
           wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz
-          echo "Getting checksum"
           wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz.sha256
-          echo "Checking checksum"
           sha256sum tiledb*.sha256
-          echo "Untarring"
           tar -C /opt/tiledb -xzf tiledb*.tar.gz
       - name: Install TileDB Log Dump
         if: ${{ failure() }}
