@@ -2,7 +2,7 @@ use std::convert::From;
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
-use crate::error::Error;
+use crate::error::{Error, RawError};
 use crate::Result as TileDBResult;
 
 pub enum ObjectType {
@@ -91,7 +91,7 @@ impl Context {
         let res =
             unsafe { ffi::tiledb_ctx_get_last_error(*self.raw, &mut c_err) };
         if res == ffi::TILEDB_OK && !c_err.is_null() {
-            Some(Error::from(c_err))
+            Some(Error::from(RawError::Owned(c_err)))
         } else {
             None
         }

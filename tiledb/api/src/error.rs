@@ -1,43 +1,38 @@
 extern crate tiledb_sys as ffi;
 
-use std::convert::Into;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::ops::Deref;
 use std::str::FromStr;
 
 use serde::{Serialize, Serializer};
 
-pub(crate) enum ErrorData {
-    Native(*mut ffi::tiledb_error_t),
-    Custom(String),
+pub(crate) enum RawError {
+    Owned(*mut ffi::tiledb_error_t),
 }
 
+impl Deref for RawError {
+    type Target = *mut ffi::tiledb_error_t;
+    fn deref(&self) -> &Self::Target {
+        let RawError::Owned(ref ffi) = *self;
+        ffi
+    }
+}
+
+impl Drop for RawError {
+    fn drop(&mut self) {
+        let RawError::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_error_free(ffi) }
+    }
+}
+
+#[derive(Clone)]
 pub struct Error {
-    data: ErrorData,
+    message: String,
 }
 
 impl Error {
     pub fn get_message(&self) -> String {
-        match &self.data {
-            ErrorData::Native(cptr) => {
-                let mut msg = std::ptr::null::<std::os::raw::c_char>();
-                let res = unsafe {
-                    ffi::tiledb_error_message(
-                        *cptr,
-                        &mut msg as *mut *const std::os::raw::c_char,
-                    )
-                };
-                if res == ffi::TILEDB_OK && !msg.is_null() {
-                    let c_msg = unsafe { std::ffi::CStr::from_ptr(msg) };
-                    let msg = String::from(c_msg.to_string_lossy());
-                    msg
-                } else {
-                    String::from(
-                        "Failed to retrieve an error message from TileDB.",
-                    )
-                }
-            }
-            ErrorData::Custom(s) => s.clone(),
-        }
+        self.message.clone()
     }
 }
 
@@ -59,18 +54,32 @@ impl From<Error> for String {
     }
 }
 
-impl From<&str> for Error {
-    fn from(s: &str) -> Error {
-        Error {
-            data: ErrorData::Custom(s.into()),
-        }
+impl From<RawError> for Error {
+    fn from(e: RawError) -> Self {
+        let mut c_msg: *const std::os::raw::c_char = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_error_message(
+                *e,
+                &mut c_msg as *mut *const std::os::raw::c_char,
+            )
+        };
+        let message = if c_ret == ffi::TILEDB_OK && !c_msg.is_null() {
+            let c_message = unsafe { std::ffi::CStr::from_ptr(c_msg) };
+            String::from(c_message.to_string_lossy())
+        } else {
+            String::from("Failed to retrieve an error message from TileDB.")
+        };
+        Error { message }
     }
 }
 
-impl From<String> for Error {
-    fn from(s: String) -> Error {
+impl<S> From<S> for Error
+where
+    S: AsRef<str>,
+{
+    fn from(s: S) -> Error {
         Error {
-            data: ErrorData::Custom(s),
+            message: String::from(s.as_ref()),
         }
     }
 }
@@ -79,24 +88,8 @@ impl FromStr for Error {
     type Err = (); /* always succeeds */
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Error {
-            data: ErrorData::Custom(s.into()),
+            message: String::from(s),
         })
-    }
-}
-
-impl From<*mut ffi::tiledb_error_t> for Error {
-    fn from(cptr: *mut ffi::tiledb_error_t) -> Error {
-        Error {
-            data: ErrorData::Native(cptr),
-        }
-    }
-}
-
-impl Drop for Error {
-    fn drop(&mut self) {
-        if let ErrorData::Native(ref mut cptr) = self.data {
-            unsafe { ffi::tiledb_error_free(cptr) }
-        }
     }
 }
 
