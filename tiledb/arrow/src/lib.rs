@@ -11,3 +11,4 @@ extern crate tiledb_test;
 
 pub mod attribute;
 pub mod datatype;
+pub mod filter;
