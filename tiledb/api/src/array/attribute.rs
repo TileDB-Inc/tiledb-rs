@@ -176,6 +176,11 @@ impl<'ctx> Attribute<'ctx> {
     pub fn fill_value_nullable<Conv: CAPIConverter>(
         &self,
     ) -> TileDBResult<(Conv, bool)> {
+        if !self.is_nullable() {
+            /* see comment in Builder::fill_value_nullability */
+            return Ok((self.fill_value()?, false));
+        }
+
         let c_context = self.context.capi();
         let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
@@ -422,6 +427,17 @@ impl<'ctx> Builder<'ctx> {
         value: Conv,
         nullable: bool,
     ) -> TileDBResult<Self> {
+        if !self.attr.is_nullable() && !nullable {
+            /*
+             * This should probably be embedded in the C API, but here's the deal:
+             * If the attribute is not nullable, then the fill value cannot be null.
+             * Using this function with `!nullable` agrees with that, but the C API
+             * `tiledb_attribute_set_fill_value_nullable` does not check for that,
+             * so we will here.
+             */
+            return self.fill_value(value);
+        }
+
         if !self.attr.datatype()?.is_compatible_type::<Conv>() {
             return Err(Error::from(format!(
                 "Attribute type mismatch: expected {}, found {}",
@@ -839,6 +855,39 @@ mod test {
                 assert_ne!(base, other);
             }
             {
+                let other = default_attr()
+                    .fill_value_nullability(
+                        (base_fill_value / 2) + 1,
+                        base_fill_nullable,
+                    )
+                    .expect("Error setting fill value")
+                    .build();
+                assert_ne!(base, other);
+            }
+        }
+
+        // change fill nullable when attribute is *not* nullable
+        {
+            let (base_fill_value, base_fill_nullable) =
+                base.fill_value_nullable::<i32>().unwrap();
+            {
+                // copying the same settings should be fine
+                let other = default_attr()
+                    .fill_value_nullability(base_fill_value, base_fill_nullable)
+                    .expect("Error setting fill value")
+                    .build();
+                assert_eq!(base, other);
+            }
+            {
+                // fill value positive nullability should error due to conflict
+                let other = default_attr().fill_value_nullability(
+                    base_fill_value,
+                    !base_fill_nullable,
+                );
+                assert!(other.is_err());
+            }
+            {
+                // just changing the value should also be fine
                 let other = default_attr()
                     .fill_value_nullability(
                         (base_fill_value / 2) + 1,
