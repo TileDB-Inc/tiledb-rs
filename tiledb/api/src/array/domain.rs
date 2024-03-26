@@ -26,6 +26,37 @@ impl Drop for RawDomain {
     }
 }
 
+pub enum DimensionKey {
+    Index(usize),
+    Name(String),
+}
+
+macro_rules! impl_dimension_key_for_int {
+    ($($t:ty),*) => {
+        $(
+            impl From<$t> for DimensionKey {
+                fn from(value: $t) -> Self {
+                    DimensionKey::Index(value as usize)
+                }
+            }
+        )*
+    };
+}
+impl_dimension_key_for_int!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
+
+macro_rules! impl_dimension_key_for_str {
+    ($($t:ty),*) => {
+        $(
+            impl From<$t> for DimensionKey {
+                fn from(value: $t) -> Self {
+                    DimensionKey::Name(String::from(value))
+                }
+            }
+        )*
+    }
+}
+impl_dimension_key_for_str!(&str, String);
+
 pub struct Domain<'ctx> {
     context: &'ctx Context,
     raw: RawDomain,
@@ -55,26 +86,42 @@ impl<'ctx> Domain<'ctx> {
         ndim as usize
     }
 
-    pub fn dimension(&self, idx: usize) -> TileDBResult<Dimension<'ctx>> {
+    pub fn dimension<K: Into<DimensionKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<Dimension<'ctx>> {
         let c_context = self.context.capi();
         let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
-        let c_idx = match idx.try_into() {
-            Ok(idx) => idx,
-            Err(e) => {
-                return Err(crate::error::Error::from(format!(
-                    "Invalid dimension: {}",
-                    e
-                )))
+
+        let c_ret = match key.into() {
+            DimensionKey::Index(idx) => {
+                let c_idx: u32 = idx.try_into().map_err(|e| {
+                    crate::error::Error::from(format!(
+                        "Invalid dimension: {}",
+                        e
+                    ))
+                })?;
+                unsafe {
+                    ffi::tiledb_domain_get_dimension_from_index(
+                        c_context,
+                        c_domain,
+                        c_idx,
+                        &mut c_dimension,
+                    )
+                }
             }
-        };
-        let c_ret = unsafe {
-            ffi::tiledb_domain_get_dimension_from_index(
-                c_context,
-                c_domain,
-                c_idx,
-                &mut c_dimension,
-            )
+            DimensionKey::Name(name) => {
+                let c_name = cstring!(name);
+                unsafe {
+                    ffi::tiledb_domain_get_dimension_from_name(
+                        c_context,
+                        c_domain,
+                        c_name.as_ptr(),
+                        &mut c_dimension,
+                    )
+                }
+            }
         };
         if c_ret == ffi::TILEDB_OK {
             Ok(Dimension::new(
@@ -177,8 +224,8 @@ mod tests {
 
         // one dimension
         {
-            let dim_domain: [i32; 2] = [1, 4];
-            let dim_in: Dimension = {
+            let dim_buildfn = || {
+                let dim_domain: [i32; 2] = [1, 4];
                 let extent: i32 = 4;
                 DimensionBuilder::new::<i32>(
                     &context,
@@ -191,6 +238,9 @@ mod tests {
                 .build()
             };
 
+            let dim_in = dim_buildfn();
+            let dim_cmp = dim_buildfn();
+
             let domain = Builder::new(&context)
                 .unwrap()
                 .add_dimension(dim_in)
@@ -198,17 +248,28 @@ mod tests {
                 .build();
             assert_eq!(1, domain.ndim());
 
-            let dim_out = domain.dimension(0).unwrap();
-            assert_eq!(Datatype::Int32, dim_out.datatype());
-            assert_eq!(dim_domain, dim_out.domain::<i32>().unwrap());
+            // by index
+            {
+                let dim_out = domain.dimension(0).unwrap();
+                assert_eq!(dim_cmp, dim_out);
 
-            assert!(domain.dimension(1).is_err());
+                assert!(domain.dimension(1).is_err());
+            }
+
+            // by name
+            {
+                let dim_out =
+                    domain.dimension(dim_cmp.name().unwrap()).unwrap();
+                assert_eq!(dim_cmp, dim_out);
+
+                assert!(domain.dimension("d2").is_err());
+            }
         }
 
         // two dimensions
         {
-            let dim1_domain: [i32; 2] = [1, 4];
-            let dim1_in: Dimension = {
+            let dim1_buildfn = || {
+                let dim1_domain: [i32; 2] = [1, 4];
                 let extent: i32 = 4;
                 DimensionBuilder::new::<i32>(
                     &context,
@@ -220,8 +281,12 @@ mod tests {
                 .unwrap()
                 .build()
             };
-            let dim2_domain: [f64; 2] = [-365f64, 365f64];
-            let dim2_in: Dimension = {
+
+            let dim1_in: Dimension = dim1_buildfn();
+            let dim1_cmp: Dimension = dim1_buildfn();
+
+            let dim2_buildfn = || {
+                let dim2_domain: [f64; 2] = [-365f64, 365f64];
                 let extent: f64 = 128f64;
                 DimensionBuilder::new::<f64>(
                     &context,
@@ -233,6 +298,8 @@ mod tests {
                 .unwrap()
                 .build()
             };
+            let dim2_in: Dimension = dim2_buildfn();
+            let dim2_cmp: Dimension = dim2_buildfn();
 
             let domain = Builder::new(&context)
                 .unwrap()
@@ -243,15 +310,29 @@ mod tests {
                 .build();
             assert_eq!(2, domain.ndim());
 
-            let dim1_out = domain.dimension(0).unwrap();
-            assert_eq!(Datatype::Int32, dim1_out.datatype());
-            assert_eq!(dim1_domain, dim1_out.domain::<i32>().unwrap());
+            // by index
+            {
+                let dim1_out = domain.dimension(0).unwrap();
+                assert_eq!(dim1_cmp, dim1_out);
 
-            let dim2_out = domain.dimension(1).unwrap();
-            assert_eq!(Datatype::Float64, dim2_out.datatype());
-            assert_eq!(dim2_domain, dim2_out.domain::<f64>().unwrap());
+                let dim2_out = domain.dimension(1).unwrap();
+                assert_eq!(dim2_cmp, dim2_out);
 
-            assert!(domain.dimension(2).is_err());
+                assert!(domain.dimension(2).is_err());
+            }
+
+            // by name
+            {
+                let dim1_out =
+                    domain.dimension(dim1_cmp.name().unwrap()).unwrap();
+                assert_eq!(dim1_cmp, dim1_out);
+
+                let dim2_out =
+                    domain.dimension(dim2_cmp.name().unwrap()).unwrap();
+                assert_eq!(dim2_cmp, dim2_out);
+
+                assert!(domain.dimension("d3").is_err());
+            }
         }
     }
 }
