@@ -8,6 +8,7 @@ use tiledb::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 
 use crate::datatype::{arrow_type_physical, tiledb_type_physical};
 
+/// Encapsulates TileDB filter data for storage in Arrow Field metadata
 #[derive(Deserialize, Serialize)]
 pub struct FilterMetadata {
     filters: Vec<FilterData>,
@@ -26,6 +27,7 @@ impl FilterMetadata {
         })
     }
 
+    /// Updates a FilterListBuilder with the contents of this object
     pub fn apply<'ctx>(
         &self,
         mut filters: FilterListBuilder<'ctx>,
@@ -37,13 +39,14 @@ impl FilterMetadata {
     }
 }
 
+/// Encapsulates TileDB Attribute fill value data for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
 pub struct FillValueMetadata {
     pub data: serde_json::value::Value,
     pub nullable: bool,
 }
 
-/// Encapsulates fields of a TileDB attribute which are not part of an Arrow field
+/// Encapsulates details of a TileDB attribute for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
 pub struct AttributeMetadata {
     pub cell_val_num: u32,
@@ -70,6 +73,7 @@ impl AttributeMetadata {
         })
     }
 
+    /// Updates an AttributeBuilder with the contents of this object
     pub fn apply<'ctx>(
         &self,
         builder: tiledb::array::AttributeBuilder<'ctx>,
@@ -96,6 +100,9 @@ impl AttributeMetadata {
     }
 }
 
+/// Tries to construct an Arrow Field from the TileDB Attribute.
+/// Details about the Attribute are stored under the key "tiledb"
+/// in the Field's metadata.
 pub fn arrow_field(
     attr: &tiledb::array::Attribute,
 ) -> TileDBResult<Option<arrow_schema::Field>> {
@@ -121,6 +128,9 @@ pub fn arrow_field(
     }
 }
 
+/// Tries to construct a TileDB array Attribute from the Arrow Field.
+/// Details about the Attribute are stored under the key "tiledb"
+/// in the Field's metadata, if it is present.
 pub fn tiledb_attribute<'ctx>(
     context: &'ctx TileDBContext,
     field: &arrow_schema::Field,
