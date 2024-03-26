@@ -45,6 +45,20 @@ impl<'ctx> Dimension<'ctx> {
         Dimension { context, raw }
     }
 
+    pub fn name(&self) -> TileDBResult<String> {
+        let c_context = self.context.capi();
+        let mut c_name = std::ptr::null::<std::ffi::c_char>();
+        let res = unsafe {
+            ffi::tiledb_dimension_get_name(c_context, *self.raw, &mut c_name)
+        };
+        if res == ffi::TILEDB_OK {
+            let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
+            Ok(String::from(c_name.to_string_lossy()))
+        } else {
+            Err(self.context.expect_last_error())
+        }
+    }
+
     pub fn datatype(&self) -> Datatype {
         let c_context = self.context.capi();
         let c_dimension = self.capi();
@@ -60,6 +74,21 @@ impl<'ctx> Dimension<'ctx> {
         assert_eq!(ffi::TILEDB_OK, c_ret);
 
         Datatype::try_from(c_datatype).expect("Invalid dimension type")
+    }
+
+    pub fn cell_val_num(&self) -> TileDBResult<u32> {
+        let c_context = self.context.capi();
+        let mut c_num: std::ffi::c_uint = 0;
+        let res = unsafe {
+            ffi::tiledb_dimension_get_cell_val_num(
+                c_context, *self.raw, &mut c_num,
+            )
+        };
+        if res == ffi::TILEDB_OK {
+            Ok(c_num as u32)
+        } else {
+            Err(self.context.expect_last_error())
+        }
     }
 
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
@@ -82,6 +111,27 @@ impl<'ctx> Dimension<'ctx> {
             unsafe { &*c_domain_ptr.cast::<[Conv::CAPIType; 2]>() };
 
         Ok([Conv::to_rust(&c_domain[0]), Conv::to_rust(&c_domain[1])])
+    }
+
+    /// Returns the tile extent of this dimension.
+    pub fn extent<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
+        let c_context = self.context.capi();
+        let c_dimension = self.capi();
+        let mut c_extent_ptr: *const ::std::ffi::c_void = out_ptr!();
+
+        let c_ret = unsafe {
+            ffi::tiledb_dimension_get_tile_extent(
+                c_context,
+                c_dimension,
+                &mut c_extent_ptr,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            let c_extent = unsafe { &*c_extent_ptr.cast::<Conv::CAPIType>() };
+            Ok(Conv::to_rust(c_extent))
+        } else {
+            Err(self.context.expect_last_error())
+        }
     }
 
     pub fn filters(&self) -> FilterList {
@@ -171,6 +221,23 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
+    pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
+        let c_context = self.dim.context.capi();
+        let c_num = num as std::ffi::c_uint;
+        let res = unsafe {
+            ffi::tiledb_dimension_set_cell_val_num(
+                c_context,
+                *self.dim.raw,
+                c_num,
+            )
+        };
+        if res == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.dim.context.expect_last_error())
+        }
+    }
+
     pub fn filters(self, filters: FilterList) -> TileDBResult<Self> {
         let c_context = self.dim.context.capi();
         let c_dimension = self.dim.capi();
@@ -209,16 +276,20 @@ mod tests {
 
         // normal use case, should succeed, no memory issues
         {
+            let name = "test_dimension_alloc";
             let domain: [i32; 2] = [1, 4];
             let extent: i32 = 4;
-            Builder::new::<i32>(
+            let dimension = Builder::new::<i32>(
                 &context,
-                "test_dimension_alloc",
+                name,
                 Datatype::Int32,
                 &domain,
                 &extent,
             )
-            .unwrap();
+            .unwrap()
+            .build();
+
+            assert_eq!(name, dimension.name().unwrap());
         }
 
         // bad domain, should error
@@ -257,13 +328,13 @@ mod tests {
         // normal use case, should succeed, no memory issues
         {
             let domain_in: [i32; 2] = [1, 4];
-            let extent: i32 = 4;
+            let extent_in: i32 = 4;
             let dim = Builder::new::<i32>(
                 &context,
                 "test_dimension_domain",
                 Datatype::Int32,
                 &domain_in,
-                &extent,
+                &extent_in,
             )
             .unwrap()
             .build();
@@ -273,6 +344,52 @@ mod tests {
             let domain_out = dim.domain::<i32>().unwrap();
             assert_eq!(domain_in[0], domain_out[0]);
             assert_eq!(domain_in[1], domain_out[1]);
+
+            let extent_out = dim.extent::<i32>().unwrap();
+            assert_eq!(extent_in, extent_out);
+        }
+    }
+
+    #[test]
+    fn test_dimension_cell_val_num() {
+        let context = Context::new().unwrap();
+
+        // only 1 is currently supported
+        {
+            let cell_val_num = 1;
+            let dimension = {
+                let domain_in: [i32; 2] = [1, 4];
+                let extent: i32 = 4;
+                Builder::new::<i32>(
+                    &context,
+                    "test_dimension_cell_val_num",
+                    Datatype::Int32,
+                    &domain_in,
+                    &extent,
+                )
+                .unwrap()
+                .cell_val_num(cell_val_num)
+                .unwrap()
+                .build()
+            };
+
+            assert_eq!(cell_val_num, dimension.cell_val_num().unwrap());
+        }
+
+        // anything else should error
+        for cell_val_num in vec![0, 2, 4].into_iter() {
+            let domain_in: [i32; 2] = [1, 4];
+            let extent: i32 = 4;
+            let b = Builder::new::<i32>(
+                &context,
+                "test_dimension_cell_val_num",
+                Datatype::Int32,
+                &domain_in,
+                &extent,
+            )
+            .unwrap()
+            .cell_val_num(cell_val_num);
+            assert!(b.is_err());
         }
     }
 
