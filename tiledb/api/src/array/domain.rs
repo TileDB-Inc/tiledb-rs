@@ -86,6 +86,34 @@ impl<'ctx> Domain<'ctx> {
         ndim as usize
     }
 
+    pub fn has_dimension<K: Into<DimensionKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<bool> {
+        match key.into() {
+            DimensionKey::Index(idx) => Ok(idx < self.ndim()),
+            DimensionKey::Name(name) => {
+                let c_context = self.context.capi();
+                let c_domain = *self.raw;
+                let c_name = cstring!(name);
+                let mut c_has: i32 = out_ptr!();
+                let c_ret = unsafe {
+                    ffi::tiledb_domain_has_dimension(
+                        c_context,
+                        c_domain,
+                        c_name.as_ptr(),
+                        &mut c_has,
+                    )
+                };
+                if c_ret == ffi::TILEDB_OK {
+                    Ok(c_has != 0)
+                } else {
+                    Err(self.context.expect_last_error())
+                }
+            }
+        }
+    }
+
     pub fn dimension<K: Into<DimensionKey>>(
         &self,
         key: K,
@@ -239,6 +267,9 @@ mod tests {
             let domain = Builder::new(&context).unwrap().build();
             assert_eq!(0, domain.ndim());
 
+            assert!(!domain.has_dimension(0).unwrap());
+            assert!(!domain.has_dimension("d1").unwrap());
+
             // TODO: why does this not pass?
             // assert!(domain.dimension(0).is_err());
         }
@@ -268,6 +299,11 @@ mod tests {
                 .unwrap()
                 .build();
             assert_eq!(1, domain.ndim());
+
+            assert!(domain.has_dimension(0).unwrap());
+            assert!(domain.has_dimension(dim_cmp.name().unwrap()).unwrap());
+            assert!(!domain.has_dimension(1).unwrap());
+            assert!(!domain.has_dimension("d2").unwrap());
 
             // by index
             {
@@ -330,6 +366,13 @@ mod tests {
                 .unwrap()
                 .build();
             assert_eq!(2, domain.ndim());
+
+            assert!(domain.has_dimension(0).unwrap());
+            assert!(domain.has_dimension(1).unwrap());
+            assert!(domain.has_dimension(dim1_cmp.name().unwrap()).unwrap());
+            assert!(domain.has_dimension(dim2_cmp.name().unwrap()).unwrap());
+            assert!(!domain.has_dimension(2).unwrap());
+            assert!(!domain.has_dimension("d3").unwrap());
 
             // by index
             {
