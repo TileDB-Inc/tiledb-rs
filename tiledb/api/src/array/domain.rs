@@ -153,6 +153,27 @@ impl<'ctx> Debug for Domain<'ctx> {
     }
 }
 
+impl<'c1, 'c2> PartialEq<Domain<'c2>> for Domain<'c1> {
+    fn eq(&self, other: &Domain<'c2>) -> bool {
+        let ndim_match = self.ndim() == other.ndim();
+        if !ndim_match {
+            return false;
+        }
+
+        for d in 0..self.ndim() {
+            let dim_match = match (self.dimension(d), other.dimension(d)) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            };
+            if !dim_match {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
 pub struct Builder<'ctx> {
     domain: Domain<'ctx>,
 }

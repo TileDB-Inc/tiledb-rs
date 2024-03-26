@@ -17,7 +17,7 @@ pub fn arbitrary(
         .prop_flat_map(move |array_type|
             (
                 Just(array_type),
-                crate::domain::arbitrary(context, array_type),
+                crate::domain::arbitrary_for_array_type(context, array_type),
                 proptest::collection::vec(crate::attribute::arbitrary(context), MIN_ATTRS..=MAX_ATTRS)
             ))
         .prop_map(|(array_type, domain, attrs)| {
