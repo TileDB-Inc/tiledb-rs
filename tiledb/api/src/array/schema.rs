@@ -7,6 +7,7 @@ use crate::array::attribute::RawAttribute;
 use crate::array::domain::RawDomain;
 use crate::array::{Attribute, Domain, Layout};
 use crate::context::Context;
+use crate::filter_list::{FilterList, RawFilterList};
 use crate::Result as TileDBResult;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -239,6 +240,42 @@ impl<'ctx> Schema<'ctx> {
             Err(self.context.expect_last_error())
         }
     }
+
+    fn filter_list(
+        &self,
+        ffi_function: unsafe extern "C" fn(
+            *mut ffi::tiledb_ctx_t,
+            *mut ffi::tiledb_array_schema_t,
+            *mut *mut ffi::tiledb_filter_list_t,
+        ) -> i32,
+    ) -> TileDBResult<FilterList> {
+        let c_context = self.context.capi();
+        let c_schema = *self.raw;
+        let mut c_filters: *mut ffi::tiledb_filter_list_t = out_ptr!();
+
+        let c_ret =
+            unsafe { ffi_function(c_context, c_schema, &mut c_filters) };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(FilterList {
+                context: self.context,
+                raw: RawFilterList::Owned(c_filters),
+            })
+        } else {
+            Err(self.context.expect_last_error())
+        }
+    }
+
+    pub fn coordinate_filters(&self) -> TileDBResult<FilterList> {
+        self.filter_list(ffi::tiledb_array_schema_get_coords_filter_list)
+    }
+
+    pub fn offsets_filters(&self) -> TileDBResult<FilterList> {
+        self.filter_list(ffi::tiledb_array_schema_get_offsets_filter_list)
+    }
+
+    pub fn nullity_filters(&self) -> TileDBResult<FilterList> {
+        self.filter_list(ffi::tiledb_array_schema_get_validity_filter_list)
+    }
 }
 
 impl<'ctx> Debug for Schema<'ctx> {
@@ -381,6 +418,50 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
+    fn filter_list(
+        self,
+        filters: &FilterList,
+        ffi_function: unsafe extern "C" fn(
+            *mut ffi::tiledb_ctx_t,
+            *mut ffi::tiledb_array_schema_t,
+            *mut ffi::tiledb_filter_list_t,
+        ) -> i32,
+    ) -> TileDBResult<Self> {
+        let c_context = self.schema.context.capi();
+        let c_ret = unsafe {
+            ffi_function(c_context, *self.schema.raw, filters.capi())
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.schema.context.expect_last_error())
+        }
+    }
+
+    pub fn coordinate_filters(
+        self,
+        filters: &FilterList,
+    ) -> TileDBResult<Self> {
+        self.filter_list(
+            filters,
+            ffi::tiledb_array_schema_set_coords_filter_list,
+        )
+    }
+
+    pub fn offsets_filters(self, filters: &FilterList) -> TileDBResult<Self> {
+        self.filter_list(
+            filters,
+            ffi::tiledb_array_schema_set_offsets_filter_list,
+        )
+    }
+
+    pub fn nullity_filters(self, filters: &FilterList) -> TileDBResult<Self> {
+        self.filter_list(
+            filters,
+            ffi::tiledb_array_schema_set_validity_filter_list,
+        )
+    }
+
     pub fn build(self) -> Schema<'ctx> {
         self.schema
     }
@@ -401,6 +482,7 @@ mod tests {
     use crate::array::tests::*;
     use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
     use crate::context::Context;
+    use crate::filter::*;
     use crate::Datatype;
 
     /// Helper function to make a Domain which isn't needed for the purposes of the test
@@ -672,6 +754,105 @@ mod tests {
 
             let a3 = s.attribute(2);
             assert!(a3.is_err());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_filters() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        // default filter lists for the schema - see tiledb/sm/misc/constants.cc
+        let coordinates_default = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Zstd,
+            )))?
+            .build();
+        let offsets_default = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Zstd,
+            )))?
+            .build();
+        let nullity_default = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Rle,
+            )))?
+            .build();
+
+        let target = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Lz4,
+            )))?
+            .build();
+
+        // default (empty)
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                    .add_attribute(a1)?
+                    .build()
+            };
+
+            assert_eq!(coordinates_default, s.coordinate_filters()?);
+            assert_eq!(offsets_default, s.offsets_filters()?);
+            assert_eq!(nullity_default, s.nullity_filters()?);
+        }
+
+        // set coordinates filter
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                    .add_attribute(a1)?
+                    .coordinate_filters(&target)?
+                    .build()
+            };
+
+            assert_eq!(offsets_default, s.offsets_filters()?);
+            assert_eq!(nullity_default, s.nullity_filters()?);
+
+            let coordinates = s.coordinate_filters()?;
+            assert_eq!(target, coordinates);
+        }
+
+        // set offsets filter
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                    .add_attribute(a1)?
+                    .offsets_filters(&target)?
+                    .build()
+            };
+
+            assert_eq!(coordinates_default, s.coordinate_filters()?);
+            assert_eq!(nullity_default, s.nullity_filters()?);
+
+            let offsets = s.offsets_filters()?;
+            assert_eq!(target, offsets);
+        }
+
+        // set nullity filter
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                    .add_attribute(a1)?
+                    .nullity_filters(&target)?
+                    .build()
+            };
+
+            assert_eq!(coordinates_default, s.coordinate_filters()?);
+            assert_eq!(offsets_default, s.offsets_filters()?);
+
+            let nullity = s.nullity_filters()?;
+            assert_eq!(target, nullity);
         }
 
         Ok(())
