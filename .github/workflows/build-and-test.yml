@@ -10,9 +10,9 @@ on:
     branches:
       - '*'  # must quote since "*" is a YAML reserved character; we want a string
 
-concurrency:
-  group: ${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+# concurrency:
+#   group: ${{ github.head_ref || github.run_id }}
+#   cancel-in-progress: true
 
 name: Stable Build and Test
 

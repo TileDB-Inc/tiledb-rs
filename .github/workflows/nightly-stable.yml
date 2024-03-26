@@ -3,6 +3,9 @@ on:
     # runs every day at 1:45 UTC
     - cron: "45 01 * * *"
   workflow_dispatch:
+  pull_request:
+    branches:
+      - '*'  # must quote since "*" is a YAML reserved character; we want a string
 
 name: Stable Build and Test Nightly
 
