@@ -25,23 +25,49 @@ pub fn arbitrary_for_datatype(
     context: &Context,
     datatype: Datatype,
 ) -> impl Strategy<Value = TileDBResult<Attribute<'_>>> {
-    proptest::prelude::any::<bool>()
-        .prop_flat_map(move |nullable| {
-            (Just(nullable),
-            if nullable { proptest::prelude::any::<bool>().bind() } else { Just(false).bind() })
-                .prop_flat_map(move |(nullable, fill_nullable)| {
-                    fn_typed!(arbitrary_fill_value, datatype => {
-                        (arbitrary_name(), Just(nullable), crate::filter::arbitrary_list_for_datatype(context, datatype), arbitrary_fill_value, Just(fill_nullable))
-                            .prop_map(move |(name, nullable, filters, fill, fill_nullable)| {
-                                Ok(AttributeBuilder::new(context, name.as_ref(), datatype)?
-                                    .nullability(nullable)?
-                                    .fill_value_nullability(fill, fill_nullable)?
-                                    .filter_list(&filters?)?
-                                    .build())
-                            }).bind()
-                    })
+    proptest::prelude::any::<bool>().prop_flat_map(move |nullable| {
+        (
+            Just(nullable),
+            if nullable {
+                proptest::prelude::any::<bool>().bind()
+            } else {
+                Just(false).bind()
+            },
+        )
+            .prop_flat_map(move |(nullable, fill_nullable)| {
+                fn_typed!(datatype, DT, {
+                    (
+                        arbitrary_name(),
+                        Just(nullable),
+                        crate::filter::arbitrary_list_for_datatype(
+                            context, datatype,
+                        ),
+                        arbitrary_fill_value::<DT>(),
+                        Just(fill_nullable),
+                    )
+                        .prop_map(
+                            move |(
+                                name,
+                                nullable,
+                                filters,
+                                fill,
+                                fill_nullable,
+                            )| {
+                                Ok(AttributeBuilder::new(
+                                    context,
+                                    name.as_ref(),
+                                    datatype,
+                                )?
+                                .nullability(nullable)?
+                                .fill_value_nullability(fill, fill_nullable)?
+                                .filter_list(&filters?)?
+                                .build())
+                            },
+                        )
+                        .bind()
+                })
             })
-        })
+    })
 }
 
 pub fn arbitrary(

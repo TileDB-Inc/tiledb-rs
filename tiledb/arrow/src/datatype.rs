@@ -162,7 +162,9 @@ pub mod tests {
 
     pub fn arbitrary_arrow_implemented(
     ) -> impl Strategy<Value = arrow_schema::DataType> {
-        tiledb_test::datatype::arbitrary_implemented().prop_map(|dt| arrow_type_physical(&dt).expect("Datatype claims to be implemented but does not have an arrow equivalent"))
+        tiledb_test::datatype::arbitrary_implemented()
+            .prop_map(|dt| arrow_type_physical(&dt)
+                .expect("Datatype claims to be implemented but does not have an arrow equivalent"))
     }
 
     mod strategy {
