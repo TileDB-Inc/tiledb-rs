@@ -16,26 +16,18 @@ concurrency:
 
 name: Stable Build and Test
 
-# Make sure CI fails on all warnings, including Clippy lints
-env:
-  RELEASES_URL: "https://github.com/TileDB-Inc/TileDB/releases/download"
-
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
       - name: Install TileDB
-        run: |
-          set -e pipefail
-          mkdir -p /opt/tiledb
-          cd /opt/tiledb
-          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz
-          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz.sha256
-          sha256sum tiledb*.sha256
-          tar -C /opt/tiledb -xzf tiledb*.tar.gz
+        uses: ./.github/actions/install-tiledb
       - name: Check Formatting
         run: cargo fmt --quiet --check
       - name: Lint

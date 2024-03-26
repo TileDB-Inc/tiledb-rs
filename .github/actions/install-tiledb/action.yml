@@ -1,0 +1,25 @@
+
+name: Install TileDB
+
+inputs:
+  version:
+   required: false
+   description: "The version of TileDB to Install"
+   default: "2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install TileDB
+      shell: bash
+      env:
+        RELEASES_URL: "https://github.com/TileDB-Inc/TileDB/releases/download"
+        VERSION: ${{ inputs.version }}
+      run: |
+        set -e pipefail
+        mkdir -p /opt/tiledb
+        cd /opt/tiledb
+        wget -nv ${RELEASES_URL}/${VERSION}.tar.gz
+        wget -nv ${RELEASES_URL}/${VERSION}.tar.gz.sha256
+        sha256sum tiledb*.sha256
+        tar -C /opt/tiledb -xzf tiledb*.tar.gz

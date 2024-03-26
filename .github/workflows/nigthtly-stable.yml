@@ -10,17 +10,12 @@ jobs:
   update_build_and_test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
       - name: Install TileDB
-        run: |
-          set -e pipefail
-          mkdir -p /opt/tiledb
-          cd /opt/tiledb
-          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz
-          wget -q ${RELEASES_URL}/2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13.tar.gz.sha256
-          sha256sum tiledb*.sha256
-          tar -C /opt/tiledb -xzf tiledb*.tar.gz
+        uses: ./.github/actions/install-tiledb
       - name: Check Formatting
         run: cargo fmt --quiet --check
       - name: Update Dependencies
