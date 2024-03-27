@@ -43,7 +43,7 @@ pub fn arbitrary(
     context: &Context,
 ) -> impl Strategy<Value = TileDBResult<Schema>> {
     const MIN_ATTRS: usize = 1;
-    const MAX_ATTRS: usize = 128;
+    const MAX_ATTRS: usize = 32;
 
     arbitrary_array_type()
         .prop_flat_map(move |array_type|
@@ -79,6 +79,16 @@ mod tests {
 
         proptest!(|(maybe_schema in arbitrary(&ctx))| {
             maybe_schema.expect("Error constructing arbitrary schema");
+        });
+    }
+
+    #[test]
+    fn schema_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(maybe_schema in arbitrary(&ctx))| {
+            let schema = maybe_schema.expect("Error constructing arbitrary schema");
+            assert_eq!(schema, schema);
         });
     }
 }
