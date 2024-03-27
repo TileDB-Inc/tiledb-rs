@@ -524,4 +524,105 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_eq() {
+        let context = Context::new().unwrap();
+
+        let base = Builder::new::<i32>(
+            &context,
+            "d1",
+            Datatype::Int32,
+            &[0, 1000],
+            &100,
+        )
+        .unwrap()
+        .build();
+        assert_eq!(base, base);
+
+        // change name
+        {
+            let cmp = Builder::new::<i32>(
+                &context,
+                "d2",
+                Datatype::Int32,
+                &[0, 1000],
+                &100,
+            )
+            .unwrap()
+            .build();
+            assert_eq!(cmp, cmp);
+            assert_ne!(base, cmp);
+        }
+
+        // change type
+        {
+            let cmp = Builder::new::<i32>(
+                &context,
+                "d1",
+                Datatype::UInt32,
+                &[0, 1000],
+                &100,
+            )
+            .unwrap()
+            .build();
+            assert_eq!(cmp, cmp);
+            assert_ne!(base, cmp);
+        }
+
+        // change domain
+        {
+            let cmp = Builder::new::<i32>(
+                &context,
+                "d1",
+                Datatype::Int32,
+                &[1, 1000],
+                &100,
+            )
+            .unwrap()
+            .build();
+            assert_eq!(cmp, cmp);
+            assert_ne!(base, cmp);
+        }
+
+        // change extent
+        {
+            let cmp = Builder::new::<i32>(
+                &context,
+                "d1",
+                Datatype::Int32,
+                &[0, 1000],
+                &99,
+            )
+            .unwrap()
+            .build();
+            assert_eq!(cmp, cmp);
+            assert_ne!(base, cmp);
+        }
+
+        // change filters
+        {
+            let cmp = Builder::new::<i32>(
+                &context,
+                "d1",
+                Datatype::Int32,
+                &[0, 1000],
+                &99,
+            )
+            .unwrap()
+            .filters(
+                FilterListBuilder::new(&context)
+                    .unwrap()
+                    .add_filter_data(FilterData::Compression(
+                        CompressionData::new(CompressionType::Lz4),
+                    ))
+                    .unwrap()
+                    .build(),
+            )
+            .unwrap()
+            .build();
+            assert_eq!(cmp, cmp);
+            assert_ne!(base, cmp);
+        }
+    }
 }

@@ -399,4 +399,51 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_eq() {
+        let context = Context::new().unwrap();
+
+        let domain_d0 = Builder::new(&context).unwrap().build();
+        assert_eq!(domain_d0, domain_d0);
+
+        // adding a dimension should no longer be eq
+        let domain_d1_int32 = Builder::new(&context)
+            .unwrap()
+            .add_dimension(
+                DimensionBuilder::new::<i32>(
+                    &context,
+                    "d1",
+                    Datatype::Int32,
+                    &[0, 1000],
+                    &100,
+                )
+                .unwrap()
+                .build(),
+            )
+            .unwrap()
+            .build();
+        assert_eq!(domain_d1_int32, domain_d1_int32);
+        assert_ne!(domain_d0, domain_d1_int32);
+
+        // a different dimension should no longer be eq
+        let domain_d1_float64 = Builder::new(&context)
+            .unwrap()
+            .add_dimension(
+                DimensionBuilder::new::<f64>(
+                    &context,
+                    "d1",
+                    Datatype::Float64,
+                    &[0f64, 1000f64],
+                    &100f64,
+                )
+                .unwrap()
+                .build(),
+            )
+            .unwrap()
+            .build();
+        assert_eq!(domain_d1_float64, domain_d1_float64);
+        assert_ne!(domain_d0, domain_d1_float64);
+        assert_ne!(domain_d1_int32, domain_d1_float64);
+    }
 }
