@@ -3,13 +3,16 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
+
 use crate::array::attribute::RawAttribute;
 use crate::array::domain::RawDomain;
 use crate::array::{Attribute, Domain, Layout};
 use crate::context::Context;
+use crate::filter_list::{FilterList, RawFilterList};
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ArrayType {
     Dense,
     Sparse,
@@ -60,6 +63,12 @@ impl Drop for RawSchema {
         }
     }
 }
+
+type FnFilterListGet = unsafe extern "C" fn(
+    *mut ffi::tiledb_ctx_t,
+    *mut ffi::tiledb_array_schema_t,
+    *mut *mut ffi::tiledb_filter_list_t,
+) -> i32;
 
 pub struct Schema<'ctx> {
     context: &'ctx Context,
@@ -239,6 +248,38 @@ impl<'ctx> Schema<'ctx> {
             Err(self.context.expect_last_error())
         }
     }
+
+    fn filter_list(
+        &self,
+        ffi_function: FnFilterListGet,
+    ) -> TileDBResult<FilterList> {
+        let c_context = self.context.capi();
+        let c_schema = *self.raw;
+        let mut c_filters: *mut ffi::tiledb_filter_list_t = out_ptr!();
+
+        let c_ret =
+            unsafe { ffi_function(c_context, c_schema, &mut c_filters) };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(FilterList {
+                context: self.context,
+                raw: RawFilterList::Owned(c_filters),
+            })
+        } else {
+            Err(self.context.expect_last_error())
+        }
+    }
+
+    pub fn coordinate_filters(&self) -> TileDBResult<FilterList> {
+        self.filter_list(ffi::tiledb_array_schema_get_coords_filter_list)
+    }
+
+    pub fn offsets_filters(&self) -> TileDBResult<FilterList> {
+        self.filter_list(ffi::tiledb_array_schema_get_offsets_filter_list)
+    }
+
+    pub fn nullity_filters(&self) -> TileDBResult<FilterList> {
+        self.filter_list(ffi::tiledb_array_schema_get_validity_filter_list)
+    }
 }
 
 impl<'ctx> Debug for Schema<'ctx> {
@@ -257,12 +298,108 @@ impl<'ctx> Debug for Schema<'ctx> {
                 Ok(a) => format!("{:?}", a),
                 Err(e) => format!("<Error retrieving attribute {}: {}>", a, e)
             }).collect::<Vec<String>>(),
+            "coordinate_filters": format!("{:?}", self.coordinate_filters()),
+            "offsets_filters": format!("{:?}", self.offsets_filters()),
+            "nullity_filters": format!("{:?}", self.nullity_filters()),
             "version": self.version(),
             "raw": format!("{:p}", *self.raw),
         });
         write!(f, "{}", json)
     }
 }
+
+impl<'c1, 'c2> PartialEq<Schema<'c2>> for Schema<'c1> {
+    fn eq(&self, other: &Schema<'c2>) -> bool {
+        let nattr_matches = self.nattributes() == other.nattributes();
+        if !nattr_matches {
+            return false;
+        }
+
+        let version_matches = self.version() == other.version();
+        if !version_matches {
+            return false;
+        }
+
+        let array_type_matches = self.array_type() == other.array_type();
+        if !array_type_matches {
+            return false;
+        }
+
+        let capacity_matches = self.capacity() == other.capacity();
+        if !capacity_matches {
+            return false;
+        }
+
+        let cell_order_matches = self.cell_order() == other.cell_order();
+        if !cell_order_matches {
+            return false;
+        }
+
+        let tile_order_matches = self.tile_order() == other.tile_order();
+        if !tile_order_matches {
+            return false;
+        }
+
+        let duplicates_matches =
+            self.allows_duplicates() == other.allows_duplicates();
+        if !duplicates_matches {
+            return false;
+        }
+
+        let coords_filters_matches =
+            match (self.coordinate_filters(), other.coordinate_filters()) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            };
+        if !coords_filters_matches {
+            return false;
+        }
+
+        let offsets_filters_matches =
+            match (self.offsets_filters(), other.offsets_filters()) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            };
+        if !offsets_filters_matches {
+            return false;
+        }
+
+        let nullity_filters_matches =
+            match (self.nullity_filters(), other.nullity_filters()) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            };
+        if !nullity_filters_matches {
+            return false;
+        }
+
+        for a in 0..self.nattributes() {
+            let attr_matches = match (self.attribute(a), other.attribute(a)) {
+                (Ok(mine), Ok(theirs)) => mine == theirs,
+                _ => false,
+            };
+            if !attr_matches {
+                return false;
+            }
+        }
+
+        let domain_matches = match (self.domain(), other.domain()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
+        if !domain_matches {
+            return false;
+        }
+
+        true
+    }
+}
+
+type FnFilterListSet = unsafe extern "C" fn(
+    *mut ffi::tiledb_ctx_t,
+    *mut ffi::tiledb_array_schema_t,
+    *mut ffi::tiledb_filter_list_t,
+) -> i32;
 
 pub struct Builder<'ctx> {
     schema: Schema<'ctx>,
@@ -381,6 +518,46 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
+    fn filter_list(
+        self,
+        filters: &FilterList,
+        ffi_function: FnFilterListSet,
+    ) -> TileDBResult<Self> {
+        let c_context = self.schema.context.capi();
+        let c_ret = unsafe {
+            ffi_function(c_context, *self.schema.raw, filters.capi())
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Ok(self)
+        } else {
+            Err(self.schema.context.expect_last_error())
+        }
+    }
+
+    pub fn coordinate_filters(
+        self,
+        filters: &FilterList,
+    ) -> TileDBResult<Self> {
+        self.filter_list(
+            filters,
+            ffi::tiledb_array_schema_set_coords_filter_list,
+        )
+    }
+
+    pub fn offsets_filters(self, filters: &FilterList) -> TileDBResult<Self> {
+        self.filter_list(
+            filters,
+            ffi::tiledb_array_schema_set_offsets_filter_list,
+        )
+    }
+
+    pub fn nullity_filters(self, filters: &FilterList) -> TileDBResult<Self> {
+        self.filter_list(
+            filters,
+            ffi::tiledb_array_schema_set_validity_filter_list,
+        )
+    }
+
     pub fn build(self) -> Schema<'ctx> {
         self.schema
     }
@@ -401,10 +578,10 @@ mod tests {
     use crate::array::tests::*;
     use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
     use crate::context::Context;
+    use crate::filter::*;
     use crate::Datatype;
 
-    /// Helper function to make a Domain which isn't needed for the purposes of the test
-    fn unused_domain(c: &Context) -> Domain {
+    fn sample_domain_builder(c: &Context) -> DomainBuilder {
         let dim = DimensionBuilder::new::<i32>(
             c,
             "test",
@@ -414,18 +591,19 @@ mod tests {
         )
         .unwrap()
         .build();
-        DomainBuilder::new(c)
-            .unwrap()
-            .add_dimension(dim)
-            .unwrap()
-            .build()
+        DomainBuilder::new(c).unwrap().add_dimension(dim).unwrap()
+    }
+
+    /// Helper function to make a quick Domain
+    fn sample_domain(c: &Context) -> Domain {
+        sample_domain_builder(c).build()
     }
 
     #[test]
     fn test_get_version() {
         let c: Context = Context::new().unwrap();
 
-        let b: Builder = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+        let b: Builder = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
             .unwrap()
             .allow_duplicates(false)
             .unwrap();
@@ -440,7 +618,7 @@ mod tests {
 
         {
             let s: Schema =
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                     .unwrap()
                     .build();
             let t = s.array_type();
@@ -449,7 +627,7 @@ mod tests {
 
         {
             let s: Schema =
-                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
                     .unwrap()
                     .build();
             let t = s.array_type();
@@ -466,7 +644,7 @@ mod tests {
         {
             let cap_in = 100;
             let s: Schema =
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                     .unwrap()
                     .capacity(cap_in)
                     .unwrap()
@@ -484,7 +662,7 @@ mod tests {
         // dense, no duplicates
         {
             let b: Builder =
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                     .unwrap()
                     .allow_duplicates(false)
                     .unwrap();
@@ -494,7 +672,7 @@ mod tests {
         }
         // dense, duplicates (should error)
         {
-            let e = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+            let e = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                 .unwrap()
                 .allow_duplicates(true);
             assert!(e.is_err());
@@ -502,7 +680,7 @@ mod tests {
         // sparse, no duplicates
         {
             let b: Builder =
-                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
                     .unwrap()
                     .allow_duplicates(false)
                     .unwrap();
@@ -513,7 +691,7 @@ mod tests {
         // sparse, duplicates
         {
             let b: Builder =
-                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
                     .unwrap()
                     .allow_duplicates(true)
                     .unwrap();
@@ -565,7 +743,7 @@ mod tests {
 
         {
             let s: Schema =
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                     .unwrap()
                     .tile_order(Layout::RowMajor)
                     .unwrap()
@@ -579,7 +757,7 @@ mod tests {
         }
         {
             let s: Schema =
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                     .unwrap()
                     .tile_order(Layout::ColumnMajor)
                     .unwrap()
@@ -592,26 +770,26 @@ mod tests {
             assert_eq!(Layout::ColumnMajor, cell);
         }
         {
-            let r = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+            let r = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                 .unwrap()
                 .tile_order(Layout::Hilbert);
             assert!(r.is_err());
         }
         {
-            let r = Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+            let r = Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
                 .unwrap()
                 .tile_order(Layout::Hilbert);
             assert!(r.is_err());
         }
         {
-            let r = Builder::new(&c, ArrayType::Dense, unused_domain(&c))
+            let r = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                 .unwrap()
                 .cell_order(Layout::Hilbert);
             assert!(r.is_err());
         }
         {
             let s: Schema =
-                Builder::new(&c, ArrayType::Sparse, unused_domain(&c))
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
                     .unwrap()
                     .cell_order(Layout::Hilbert)
                     .unwrap()
@@ -629,14 +807,14 @@ mod tests {
 
         {
             let s: Schema =
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?.build();
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))?.build();
             assert_eq!(0, s.nattributes());
         }
         {
             let s: Schema = {
                 let a1 =
                     AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
                     .add_attribute(a1)?
                     .build()
             };
@@ -655,7 +833,7 @@ mod tests {
                     AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
                 let a2 =
                     AttributeBuilder::new(&c, "a2", Datatype::Float64)?.build();
-                Builder::new(&c, ArrayType::Dense, unused_domain(&c))?
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
                     .add_attribute(a1)?
                     .add_attribute(a2)?
                     .build()
@@ -675,5 +853,261 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn test_filters() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        // default filter lists for the schema - see tiledb/sm/misc/constants.cc
+        let coordinates_default = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Zstd,
+            )))?
+            .build();
+        let offsets_default = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Zstd,
+            )))?
+            .build();
+        let nullity_default = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Rle,
+            )))?
+            .build();
+
+        let target = FilterListBuilder::new(&c)?
+            .add_filter_data(FilterData::Compression(CompressionData::new(
+                CompressionType::Lz4,
+            )))?
+            .build();
+
+        // default (empty)
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
+                    .add_attribute(a1)?
+                    .build()
+            };
+
+            assert_eq!(coordinates_default, s.coordinate_filters()?);
+            assert_eq!(offsets_default, s.offsets_filters()?);
+            assert_eq!(nullity_default, s.nullity_filters()?);
+        }
+
+        // set coordinates filter
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
+                    .add_attribute(a1)?
+                    .coordinate_filters(&target)?
+                    .build()
+            };
+
+            assert_eq!(offsets_default, s.offsets_filters()?);
+            assert_eq!(nullity_default, s.nullity_filters()?);
+
+            let coordinates = s.coordinate_filters()?;
+            assert_eq!(target, coordinates);
+        }
+
+        // set offsets filter
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
+                    .add_attribute(a1)?
+                    .offsets_filters(&target)?
+                    .build()
+            };
+
+            assert_eq!(coordinates_default, s.coordinate_filters()?);
+            assert_eq!(nullity_default, s.nullity_filters()?);
+
+            let offsets = s.offsets_filters()?;
+            assert_eq!(target, offsets);
+        }
+
+        // set nullity filter
+        {
+            let s: Schema = {
+                let a1 =
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
+                    .add_attribute(a1)?
+                    .nullity_filters(&target)?
+                    .build()
+            };
+
+            assert_eq!(coordinates_default, s.coordinate_filters()?);
+            assert_eq!(offsets_default, s.offsets_filters()?);
+
+            let nullity = s.nullity_filters()?;
+            assert_eq!(target, nullity);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_eq() {
+        let c: Context = Context::new().unwrap();
+
+        let start_schema = |array_type| -> Builder {
+            Builder::new(&c, array_type, sample_domain(&c))
+                .unwrap()
+                .add_attribute(
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)
+                        .unwrap()
+                        .build(),
+                )
+                .unwrap()
+        };
+
+        let base = start_schema(ArrayType::Sparse).build();
+
+        // reflexive
+        assert_eq!(base, base);
+
+        // array type change
+        {
+            let cmp = start_schema(ArrayType::Dense).build();
+            assert_ne!(base, cmp);
+        }
+
+        // no version change test, requires upstream API
+
+        // capacity change
+        {
+            let cmp = start_schema(base.array_type())
+                .capacity((base.capacity() + 1) * 2)
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // cell order change
+        {
+            let cmp = start_schema(base.array_type())
+                .cell_order(if base.cell_order() == Layout::RowMajor {
+                    Layout::ColumnMajor
+                } else {
+                    Layout::RowMajor
+                })
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // tile order change
+        {
+            let cmp = start_schema(base.array_type())
+                .tile_order(if base.tile_order() == Layout::RowMajor {
+                    Layout::ColumnMajor
+                } else {
+                    Layout::RowMajor
+                })
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // allow duplicates change
+        {
+            let cmp = start_schema(base.array_type())
+                .allow_duplicates(!base.allows_duplicates())
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // coords filters
+        {
+            let cmp = start_schema(base.array_type())
+                .coordinate_filters(
+                    &FilterListBuilder::new(&c).unwrap().build(),
+                )
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // offsets filters
+        {
+            let cmp = start_schema(base.array_type())
+                .offsets_filters(&FilterListBuilder::new(&c).unwrap().build())
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // nullity filters
+        {
+            let cmp = start_schema(base.array_type())
+                .nullity_filters(&FilterListBuilder::new(&c).unwrap().build())
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // change attribute
+        {
+            let cmp = Builder::new(&c, base.array_type(), sample_domain(&c))
+                .unwrap()
+                .add_attribute(
+                    AttributeBuilder::new(&c, "a1", Datatype::Float32)
+                        .unwrap()
+                        .build(),
+                )
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // add attribute
+        {
+            let cmp = start_schema(base.array_type())
+                .add_attribute(
+                    AttributeBuilder::new(&c, "a2", Datatype::Int64)
+                        .unwrap()
+                        .build(),
+                )
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
+
+        // change domain
+        {
+            let domain = sample_domain_builder(&c)
+                .add_dimension(
+                    DimensionBuilder::new::<f64>(
+                        &c,
+                        "d2",
+                        Datatype::Float64,
+                        &[-200f64, 200f64],
+                        &50f64,
+                    )
+                    .unwrap()
+                    .build(),
+                )
+                .unwrap()
+                .build();
+            let cmp = Builder::new(&c, base.array_type(), domain)
+                .unwrap()
+                .add_attribute(
+                    AttributeBuilder::new(&c, "a1", Datatype::Int32)
+                        .unwrap()
+                        .build(),
+                )
+                .unwrap()
+                .build();
+            assert_ne!(base, cmp);
+        }
     }
 }

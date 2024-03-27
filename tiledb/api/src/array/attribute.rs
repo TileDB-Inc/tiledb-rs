@@ -759,7 +759,7 @@ mod test {
     }
 
     #[test]
-    fn attribute_eq() {
+    fn test_eq() {
         let ctx = Context::new().unwrap();
 
         let start_attr =

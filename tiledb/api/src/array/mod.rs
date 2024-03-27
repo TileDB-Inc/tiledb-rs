@@ -1,6 +1,8 @@
 use std::convert::TryFrom;
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
+
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
@@ -32,7 +34,7 @@ impl Mode {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Layout {
     Unordered,
     RowMajor,
