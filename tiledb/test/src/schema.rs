@@ -77,28 +77,47 @@ pub fn arbitrary_for_domain(
 ) -> impl Strategy<Value = SchemaData> {
     const MIN_ATTRS: usize = 1;
     const MAX_ATTRS: usize = 32;
+
+    let allow_duplicates = match array_type {
+        ArrayType::Dense => Just(false).bind(),
+        ArrayType::Sparse => any::<bool>().bind(),
+    };
+
     (
+        any::<u64>(),
         arbitrary_cell_order(array_type),
         arbitrary_tile_order(),
+        allow_duplicates,
         proptest::collection::vec(
             crate::attribute::arbitrary(),
             MIN_ATTRS..=MAX_ATTRS,
         ),
         arbitrary_coordinate_filters(&domain),
+        crate::filter::arbitrary_list(),
+        crate::filter::arbitrary_list(),
     )
         .prop_map(
-            move |(cell_order, tile_order, attributes, coordinate_filters)| {
+            move |(
+                capacity,
+                cell_order,
+                tile_order,
+                allow_duplicates,
+                attributes,
+                coordinate_filters,
+                offsets_filters,
+                nullity_filters,
+            )| {
                 SchemaData {
                     array_type,
                     domain: domain.clone(),
-                    capacity: None,
+                    capacity: Some(capacity),
                     cell_order: Some(cell_order),
                     tile_order: Some(tile_order),
-                    allow_duplicates: None,
+                    allow_duplicates: Some(allow_duplicates),
                     attributes,
                     coordinate_filters,
-                    offsets_filters: vec![], /* TODO */
-                    nullity_filters: vec![], /* TODO */
+                    offsets_filters,
+                    nullity_filters,
                 }
             },
         )
