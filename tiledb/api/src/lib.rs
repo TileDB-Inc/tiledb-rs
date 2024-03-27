@@ -35,6 +35,7 @@ pub mod error;
 pub mod filter;
 pub mod filter_list;
 pub mod query;
+pub mod stats;
 pub mod string;
 pub mod vfs;
 
