@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use tiledb::filter::{FilterData, FilterListBuilder};
-use tiledb::Result as TileDBResult;
+use tiledb::filter::{FilterData, FilterList, FilterListBuilder};
+use tiledb::{context::Context as TileDBContext, Result as TileDBResult};
 
 /// Encapsulates TileDB filter data for storage in Arrow Field metadata
 #[derive(Deserialize, Serialize)]
@@ -31,6 +31,13 @@ impl FilterMetadata {
         }
         Ok(filters)
     }
+
+    pub fn create<'ctx>(
+        &self,
+        context: &'ctx TileDBContext,
+    ) -> TileDBResult<FilterList<'ctx>> {
+        Ok(self.apply(FilterListBuilder::new(context)?)?.build())
+    }
 }
 
 #[cfg(test)]
@@ -46,7 +53,7 @@ mod tests {
         proptest!(|(filters_in in tiledb_test::filter::arbitrary_list(&c))| {
             let filters_in = filters_in.expect("Error constructing arbitrary filter list");
             let metadata = FilterMetadata::new(&filters_in).expect("Error serializing filter list");
-            let filters_out = metadata.apply(FilterListBuilder::new(&c).unwrap()).expect("Error deserializing filter list").build();
+            let filters_out = metadata.create(&c).expect("Error deserializing filter list");
 
             assert_eq!(filters_in, filters_out);
         });

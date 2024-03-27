@@ -3,6 +3,8 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
+
 use crate::array::attribute::RawAttribute;
 use crate::array::domain::RawDomain;
 use crate::array::{Attribute, Domain, Layout};
@@ -10,7 +12,7 @@ use crate::context::Context;
 use crate::filter_list::{FilterList, RawFilterList};
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ArrayType {
     Dense,
     Sparse,

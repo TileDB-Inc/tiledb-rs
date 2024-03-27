@@ -13,3 +13,4 @@ pub mod attribute;
 pub mod datatype;
 pub mod dimension;
 pub mod filter;
+pub mod schema;
