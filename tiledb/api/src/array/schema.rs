@@ -64,6 +64,12 @@ impl Drop for RawSchema {
     }
 }
 
+type FnFilterListGet = unsafe extern "C" fn(
+    *mut ffi::tiledb_ctx_t,
+    *mut ffi::tiledb_array_schema_t,
+    *mut *mut ffi::tiledb_filter_list_t,
+) -> i32;
+
 pub struct Schema<'ctx> {
     context: &'ctx Context,
     raw: RawSchema,
@@ -245,11 +251,7 @@ impl<'ctx> Schema<'ctx> {
 
     fn filter_list(
         &self,
-        ffi_function: unsafe extern "C" fn(
-            *mut ffi::tiledb_ctx_t,
-            *mut ffi::tiledb_array_schema_t,
-            *mut *mut ffi::tiledb_filter_list_t,
-        ) -> i32,
+        ffi_function: FnFilterListGet,
     ) -> TileDBResult<FilterList> {
         let c_context = self.context.capi();
         let c_schema = *self.raw;
@@ -393,6 +395,12 @@ impl<'c1, 'c2> PartialEq<Schema<'c2>> for Schema<'c1> {
     }
 }
 
+type FnFilterListSet = unsafe extern "C" fn(
+    *mut ffi::tiledb_ctx_t,
+    *mut ffi::tiledb_array_schema_t,
+    *mut ffi::tiledb_filter_list_t,
+) -> i32;
+
 pub struct Builder<'ctx> {
     schema: Schema<'ctx>,
 }
@@ -513,11 +521,7 @@ impl<'ctx> Builder<'ctx> {
     fn filter_list(
         self,
         filters: &FilterList,
-        ffi_function: unsafe extern "C" fn(
-            *mut ffi::tiledb_ctx_t,
-            *mut ffi::tiledb_array_schema_t,
-            *mut ffi::tiledb_filter_list_t,
-        ) -> i32,
+        ffi_function: FnFilterListSet,
     ) -> TileDBResult<Self> {
         let c_context = self.schema.context.capi();
         let c_ret = unsafe {
