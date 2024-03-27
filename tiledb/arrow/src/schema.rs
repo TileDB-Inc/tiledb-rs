@@ -87,7 +87,6 @@ pub fn arrow_schema<'ctx>(
 /// A TileDB schema must have domain and dimension details.
 /// These are expected to be in the schema `metadata` beneath the key `tiledb`.
 /// This metadata is expected to be a JSON object with the following fields:
-/// TODO
 pub fn tiledb_schema<'ctx>(
     context: &'ctx TileDBContext,
     schema: &ArrowSchema,
@@ -103,7 +102,10 @@ pub fn tiledb_schema<'ctx>(
         None => return Ok(None),
     };
 
-    if schema.fields.len() < metadata.ndim { /* TODO: return error */ }
+    if schema.fields.len() < metadata.ndim {
+        return Err(TileDBError::from(format!("Input error: expected at least {} dimension fields but only found {}",
+                    metadata.ndim, schema.fields.len())));
+    }
 
     let dimensions = schema.fields.iter().take(metadata.ndim);
     let attributes = schema.fields.iter().skip(metadata.ndim);
