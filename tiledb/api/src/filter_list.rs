@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
@@ -189,13 +190,42 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn add_filter_data(self, filter: FilterData) -> TileDBResult<Self> {
+    pub fn add_filter_data<F>(self, filter: F) -> TileDBResult<Self>
+    where
+        F: Borrow<FilterData>,
+    {
         let ctx = self.filter_list.context;
         self.add_filter(Filter::create(ctx, filter)?)
     }
 
     pub fn build(self) -> FilterList<'ctx> {
         self.filter_list
+    }
+}
+
+pub type FilterListData = Vec<FilterData>;
+
+impl<'ctx> TryFrom<&FilterList<'ctx>> for FilterListData {
+    type Error = crate::error::Error;
+    fn try_from(filters: &FilterList) -> TileDBResult<Self> {
+        filters
+            .to_vec()?
+            .into_iter()
+            .map(|f| FilterData::try_from(&f))
+            .collect::<TileDBResult<Self>>()
+    }
+}
+
+impl<'ctx> crate::Factory<'ctx> for FilterListData {
+    type Item = FilterList<'ctx>;
+
+    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+        Ok(self
+            .iter()
+            .fold(Builder::new(context), |b, filter| {
+                b?.add_filter_data(filter)
+            })?
+            .build())
     }
 }
 

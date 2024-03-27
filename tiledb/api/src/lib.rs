@@ -50,3 +50,9 @@ pub use array::Array;
 pub use datatype::Datatype;
 pub use query::{Builder as QueryBuilder, Query, QueryType};
 pub type Result<T> = std::result::Result<T, error::Error>;
+
+pub trait Factory<'ctx> {
+    type Item;
+
+    fn create(&self, context: &'ctx context::Context) -> Result<Self::Item>;
+}
