@@ -250,7 +250,7 @@ impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
 /// Encapsulation of data needed to construct a Domain
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct DomainData {
-    dimension: Vec<DimensionData>,
+    pub dimension: Vec<DimensionData>,
 }
 
 impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {

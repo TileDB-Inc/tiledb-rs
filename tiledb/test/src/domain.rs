@@ -1,14 +1,11 @@
 use proptest::prelude::*;
-use tiledb::array::{ArrayType, Domain, DomainBuilder};
-use tiledb::context::Context;
-use tiledb::Result as TileDBResult;
+use tiledb::array::{ArrayType, DomainData};
 
 use crate::strategy::LifetimeBoundStrategy;
 
 pub fn arbitrary_for_array_type(
-    context: &Context,
     array_type: ArrayType,
-) -> impl Strategy<Value = TileDBResult<Domain>> {
+) -> impl Strategy<Value = DomainData> {
     const MIN_DIMENSIONS: usize = 1;
     const MAX_DIMENSIONS: usize = 8;
 
@@ -16,47 +13,37 @@ pub fn arbitrary_for_array_type(
         ArrayType::Dense => crate::datatype::arbitrary_for_dense_dimension()
             .prop_flat_map(|dimension_type| {
                 proptest::collection::vec(
-                    crate::dimension::arbitrary_for_type(
-                        context,
-                        dimension_type,
-                    ),
+                    crate::dimension::arbitrary_for_type(dimension_type),
                     MIN_DIMENSIONS..=MAX_DIMENSIONS,
                 )
             })
             .bind(),
         ArrayType::Sparse => proptest::collection::vec(
-            crate::dimension::arbitrary_for_array_type(context, array_type),
+            crate::dimension::arbitrary_for_array_type(array_type),
             MIN_DIMENSIONS..=MAX_DIMENSIONS,
         )
         .bind(),
     }
-    .prop_map(|dimensions| {
-        let mut d = DomainBuilder::new(context)?;
-        for dim in dimensions {
-            d = d.add_dimension(dim?)?;
-        }
-        Ok(d.build())
-    })
+    .prop_map(|dimension| DomainData { dimension })
 }
 
-pub fn arbitrary(
-    context: &Context,
-) -> impl Strategy<Value = TileDBResult<Domain>> {
+pub fn arbitrary() -> impl Strategy<Value = DomainData> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-        .prop_flat_map(|atype| arbitrary_for_array_type(context, atype))
+        .prop_flat_map(arbitrary_for_array_type)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tiledb::{Context, Factory};
 
     /// Test that the arbitrary domain construction always succeeds
     #[test]
     fn domain_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_domain in arbitrary(&ctx))| {
-            maybe_domain.expect("Error constructing arbitrary domain");
+        proptest!(|(maybe_domain in arbitrary())| {
+            maybe_domain.create(&ctx).expect("Error constructing arbitrary domain");
         });
     }
 
@@ -64,8 +51,8 @@ mod tests {
     fn domain_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_domain in arbitrary(&ctx))| {
-            let domain = maybe_domain.expect("Error constructing arbitrary domain");
+        proptest!(|(maybe_domain in arbitrary())| {
+            let domain = maybe_domain.create(&ctx).expect("Error constructing arbitrary domain");
             assert_eq!(domain, domain);
         });
     }

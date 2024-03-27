@@ -1,9 +1,10 @@
+use std::fmt::Debug;
+
 use num_traits::{Bounded, Num};
 use proptest::prelude::*;
-use std::fmt::Debug;
-use tiledb::array::{ArrayType, Dimension, DimensionBuilder};
-use tiledb::context::Context;
-use tiledb::Result as TileDBResult;
+use serde_json::json;
+use tiledb::array::{ArrayType, DimensionData};
+
 use tiledb::{fn_typed, Datatype};
 
 use crate::strategy::LifetimeBoundStrategy;
@@ -76,47 +77,49 @@ where
 }
 
 pub fn arbitrary_for_type(
-    context: &Context,
     datatype: Datatype,
-) -> impl Strategy<Value = TileDBResult<Dimension>> {
+) -> impl Strategy<Value = DimensionData> {
     fn_typed!(arbitrary_range_and_extent, datatype =>
         (crate::attribute::arbitrary_name(), arbitrary_range_and_extent).prop_map(move |(name, values)| {
-            DimensionBuilder::new(context, name.as_ref(), datatype, &values.0, &values.1)
-                .map(|b| b.build())
+            DimensionData {
+                name, datatype,
+                domain: [json!(values.0[0]), json!(values.0[1])],
+                extent: json!(values.1),
+                cell_val_num: None,
+                filters: vec![] /* TODO */
+            }
     }).bind())
 }
 
 pub fn arbitrary_for_array_type(
-    context: &Context,
     array_type: ArrayType,
-) -> impl Strategy<Value = TileDBResult<Dimension>> {
+) -> impl Strategy<Value = DimensionData> {
     match array_type {
         ArrayType::Dense => {
             crate::datatype::arbitrary_for_dense_dimension().boxed()
         }
         ArrayType::Sparse => crate::datatype::arbitrary_implemented().boxed(),
     }
-    .prop_flat_map(|dt| arbitrary_for_type(context, dt))
+    .prop_flat_map(arbitrary_for_type)
 }
 
-pub fn arbitrary(
-    context: &Context,
-) -> impl Strategy<Value = TileDBResult<Dimension>> {
+pub fn arbitrary() -> impl Strategy<Value = DimensionData> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-        .prop_flat_map(|at| arbitrary_for_array_type(context, at))
+        .prop_flat_map(arbitrary_for_array_type)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tiledb::{Context, Factory};
 
     /// Test that the arbitrary dimension construction always succeeds
     #[test]
     fn dimension_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in arbitrary(&ctx))| {
-            maybe_dimension.expect("Error constructing arbitrary dimension");
+        proptest!(|(maybe_dimension in arbitrary())| {
+            maybe_dimension.create(&ctx).expect("Error constructing arbitrary dimension");
         });
     }
 
@@ -124,8 +127,8 @@ mod tests {
     fn dimension_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in arbitrary(&ctx))| {
-            let dimension = maybe_dimension.expect("Error constructing arbitrary attribute");
+        proptest!(|(maybe_dimension in arbitrary())| {
+            let dimension = maybe_dimension.create(&ctx).expect("Error constructing arbitrary attribute");
             assert_eq!(dimension, dimension);
         });
     }

@@ -6,15 +6,15 @@ use serde::{Deserialize, Serialize};
 use crate::context::Context;
 use crate::Result as TileDBResult;
 
-mod attribute;
-mod dimension;
-mod domain;
-mod schema;
+pub mod attribute;
+pub mod dimension;
+pub mod domain;
+pub mod schema;
 
-pub use attribute::{Attribute, Builder as AttributeBuilder};
-pub use dimension::{Builder as DimensionBuilder, Dimension};
-pub use domain::{Builder as DomainBuilder, Domain};
-pub use schema::{ArrayType, Builder as SchemaBuilder, Schema};
+pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
+pub use dimension::{Builder as DimensionBuilder, Dimension, DimensionData};
+pub use domain::{Builder as DomainBuilder, Domain, DomainData};
+pub use schema::{ArrayType, Builder as SchemaBuilder, Schema, SchemaData};
 
 pub enum Mode {
     Read,

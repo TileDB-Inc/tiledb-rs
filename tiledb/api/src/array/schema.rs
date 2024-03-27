@@ -568,16 +568,16 @@ impl<'ctx> From<Builder<'ctx>> for Schema<'ctx> {
 /// Encapsulation of data needed to construct a Schema
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SchemaData {
-    array_type: ArrayType,
-    domain: DomainData,
-    capacity: Option<u64>,
-    cell_order: Option<Layout>,
-    tile_order: Option<Layout>,
-    allow_duplicates: Option<bool>,
-    attributes: Vec<AttributeData>,
-    coordinate_filters: FilterListData,
-    offsets_filters: FilterListData,
-    nullity_filters: FilterListData,
+    pub array_type: ArrayType,
+    pub domain: DomainData,
+    pub capacity: Option<u64>,
+    pub cell_order: Option<Layout>,
+    pub tile_order: Option<Layout>,
+    pub allow_duplicates: Option<bool>,
+    pub attributes: Vec<AttributeData>,
+    pub coordinate_filters: FilterListData,
+    pub offsets_filters: FilterListData,
+    pub nullity_filters: FilterListData,
 }
 
 impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {

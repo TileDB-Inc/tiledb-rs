@@ -1,7 +1,5 @@
 use proptest::prelude::*;
-use tiledb::array::{ArrayType, Schema, SchemaBuilder};
-use tiledb::context::Context;
-use tiledb::Result as TileDBResult;
+use tiledb::array::{ArrayType, SchemaData};
 
 use crate::strategy::LifetimeBoundStrategy;
 
@@ -39,46 +37,51 @@ pub fn arbitrary_tile_order() -> impl Strategy<Value = tiledb::array::Layout> {
     ]
 }
 
-pub fn arbitrary(
-    context: &Context,
-) -> impl Strategy<Value = TileDBResult<Schema>> {
+pub fn arbitrary() -> impl Strategy<Value = SchemaData> {
     const MIN_ATTRS: usize = 1;
     const MAX_ATTRS: usize = 32;
 
     arbitrary_array_type()
-        .prop_flat_map(move |array_type|
+        .prop_flat_map(move |array_type| {
             (
                 Just(array_type),
                 arbitrary_cell_order(array_type),
                 arbitrary_tile_order(),
-                crate::domain::arbitrary_for_array_type(context, array_type),
-                proptest::collection::vec(crate::attribute::arbitrary(context), MIN_ATTRS..=MAX_ATTRS)
-            ))
-        .prop_map(|(array_type, cell_order, tile_order, domain, attrs)| {
-            /* TODO: cell order, tile order, capacity, duplicates */
-            let mut b = SchemaBuilder::new(context, array_type, domain?)?
-                .cell_order(cell_order)?
-                .tile_order(tile_order)?;
-            for attr in attrs {
-                /* TODO: how to ensure no duplicate names, assuming that matters? */
-                b = b.add_attribute(attr?)?
+                crate::domain::arbitrary_for_array_type(array_type),
+                proptest::collection::vec(
+                    crate::attribute::arbitrary(),
+                    MIN_ATTRS..=MAX_ATTRS,
+                ),
+            )
+        })
+        .prop_map(|(array_type, cell_order, tile_order, domain, attributes)| {
+            SchemaData {
+                array_type,
+                domain,
+                capacity: None,
+                cell_order: Some(cell_order),
+                tile_order: Some(tile_order),
+                allow_duplicates: None,
+                attributes,
+                coordinate_filters: vec![], /* TODO */
+                offsets_filters: vec![],    /* TODO */
+                nullity_filters: vec![],    /* TODO */
             }
-
-            Ok(b.build())
         })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tiledb::{Context, Factory};
 
     /// Test that the arbitrary schema construction always succeeds
     #[test]
     fn schema_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in arbitrary(&ctx))| {
-            maybe_schema.expect("Error constructing arbitrary schema");
+        proptest!(|(maybe_schema in arbitrary())| {
+            maybe_schema.create(&ctx).expect("Error constructing arbitrary schema");
         });
     }
 
@@ -86,8 +89,8 @@ mod tests {
     fn schema_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in arbitrary(&ctx))| {
-            let schema = maybe_schema.expect("Error constructing arbitrary schema");
+        proptest!(|(maybe_schema in arbitrary())| {
+            let schema = maybe_schema.create(&ctx).expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);
         });
     }
