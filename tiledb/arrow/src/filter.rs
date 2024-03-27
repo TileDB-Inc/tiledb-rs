@@ -32,3 +32,23 @@ impl FilterMetadata {
         Ok(filters)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use tiledb::context::Context as TileDBContext;
+
+    #[test]
+    fn test_serialize_invertibility() {
+        let c: TileDBContext = TileDBContext::new().unwrap();
+
+        proptest!(|(filters_in in tiledb_test::filter::arbitrary_list(&c))| {
+            let filters_in = filters_in.expect("Error constructing arbitrary filter list");
+            let metadata = FilterMetadata::new(&filters_in).expect("Error serializing filter list");
+            let filters_out = metadata.apply(FilterListBuilder::new(&c).unwrap()).expect("Error deserializing filter list").build();
+
+            assert_eq!(filters_in, filters_out);
+        });
+    }
+}
