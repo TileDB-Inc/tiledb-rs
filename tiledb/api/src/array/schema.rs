@@ -1,16 +1,17 @@
-use serde_json::json;
+use std::borrow::Borrow;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 
-use crate::array::attribute::RawAttribute;
-use crate::array::domain::RawDomain;
+use crate::array::attribute::{AttributeData, RawAttribute};
+use crate::array::domain::{DomainData, RawDomain};
 use crate::array::{Attribute, Domain, Layout};
 use crate::context::Context;
-use crate::filter_list::{FilterList, RawFilterList};
-use crate::Result as TileDBResult;
+use crate::filter_list::{FilterList, FilterListData, RawFilterList};
+use crate::{Factory, Result as TileDBResult};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ArrayType {
@@ -284,26 +285,11 @@ impl<'ctx> Schema<'ctx> {
 
 impl<'ctx> Debug for Schema<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let json = json!({
-            "array_type": format!("{:?}", self.array_type()),
-            "capacity": self.capacity(),
-            "cell_order": format!("{:?}", self.cell_order()),
-            "tile_order": format!("{:?}", self.tile_order()),
-            "allows_duplicates": self.allows_duplicates(),
-            "domain": match self.domain() {
-                Ok(d) => format!("{:?}", d),
-                Err(e) => format!("<{}>", e)
-            },
-            "attributes": (0.. self.nattributes()).map(|a| match self.attribute(a) {
-                Ok(a) => format!("{:?}", a),
-                Err(e) => format!("<Error retrieving attribute {}: {}>", a, e)
-            }).collect::<Vec<String>>(),
-            "coordinate_filters": format!("{:?}", self.coordinate_filters()),
-            "offsets_filters": format!("{:?}", self.offsets_filters()),
-            "nullity_filters": format!("{:?}", self.nullity_filters()),
-            "version": self.version(),
-            "raw": format!("{:p}", *self.raw),
-        });
+        let data = SchemaData::try_from(self).map_err(|_| std::fmt::Error)?;
+        let mut json = json!(data);
+        json["version"] = json!(self.version());
+        json["raw"] = json!(format!("{:p}", *self.raw));
+
         write!(f, "{}", json)
     }
 }
@@ -518,11 +504,15 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    fn filter_list(
+    fn filter_list<FL>(
         self,
-        filters: &FilterList,
+        filters: FL,
         ffi_function: FnFilterListSet,
-    ) -> TileDBResult<Self> {
+    ) -> TileDBResult<Self>
+    where
+        FL: Borrow<FilterList<'ctx>>,
+    {
+        let filters = filters.borrow();
         let c_context = self.schema.context.capi();
         let c_ret = unsafe {
             ffi_function(c_context, *self.schema.raw, filters.capi())
@@ -534,24 +524,30 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn coordinate_filters(
-        self,
-        filters: &FilterList,
-    ) -> TileDBResult<Self> {
+    pub fn coordinate_filters<FL>(self, filters: FL) -> TileDBResult<Self>
+    where
+        FL: Borrow<FilterList<'ctx>>,
+    {
         self.filter_list(
             filters,
             ffi::tiledb_array_schema_set_coords_filter_list,
         )
     }
 
-    pub fn offsets_filters(self, filters: &FilterList) -> TileDBResult<Self> {
+    pub fn offsets_filters<FL>(self, filters: FL) -> TileDBResult<Self>
+    where
+        FL: Borrow<FilterList<'ctx>>,
+    {
         self.filter_list(
             filters,
             ffi::tiledb_array_schema_set_offsets_filter_list,
         )
     }
 
-    pub fn nullity_filters(self, filters: &FilterList) -> TileDBResult<Self> {
+    pub fn nullity_filters<FL>(self, filters: FL) -> TileDBResult<Self>
+    where
+        FL: Borrow<FilterList<'ctx>>,
+    {
         self.filter_list(
             filters,
             ffi::tiledb_array_schema_set_validity_filter_list,
@@ -566,6 +562,80 @@ impl<'ctx> Builder<'ctx> {
 impl<'ctx> From<Builder<'ctx>> for Schema<'ctx> {
     fn from(builder: Builder<'ctx>) -> Schema<'ctx> {
         builder.build()
+    }
+}
+
+/// Encapsulation of data needed to construct a Schema
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SchemaData {
+    array_type: ArrayType,
+    domain: DomainData,
+    capacity: Option<u64>,
+    cell_order: Option<Layout>,
+    tile_order: Option<Layout>,
+    allow_duplicates: Option<bool>,
+    attributes: Vec<AttributeData>,
+    coordinate_filters: FilterListData,
+    offsets_filters: FilterListData,
+    nullity_filters: FilterListData,
+}
+
+impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {
+    type Error = crate::error::Error;
+
+    fn try_from(schema: &Schema<'ctx>) -> TileDBResult<Self> {
+        Ok(SchemaData {
+            array_type: schema.array_type(),
+            domain: DomainData::try_from(&schema.domain()?)?,
+            capacity: Some(schema.capacity()),
+            cell_order: Some(schema.cell_order()),
+            tile_order: Some(schema.tile_order()),
+            allow_duplicates: Some(schema.allows_duplicates()),
+            attributes: (0..schema.nattributes())
+                .map(|a| AttributeData::try_from(&schema.attribute(a)?))
+                .collect::<TileDBResult<Vec<AttributeData>>>()?,
+            coordinate_filters: FilterListData::try_from(
+                &schema.coordinate_filters()?,
+            )?,
+            offsets_filters: FilterListData::try_from(
+                &schema.coordinate_filters()?,
+            )?,
+            nullity_filters: FilterListData::try_from(
+                &schema.coordinate_filters()?,
+            )?,
+        })
+    }
+}
+
+impl<'ctx> Factory<'ctx> for SchemaData {
+    type Item = Schema<'ctx>;
+
+    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+        let mut b = self.attributes.iter().try_fold(
+            Builder::new(
+                context,
+                self.array_type,
+                self.domain.create(context)?,
+            )?
+            .coordinate_filters(self.coordinate_filters.create(context)?)?
+            .offsets_filters(self.offsets_filters.create(context)?)?
+            .nullity_filters(self.nullity_filters.create(context)?)?,
+            |b, a| b.add_attribute(a.create(context)?),
+        )?;
+        if let Some(c) = self.capacity {
+            b = b.capacity(c)?;
+        }
+        if let Some(d) = self.allow_duplicates {
+            b = b.allow_duplicates(d)?;
+        }
+        if let Some(o) = self.cell_order {
+            b = b.cell_order(o)?;
+        }
+        if let Some(o) = self.tile_order {
+            b = b.tile_order(o)?;
+        }
+
+        Ok(b.build())
     }
 }
 
