@@ -1,5 +1,5 @@
 use proptest::prelude::*;
-use tiledb::array::{ArrayType, SchemaData};
+use tiledb::array::{ArrayType, DomainData, SchemaData};
 
 use crate::strategy::LifetimeBoundStrategy;
 
@@ -37,27 +37,24 @@ pub fn arbitrary_tile_order() -> impl Strategy<Value = tiledb::array::Layout> {
     ]
 }
 
-pub fn arbitrary() -> impl Strategy<Value = SchemaData> {
+pub fn arbitrary_for_domain(
+    array_type: ArrayType,
+    domain: DomainData,
+) -> impl Strategy<Value = SchemaData> {
     const MIN_ATTRS: usize = 1;
     const MAX_ATTRS: usize = 32;
-
-    arbitrary_array_type()
-        .prop_flat_map(move |array_type| {
-            (
-                Just(array_type),
-                arbitrary_cell_order(array_type),
-                arbitrary_tile_order(),
-                crate::domain::arbitrary_for_array_type(array_type),
-                proptest::collection::vec(
-                    crate::attribute::arbitrary(),
-                    MIN_ATTRS..=MAX_ATTRS,
-                ),
-            )
-        })
-        .prop_map(|(array_type, cell_order, tile_order, domain, attributes)| {
+    (
+        arbitrary_cell_order(array_type),
+        arbitrary_tile_order(),
+        proptest::collection::vec(
+            crate::attribute::arbitrary(),
+            MIN_ATTRS..=MAX_ATTRS,
+        ),
+    )
+        .prop_map(move |(cell_order, tile_order, attributes)| {
             SchemaData {
                 array_type,
-                domain,
+                domain: domain.clone(),
                 capacity: None,
                 cell_order: Some(cell_order),
                 tile_order: Some(tile_order),
@@ -68,6 +65,14 @@ pub fn arbitrary() -> impl Strategy<Value = SchemaData> {
                 nullity_filters: vec![],    /* TODO */
             }
         })
+}
+
+pub fn arbitrary() -> impl Strategy<Value = SchemaData> {
+    arbitrary_array_type().prop_flat_map(|array_type| {
+        crate::domain::arbitrary_for_array_type(array_type).prop_flat_map(
+            move |domain| arbitrary_for_domain(array_type, domain),
+        )
+    })
 }
 
 #[cfg(test)]
