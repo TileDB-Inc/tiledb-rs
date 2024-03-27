@@ -1,17 +1,19 @@
 extern crate tiledb_sys as ffi;
 
+use std::borrow::Borrow;
 use std::convert::From;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::context::Context;
 use crate::convert::{BitsEq, CAPIConverter};
 use crate::error::Error;
-use crate::filter_list::{FilterList, RawFilterList};
+use crate::filter_list::{FilterList, FilterListData, RawFilterList};
 use crate::fn_typed;
-use crate::{Datatype, Result as TileDBResult};
+use crate::{Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawAttribute {
     Owned(*mut ffi::tiledb_attribute_t),
@@ -213,37 +215,11 @@ impl<'ctx> Attribute<'ctx> {
 
 impl<'ctx> Debug for Attribute<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let json = json!({
-            "name": self.name(),
-            "datatype": match self.datatype() {
-                Ok(dt) => dt
-                    .to_string()
-                    .unwrap_or(String::from("<unrecognized datatype>")),
-                Err(e) => format!("<error reading datatype: {}>", e),
-            },
-            "nullable": self.is_nullable(),
-            "cell_val_num": self.cell_val_num(),
-            "fill": if self.is_nullable() {
-                    Some(if let Ok(dt) = self.datatype() {
-                        fn_typed!(dt, DT, match self.fill_value_nullable::<DT>() {
-                            Ok((value, nullable)) => json!({
-                                "value": value.to_string(),
-                                "nullable": nullable
-                            }),
-                            Err(e) => serde_json::value::Value::String(format!("<error reading fill value: {}>", e))
-                        })
-                    } else {
-                    serde_json::value::Value::String(String::from("<Could not resolve datatype>"))
-                    })
-                } else {
-                    None
-                },
-            "filters": match self.filter_list() {
-                Ok(fl) => format!("{:?}", fl),
-                Err(e) => format!("<error reading filters: {}>", e)
-            },
-            "raw": format!("{:p}", *self.raw)
-        });
+        let data =
+            AttributeData::try_from(self).map_err(|_| std::fmt::Error)?;
+        let mut json = json!(data);
+        json["raw"] = json!(format!("{:p}", *self.raw));
+
         write!(f, "{}", json)
     }
 }
@@ -476,7 +452,11 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn filter_list(self, filter_list: &FilterList) -> TileDBResult<Self> {
+    pub fn filter_list<FL>(self, filter_list: FL) -> TileDBResult<Self>
+    where
+        FL: Borrow<FilterList<'ctx>>,
+    {
+        let filter_list = filter_list.borrow();
         let c_context = self.attr.context.capi();
         let res = unsafe {
             ffi::tiledb_attribute_set_filter_list(
@@ -495,6 +475,85 @@ impl<'ctx> Builder<'ctx> {
 
     pub fn build(self) -> Attribute<'ctx> {
         self.attr
+    }
+}
+
+/// Encapsulation of data needed to construct an Attribute's fill value
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct FillData {
+    pub data: serde_json::value::Value,
+    pub nullability: Option<bool>,
+}
+
+/// Encapsulation of data needed to construct an Attribute
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct AttributeData {
+    pub name: String,
+    pub datatype: Datatype,
+    pub nullability: Option<bool>,
+    pub cell_val_num: Option<u32>,
+    pub fill: Option<FillData>,
+    pub filters: FilterListData,
+}
+
+impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {
+    type Error = crate::error::Error;
+
+    fn try_from(attr: &Attribute<'ctx>) -> TileDBResult<Self> {
+        let datatype = attr.datatype()?;
+        let fill = fn_typed!(datatype, AT, {
+            let (fill_value, fill_value_nullability) =
+                attr.fill_value_nullable::<AT>()?;
+            FillData {
+                data: json!(fill_value),
+                nullability: Some(fill_value_nullability),
+            }
+        });
+
+        Ok(AttributeData {
+            name: attr.name()?,
+            datatype,
+            nullability: Some(attr.is_nullable()),
+            cell_val_num: Some(attr.cell_val_num()?),
+            fill: Some(fill),
+            filters: FilterListData::try_from(&attr.filter_list()?)?,
+        })
+    }
+}
+
+impl<'ctx> Factory<'ctx> for AttributeData {
+    type Item = Attribute<'ctx>;
+
+    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+        let mut b = Builder::new(context, &self.name, self.datatype)?
+            .filter_list(self.filters.create(context)?)?;
+
+        if let Some(n) = self.nullability {
+            b = b.nullability(n)?;
+        }
+        if let Some(c) = self.cell_val_num {
+            b = b.cell_val_num(c)?;
+        }
+        if let Some(ref fill) = self.fill {
+            b = fn_typed!(self.datatype, AT, {
+                let fill_value: AT = serde_json::from_value::<AT>(
+                    fill.data.clone(),
+                )
+                .map_err(|e| {
+                    Error::from(format!(
+                        "Error deserializing fill value: {}",
+                        e
+                    ))
+                })?;
+                if let Some(fill_nullability) = fill.nullability {
+                    b.fill_value_nullability::<AT>(fill_value, fill_nullability)
+                } else {
+                    b.fill_value::<AT>(fill_value)
+                }
+            })?;
+        }
+
+        Ok(b.build())
     }
 }
 
