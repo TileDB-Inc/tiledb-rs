@@ -1,5 +1,7 @@
 use proptest::prelude::*;
 use tiledb::array::{ArrayType, DomainData, SchemaData};
+use tiledb::filter::{CompressionData, CompressionType, FilterData};
+use tiledb::filter_list::FilterListData;
 
 use crate::strategy::LifetimeBoundStrategy;
 
@@ -37,6 +39,38 @@ pub fn arbitrary_tile_order() -> impl Strategy<Value = tiledb::array::Layout> {
     ]
 }
 
+pub fn arbitrary_coordinate_filters(
+    domain: &DomainData,
+) -> impl Strategy<Value = FilterListData> {
+    /*
+     * See tiledb/array_schema/array_schema.cc for the rules.
+     * - DoubleDelta compressor is disallowed on floating-point dimensions with no filters
+     */
+    let mut has_unfiltered_float_dimension = false;
+    for dim in domain.dimension.iter() {
+        if dim.datatype.is_real_type() && dim.filters.is_empty() {
+            has_unfiltered_float_dimension = true;
+            break;
+        }
+    }
+
+    crate::filter::arbitrary_list().prop_filter(
+        "Floating-point dimension cannot have DOUBLE DELTA compression",
+        move |fl| {
+            !(has_unfiltered_float_dimension
+                && fl.iter().any(|f| {
+                    matches!(
+                        f,
+                        FilterData::Compression(CompressionData {
+                            kind: CompressionType::DoubleDelta,
+                            ..
+                        })
+                    )
+                }))
+        },
+    )
+}
+
 pub fn arbitrary_for_domain(
     array_type: ArrayType,
     domain: DomainData,
@@ -50,21 +84,24 @@ pub fn arbitrary_for_domain(
             crate::attribute::arbitrary(),
             MIN_ATTRS..=MAX_ATTRS,
         ),
+        arbitrary_coordinate_filters(&domain),
     )
-        .prop_map(move |(cell_order, tile_order, attributes)| {
-            SchemaData {
-                array_type,
-                domain: domain.clone(),
-                capacity: None,
-                cell_order: Some(cell_order),
-                tile_order: Some(tile_order),
-                allow_duplicates: None,
-                attributes,
-                coordinate_filters: vec![], /* TODO */
-                offsets_filters: vec![],    /* TODO */
-                nullity_filters: vec![],    /* TODO */
-            }
-        })
+        .prop_map(
+            move |(cell_order, tile_order, attributes, coordinate_filters)| {
+                SchemaData {
+                    array_type,
+                    domain: domain.clone(),
+                    capacity: None,
+                    cell_order: Some(cell_order),
+                    tile_order: Some(tile_order),
+                    allow_duplicates: None,
+                    attributes,
+                    coordinate_filters,
+                    offsets_filters: vec![], /* TODO */
+                    nullity_filters: vec![], /* TODO */
+                }
+            },
+        )
 }
 
 pub fn arbitrary() -> impl Strategy<Value = SchemaData> {
