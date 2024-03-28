@@ -26,13 +26,19 @@ impl Drop for RawError {
 }
 
 #[derive(Clone)]
-pub struct Error {
-    message: String,
+pub enum Error {
+    /// Error received from the libtiledb backend
+    LibTileDB(String),
+    /// Any error which cannot be categorized as any of the above
+    Other(String),
 }
 
 impl Error {
     pub fn get_message(&self) -> String {
-        self.message.clone()
+        match self {
+            Error::LibTileDB(message) => message.clone(),
+            Error::Other(message) => message.clone(),
+        }
     }
 }
 
@@ -69,7 +75,7 @@ impl From<RawError> for Error {
         } else {
             String::from("Failed to retrieve an error message from TileDB.")
         };
-        Error { message }
+        Error::LibTileDB(message)
     }
 }
 
@@ -78,18 +84,14 @@ where
     S: AsRef<str>,
 {
     fn from(s: S) -> Error {
-        Error {
-            message: String::from(s.as_ref()),
-        }
+        Error::Other(String::from(s.as_ref()))
     }
 }
 
 impl FromStr for Error {
     type Err = (); /* always succeeds */
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Error {
-            message: String::from(s),
-        })
+        Ok(Error::Other(String::from(s)))
     }
 }
 
