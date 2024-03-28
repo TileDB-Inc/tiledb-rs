@@ -386,33 +386,25 @@ impl<'ctx> Builder<'ctx> {
 
     pub fn allow_duplicates(self, allow: bool) -> TileDBResult<Self> {
         let c_allow = if allow { 1 } else { 0 };
-        if unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_array_schema_set_allows_dups(
                 self.schema.context.capi(),
                 *self.schema.raw,
                 c_allow,
             )
-        } == ffi::TILEDB_OK
-        {
-            Ok(self)
-        } else {
-            Err(self.schema.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn add_attribute(self, attr: Attribute) -> TileDBResult<Self> {
-        if unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_array_schema_add_attribute(
                 self.schema.context.capi(),
                 *self.schema.raw,
                 attr.capi(),
             )
-        } == ffi::TILEDB_OK
-        {
-            Ok(self)
-        } else {
-            Err(self.schema.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     fn filter_list<FL>(
