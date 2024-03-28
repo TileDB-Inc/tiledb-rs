@@ -25,10 +25,27 @@ impl Drop for RawError {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub enum DatatypeErrorKind {
+    InvalidDiscriminant(u64),
+}
+
+impl Display for DatatypeErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            DatatypeErrorKind::InvalidDiscriminant(value) => {
+                write!(f, "Invalid datatype: {}", value)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum Error {
     /// Error received from the libtiledb backend
     LibTileDB(String),
+    /// Error with datatype handling
+    Datatype(DatatypeErrorKind),
     /// Any error which cannot be categorized as any of the above
     Other(String),
 }
@@ -38,13 +55,8 @@ impl Error {
         match self {
             Error::LibTileDB(message) => message.clone(),
             Error::Other(message) => message.clone(),
+            Error::Datatype(kind) => kind.to_string(),
         }
-    }
-}
-
-impl Debug for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", self.get_message())
     }
 }
 
