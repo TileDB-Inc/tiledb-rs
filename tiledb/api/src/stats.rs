@@ -2,21 +2,17 @@ use crate::error::Error;
 use crate::Result as TileDBResult;
 
 pub fn stats_enable() -> TileDBResult<()> {
-    let c_ret : i32 = unsafe {
-        ffi::tiledb_stats_enable()
-    };
+    let c_ret: i32 = unsafe { ffi::tiledb_stats_enable() };
 
     if c_ret == ffi::TILEDB_OK {
-       Ok(())
+        Ok(())
     } else {
         Err(Error::from("TileDB stats were not successfully enabled."))
     }
 }
 
 pub fn stats_disable() -> TileDBResult<()> {
-    let c_ret : i32 = unsafe {
-        ffi::tiledb_stats_disable()
-    };
+    let c_ret: i32 = unsafe { ffi::tiledb_stats_disable() };
 
     if c_ret == ffi::TILEDB_OK {
         Ok(())
@@ -26,14 +22,12 @@ pub fn stats_disable() -> TileDBResult<()> {
 }
 
 pub fn stats_reset() -> TileDBResult<()> {
-    let c_ret : i32 = unsafe {
-        ffi::tiledb_stats_reset()
-    };
+    let c_ret: i32 = unsafe { ffi::tiledb_stats_reset() };
 
     if c_ret == ffi::TILEDB_OK {
-       Ok(())
+        Ok(())
     } else {
-       Err(Error::from("TileDB stats were not successfully reset."))
+        Err(Error::from("TileDB stats were not successfully reset."))
     }
 }
 

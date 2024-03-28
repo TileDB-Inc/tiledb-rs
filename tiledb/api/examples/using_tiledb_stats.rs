@@ -1,14 +1,16 @@
 extern crate tiledb;
-use tiledb::{Array, Result as TileDBResult};
 use tiledb::config::Config;
 use tiledb::vfs::VFS;
 use tiledb::Datatype;
-
+use tiledb::{Array, Result as TileDBResult};
 
 const ARRAY_NAME: &str = "stats_array";
 const ATTRIBUTE_NAME: &str = "a";
 
-pub fn create_array(row_tile_extent : u32, col_tile_extent : u32) -> TileDBResult<()> {
+pub fn create_array(
+    row_tile_extent: u32,
+    col_tile_extent: u32,
+) -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
     let config: Config = tiledb::config::Config::new()?;
     let vfs: VFS = tiledb::vfs::VFS::new(&tdb, &config)?;
@@ -64,16 +66,14 @@ pub fn create_array(row_tile_extent : u32, col_tile_extent : u32) -> TileDBResul
 
 pub fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
-    let array: Array = tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
-    let mut data : Vec<i32> =  Vec::from_iter(0..12000 * 12000);
+    let array: Array =
+        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
+    let mut data: Vec<i32> = Vec::from_iter(0..12000 * 12000);
 
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
             .layout(tiledb::array::Layout::RowMajor)?
-            .dimension_buffer_typed(
-                ATTRIBUTE_NAME,
-                data.as_mut_slice(),
-            )?
+            .dimension_buffer_typed(ATTRIBUTE_NAME, data.as_mut_slice())?
             .build();
 
     query.submit().map(|_| ())
@@ -82,21 +82,15 @@ pub fn write_array() -> TileDBResult<()> {
 pub fn read_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
-    let array = tiledb::Array::open(
-        &tdb,
-        ARRAY_NAME,
-        tiledb::array::Mode::Read,
-    )?;
+    let array =
+        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
 
     let mut results = vec![0; 3000 * 12000];
 
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
             .layout(tiledb::array::Layout::RowMajor)?
-            .dimension_buffer_typed(
-                ARRAY_NAME,
-                results.as_mut_slice(),
-            )?
+            .dimension_buffer_typed(ARRAY_NAME, results.as_mut_slice())?
             .add_subarray()?
             .dimension_range_typed::<i32>(0, &[1, 3000])?
             .add_subarray()?
@@ -105,7 +99,7 @@ pub fn read_array() -> TileDBResult<()> {
 
     tiledb::stats::stats_enable()?;
     query.submit()?;
-    let stats : String = tiledb::stats::stats_dump_str()?;
+    let stats: String = tiledb::stats::stats_dump_str()?;
     println!("{}", &stats);
     tiledb::stats::stats_disable().map(|_| ())
 }
