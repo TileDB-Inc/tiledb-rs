@@ -56,36 +56,17 @@ impl Display for DatatypeErrorKind {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
     /// Error received from the libtiledb backend
+    #[error("libtiledb error: {0}")]
     LibTileDB(String),
     /// Error with datatype handling
+    #[error("Datatype error: {0}")]
     Datatype(DatatypeErrorKind),
     /// Any error which cannot be categorized as any of the above
+    #[error("{0}")]
     Other(String),
-}
-
-impl Error {
-    pub fn get_message(&self) -> String {
-        match self {
-            Error::LibTileDB(message) => message.clone(),
-            Error::Other(message) => message.clone(),
-            Error::Datatype(kind) => kind.to_string(),
-        }
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", self.get_message())
-    }
-}
-
-impl From<Error> for String {
-    fn from(error: Error) -> String {
-        error.get_message()
-    }
 }
 
 impl From<RawError> for Error {
@@ -128,8 +109,6 @@ impl Serialize for Error {
     where
         S: Serializer,
     {
-        format!("<{}>", self.get_message()).serialize(serializer)
+        format!("<{}>", self.to_string()).serialize(serializer)
     }
 }
-
-impl std::error::Error for Error {}
