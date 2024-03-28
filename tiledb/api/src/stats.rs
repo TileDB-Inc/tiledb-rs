@@ -1,64 +1,50 @@
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
-pub fn stats_enable() -> TileDBResult<()> {
+pub fn enable() -> TileDBResult<()> {
     let c_ret: i32 = unsafe { ffi::tiledb_stats_enable() };
 
     if c_ret == ffi::TILEDB_OK {
         Ok(())
     } else {
-        Err(Error::from("TileDB stats were not successfully enabled."))
+        Err(Error::from("Failed to enable stats."))
     }
 }
 
-pub fn stats_disable() -> TileDBResult<()> {
+pub fn disable() -> TileDBResult<()> {
     let c_ret: i32 = unsafe { ffi::tiledb_stats_disable() };
 
     if c_ret == ffi::TILEDB_OK {
         Ok(())
     } else {
-        Err(Error::from("TileDB stats were not successfully disabled."))
+        Err(Error::from("Failed to disable stats."))
     }
 }
 
-pub fn stats_reset() -> TileDBResult<()> {
+pub fn reset() -> TileDBResult<()> {
     let c_ret: i32 = unsafe { ffi::tiledb_stats_reset() };
 
     if c_ret == ffi::TILEDB_OK {
         Ok(())
     } else {
-        Err(Error::from("TileDB stats were not successfully reset."))
+        Err(Error::from("Failed to reset stats."))
     }
 }
 
-pub fn stats_dump_str() -> TileDBResult<String> {
-    let mut stats_dump_c_str = std::ptr::null_mut::<std::os::raw::c_char>();
+pub fn dump() -> TileDBResult<Option<String>> {
+    let mut c_str = std::ptr::null_mut::<std::ffi::c_char>();
     let res = unsafe {
-        ffi::tiledb_stats_dump_str(
-            &mut stats_dump_c_str as *mut *mut std::os::raw::c_char,
-        )
+        ffi::tiledb_stats_dump_str(&mut c_str as *mut *mut std::ffi::c_char)
     };
     if res == ffi::TILEDB_OK {
-        assert!(!stats_dump_c_str.is_null());
-        let stats_dump = unsafe { std::ffi::CStr::from_ptr(stats_dump_c_str) };
-        Ok(String::from(stats_dump.to_string_lossy()))
+        assert!(!c_str.is_null());
+        // ABI TODO: memory leaking
+        let stats_dump = unsafe { std::ffi::CStr::from_ptr(c_str) };
+        if stats_dump.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(stats_dump.to_string_lossy().into_owned()))
     } else {
-        Err(Error::from("TileDB stats were unable to be retrieved."))
-    }
-}
-
-pub fn stats_raw_dump_str() -> TileDBResult<String> {
-    let mut stats_dump_c_str = std::ptr::null_mut::<std::os::raw::c_char>();
-    let res = unsafe {
-        ffi::tiledb_stats_raw_dump_str(
-            &mut stats_dump_c_str as *mut *mut std::os::raw::c_char,
-        )
-    };
-    if res == ffi::TILEDB_OK {
-        assert!(!stats_dump_c_str.is_null());
-        let stats_dump = unsafe { std::ffi::CStr::from_ptr(stats_dump_c_str) };
-        Ok(String::from(stats_dump.to_string_lossy()))
-    } else {
-        Err(Error::from("TileDB stats were unable to be retrieved."))
+        Err(Error::from("Failed to retrieve stats."))
     }
 }

@@ -30,6 +30,7 @@ pub fn create_array(
                 &row_tile_extent,
             )?
             .build();
+
         let cols: tiledb::array::Dimension =
             tiledb::array::DimensionBuilder::new::<u32>(
                 &tdb,
@@ -76,7 +77,8 @@ pub fn write_array() -> TileDBResult<()> {
             .dimension_buffer_typed(ATTRIBUTE_NAME, data.as_mut_slice())?
             .build();
 
-    query.submit().map(|_| ())
+    query.submit()?;
+    Ok(())
 }
 
 pub fn read_array() -> TileDBResult<()> {
@@ -97,15 +99,20 @@ pub fn read_array() -> TileDBResult<()> {
             .dimension_range_typed::<i32>(1, &[1, 12000])?
             .build();
 
-    tiledb::stats::stats_enable()?;
+    tiledb::stats::enable()?;
     query.submit()?;
-    let stats: String = tiledb::stats::stats_dump_str()?;
-    println!("{}", &stats);
-    tiledb::stats::stats_disable().map(|_| ())
+    let stats: Option<String> = tiledb::stats::dump()?;
+    match stats {
+        Some(stats_str) => println!("{}", &stats_str),
+        None => println!("No stats associated with this query."),
+    }
+    tiledb::stats::disable()?;
+    Ok(())
 }
 
-fn main() {
-    let _ = create_array(1, 12000);
-    let _ = write_array();
-    let _ = read_array();
+fn main() -> TileDBResult<()> {
+    create_array(1, 12000)?;
+    write_array()?;
+    read_array()?;
+    Ok(())
 }
