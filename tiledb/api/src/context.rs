@@ -160,6 +160,14 @@ impl Context {
             Err(self.expect_last_error())
         }
     }
+
+    pub(crate) fn capi_return(&self, c_ret: i32) -> TileDBResult<()> {
+        if c_ret == ffi::TILEDB_OK {
+            Ok(())
+        } else {
+            Err(self.expect_last_error())
+        }
+    }
 }
 
 #[cfg(test)]
