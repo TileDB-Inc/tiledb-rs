@@ -486,7 +486,7 @@ pub struct FillData {
 }
 
 /// Encapsulation of data needed to construct an Attribute
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct AttributeData {
     pub name: String,
     pub datatype: Datatype,

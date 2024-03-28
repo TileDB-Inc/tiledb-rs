@@ -22,7 +22,8 @@ pub struct SchemaMetadata {
     offsets_filters: FilterMetadata,
     nullity_filters: FilterMetadata,
 
-    /// Number of dimensions in this schema. The first `ndim` Fields are Dimensions, not Attributes
+    /// Number of dimensions in this schema. The first `ndim` Fields are
+    /// Dimensions, not Attributes
     ndim: usize,
 }
 
@@ -155,11 +156,15 @@ mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb_test::schema::arbitrary())| {
-            let tdb_in = tdb_in.create(&c).expect("Error constructing arbitrary tiledb attribute");
-            if let Some(arrow_schema) = arrow_schema(&tdb_in).expect("Error reading tiledb schema") {
+        proptest!(|(tdb_in in tdbtest::prop_schema())| {
+            let tdb_in = tdb_in.create(&c)
+                .expect("Error constructing arbitrary tiledb attribute");
+            if let Some(arrow_schema) = arrow_schema(&tdb_in)
+                    .expect("Error reading tiledb schema") {
                 // convert back to TileDB attribute
-                let tdb_out = tiledb_schema(&c, &arrow_schema)?.expect("Arrow schema did not invert").build();
+                let tdb_out = tiledb_schema(&c, &arrow_schema)?
+                    .expect("Arrow schema did not invert")
+                    .build();
                 assert_eq!(tdb_in, tdb_out);
             }
         });

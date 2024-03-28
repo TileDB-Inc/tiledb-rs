@@ -3,16 +3,16 @@ use std::fmt::Debug;
 use num_traits::{Bounded, Num};
 use proptest::prelude::*;
 use serde_json::json;
-use tiledb::array::{ArrayType, DimensionData};
 
+use tiledb::array::{ArrayType, DimensionData};
 use tiledb::{fn_typed, Datatype};
 
-use crate::strategy::LifetimeBoundStrategy;
+use crate::*;
 
 /// Construct a strategy to generate valid (domain, extent) pairs.
 /// A valid output satisfies
 /// `lower < lower + extent <= upper < upper + extent <= type_limit`.
-fn arbitrary_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], T)>
+fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], T)>
 where
     T: Num
         + Bounded
@@ -34,14 +34,17 @@ where
     let lower_limit = <T as Bounded>::min_value();
     let upper_limit = <T as Bounded>::max_value();
     std::ops::Range::<T> {
-        start: lower_limit + one + one + one, // Needs this much space for lower bound
-        end: upper_limit - one, // The extent is at least one, so we cannot match the upper limit
+        // Needs this much space for lower bound
+        start: lower_limit + one + one + one,
+        // The extent is at least one, so we cannot match the upper limit
+        end: upper_limit - one,
     }
     .prop_flat_map(move |upper_bound| {
         (
             std::ops::Range::<T> {
                 start: lower_limit + one,
-                end: upper_bound - one, // extent is at least one, cannot match upper bound
+                // extent is at least one, cannot match upper bound
+                end: upper_bound - one,
             },
             Just(upper_bound),
         )
@@ -76,36 +79,38 @@ where
     })
 }
 
-pub fn arbitrary_for_type(
+pub fn prop_dimension_for_datatype(
     datatype: Datatype,
 ) -> impl Strategy<Value = DimensionData> {
-    fn_typed!(arbitrary_range_and_extent, datatype =>
-        (crate::attribute::arbitrary_name(), arbitrary_range_and_extent).prop_map(move |(name, values)| {
-            DimensionData {
-                name, datatype,
+    fn_typed!(datatype, DT, {
+        let name = prop_field_name();
+        let range_and_extent = prop_range_and_extent::<DT>();
+        (name, range_and_extent)
+            .prop_map(move |(name, values)| DimensionData {
+                name,
+                datatype,
                 domain: [json!(values.0[0]), json!(values.0[1])],
                 extent: json!(values.1),
                 cell_val_num: None,
-                filters: vec![] /* TODO */
-            }
-    }).bind())
+                filters: vec![],
+            })
+            .boxed()
+    })
 }
 
-pub fn arbitrary_for_array_type(
+pub fn prop_dimension_for_array_type(
     array_type: ArrayType,
 ) -> impl Strategy<Value = DimensionData> {
     match array_type {
-        ArrayType::Dense => {
-            crate::datatype::arbitrary_for_dense_dimension().boxed()
-        }
-        ArrayType::Sparse => crate::datatype::arbitrary_implemented().boxed(),
+        ArrayType::Dense => prop_datatype_for_dense_dimension().boxed(),
+        ArrayType::Sparse => datatype::prop_datatype_implemented().boxed(),
     }
-    .prop_flat_map(arbitrary_for_type)
+    .prop_flat_map(prop_dimension_for_datatype)
 }
 
-pub fn arbitrary() -> impl Strategy<Value = DimensionData> {
+pub fn prop_dimension() -> impl Strategy<Value = DimensionData> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-        .prop_flat_map(arbitrary_for_array_type)
+        .prop_flat_map(prop_dimension_for_array_type)
 }
 
 #[cfg(test)]
@@ -115,20 +120,22 @@ mod tests {
 
     /// Test that the arbitrary dimension construction always succeeds
     #[test]
-    fn dimension_arbitrary() {
+    fn test_prop_dimension() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in arbitrary())| {
-            maybe_dimension.create(&ctx).expect("Error constructing arbitrary dimension");
+        proptest!(|(maybe_dimension in prop_dimension())| {
+            maybe_dimension.create(&ctx)
+                .expect("Error constructing arbitrary dimension");
         });
     }
 
     #[test]
-    fn dimension_eq_reflexivity() {
+    fn test_prop_dimension_equality() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in arbitrary())| {
-            let dimension = maybe_dimension.create(&ctx).expect("Error constructing arbitrary attribute");
+        proptest!(|(maybe_dimension in prop_dimension())| {
+            let dimension = maybe_dimension
+                .create(&ctx).expect("Error constructing arbitrary attribute");
             assert_eq!(dimension, dimension);
         });
     }

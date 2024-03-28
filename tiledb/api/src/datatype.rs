@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[repr(u64)]
 pub enum Datatype {
+    #[default]
     #[doc = " 32-bit signed integer"]
     Int32,
     #[doc = " 64-bit signed integer"]

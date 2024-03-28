@@ -3,10 +3,18 @@ extern crate proptest;
 extern crate serde_json;
 extern crate tiledb;
 
-pub mod attribute;
-pub mod datatype;
-pub mod dimension;
-pub mod domain;
-pub mod filter;
-pub mod schema;
-pub mod strategy;
+mod attribute;
+mod datatype;
+mod dimension;
+mod domain;
+mod filter;
+mod schema;
+mod util;
+
+pub use attribute::*;
+pub use datatype::*;
+pub use dimension::*;
+pub use domain::*;
+pub use filter::*;
+pub use schema::*;
+pub use util::*;

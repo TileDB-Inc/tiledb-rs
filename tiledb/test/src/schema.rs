@@ -3,13 +3,13 @@ use tiledb::array::{ArrayType, DomainData, SchemaData};
 use tiledb::filter::{CompressionData, CompressionType, FilterData};
 use tiledb::filter_list::FilterListData;
 
-use crate::strategy::LifetimeBoundStrategy;
+use crate::*;
 
-pub fn arbitrary_array_type() -> impl Strategy<Value = ArrayType> {
+pub fn prop_array_type() -> impl Strategy<Value = ArrayType> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]
 }
 
-pub fn arbitrary_cell_order(
+pub fn prop_cell_order(
     array_type: ArrayType,
 ) -> impl Strategy<Value = tiledb::array::Layout> {
     use tiledb::array::Layout;
@@ -20,17 +20,17 @@ pub fn arbitrary_cell_order(
             Just(Layout::ColumnMajor),
             Just(Layout::Hilbert),
         ]
-        .bind(),
+        .boxed(),
         ArrayType::Dense => prop_oneof![
             Just(Layout::Unordered),
             Just(Layout::RowMajor),
             Just(Layout::ColumnMajor),
         ]
-        .bind(),
+        .boxed(),
     }
 }
 
-pub fn arbitrary_tile_order() -> impl Strategy<Value = tiledb::array::Layout> {
+pub fn prop_tile_order() -> impl Strategy<Value = tiledb::array::Layout> {
     use tiledb::array::Layout;
     prop_oneof![
         Just(Layout::Unordered),
@@ -39,12 +39,13 @@ pub fn arbitrary_tile_order() -> impl Strategy<Value = tiledb::array::Layout> {
     ]
 }
 
-pub fn arbitrary_coordinate_filters(
+pub fn prop_coordinate_filters(
     domain: &DomainData,
 ) -> impl Strategy<Value = FilterListData> {
     /*
      * See tiledb/array_schema/array_schema.cc for the rules.
-     * - DoubleDelta compressor is disallowed on floating-point dimensions with no filters
+     * - DoubleDelta compressor is disallowed on floating-point dimensions
+     *   with no filters
      */
     let mut has_unfiltered_float_dimension = false;
     for dim in domain.dimension.iter() {
@@ -54,7 +55,7 @@ pub fn arbitrary_coordinate_filters(
         }
     }
 
-    crate::filter::arbitrary_list().prop_filter(
+    prop_filter_pipeline().prop_filter(
         "Floating-point dimension cannot have DOUBLE DELTA compression",
         move |fl| {
             !(has_unfiltered_float_dimension
@@ -71,7 +72,7 @@ pub fn arbitrary_coordinate_filters(
     )
 }
 
-pub fn arbitrary_for_domain(
+pub fn prop_schema_for_domain(
     array_type: ArrayType,
     domain: DomainData,
 ) -> impl Strategy<Value = SchemaData> {
@@ -79,22 +80,19 @@ pub fn arbitrary_for_domain(
     const MAX_ATTRS: usize = 32;
 
     let allow_duplicates = match array_type {
-        ArrayType::Dense => Just(false).bind(),
-        ArrayType::Sparse => any::<bool>().bind(),
+        ArrayType::Dense => Just(false).boxed(),
+        ArrayType::Sparse => any::<bool>().boxed(),
     };
 
     (
         any::<u64>(),
-        arbitrary_cell_order(array_type),
-        arbitrary_tile_order(),
+        prop_cell_order(array_type),
+        prop_tile_order(),
         allow_duplicates,
-        proptest::collection::vec(
-            crate::attribute::arbitrary(),
-            MIN_ATTRS..=MAX_ATTRS,
-        ),
-        arbitrary_coordinate_filters(&domain),
-        crate::filter::arbitrary_list(),
-        crate::filter::arbitrary_list(),
+        proptest::collection::vec(prop_attribute(), MIN_ATTRS..=MAX_ATTRS),
+        prop_coordinate_filters(&domain),
+        prop_filter_pipeline(),
+        prop_filter_pipeline(),
     )
         .prop_map(
             move |(
@@ -123,10 +121,10 @@ pub fn arbitrary_for_domain(
         )
 }
 
-pub fn arbitrary() -> impl Strategy<Value = SchemaData> {
-    arbitrary_array_type().prop_flat_map(|array_type| {
+pub fn prop_schema() -> impl Strategy<Value = SchemaData> {
+    prop_array_type().prop_flat_map(|array_type| {
         crate::domain::arbitrary_for_array_type(array_type).prop_flat_map(
-            move |domain| arbitrary_for_domain(array_type, domain),
+            move |domain| prop_schema_for_domain(array_type, domain),
         )
     })
 }
@@ -141,8 +139,9 @@ mod tests {
     fn schema_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in arbitrary())| {
-            maybe_schema.create(&ctx).expect("Error constructing arbitrary schema");
+        proptest!(|(maybe_schema in prop_schema())| {
+            maybe_schema.create(&ctx)
+                .expect("Error constructing arbitrary schema");
         });
     }
 
@@ -150,8 +149,9 @@ mod tests {
     fn schema_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in arbitrary())| {
-            let schema = maybe_schema.create(&ctx).expect("Error constructing arbitrary schema");
+        proptest!(|(maybe_schema in prop_schema())| {
+            let schema = maybe_schema.create(&ctx)
+                .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);
         });
     }

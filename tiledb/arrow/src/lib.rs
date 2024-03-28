@@ -6,8 +6,9 @@ extern crate tiledb;
 
 #[cfg(test)]
 extern crate proptest;
+
 #[cfg(test)]
-extern crate tiledb_test;
+extern crate tiledb_test as tdbtest;
 
 pub mod attribute;
 pub mod datatype;
