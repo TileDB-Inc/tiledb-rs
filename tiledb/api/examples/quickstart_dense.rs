@@ -13,13 +13,11 @@ fn array_exists() -> bool {
         Ok(tdb) => tdb,
     };
 
-    matches!(
-        tdb.object_type(QUICKSTART_DENSE_ARRAY_URI),
-        Ok(Some(tiledb::context::ObjectType::Array))
-    )
+    tiledb::array::Array::exists(&tdb, QUICKSTART_DENSE_ARRAY_URI)
+        .expect("Error checking array existence")
 }
 
-/// Creates a dense array at URI `QUICKSTART_DENSE_ARRAY_URI`.
+/// Creates a dense array at URI `QUICKSTART_DENSE_ARRAY_URI()`.
 /// The array has two i32 dimensions ["rows", "columns"] with a single int32
 /// attribute "a" stored in each cell.
 /// Both "rows" and "columns" dimensions range from 1 to 4, and the tiles
