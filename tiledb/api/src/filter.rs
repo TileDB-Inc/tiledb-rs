@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
@@ -155,6 +156,13 @@ pub enum FilterData {
 }
 
 impl FilterData {
+    pub fn construct<'ctx>(
+        &self,
+        context: &'ctx Context,
+    ) -> TileDBResult<Filter<'ctx>> {
+        Filter::create(context, self)
+    }
+
     pub fn capi_enum(&self) -> ffi::FilterType {
         match *self {
             FilterData::None => ffi::FilterType::None,
@@ -293,6 +301,22 @@ impl FilterData {
     }
 }
 
+impl<'ctx> TryFrom<&Filter<'ctx>> for FilterData {
+    type Error = crate::error::Error;
+
+    fn try_from(filter: &Filter<'ctx>) -> TileDBResult<Self> {
+        filter.filter_data()
+    }
+}
+
+impl<'ctx> crate::Factory<'ctx> for FilterData {
+    type Item = Filter<'ctx>;
+
+    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+        Filter::create(context, self)
+    }
+}
+
 pub(crate) enum RawFilter {
     Owned(*mut ffi::tiledb_filter_t),
 }
@@ -327,10 +351,14 @@ impl<'ctx> Filter<'ctx> {
         Filter { context, raw }
     }
 
-    pub fn create(
+    pub fn create<F>(
         context: &'ctx Context,
-        filter_data: FilterData,
-    ) -> TileDBResult<Self> {
+        filter_data: F,
+    ) -> TileDBResult<Self>
+    where
+        F: Borrow<FilterData>,
+    {
+        let filter_data = filter_data.borrow();
         let c_context = context.capi();
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let ftype = filter_data.capi_enum() as u32;
@@ -343,7 +371,7 @@ impl<'ctx> Filter<'ctx> {
 
         let raw = RawFilter::Owned(c_filter);
 
-        match filter_data {
+        match *filter_data {
             FilterData::None => (),
             FilterData::BitShuffle { .. } => (),
             FilterData::ByteShuffle { .. } => (),

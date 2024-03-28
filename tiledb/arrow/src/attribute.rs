@@ -136,6 +136,7 @@ pub fn tiledb_attribute<'ctx>(
 pub mod tests {
     use super::*;
     use proptest::prelude::*;
+    use tiledb::Factory;
 
     pub fn arbitrary_arrow_field() -> impl Strategy<Value = arrow_schema::Field>
     {
@@ -160,8 +161,8 @@ pub mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb_test::attribute::arbitrary(&c))| {
-            let tdb_in = tdb_in.expect("Error constructing arbitrary tiledb attribute");
+        proptest!(|(tdb_in in tiledb_test::attribute::arbitrary())| {
+            let tdb_in = tdb_in.create(&c).expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_field) = arrow_field(&tdb_in).expect("Error reading tiledb attribute") {
                 // convert back to TileDB attribute
                 let tdb_out = tiledb_attribute(&c, &arrow_field)?.expect("Arrow attribute did not invert").build();

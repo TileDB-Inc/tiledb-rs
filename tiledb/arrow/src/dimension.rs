@@ -118,13 +118,14 @@ pub fn tiledb_dimension<'ctx>(
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use tiledb::Factory;
 
     #[test]
     fn test_tiledb_arrow_tiledb() {
         let c: TileDBContext = TileDBContext::new().unwrap();
 
-        proptest!(|(tdb_in in tiledb_test::dimension::arbitrary(&c))| {
-            let tdb_in = tdb_in.expect("Error constructing arbitrary tiledb dimension");
+        proptest!(|(tdb_in in tiledb_test::dimension::arbitrary())| {
+            let tdb_in = tdb_in.create(&c).expect("Error constructing arbitrary tiledb dimension");
             if let Some(arrow_dimension) = arrow_field(&tdb_in).expect("Error constructing arrow field") {
                 let tdb_out = tiledb_dimension(&c, &arrow_dimension).expect("Error converting back to tiledb dimension").unwrap().build();
                 assert_eq!(tdb_in, tdb_out);

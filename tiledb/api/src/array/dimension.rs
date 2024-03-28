@@ -1,14 +1,14 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::context::Context;
 use crate::convert::CAPIConverter;
-use crate::filter_list::{FilterList, RawFilterList};
-use crate::fn_typed;
-use crate::Datatype;
-use crate::Result as TileDBResult;
+use crate::error::Error;
+use crate::filter_list::{FilterList, FilterListData, RawFilterList};
+use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawDimension {
     Owned(*mut ffi::tiledb_dimension_t),
@@ -159,21 +159,11 @@ impl<'ctx> Dimension<'ctx> {
 
 impl<'ctx> Debug for Dimension<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let json = json!({
-            "name": self.name(),
-            "datatype": format!("{}", self.datatype()),
-            "cell_val_num": self.cell_val_num(),
-            "domain": fn_typed!(self.domain, self.datatype() => match domain {
-                Ok(x) => json!(x),
-                Err(e) => json!(e)
-            }),
-            "extent": fn_typed!(self.extent, self.datatype() => match extent {
-                Ok(x) => json!(x),
-                Err(e) => json!(e),
-            }),
-            "filters": format!("{:?}", self.filters()),
-            "raw": format!("{:p}", *self.raw)
-        });
+        let data =
+            DimensionData::try_from(self).map_err(|_| std::fmt::Error)?;
+        let mut json = json!(data);
+        json["raw"] = json!(format!("{:p}", *self.raw));
+
         write!(f, "{}", json)
     }
 }
@@ -331,6 +321,82 @@ impl<'ctx> Builder<'ctx> {
 impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
     fn from(builder: Builder<'ctx>) -> Dimension<'ctx> {
         builder.build()
+    }
+}
+
+/// Encapsulation of data needed to construct a Dimension
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DimensionData {
+    pub name: String,
+    pub datatype: Datatype,
+    pub domain: [serde_json::value::Value; 2],
+    pub extent: serde_json::value::Value,
+    pub cell_val_num: Option<u32>,
+    pub filters: FilterListData,
+}
+
+impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
+    type Error = crate::error::Error;
+
+    fn try_from(dim: &Dimension<'ctx>) -> TileDBResult<Self> {
+        let datatype = dim.datatype();
+        let (domain, extent) = fn_typed!(datatype, DT, {
+            let domain = dim.domain::<DT>()?;
+            (
+                [json!(domain[0]), json!(domain[1])],
+                json!(dim.extent::<DT>()?),
+            )
+        });
+        Ok(DimensionData {
+            name: dim.name()?,
+            datatype,
+            domain,
+            extent,
+            cell_val_num: Some(dim.cell_val_num()?),
+            filters: FilterListData::try_from(&dim.filters())?,
+        })
+    }
+}
+
+impl<'ctx> Factory<'ctx> for DimensionData {
+    type Item = Dimension<'ctx>;
+
+    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+        let b = fn_typed!(self.datatype, DT, {
+            let d0 = serde_json::from_value::<DT>(self.domain[0].clone())
+                .map_err(|e| {
+                    Error::from(format!(
+                        "Error deserializing domain lower bound: {}",
+                        e
+                    ))
+                })?;
+            let d1 = serde_json::from_value::<DT>(self.domain[1].clone())
+                .map_err(|e| {
+                    Error::from(format!(
+                        "Error deserializing domain lower bound: {}",
+                        e
+                    ))
+                })?;
+            let extent = serde_json::from_value::<DT>(self.extent.clone())
+                .map_err(|e| {
+                    Error::from(format!("Error deserializing extent: {}", e))
+                })?;
+            Builder::new::<DT>(
+                context,
+                &self.name,
+                self.datatype,
+                &[d0, d1],
+                &extent,
+            )
+        })?
+        .filters(self.filters.create(context)?)?;
+
+        Ok(if let Some(c) = self.cell_val_num {
+            b.cell_val_num(c)?
+        } else {
+            b
+        }
+        .build())
     }
 }
 

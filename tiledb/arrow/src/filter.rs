@@ -45,13 +45,14 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
     use tiledb::context::Context as TileDBContext;
+    use tiledb::Factory;
 
     #[test]
     fn test_serialize_invertibility() {
         let c: TileDBContext = TileDBContext::new().unwrap();
 
-        proptest!(|(filters_in in tiledb_test::filter::arbitrary_list(&c))| {
-            let filters_in = filters_in.expect("Error constructing arbitrary filter list");
+        proptest!(|(filters_in in tiledb_test::filter::arbitrary_list())| {
+            let filters_in = filters_in.create(&c).expect("Error constructing arbitrary filter list");
             let metadata = FilterMetadata::new(&filters_in).expect("Error serializing filter list");
             let filters_out = metadata.create(&c).expect("Error deserializing filter list");
 

@@ -1,10 +1,14 @@
-use serde_json::json;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use crate::array::{dimension::RawDimension, Dimension};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+use crate::array::{
+    dimension::DimensionData, dimension::RawDimension, Dimension,
+};
 use crate::context::Context;
-use crate::Result as TileDBResult;
+use crate::{Factory, Result as TileDBResult};
 
 pub(crate) enum RawDomain {
     Owned(*mut ffi::tiledb_domain_t),
@@ -164,18 +168,9 @@ impl<'ctx> Domain<'ctx> {
 
 impl<'ctx> Debug for Domain<'ctx> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let json = json!({
-            "dimensions": (0..self.ndim())
-                .map(|d| {
-                    serde_json::value::Value::String(match self.dimension(d) {
-                        Ok(d) => format!("{:?}", d),
-                        Err(e) => format!("<{}>", e),
-                    })
-                })
-                .collect::<Vec<_>>(),
-            "raw": format!("{:p}", *self.raw)
-                /* TODO: what other fields? */
-        });
+        let data = DomainData::try_from(self).map_err(|_| std::fmt::Error)?;
+        let mut json = json!(data);
+        json["raw"] = json!(format!("{:p}", *self.raw));
 
         write!(f, "{}", json)
     }
@@ -249,6 +244,38 @@ impl<'ctx> Builder<'ctx> {
 impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
     fn from(builder: Builder<'ctx>) -> Domain<'ctx> {
         builder.build()
+    }
+}
+
+/// Encapsulation of data needed to construct a Domain
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DomainData {
+    pub dimension: Vec<DimensionData>,
+}
+
+impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {
+    type Error = crate::error::Error;
+
+    fn try_from(domain: &Domain<'ctx>) -> TileDBResult<Self> {
+        Ok(DomainData {
+            dimension: (0..domain.ndim())
+                .map(|d| DimensionData::try_from(&domain.dimension(d)?))
+                .collect::<TileDBResult<Vec<DimensionData>>>()?,
+        })
+    }
+}
+
+impl<'ctx> Factory<'ctx> for DomainData {
+    type Item = Domain<'ctx>;
+
+    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+        Ok(self
+            .dimension
+            .iter()
+            .try_fold(Builder::new(context)?, |b, d| {
+                b.add_dimension(d.create(context)?)
+            })?
+            .build())
     }
 }
 

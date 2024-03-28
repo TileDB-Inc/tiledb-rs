@@ -148,14 +148,15 @@ pub fn tiledb_schema<'ctx>(
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use tiledb::Factory;
 
     #[test]
     fn test_tiledb_arrow_tiledb() -> TileDBResult<()> {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb_test::schema::arbitrary(&c))| {
-            let tdb_in = tdb_in.expect("Error constructing arbitrary tiledb attribute");
+        proptest!(|(tdb_in in tiledb_test::schema::arbitrary())| {
+            let tdb_in = tdb_in.create(&c).expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_schema) = arrow_schema(&tdb_in).expect("Error reading tiledb schema") {
                 // convert back to TileDB attribute
                 let tdb_out = tiledb_schema(&c, &arrow_schema)?.expect("Arrow schema did not invert").build();

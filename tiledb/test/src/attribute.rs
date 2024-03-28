@@ -1,7 +1,8 @@
 use proptest::prelude::*;
-use tiledb::array::{Attribute, AttributeBuilder};
-use tiledb::context::Context;
-use tiledb::{fn_typed, Datatype, Result as TileDBResult};
+use serde_json::json;
+use tiledb::array::{attribute::FillData, AttributeData};
+
+use tiledb::{fn_typed, Datatype};
 
 use crate::strategy::LifetimeBoundStrategy;
 
@@ -22,9 +23,8 @@ where
 }
 
 pub fn arbitrary_for_datatype(
-    context: &Context,
     datatype: Datatype,
-) -> impl Strategy<Value = TileDBResult<Attribute<'_>>> {
+) -> impl Strategy<Value = AttributeData> {
     proptest::prelude::any::<bool>().prop_flat_map(move |nullable| {
         (
             Just(nullable),
@@ -39,9 +39,7 @@ pub fn arbitrary_for_datatype(
                     (
                         arbitrary_name(),
                         Just(nullable),
-                        crate::filter::arbitrary_list_for_datatype(
-                            context, datatype,
-                        ),
+                        crate::filter::arbitrary_list_for_datatype(datatype),
                         arbitrary_fill_value::<DT>(),
                         Just(fill_nullable),
                     )
@@ -53,15 +51,17 @@ pub fn arbitrary_for_datatype(
                                 fill,
                                 fill_nullable,
                             )| {
-                                Ok(AttributeBuilder::new(
-                                    context,
-                                    name.as_ref(),
+                                AttributeData {
+                                    name,
                                     datatype,
-                                )?
-                                .nullability(nullable)?
-                                .fill_value_nullability(fill, fill_nullable)?
-                                .filter_list(&filters?)?
-                                .build())
+                                    nullability: Some(nullable),
+                                    cell_val_num: None,
+                                    fill: Some(FillData {
+                                        data: json!(fill),
+                                        nullability: Some(fill_nullable),
+                                    }),
+                                    filters,
+                                }
                             },
                         )
                         .bind()
@@ -70,24 +70,23 @@ pub fn arbitrary_for_datatype(
     })
 }
 
-pub fn arbitrary(
-    context: &Context,
-) -> impl Strategy<Value = TileDBResult<Attribute>> {
+pub fn arbitrary() -> impl Strategy<Value = AttributeData> {
     crate::datatype::arbitrary_implemented()
-        .prop_flat_map(|dt| arbitrary_for_datatype(context, dt))
+        .prop_flat_map(arbitrary_for_datatype)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tiledb::{Context, Factory};
 
     /// Test that the arbitrary attribute construction always succeeds
     #[test]
     fn attribute_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in arbitrary(&ctx))| {
-            attr.expect("Error constructing arbitrary attribute");
+        proptest!(|(attr in arbitrary())| {
+            attr.create(&ctx).expect("Error constructing arbitrary attribute");
         });
     }
 
@@ -95,8 +94,8 @@ mod tests {
     fn attribute_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in arbitrary(&ctx))| {
-            let attr = attr.expect("Error constructing arbitrary attribute");
+        proptest!(|(attr in arbitrary())| {
+            let attr = attr.create(&ctx).expect("Error constructing arbitrary attribute");
             assert_eq!(attr, attr);
         });
     }
