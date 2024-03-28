@@ -13,7 +13,7 @@ pub mod schema;
 
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
 pub use dimension::{Builder as DimensionBuilder, Dimension, DimensionData};
-pub use domain::{Builder as DomainBuilder, Domain, DomainData};
+pub use domain::{Builder as DomainBuilder, DimensionKey, Domain, DomainData};
 pub use schema::{ArrayType, Builder as SchemaBuilder, Schema, SchemaData};
 
 pub enum Mode {
@@ -99,12 +99,15 @@ impl<'ctx> Array<'ctx> {
         *self.raw
     }
 
-    pub fn create(
+    pub fn create<S>(
         context: &'ctx Context,
-        name: &str,
+        name: S,
         schema: Schema,
-    ) -> TileDBResult<()> {
-        let c_name = cstring!(name);
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_name = cstring!(name.as_ref());
         if unsafe {
             ffi::tiledb_array_create(
                 context.capi(),
@@ -119,15 +122,28 @@ impl<'ctx> Array<'ctx> {
         }
     }
 
-    pub fn open(
+    pub fn exists<S>(context: &'ctx Context, uri: S) -> TileDBResult<bool>
+    where
+        S: AsRef<str>,
+    {
+        Ok(matches!(
+            context.object_type(uri)?,
+            Some(crate::context::ObjectType::Array)
+        ))
+    }
+
+    pub fn open<S>(
         context: &'ctx Context,
-        uri: &str,
+        uri: S,
         mode: Mode,
-    ) -> TileDBResult<Self> {
+    ) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+    {
         let ctx = context.capi();
         let mut array_raw: *mut ffi::tiledb_array_t = std::ptr::null_mut();
 
-        let c_uri = cstring!(uri);
+        let c_uri = cstring!(uri.as_ref());
 
         if unsafe {
             ffi::tiledb_array_alloc(ctx, c_uri.as_ptr(), &mut array_raw)
