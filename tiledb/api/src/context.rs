@@ -139,8 +139,11 @@ impl Context {
         }
     }
 
-    pub fn object_type(&self, name: &str) -> TileDBResult<Option<ObjectType>> {
-        let c_name = cstring!(name);
+    pub fn object_type<S>(&self, name: S) -> TileDBResult<Option<ObjectType>>
+    where
+        S: AsRef<str>,
+    {
+        let c_name = cstring!(name.as_ref());
         let mut c_objtype: ffi::tiledb_object_t = out_ptr!();
 
         let c_ret = unsafe {

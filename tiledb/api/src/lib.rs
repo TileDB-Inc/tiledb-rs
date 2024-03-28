@@ -3,7 +3,7 @@ extern crate serde_json;
 extern crate tiledb_sys as ffi;
 
 macro_rules! cstring {
-    ($arg:ident) => {
+    ($arg:expr) => {
         match std::ffi::CString::new($arg) {
             Ok(c_arg) => c_arg,
             Err(nullity) => {
