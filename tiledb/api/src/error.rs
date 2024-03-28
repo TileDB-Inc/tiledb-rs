@@ -56,7 +56,7 @@ impl Display for DatatypeErrorKind {
     }
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Error received from the libtiledb backend
     #[error("libtiledb error: {0}")]
@@ -64,6 +64,9 @@ pub enum Error {
     /// Error with datatype handling
     #[error("Datatype error: {0}")]
     Datatype(DatatypeErrorKind),
+    /// Error deserializing data
+    #[error("Deserialization error: {0}: {1}")]
+    Deserialization(&'static str, #[source] anyhow::Error),
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),

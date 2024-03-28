@@ -5,6 +5,7 @@ use std::convert::From;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -540,15 +541,10 @@ impl<'ctx> Factory<'ctx> for AttributeData {
         }
         if let Some(ref fill) = self.fill {
             b = fn_typed!(self.datatype, AT, {
-                let fill_value: AT = serde_json::from_value::<AT>(
-                    fill.data.clone(),
-                )
-                .map_err(|e| {
-                    Error::from(format!(
-                        "Error deserializing fill value: {}",
-                        e
-                    ))
-                })?;
+                let fill_value: AT =
+                    serde_json::from_value::<AT>(fill.data.clone()).map_err(
+                        |e| Error::Deserialization("fill value", anyhow!(e)),
+                    )?;
                 if let Some(fill_nullability) = fill.nullability {
                     b.fill_value_nullability::<AT>(fill_value, fill_nullability)
                 } else {
