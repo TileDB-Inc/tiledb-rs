@@ -6,6 +6,8 @@ use std::str::FromStr;
 
 use serde::{Serialize, Serializer};
 
+use crate::Datatype;
+
 pub(crate) enum RawError {
     Owned(*mut ffi::tiledb_error_t),
 }
@@ -28,6 +30,10 @@ impl Drop for RawError {
 #[derive(Clone, Debug)]
 pub enum DatatypeErrorKind {
     InvalidDiscriminant(u64),
+    TypeMismatch {
+        user_type: &'static str,
+        tiledb_type: Datatype,
+    },
 }
 
 impl Display for DatatypeErrorKind {
@@ -35,6 +41,16 @@ impl Display for DatatypeErrorKind {
         match self {
             DatatypeErrorKind::InvalidDiscriminant(value) => {
                 write!(f, "Invalid datatype: {}", value)
+            }
+            DatatypeErrorKind::TypeMismatch {
+                user_type,
+                tiledb_type,
+            } => {
+                write!(
+                    f,
+                    "Type mismatch: requested {}, but found {}",
+                    user_type, tiledb_type
+                )
             }
         }
     }
