@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::context::Context;
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::{Datatype, Result as TileDBResult};
 
@@ -342,6 +342,12 @@ pub struct Filter<'ctx> {
     pub(crate) raw: RawFilter,
 }
 
+impl<'ctx> ContextBound<'ctx> for Filter<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 impl<'ctx> Filter<'ctx> {
     pub fn capi(&self) -> *mut ffi::tiledb_filter_t {
         *self.raw
@@ -362,12 +368,9 @@ impl<'ctx> Filter<'ctx> {
         let c_context = context.capi();
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let ftype = filter_data.capi_enum() as u32;
-        let res = unsafe {
+        context.capi_return(unsafe {
             ffi::tiledb_filter_alloc(c_context, ftype, &mut c_filter)
-        };
-        if res != ffi::TILEDB_OK {
-            return Err(context.expect_last_error());
-        }
+        })?;
 
         let raw = RawFilter::Owned(c_filter);
 
@@ -504,16 +507,13 @@ impl<'ctx> Filter<'ctx> {
 
     pub fn filter_data(&self) -> TileDBResult<FilterData> {
         let mut c_ftype: u32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_filter_get_type(
                 self.context.capi(),
                 self.capi(),
                 &mut c_ftype,
             )
-        };
-        if res != ffi::TILEDB_OK {
-            return Err(self.context.expect_last_error());
-        }
+        })?;
 
         let get_compression_data = |kind| -> TileDBResult<FilterData> {
             let level = Some(
@@ -624,19 +624,15 @@ impl<'ctx> Filter<'ctx> {
 
     fn get_option<T>(&self, fopt: ffi::FilterOption) -> TileDBResult<T> {
         let mut val: T = out_ptr!();
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_filter_get_option(
                 self.context.capi(),
                 self.capi(),
                 fopt as u32,
                 &mut val as *mut T as *mut std::ffi::c_void,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(val)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Ok(val)
     }
 
     fn set_option<T>(
@@ -646,19 +642,15 @@ impl<'ctx> Filter<'ctx> {
         val: T,
     ) -> TileDBResult<()> {
         let c_val = &val as *const T as *const std::ffi::c_void;
-        let res = unsafe {
+        context.capi_return(unsafe {
             ffi::tiledb_filter_set_option(
                 context.capi(),
                 raw,
                 fopt as u32,
                 c_val,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(context.expect_last_error())
-        }
+        })?;
+        Ok(())
     }
 }
 

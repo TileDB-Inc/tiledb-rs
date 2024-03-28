@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use crate::context::Context;
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::{Filter, FilterData, RawFilter};
 use crate::Result as TileDBResult;
 
@@ -31,6 +31,12 @@ pub struct FilterList<'ctx> {
     pub(crate) raw: RawFilterList,
 }
 
+impl<'ctx> ContextBound<'ctx> for FilterList<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 impl<'ctx> FilterList<'ctx> {
     pub fn capi(&self) -> *mut ffi::tiledb_filter_list_t {
         *self.raw
@@ -38,35 +44,27 @@ impl<'ctx> FilterList<'ctx> {
 
     pub fn get_num_filters(&self) -> TileDBResult<u32> {
         let mut num: u32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_filter_list_get_nfilters(
                 self.context.capi(),
                 *self.raw,
                 &mut num,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(num)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Ok(num)
     }
 
     pub fn get_filter(&self, index: u32) -> TileDBResult<Filter<'ctx>> {
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_filter_list_get_filter_from_index(
                 self.context.capi(),
                 *self.raw,
                 index,
                 &mut c_filter,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(Filter::new(self.context, RawFilter::Owned(c_filter)))
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Ok(Filter::new(self.context, RawFilter::Owned(c_filter)))
     }
 
     pub fn to_vec(&self) -> TileDBResult<Vec<Filter<'ctx>>> {
@@ -75,20 +73,16 @@ impl<'ctx> FilterList<'ctx> {
             .collect()
     }
 
-    pub fn get_max_chunk_size(&self, ctx: &Context) -> TileDBResult<u32> {
+    pub fn get_max_chunk_size(&self) -> TileDBResult<u32> {
         let mut size: u32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_filter_list_get_max_chunk_size(
                 self.context.capi(),
                 *self.raw,
                 &mut size,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(size)
-        } else {
-            Err(ctx.expect_last_error())
-        }
+        })?;
+        Ok(size)
     }
 }
 
@@ -142,52 +136,46 @@ pub struct Builder<'ctx> {
     filter_list: FilterList<'ctx>,
 }
 
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.filter_list.context()
+    }
+}
+
 impl<'ctx> Builder<'ctx> {
     pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
         let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
-        let res = unsafe {
+        context.capi_return(unsafe {
             ffi::tiledb_filter_list_alloc(context.capi(), &mut c_flist)
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(Builder {
-                filter_list: FilterList {
-                    context,
-                    raw: RawFilterList::Owned(c_flist),
-                },
-            })
-        } else {
-            Err(context.expect_last_error())
-        }
+        })?;
+        Ok(Builder {
+            filter_list: FilterList {
+                context,
+                raw: RawFilterList::Owned(c_flist),
+            },
+        })
     }
 
     pub fn set_max_chunk_size(self, size: u32) -> TileDBResult<Self> {
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_filter_list_set_max_chunk_size(
                 self.filter_list.context.capi(),
                 *self.filter_list.raw,
                 size,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.filter_list.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn add_filter(self, filter: Filter<'ctx>) -> TileDBResult<Self> {
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_filter_list_add_filter(
                 self.filter_list.context.capi(),
                 *self.filter_list.raw,
                 filter.capi(),
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.filter_list.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn add_filter_data<F>(self, filter: F) -> TileDBResult<Self>

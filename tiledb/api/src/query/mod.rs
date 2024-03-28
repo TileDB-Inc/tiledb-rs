@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use crate::array::Layout;
-use crate::context::Context;
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
 use crate::{Array, Result as TileDBResult};
 
@@ -43,6 +43,12 @@ pub struct Query<'ctx> {
     raw: RawQuery,
 }
 
+impl<'ctx> ContextBound<'ctx> for Query<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 impl<'ctx> Query<'ctx> {
     // TODO: what should the return type be?
     // if you can re-submit the query then Self makes sense.
@@ -50,17 +56,21 @@ impl<'ctx> Query<'ctx> {
     pub fn submit(self) -> TileDBResult<Self> {
         let c_context = self.context.capi();
         let c_query = *self.raw;
-        let c_ret = unsafe { ffi::tiledb_query_submit(c_context, c_query) };
-        if c_ret == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        self.capi_return(unsafe {
+            ffi::tiledb_query_submit(c_context, c_query)
+        })?;
+        Ok(self)
     }
 }
 
 pub struct Builder<'ctx> {
     query: Query<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.query.context()
+    }
 }
 
 impl<'ctx> Builder<'ctx> {
@@ -73,41 +83,33 @@ impl<'ctx> Builder<'ctx> {
         let c_array = array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
-        let c_ret = unsafe {
+        context.capi_return(unsafe {
             ffi::tiledb_query_alloc(
                 c_context,
                 c_array,
                 c_query_type,
                 &mut c_query,
             )
-        };
-        if c_ret == ffi::TILEDB_OK {
-            Ok(Builder {
-                query: Query {
-                    context,
-                    array,
-                    subarrays: vec![],
-                    result_buffers: HashMap::new(),
-                    raw: RawQuery::Owned(c_query),
-                },
-            })
-        } else {
-            Err(context.expect_last_error())
-        }
+        })?;
+        Ok(Builder {
+            query: Query {
+                context,
+                array,
+                subarrays: vec![],
+                result_buffers: HashMap::new(),
+                raw: RawQuery::Owned(c_query),
+            },
+        })
     }
 
     pub fn layout(self, layout: Layout) -> TileDBResult<Self> {
         let c_context = self.query.context.capi();
         let c_query = *self.query.raw;
         let c_layout = layout.capi_enum();
-        let c_ret = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_query_set_layout(c_context, c_query, c_layout)
-        };
-        if c_ret == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.query.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn add_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx>> {
@@ -131,7 +133,7 @@ impl<'ctx> Builder<'ctx> {
         // TODO: this is not safe because the C API keeps a pointer to the size
         // and may write back to it
 
-        let c_ret = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_query_set_data_buffer(
                 c_context,
                 c_query,
@@ -139,13 +141,9 @@ impl<'ctx> Builder<'ctx> {
                 c_bufptr,
                 &mut *c_size,
             )
-        };
-        if c_ret == ffi::TILEDB_OK {
-            self.query.result_buffers.insert(String::from(name), c_size);
-            Ok(self)
-        } else {
-            Err(self.query.context.expect_last_error())
-        }
+        })?;
+        self.query.result_buffers.insert(String::from(name), c_size);
+        Ok(self)
     }
 
     pub fn build(self) -> Query<'ctx> {

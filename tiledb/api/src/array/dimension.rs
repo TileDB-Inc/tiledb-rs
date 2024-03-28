@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::context::Context;
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
 use crate::error::Error;
 use crate::filter_list::{FilterList, FilterListData, RawFilterList};
@@ -36,6 +36,12 @@ pub struct Dimension<'ctx> {
     pub(crate) raw: RawDimension,
 }
 
+impl<'ctx> ContextBound<'ctx> for Dimension<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 impl<'ctx> Dimension<'ctx> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_dimension_t {
         *self.raw
@@ -49,47 +55,37 @@ impl<'ctx> Dimension<'ctx> {
     pub fn name(&self) -> TileDBResult<String> {
         let c_context = self.context.capi();
         let mut c_name = std::ptr::null::<std::ffi::c_char>();
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_get_name(c_context, *self.raw, &mut c_name)
-        };
-        if res == ffi::TILEDB_OK {
-            let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
-            Ok(String::from(c_name.to_string_lossy()))
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
+        Ok(String::from(c_name.to_string_lossy()))
     }
 
-    pub fn datatype(&self) -> Datatype {
+    pub fn datatype(&self) -> TileDBResult<Datatype> {
         let c_context = self.context.capi();
         let c_dimension = self.capi();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
-        let c_ret = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_get_type(
                 c_context,
                 c_dimension,
                 &mut c_datatype,
             )
-        };
+        })?;
 
-        assert_eq!(ffi::TILEDB_OK, c_ret);
-
-        Datatype::try_from(c_datatype).expect("Invalid dimension type")
+        Datatype::try_from(c_datatype)
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<u32> {
         let c_context = self.context.capi();
         let mut c_num: std::ffi::c_uint = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_get_cell_val_num(
                 c_context, *self.raw, &mut c_num,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(c_num as u32)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Ok(c_num as u32)
     }
 
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
@@ -97,16 +93,13 @@ impl<'ctx> Dimension<'ctx> {
         let c_dimension = self.capi();
         let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
 
-        let c_ret = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_get_domain(
                 c_context,
                 c_dimension,
                 &mut c_domain_ptr,
             )
-        };
-
-        // the only errors are possible via mis-use of the C API, which Rust prevents
-        assert_eq!(ffi::TILEDB_OK, c_ret);
+        })?;
 
         let c_domain: &[Conv::CAPIType; 2] =
             unsafe { &*c_domain_ptr.cast::<[Conv::CAPIType; 2]>() };
@@ -120,41 +113,34 @@ impl<'ctx> Dimension<'ctx> {
         let c_dimension = self.capi();
         let mut c_extent_ptr: *const ::std::ffi::c_void = out_ptr!();
 
-        let c_ret = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_get_tile_extent(
                 c_context,
                 c_dimension,
                 &mut c_extent_ptr,
             )
-        };
-        if c_ret == ffi::TILEDB_OK {
-            let c_extent = unsafe { &*c_extent_ptr.cast::<Conv::CAPIType>() };
-            Ok(Conv::to_rust(c_extent))
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        let c_extent = unsafe { &*c_extent_ptr.cast::<Conv::CAPIType>() };
+        Ok(Conv::to_rust(c_extent))
     }
 
-    pub fn filters(&self) -> FilterList {
+    pub fn filters(&self) -> TileDBResult<FilterList> {
         let mut c_fl: *mut ffi::tiledb_filter_list_t = out_ptr!();
 
         let c_context = self.context.capi();
         let c_dimension = self.capi();
-        let c_ret = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_get_filter_list(
                 c_context,
                 c_dimension,
                 &mut c_fl,
             )
-        };
+        })?;
 
-        // only fails if dimension is invalid, which Rust API will prevent
-        assert_eq!(ffi::TILEDB_OK, c_ret);
-
-        FilterList {
+        Ok(FilterList {
             context: self.context,
             raw: RawFilterList::Owned(c_fl),
-        }
+        })
     }
 }
 
@@ -171,55 +157,18 @@ impl<'ctx> Debug for Dimension<'ctx> {
 
 impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
     fn eq(&self, other: &Dimension<'c2>) -> bool {
-        let name_match = match (self.name(), other.name()) {
-            (Ok(mine), Ok(theirs)) => mine == theirs,
-            _ => false,
-        };
-        if !name_match {
-            return false;
-        }
+        eq_helper!(self.name(), other.name());
+        eq_helper!(self.datatype(), other.datatype());
+        eq_helper!(self.cell_val_num(), other.cell_val_num());
+        eq_helper!(self.filters(), other.filters());
 
-        let type_match = self.datatype() == other.datatype();
-        if !type_match {
-            return false;
-        }
+        fn_typed!(self.datatype().unwrap(), DT, {
+            eq_helper!(self.domain::<DT>(), other.domain::<DT>())
+        });
 
-        let cell_val_match = match (self.cell_val_num(), other.cell_val_num()) {
-            (Ok(mine), Ok(theirs)) => mine == theirs,
-            _ => false,
-        };
-        if !cell_val_match {
-            return false;
-        }
-
-        let domain_match = fn_typed!(
-            self.datatype(),
-            DT,
-            match (self.domain::<DT>(), other.domain::<DT>()) {
-                (Ok(mine), Ok(theirs)) => mine == theirs,
-                _ => false,
-            }
-        );
-        if !domain_match {
-            return false;
-        }
-
-        let extent_match = fn_typed!(
-            self.datatype(),
-            DT,
-            match (self.extent::<DT>(), other.extent::<DT>()) {
-                (Ok(mine), Ok(theirs)) => mine == theirs,
-                _ => false,
-            }
-        );
-        if !extent_match {
-            return false;
-        }
-
-        let filters_match = self.filters() == other.filters();
-        if !filters_match {
-            return false;
-        }
+        fn_typed!(self.datatype().unwrap(), DT, {
+            eq_helper!(self.extent::<DT>(), other.extent::<DT>())
+        });
 
         true
     }
@@ -227,6 +176,12 @@ impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
 
 pub struct Builder<'ctx> {
     dim: Dimension<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.dim.context
+    }
 }
 
 impl<'ctx> Builder<'ctx> {
@@ -251,7 +206,7 @@ impl<'ctx> Builder<'ctx> {
         let mut c_dimension: *mut ffi::tiledb_dimension_t =
             std::ptr::null_mut();
 
-        if unsafe {
+        context.capi_return(unsafe {
             ffi::tiledb_dimension_alloc(
                 c_context,
                 c_name.as_ptr(),
@@ -261,17 +216,13 @@ impl<'ctx> Builder<'ctx> {
                 &c_extent as *const <Conv>::CAPIType as *const std::ffi::c_void,
                 &mut c_dimension,
             )
-        } == ffi::TILEDB_OK
-        {
-            Ok(Builder {
-                dim: Dimension {
-                    context,
-                    raw: RawDimension::Owned(c_dimension),
-                },
-            })
-        } else {
-            Err(context.expect_last_error())
-        }
+        })?;
+        Ok(Builder {
+            dim: Dimension {
+                context,
+                raw: RawDimension::Owned(c_dimension),
+            },
+        })
     }
 
     pub fn context(&self) -> &'ctx Context {
@@ -285,18 +236,14 @@ impl<'ctx> Builder<'ctx> {
     pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
         let c_context = self.dim.context.capi();
         let c_num = num as std::ffi::c_uint;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_set_cell_val_num(
                 c_context,
                 *self.dim.raw,
                 c_num,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.dim.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn filters(self, filters: FilterList) -> TileDBResult<Self> {
@@ -304,14 +251,10 @@ impl<'ctx> Builder<'ctx> {
         let c_dimension = self.dim.capi();
         let c_fl = filters.capi();
 
-        if unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_dimension_set_filter_list(c_context, c_dimension, c_fl)
-        } == ffi::TILEDB_OK
-        {
-            Ok(self)
-        } else {
-            Err(self.dim.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn build(self) -> Dimension<'ctx> {
@@ -340,7 +283,7 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
     type Error = crate::error::Error;
 
     fn try_from(dim: &Dimension<'ctx>) -> TileDBResult<Self> {
-        let datatype = dim.datatype();
+        let datatype = dim.datatype()?;
         let (domain, extent) = fn_typed!(datatype, DT, {
             let domain = dim.domain::<DT>()?;
             (
@@ -354,7 +297,7 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
             domain,
             extent,
             cell_val_num: Some(dim.cell_val_num()?),
-            filters: FilterListData::try_from(&dim.filters())?,
+            filters: FilterListData::try_from(&dim.filters()?)?,
         })
     }
 }
@@ -479,7 +422,7 @@ mod tests {
             .unwrap()
             .build();
 
-            assert_eq!(Datatype::Int32, dim.datatype());
+            assert_eq!(Datatype::Int32, dim.datatype().unwrap());
 
             let domain_out = dim.domain::<i32>().unwrap();
             assert_eq!(domain_in[0], domain_out[0]);
@@ -551,7 +494,7 @@ mod tests {
             .unwrap()
             .into();
 
-            let fl = dimension.filters();
+            let fl = dimension.filters().unwrap();
             assert_eq!(0, fl.get_num_filters().unwrap());
         }
 
@@ -579,7 +522,7 @@ mod tests {
             .unwrap()
             .into();
 
-            let fl = dimension.filters();
+            let fl = dimension.filters().unwrap();
             assert_eq!(1, fl.get_num_filters().unwrap());
 
             let outlz4 = fl.get_filter(0).unwrap();

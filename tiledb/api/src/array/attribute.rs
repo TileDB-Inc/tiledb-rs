@@ -9,7 +9,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::context::Context;
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::{BitsEq, CAPIConverter};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::filter_list::{FilterList, FilterListData, RawFilterList};
@@ -42,6 +42,12 @@ pub struct Attribute<'ctx> {
     raw: RawAttribute,
 }
 
+impl<'ctx> ContextBound<'ctx> for Attribute<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 impl<'ctx> Attribute<'ctx> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_attribute_t {
         *self.raw
@@ -54,28 +60,20 @@ impl<'ctx> Attribute<'ctx> {
     pub fn name(&self) -> TileDBResult<String> {
         let c_context = self.context.capi();
         let mut c_name = std::ptr::null::<std::ffi::c_char>();
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_get_name(c_context, *self.raw, &mut c_name)
-        };
-        if res == ffi::TILEDB_OK {
-            let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
-            Ok(String::from(c_name.to_string_lossy()))
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
+        Ok(String::from(c_name.to_string_lossy()))
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
         let c_context = self.context.capi();
         let mut c_dtype: std::ffi::c_uint = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_get_type(c_context, *self.raw, &mut c_dtype)
-        };
-        if res == ffi::TILEDB_OK {
-            Datatype::try_from(c_dtype)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Datatype::try_from(c_dtype)
     }
 
     pub fn is_nullable(&self) -> bool {
@@ -95,21 +93,17 @@ impl<'ctx> Attribute<'ctx> {
     pub fn filter_list(&self) -> TileDBResult<FilterList<'ctx>> {
         let c_context = self.context.capi();
         let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_get_filter_list(
                 c_context,
                 *self.raw,
                 &mut c_flist,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(FilterList {
-                context: self.context,
-                raw: RawFilterList::Owned(c_flist),
-            })
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Ok(FilterList {
+            context: self.context,
+            raw: RawFilterList::Owned(c_flist),
+        })
     }
 
     pub fn is_var_sized(&self) -> TileDBResult<bool> {
@@ -119,33 +113,25 @@ impl<'ctx> Attribute<'ctx> {
     pub fn cell_val_num(&self) -> TileDBResult<u32> {
         let c_context = self.context.capi();
         let mut c_num: std::ffi::c_uint = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_get_cell_val_num(
                 c_context, *self.raw, &mut c_num,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(c_num as u32)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Ok(c_num as u32)
     }
 
     pub fn cell_size(&self) -> TileDBResult<u64> {
         let c_context = self.context.capi();
         let mut c_size: std::ffi::c_ulonglong = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_get_cell_size(
                 c_context,
                 *self.raw,
                 &mut c_size,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(c_size as u64)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+        Ok(c_size as u64)
     }
 
     pub fn fill_value<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
@@ -154,18 +140,14 @@ impl<'ctx> Attribute<'ctx> {
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
 
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_get_fill_value(
                 c_context,
                 c_attr,
                 &mut c_ptr,
                 &mut c_size,
             )
-        };
-
-        if res != ffi::TILEDB_OK {
-            return Err(self.context.expect_last_error());
-        }
+        })?;
 
         if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
@@ -193,7 +175,7 @@ impl<'ctx> Attribute<'ctx> {
         let mut c_size: u64 = 0;
         let mut c_validity: u8 = 0;
 
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_get_fill_value_nullable(
                 c_context,
                 c_attr,
@@ -201,11 +183,7 @@ impl<'ctx> Attribute<'ctx> {
                 &mut c_size,
                 &mut c_validity,
             )
-        };
-
-        if res != ffi::TILEDB_OK {
-            return Err(self.context.expect_last_error());
-        }
+        })?;
 
         if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
@@ -300,6 +278,12 @@ pub struct Builder<'ctx> {
     attr: Attribute<'ctx>,
 }
 
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.attr.context
+    }
+}
+
 impl<'ctx> Builder<'ctx> {
     pub fn new(
         context: &'ctx Context,
@@ -309,24 +293,20 @@ impl<'ctx> Builder<'ctx> {
         let c_context = context.capi();
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
         let c_name = cstring!(name);
-        let res = unsafe {
+        context.capi_return(unsafe {
             ffi::tiledb_attribute_alloc(
                 c_context,
                 c_name.as_c_str().as_ptr(),
                 datatype as u32,
                 &mut c_attr,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(Builder {
-                attr: Attribute {
-                    context,
-                    raw: RawAttribute::Owned(c_attr),
-                },
-            })
-        } else {
-            Err(context.expect_last_error())
-        }
+        })?;
+        Ok(Builder {
+            attr: Attribute {
+                context,
+                raw: RawAttribute::Owned(c_attr),
+            },
+        })
     }
 
     pub fn context(&self) -> &'ctx Context {
@@ -340,18 +320,14 @@ impl<'ctx> Builder<'ctx> {
     pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
         let c_context = self.attr.context.capi();
         let c_num = num as std::ffi::c_uint;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_set_cell_val_num(
                 c_context,
                 *self.attr.raw,
                 c_num,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.attr.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn var_sized(self) -> TileDBResult<Self> {
@@ -365,18 +341,14 @@ impl<'ctx> Builder<'ctx> {
     pub fn nullability(self, nullable: bool) -> TileDBResult<Self> {
         let c_context = self.attr.context.capi();
         let c_nullable: u8 = if nullable { 1 } else { 0 };
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_set_nullable(
                 c_context,
                 *self.attr.raw,
                 c_nullable,
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.attr.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     // This currently does not support setting multi-value cells.
@@ -395,20 +367,16 @@ impl<'ctx> Builder<'ctx> {
         let c_attr = *self.attr.raw;
         let c_val: Conv::CAPIType = value.to_capi();
 
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_set_fill_value(
                 c_context,
                 c_attr,
                 &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
                 std::mem::size_of::<Conv::CAPIType>() as u64,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.attr.context.expect_last_error())
-        }
+        Ok(self)
     }
 
     // This currently does not support setting multi-value cells.
@@ -440,7 +408,7 @@ impl<'ctx> Builder<'ctx> {
         let c_val: Conv::CAPIType = value.to_capi();
         let c_nullable: u8 = if nullable { 1 } else { 0 };
 
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_set_fill_value_nullable(
                 c_context,
                 c_attr,
@@ -448,13 +416,9 @@ impl<'ctx> Builder<'ctx> {
                 std::mem::size_of::<Conv::CAPIType>() as u64,
                 c_nullable,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.attr.context.expect_last_error())
-        }
+        Ok(self)
     }
 
     pub fn filter_list<FL>(self, filter_list: FL) -> TileDBResult<Self>
@@ -463,19 +427,15 @@ impl<'ctx> Builder<'ctx> {
     {
         let filter_list = filter_list.borrow();
         let c_context = self.attr.context.capi();
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_attribute_set_filter_list(
                 c_context,
                 *self.attr.raw,
                 // TODO: does the C API copy this? Or alias the pointer? Safety is not obvious
                 filter_list.capi(),
             )
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.attr.context.expect_last_error())
-        }
+        })?;
+        Ok(self)
     }
 
     pub fn build(self) -> Attribute<'ctx> {

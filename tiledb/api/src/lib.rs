@@ -17,6 +17,17 @@ macro_rules! cstring {
     };
 }
 
+macro_rules! eq_helper {
+    ($mine:expr, $theirs:expr) => {{
+        if !match ($mine, $theirs) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        } {
+            return false;
+        }
+    }};
+}
+
 macro_rules! out_ptr {
     () => {
         unsafe { std::mem::MaybeUninit::zeroed().assume_init() }
@@ -51,7 +62,7 @@ pub fn version() -> (i32, i32, i32) {
 }
 
 pub use array::Array;
-pub use context::Context;
+pub use context::{Context, ContextBound};
 pub use datatype::Datatype;
 pub use query::{Builder as QueryBuilder, Query, QueryType};
 pub type Result<T> = std::result::Result<T, error::Error>;
