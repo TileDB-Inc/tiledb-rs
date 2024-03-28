@@ -7,9 +7,9 @@ use tiledb::filter::*;
 use tiledb::filter_list::FilterListData;
 use tiledb::Datatype;
 
-use crate::strategy::LifetimeBoundStrategy;
+use crate::*;
 
-pub fn arbitrary_bitwidthreduction() -> impl Strategy<Value = FilterData> {
+fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
     const MIN_WINDOW: u32 = 8;
     const MAX_WINDOW: u32 = 1024;
     prop_oneof![
@@ -22,12 +22,11 @@ pub fn arbitrary_bitwidthreduction() -> impl Strategy<Value = FilterData> {
     ]
 }
 
-pub fn arbitrary_compression_reinterpret_datatype(
-) -> impl Strategy<Value = Datatype> {
-    crate::datatype::arbitrary_implemented()
+fn prop_compression_reinterpret_datatype() -> impl Strategy<Value = Datatype> {
+    prop_datatype_implemented()
 }
 
-pub fn arbitrary_compression() -> impl Strategy<Value = FilterData> {
+fn prop_compression() -> impl Strategy<Value = FilterData> {
     const MIN_COMPRESSION_LEVEL: i32 = 1;
     const MAX_COMPRESSION_LEVEL: i32 = 9;
     (
@@ -42,7 +41,7 @@ pub fn arbitrary_compression() -> impl Strategy<Value = FilterData> {
             Just(CompressionType::Zstd),
         ],
         MIN_COMPRESSION_LEVEL..=MAX_COMPRESSION_LEVEL,
-        arbitrary_compression_reinterpret_datatype(),
+        prop_compression_reinterpret_datatype(),
     )
         .prop_map(|(kind, level, reinterpret_datatype)| {
             FilterData::Compression(CompressionData {
@@ -53,7 +52,7 @@ pub fn arbitrary_compression() -> impl Strategy<Value = FilterData> {
         })
 }
 
-pub fn arbitrary_positivedelta() -> impl Strategy<Value = FilterData> {
+fn prop_positivedelta() -> impl Strategy<Value = FilterData> {
     const MIN_WINDOW: u32 = 8;
     const MAX_WINDOW: u32 = 1024;
 
@@ -62,7 +61,7 @@ pub fn arbitrary_positivedelta() -> impl Strategy<Value = FilterData> {
     })
 }
 
-pub fn arbitrary_scalefloat() -> impl Strategy<Value = FilterData> {
+fn prop_scalefloat() -> impl Strategy<Value = FilterData> {
     (
         prop_oneof![
             Just(ScaleFloatByteWidth::I8),
@@ -80,7 +79,7 @@ pub fn arbitrary_scalefloat() -> impl Strategy<Value = FilterData> {
         })
 }
 
-pub fn arbitrary_webp() -> impl Strategy<Value = FilterData> {
+fn prop_webp() -> impl Strategy<Value = FilterData> {
     (
         prop_oneof![
             Just(WebPFilterInputFormat::None),
@@ -99,78 +98,85 @@ pub fn arbitrary_webp() -> impl Strategy<Value = FilterData> {
         })
 }
 
-pub fn arbitrary() -> impl Strategy<Value = FilterData> {
+pub fn prop_filter() -> impl Strategy<Value = FilterData> {
     prop_oneof![
         Just(FilterData::BitShuffle),
         Just(FilterData::ByteShuffle),
-        arbitrary_bitwidthreduction(),
+        prop_bitwidthreduction(),
         Just(FilterData::Checksum(ChecksumType::Md5)),
         Just(FilterData::Checksum(ChecksumType::Sha256)),
-        arbitrary_compression(),
-        arbitrary_positivedelta(),
-        arbitrary_scalefloat(),
-        arbitrary_webp(),
+        prop_compression(),
+        prop_positivedelta(),
+        prop_scalefloat(),
+        prop_webp(),
         Just(FilterData::Xor)
     ]
 }
 
-pub fn arbitrary_for_datatype(
+pub fn prop_filter_for_datatype(
     input_datatype: Datatype,
 ) -> impl Strategy<Value = FilterData> {
-    arbitrary()
+    prop_filter()
         .prop_filter("Filter does not accept input type", move |filter| {
             filter.transform_datatype(&input_datatype).is_some()
         })
 }
 
-fn arbitrary_pipeline(
+fn prop_filter_pipeline_impl(
     start: Datatype,
     nfilters: usize,
 ) -> impl Strategy<Value = VecDeque<FilterData>> {
     if nfilters == 0 {
         Just(VecDeque::new()).boxed()
     } else {
-        arbitrary_for_datatype(start)
+        prop_filter_for_datatype(start)
             .prop_flat_map(move |filter| {
-                /* the transform type must be Some per filter in `arbitrary` */
+                // This unwrap is guaranteed to succeed because the filter was
+                // already checked before being returned from
+                // prop_filter_for_datatype.
                 let next = filter.transform_datatype(&start).unwrap();
-                arbitrary_pipeline(next, nfilters - 1).bind().prop_map(
-                    move |mut filter_vec| {
+                prop_filter_pipeline_impl(next, nfilters - 1)
+                    .boxed()
+                    .prop_map(move |mut filter_vec| {
                         filter_vec.push_front(filter.clone());
                         filter_vec
-                    },
-                )
+                    })
             })
             .boxed()
     }
 }
 
-pub fn arbitrary_list_for_datatype(
+pub fn prop_filter_pipeline_for_datatype(
     datatype: Datatype,
 ) -> impl Strategy<Value = FilterListData> {
     const MIN_FILTERS: usize = 0;
     const MAX_FILTERS: usize = 4;
 
     (MIN_FILTERS..=MAX_FILTERS).prop_flat_map(move |nfilters| {
-        arbitrary_pipeline(datatype, nfilters).prop_map(move |filter_deque| {
-            let mut current_dt = datatype;
-            for filter in filter_deque.iter() {
-                current_dt = if let Some(next_dt) =
-                    filter.transform_datatype(&current_dt)
-                {
-                    next_dt
-                } else {
-                    unreachable!("Error in filter pipeline construction: {:?} does not accept input type {} in pipeline {:?}",
-                        filter, current_dt, filter_deque)
+        prop_filter_pipeline_impl(datatype, nfilters).prop_map(
+            move |filter_deque| {
+                let mut current_dt = datatype;
+                for filter in filter_deque.iter() {
+                    current_dt = if let Some(next_dt) =
+                        filter.transform_datatype(&current_dt)
+                    {
+                        next_dt
+                    } else {
+                        unreachable!(
+                            "Error in filter pipeline construction: {:?} \
+                        does not accept input type {} in pipeline {:?}",
+                            filter, current_dt, filter_deque
+                        )
+                    }
                 }
-            }
-            filter_deque.into_iter().collect::<FilterListData>()
-        })
+                filter_deque.into_iter().collect::<FilterListData>()
+            },
+        )
     })
 }
 
-pub fn arbitrary_list() -> impl Strategy<Value = FilterListData> {
-    crate::datatype::arbitrary().prop_flat_map(arbitrary_list_for_datatype)
+pub fn prop_filter_pipeline() -> impl Strategy<Value = FilterListData> {
+    prop_datatype().prop_flat_map(prop_filter_pipeline_for_datatype)
 }
 
 #[cfg(test)]
@@ -183,20 +189,24 @@ mod tests {
     fn filter_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(filt in arbitrary())| {
+        proptest!(|(filt in prop_filter_pipeline())| {
             filt.create(&ctx).expect("Error constructing arbitrary filter");
         });
     }
 
-    /// Test that the arbitrary filter construction always succeeds with a supplied datatype
+    /// Test that the arbitrary filter construction always succeeds with a
+    /// supplied datatype
     #[test]
     fn filter_arbitrary_for_datatype() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|((dt, filt) in crate::datatype::arbitrary().prop_flat_map(|dt| (Just(dt), arbitrary_for_datatype(dt))))| {
-            let filt = filt.create(&ctx).expect("Error constructing arbitrary filter");
+        proptest!(|((dt, filt) in prop_datatype().prop_flat_map(
+                |dt| (Just(dt), prop_filter_for_datatype(dt))))| {
+            let filt = filt.create(&ctx)
+                .expect("Error constructing arbitrary filter");
 
-            let filt_data = filt.filter_data().expect("Error reading filter data");
+            let filt_data = filt.filter_data()
+                .expect("Error reading filter data");
             assert!(filt_data.transform_datatype(&dt).is_some());
         });
     }
@@ -206,36 +216,43 @@ mod tests {
     fn filter_list_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(fl in arbitrary_list())| {
+        proptest!(|(fl in prop_filter_pipeline())| {
             fl.create(&ctx).expect("Error constructing arbitrary filter list");
         });
     }
 
     #[test]
-    /// Test that the arbitrary filter list construction always succeeds with a supplied datatype
+    /// Test that the arbitrary filter list construction always succeeds with a
+    /// supplied datatype
     fn filter_list_arbitrary_for_datatype() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|((dt, fl) in crate::datatype::arbitrary_implemented().prop_flat_map(|dt| (Just(dt), arbitrary_list_for_datatype(dt))))| {
-            let fl = fl.create(&ctx).expect("Error constructing arbitrary filter");
+        proptest!(|((dt, fl) in prop_datatype_implemented().prop_flat_map(
+                |dt| (Just(dt), prop_filter_pipeline_for_datatype(dt))))| {
+            let fl = fl.create(&ctx)
+                .expect("Error constructing arbitrary filter");
 
             let mut current_dt = dt;
 
             let fl = fl.to_vec().expect("Error collecting filters");
             for (fi, f) in fl.iter().enumerate() {
-                if let Some(next_dt) = f.filter_data().expect("Error reading filter data").transform_datatype(&current_dt) {
-                    current_dt = next_dt
+                if let Some(next_dt) = f.filter_data()
+                    .expect("Error reading filter data")
+                    .transform_datatype(&current_dt) {
+                        current_dt = next_dt
                 } else {
-                    panic!("Constructed invalid filter list: {:?}, invalid at position {}", fl, fi)
+                    panic!("Constructed invalid filter list: \
+                        {:?}, invalid at position {}", fl, fi)
                 }
             }
         });
     }
 
-    /// Test that ScaleFloat serialization is invertible, because floating point sadness
+    /// Test that ScaleFloat serialization is invertible, because floating
+    /// point sadness
     #[test]
     fn filter_scalefloat_serde() {
-        proptest!(|(scalefloat_in in arbitrary_scalefloat())| {
+        proptest!(|(scalefloat_in in prop_scalefloat())| {
             let json = serde_json::to_string(&scalefloat_in)
                 .expect("Error serializing");
             let scalefloat_out = serde_json::from_str(&json)
@@ -248,8 +265,9 @@ mod tests {
     fn filter_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in arbitrary())| {
-            let attr = attr.create(&ctx).expect("Error constructing arbitrary filter");
+        proptest!(|(attr in prop_filter_pipeline())| {
+            let attr = attr.create(&ctx)
+                .expect("Error constructing arbitrary filter");
             assert_eq!(attr, attr);
         });
     }

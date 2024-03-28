@@ -138,11 +138,10 @@ pub mod tests {
     use proptest::prelude::*;
     use tiledb::Factory;
 
-    pub fn arbitrary_arrow_field() -> impl Strategy<Value = arrow_schema::Field>
-    {
+    pub fn prop_arrow_field() -> impl Strategy<Value = arrow_schema::Field> {
         (
-            tiledb_test::attribute::arbitrary_name(),
-            crate::datatype::tests::arbitrary_arrow_implemented(),
+            tdbtest::prop_attribute_name(),
+            crate::datatype::tests::prop_arrow_implemented(),
             proptest::prelude::any::<bool>(),
         )
             .prop_map(|(name, data_type, nullable)| {
@@ -151,8 +150,8 @@ pub mod tests {
 
         /*
          * TODO: generate arbitrary metadata?
-         * Without doing so the test does not demonstrate that metadata is preserved.
-         * Which the CAPI doesn't appear to offer a way to do anyway.
+         * Without doing so the test does not demonstrate that metadata is
+         * preserved. Which the CAPI doesn't appear to offer a way to do anyway.
          */
     }
 
@@ -161,11 +160,14 @@ pub mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb_test::attribute::arbitrary())| {
-            let tdb_in = tdb_in.create(&c).expect("Error constructing arbitrary tiledb attribute");
-            if let Some(arrow_field) = arrow_field(&tdb_in).expect("Error reading tiledb attribute") {
+        proptest!(|(tdb_in in tdbtest::prop_attribute())| {
+            let tdb_in = tdb_in.create(&c)
+                .expect("Error constructing arbitrary tiledb attribute");
+            if let Some(arrow_field) = arrow_field(&tdb_in)
+                .expect("Error reading tiledb attribute") {
                 // convert back to TileDB attribute
-                let tdb_out = tiledb_attribute(&c, &arrow_field)?.expect("Arrow attribute did not invert").build();
+                let tdb_out = tiledb_attribute(&c, &arrow_field)?
+                    .expect("Arrow attribute did not invert").build();
                 assert_eq!(tdb_in, tdb_out);
             }
         });
@@ -177,7 +179,7 @@ pub mod tests {
     fn test_arrow_tiledb_arrow() -> TileDBResult<()> {
         let c: TileDBContext = TileDBContext::new()?;
         /* arrow => tiledb => arrow */
-        proptest!(|(arrow_in in arbitrary_arrow_field())| {
+        proptest!(|(arrow_in in prop_arrow_field())| {
             let tdb = tiledb_attribute(&c, &arrow_in);
             assert!(tdb.is_ok());
             let tdb = tdb.unwrap();
