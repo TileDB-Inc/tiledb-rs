@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::array::{
     dimension::DimensionData, dimension::RawDimension, Dimension,
 };
-use crate::context::{CApiBound, Context, ContextBound};
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::{Factory, Result as TileDBResult};
 
 pub(crate) enum RawDomain {
