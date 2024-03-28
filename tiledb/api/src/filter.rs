@@ -5,7 +5,7 @@ use std::ops::Deref;
 use serde::{Deserialize, Serialize};
 
 use crate::context::Context;
-use crate::error::Error;
+use crate::error::{DatatypeErrorKind, Error};
 use crate::{Datatype, Result as TileDBResult};
 
 pub use crate::filter_list::{Builder as FilterListBuilder, FilterList};
@@ -59,7 +59,7 @@ impl TryFrom<u32> for WebPFilterInputFormat {
             2 => Ok(WebPFilterInputFormat::Bgr),
             3 => Ok(WebPFilterInputFormat::Rgba),
             4 => Ok(WebPFilterInputFormat::Bgra),
-            _ => Err(Self::Error::from(format!(
+            _ => Err(Self::Error::LibTileDB(format!(
                 "Invalid webp filter type: {}",
                 value
             ))),
@@ -121,7 +121,7 @@ impl TryFrom<std::ffi::c_ulonglong> for ScaleFloatByteWidth {
             2 => Ok(Self::I16),
             4 => Ok(Self::I32),
             8 => Ok(Self::I64),
-            v => Err(Self::Error::from(format!(
+            v => Err(Self::Error::LibTileDB(format!(
                 "Invalid scale float byte width: {}",
                 v
             ))),
@@ -525,9 +525,8 @@ impl<'ctx> Filter<'ctx> {
                 )?;
                 Datatype::try_from(dtype as ffi::tiledb_datatype_t).map_err(
                     |_| {
-                        Error::from(format!(
-                            "Invalid compression reinterpret datatype: {}",
-                            dtype
+                        Error::Datatype(DatatypeErrorKind::InvalidDiscriminant(
+                            dtype as u64,
                         ))
                     },
                 )?
@@ -540,7 +539,7 @@ impl<'ctx> Filter<'ctx> {
         };
 
         match ffi::FilterType::from_u32(c_ftype) {
-            None => Err(crate::error::Error::from(format!(
+            None => Err(crate::error::Error::LibTileDB(format!(
                 "Invalid filter type: {}",
                 c_ftype
             ))),

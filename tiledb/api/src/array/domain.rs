@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -128,12 +129,11 @@ impl<'ctx> Domain<'ctx> {
 
         let c_ret = match key.into() {
             DimensionKey::Index(idx) => {
-                let c_idx: u32 = idx.try_into().map_err(|e| {
-                    crate::error::Error::from(format!(
-                        "Invalid dimension: {}",
-                        e
-                    ))
-                })?;
+                let c_idx: u32 = idx.try_into().map_err(
+                    |e: <usize as TryInto<u32>>::Error| {
+                        crate::error::Error::InvalidArgument(anyhow!(e))
+                    },
+                )?;
                 unsafe {
                     ffi::tiledb_domain_get_dimension_from_index(
                         c_context,

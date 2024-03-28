@@ -2,7 +2,6 @@ extern crate tiledb_sys as ffi;
 
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
-use std::str::FromStr;
 
 use serde::{Serialize, Serializer};
 
@@ -58,15 +57,25 @@ impl Display for DatatypeErrorKind {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Internal error due to bugs in tiledb.
+    /// This should be not occur in normal usage of tiledb.
+    #[error("Internal error: {0}")]
+    Internal(String),
     /// Error received from the libtiledb backend
     #[error("libtiledb error: {0}")]
     LibTileDB(String),
+    /// Error when a function has an invalid argument
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(#[source] anyhow::Error),
     /// Error with datatype handling
     #[error("Datatype error: {0}")]
     Datatype(DatatypeErrorKind),
+    /// Error serializing data
+    #[error("Serialization error: {0}: {1}")]
+    Serialization(String, #[source] anyhow::Error),
     /// Error deserializing data
     #[error("Deserialization error: {0}: {1}")]
-    Deserialization(&'static str, #[source] anyhow::Error),
+    Deserialization(String, #[source] anyhow::Error),
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),
@@ -91,27 +100,30 @@ impl From<RawError> for Error {
     }
 }
 
-impl<S> From<S> for Error
-where
-    S: AsRef<str>,
-{
-    fn from(s: S) -> Error {
-        Error::Other(String::from(s.as_ref()))
-    }
-}
-
-impl FromStr for Error {
-    type Err = (); /* always succeeds */
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Error::Other(String::from(s)))
-    }
-}
-
 impl Serialize for Error {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        format!("<{}>", self.to_string()).serialize(serializer)
+        format!("<{}>", self).serialize(serializer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    /// Ensure that Error is Sync, fails to compile if not
+    fn is_sync() {
+        fn is_sync<T: Sync>() {}
+        is_sync::<Error>()
+    }
+
+    #[test]
+    /// Ensure that Error is Send, fails to compile if not
+    fn is_send() {
+        fn is_sync<T: Send>() {}
+        is_sync::<Error>()
     }
 }

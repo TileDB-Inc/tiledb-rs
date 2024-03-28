@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use arrow_schema::Schema as ArrowSchema;
 use serde::{Deserialize, Serialize};
 use tiledb::array::{DomainBuilder, Schema, SchemaBuilder};
@@ -71,10 +72,10 @@ pub fn arrow_schema<'ctx>(
 
     let metadata = serde_json::ser::to_string(&SchemaMetadata::new(tiledb)?)
         .map_err(|e| {
-            TileDBError::from(format!(
-                "Error serializing metadata for schema: {}",
-                e
-            ))
+            TileDBError::Serialization(
+                String::from("schema metadata"),
+                anyhow!(e),
+            )
         })?;
     builder
         .metadata_mut()
@@ -94,17 +95,20 @@ pub fn tiledb_schema<'ctx>(
     let metadata = match schema.metadata().get("tiledb") {
         Some(metadata) => serde_json::from_str::<SchemaMetadata>(metadata)
             .map_err(|e| {
-                TileDBError::from(format!(
-                    "Error deserializing metadata: {}",
-                    e
-                ))
+                TileDBError::Deserialization(
+                    String::from("schema metadata"),
+                    anyhow!(e),
+                )
             })?,
         None => return Ok(None),
     };
 
     if schema.fields.len() < metadata.ndim {
-        return Err(TileDBError::from(format!("Input error: expected at least {} dimension fields but only found {}",
-                    metadata.ndim, schema.fields.len())));
+        return Err(TileDBError::InvalidArgument(anyhow!(format!(
+            "Expected at least {} dimension fields but only found {}",
+            metadata.ndim,
+            schema.fields.len()
+        ))));
     }
 
     let dimensions = schema.fields.iter().take(metadata.ndim);

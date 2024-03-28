@@ -61,7 +61,10 @@ impl TryFrom<ffi::tiledb_layout_t> for Layout {
             ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(Layout::RowMajor),
             ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(Layout::ColumnMajor),
             ffi::tiledb_layout_t_TILEDB_HILBERT => Ok(Layout::Hilbert),
-            _ => Err(Self::Error::from(format!("Invalid layout: {}", value))),
+            _ => Err(Self::Error::LibTileDB(format!(
+                "Invalid layout: {}",
+                value
+            ))),
         }
     }
 }

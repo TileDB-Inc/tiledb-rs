@@ -541,10 +541,15 @@ impl<'ctx> Factory<'ctx> for AttributeData {
         }
         if let Some(ref fill) = self.fill {
             b = fn_typed!(self.datatype, AT, {
-                let fill_value: AT =
-                    serde_json::from_value::<AT>(fill.data.clone()).map_err(
-                        |e| Error::Deserialization("fill value", anyhow!(e)),
-                    )?;
+                let fill_value: AT = serde_json::from_value::<AT>(
+                    fill.data.clone(),
+                )
+                .map_err(|e| {
+                    Error::Deserialization(
+                        format!("attribute '{}' fill value", self.name),
+                        anyhow!(e),
+                    )
+                })?;
                 if let Some(fill_nullability) = fill.nullability {
                     b.fill_value_nullability::<AT>(fill_value, fill_nullability)
                 } else {

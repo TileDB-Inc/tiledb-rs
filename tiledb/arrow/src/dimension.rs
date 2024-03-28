@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tiledb::context::Context as TileDBContext;
@@ -46,10 +47,10 @@ pub fn arrow_field(
             dim,
         )?)
         .map_err(|e| {
-            TileDBError::from(format!(
-                "Error serializing metadata for dimension {}: {}",
-                name, e
-            ))
+            TileDBError::Serialization(
+                format!("dimension {} metadata", name),
+                anyhow!(e),
+            )
         })?;
         Ok(Some(
             arrow_schema::Field::new(name, arrow_dt, false).with_metadata(
@@ -75,11 +76,10 @@ pub fn tiledb_dimension<'ctx>(
     let metadata = match field.metadata().get("tiledb") {
         Some(metadata) => serde_json::from_str::<DimensionMetadata>(metadata)
             .map_err(|e| {
-            TileDBError::from(format!(
-                "Error deserializing metadata for dimension {}: {}",
-                field.name(),
-                e
-            ))
+            TileDBError::Deserialization(
+                format!("dimension {} metadata", field.name()),
+                anyhow!(e),
+            )
         })?,
         None => return Ok(None),
     };
@@ -87,10 +87,10 @@ pub fn tiledb_dimension<'ctx>(
     let dim = fn_typed!(tiledb_datatype, DT, {
         let deser = |v: &serde_json::value::Value| {
             serde_json::from_value::<DT>(v.clone()).map_err(|e| {
-                TileDBError::from(format!(
-                    "Error deserializing dimension domain: {}",
-                    e
-                ))
+                TileDBError::Deserialization(
+                    format!("dimension {} lower bound", field.name()),
+                    anyhow!(e),
+                )
             })
         };
 

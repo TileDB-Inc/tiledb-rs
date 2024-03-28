@@ -1,3 +1,4 @@
+extern crate anyhow;
 extern crate arrow;
 extern crate arrow_schema;
 extern crate serde;

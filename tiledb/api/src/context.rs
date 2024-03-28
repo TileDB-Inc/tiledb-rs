@@ -53,7 +53,7 @@ impl Context {
                 raw: RawContext::Owned(c_ctx),
             })
         } else {
-            Err(Error::from("Error creating context."))
+            Err(Error::LibTileDB(String::from("Could not create context")))
         }
     }
 
@@ -98,9 +98,10 @@ impl Context {
     }
 
     pub fn expect_last_error(&self) -> Error {
-        self.get_last_error().unwrap_or(Error::from(
-            "TileDB internal error: expected error data but found none",
-        ))
+        self.get_last_error()
+            .unwrap_or(Error::Internal(String::from(
+                "libtiledb: expected error data but found none",
+            )))
     }
 
     pub fn is_supported_fs(&self, fs: ffi::Filesystem) -> bool {
