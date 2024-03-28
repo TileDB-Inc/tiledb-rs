@@ -31,12 +31,12 @@ pub struct SchemaMetadata {
 impl SchemaMetadata {
     pub fn new(schema: &Schema) -> TileDBResult<Self> {
         Ok(SchemaMetadata {
-            array_type: schema.array_type(),
-            version: schema.version(),
-            capacity: schema.capacity(),
-            allows_duplicates: schema.allows_duplicates(),
-            cell_order: schema.cell_order(),
-            tile_order: schema.tile_order(),
+            array_type: schema.array_type()?,
+            version: schema.version()?,
+            capacity: schema.capacity()?,
+            allows_duplicates: schema.allows_duplicates()?,
+            cell_order: schema.cell_order()?,
+            tile_order: schema.tile_order()?,
             coordinate_filters: FilterMetadata::new(
                 &schema.coordinate_filters()?,
             )?,
@@ -51,7 +51,7 @@ pub fn arrow_schema<'ctx>(
     tiledb: &'ctx Schema<'ctx>,
 ) -> TileDBResult<Option<ArrowSchema>> {
     let mut builder =
-        arrow_schema::SchemaBuilder::with_capacity(tiledb.nattributes());
+        arrow_schema::SchemaBuilder::with_capacity(tiledb.nattributes()?);
 
     for d in 0..tiledb.domain()?.ndim()? {
         let dim = tiledb.domain()?.dimension(d)?;
@@ -62,7 +62,7 @@ pub fn arrow_schema<'ctx>(
         }
     }
 
-    for a in 0..tiledb.nattributes() {
+    for a in 0..tiledb.nattributes()? {
         let attr = tiledb.attribute(a)?;
         if let Some(field) = crate::attribute::arrow_field(&attr)? {
             builder.push(field)

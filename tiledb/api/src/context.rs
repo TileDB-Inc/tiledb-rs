@@ -31,6 +31,23 @@ impl Drop for RawContext {
     }
 }
 
+pub trait ContextBound<'ctx> {
+    fn context(&self) -> &'ctx Context;
+}
+
+pub(crate) trait CApiBound {
+    fn capi_return(&self, c_ret: i32) -> TileDBResult<()>;
+}
+
+impl<'ctx, T> CApiBound for T
+where
+    T: ContextBound<'ctx>,
+{
+    fn capi_return(&self, c_ret: i32) -> TileDBResult<()> {
+        self.context().capi_return(c_ret)
+    }
+}
+
 pub struct Context {
     raw: RawContext,
 }
