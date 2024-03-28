@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use crate::array::DimensionKey;
 use crate::context::Context;
 use crate::convert::CAPIConverter;
 use crate::query::Builder as QueryBuilder;
@@ -57,9 +58,9 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 
-    pub fn dimension_range_typed<Conv: CAPIConverter>(
+    pub fn dimension_range_typed<Conv: CAPIConverter, K: Into<DimensionKey>>(
         self,
-        idx: u32,
+        key: K,
         range: &[Conv; 2],
     ) -> TileDBResult<QueryBuilder<'ctx>> {
         let c_context = self.subarray.context.capi();
@@ -68,15 +69,33 @@ impl<'ctx> Builder<'ctx> {
         let c_start = &range[0] as *const Conv as *const std::ffi::c_void;
         let c_end = &range[1] as *const Conv as *const std::ffi::c_void;
 
-        let c_ret = unsafe {
-            ffi::tiledb_subarray_add_range(
-                c_context,
-                c_subarray,
-                idx,
-                c_start,
-                c_end,
-                std::ptr::null(),
-            )
+        let c_ret = match key.into() {
+            DimensionKey::Index(idx) => {
+                let c_idx = idx.try_into().unwrap();
+                unsafe {
+                    ffi::tiledb_subarray_add_range(
+                        c_context,
+                        c_subarray,
+                        c_idx,
+                        c_start,
+                        c_end,
+                        std::ptr::null(),
+                    )
+                }
+            }
+            DimensionKey::Name(name) => {
+                let c_name = cstring!(name);
+                unsafe {
+                    ffi::tiledb_subarray_add_range_by_name(
+                        c_context,
+                        c_subarray,
+                        c_name.as_ptr(),
+                        c_start,
+                        c_end,
+                        std::ptr::null(),
+                    )
+                }
+            }
         };
         if c_ret == ffi::TILEDB_OK {
             self.build()

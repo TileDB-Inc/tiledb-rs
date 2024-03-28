@@ -13,7 +13,7 @@ pub mod schema;
 
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
 pub use dimension::{Builder as DimensionBuilder, Dimension, DimensionData};
-pub use domain::{Builder as DomainBuilder, Domain, DomainData};
+pub use domain::{Builder as DomainBuilder, DimensionKey, Domain, DomainData};
 pub use schema::{ArrayType, Builder as SchemaBuilder, Schema, SchemaData};
 
 pub enum Mode {

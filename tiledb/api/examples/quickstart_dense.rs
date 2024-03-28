@@ -128,9 +128,9 @@ fn read_array() -> TileDBResult<()> {
                 results.as_mut_slice(),
             )?
             .add_subarray()?
-            .dimension_range_typed::<i32>(0, &[1, 2])?
+            .dimension_range_typed::<i32, _>("rows", &[1, 2])?
             .add_subarray()?
-            .dimension_range_typed::<i32>(1, &[2, 4])?
+            .dimension_range_typed::<i32, _>("columns", &[2, 4])?
             .build();
 
     query.submit()?;
