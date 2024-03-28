@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -365,21 +366,24 @@ impl<'ctx> Factory<'ctx> for DimensionData {
         let b = fn_typed!(self.datatype, DT, {
             let d0 = serde_json::from_value::<DT>(self.domain[0].clone())
                 .map_err(|e| {
-                    Error::from(format!(
-                        "Error deserializing domain lower bound: {}",
-                        e
-                    ))
+                    Error::Deserialization(
+                        format!("dimension '{}' lower bound", self.name),
+                        anyhow!(e),
+                    )
                 })?;
             let d1 = serde_json::from_value::<DT>(self.domain[1].clone())
                 .map_err(|e| {
-                    Error::from(format!(
-                        "Error deserializing domain lower bound: {}",
-                        e
-                    ))
+                    Error::Deserialization(
+                        format!("dimension '{}' upper bound", self.name),
+                        anyhow!(e),
+                    )
                 })?;
             let extent = serde_json::from_value::<DT>(self.extent.clone())
                 .map_err(|e| {
-                    Error::from(format!("Error deserializing extent: {}", e))
+                    Error::Deserialization(
+                        format!("dimension '{}' extent", self.name),
+                        anyhow!(e),
+                    )
                 })?;
             Builder::new::<DT>(
                 context,

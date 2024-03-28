@@ -631,7 +631,6 @@ impl<'ctx> VFSHandle<'ctx> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error;
     use tempdir::TempDir;
 
     #[test]
@@ -648,12 +647,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").map_err(|e| {
-            error::Error::from(format!(
-                "Error creating temporary directory: {}",
-                e
-            ))
-        })?;
+        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
 
         let tmp_uri = String::from("file://")
             + tmp_dir.path().to_str().expect("Error creating tmp_uri");
@@ -730,12 +724,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").map_err(|e| {
-            error::Error::from(format!(
-                "Error creating temporary directory: {}",
-                e
-            ))
-        })?;
+        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
 
         let file1_uri = String::from("file://")
             + tmp_dir
@@ -855,12 +844,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").map_err(|e| {
-            error::Error::from(format!(
-                "Error creating temporary directory: {}",
-                e
-            ))
-        })?;
+        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
 
         create_test_dir_structure(&vfs, &tmp_dir)?;
 
@@ -891,12 +875,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").map_err(|e| {
-            error::Error::from(format!(
-                "Error creating temporary directory: {}",
-                e
-            ))
-        })?;
+        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
 
         let tmp_uri = tmp_dir.path().to_str().expect("Error getting tmp_uri");
         let mut count: u64 = 0;
@@ -922,12 +901,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").map_err(|e| {
-            error::Error::from(format!(
-                "Error creating temporary directory: {}",
-                e
-            ))
-        })?;
+        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
 
         create_test_dir_structure(&vfs, &tmp_dir)?;
 

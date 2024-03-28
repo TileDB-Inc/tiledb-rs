@@ -1,102 +1,102 @@
 extern crate tiledb_sys as ffi;
 
-use std::convert::Into;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::str::FromStr;
+use std::ops::Deref;
 
 use serde::{Serialize, Serializer};
 
-pub(crate) enum ErrorData {
-    Native(*mut ffi::tiledb_error_t),
-    Custom(String),
+use crate::Datatype;
+
+pub(crate) enum RawError {
+    Owned(*mut ffi::tiledb_error_t),
 }
 
-pub struct Error {
-    data: ErrorData,
-}
-
-impl Error {
-    pub fn get_message(&self) -> String {
-        match &self.data {
-            ErrorData::Native(cptr) => {
-                let mut msg = std::ptr::null::<std::os::raw::c_char>();
-                let res = unsafe {
-                    ffi::tiledb_error_message(
-                        *cptr,
-                        &mut msg as *mut *const std::os::raw::c_char,
-                    )
-                };
-                if res == ffi::TILEDB_OK && !msg.is_null() {
-                    let c_msg = unsafe { std::ffi::CStr::from_ptr(msg) };
-                    let msg = String::from(c_msg.to_string_lossy());
-                    msg
-                } else {
-                    String::from(
-                        "Failed to retrieve an error message from TileDB.",
-                    )
-                }
-            }
-            ErrorData::Custom(s) => s.clone(),
-        }
+impl Deref for RawError {
+    type Target = *mut ffi::tiledb_error_t;
+    fn deref(&self) -> &Self::Target {
+        let RawError::Owned(ref ffi) = *self;
+        ffi
     }
 }
 
-impl Debug for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", self.get_message())
-    }
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", self.get_message())
-    }
-}
-
-impl From<Error> for String {
-    fn from(error: Error) -> String {
-        error.get_message()
-    }
-}
-
-impl From<&str> for Error {
-    fn from(s: &str) -> Error {
-        Error {
-            data: ErrorData::Custom(s.into()),
-        }
-    }
-}
-
-impl From<String> for Error {
-    fn from(s: String) -> Error {
-        Error {
-            data: ErrorData::Custom(s),
-        }
-    }
-}
-
-impl FromStr for Error {
-    type Err = (); /* always succeeds */
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Error {
-            data: ErrorData::Custom(s.into()),
-        })
-    }
-}
-
-impl From<*mut ffi::tiledb_error_t> for Error {
-    fn from(cptr: *mut ffi::tiledb_error_t) -> Error {
-        Error {
-            data: ErrorData::Native(cptr),
-        }
-    }
-}
-
-impl Drop for Error {
+impl Drop for RawError {
     fn drop(&mut self) {
-        if let ErrorData::Native(ref mut cptr) = self.data {
-            unsafe { ffi::tiledb_error_free(cptr) }
+        let RawError::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_error_free(ffi) }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum DatatypeErrorKind {
+    InvalidDiscriminant(u64),
+    TypeMismatch {
+        user_type: &'static str,
+        tiledb_type: Datatype,
+    },
+}
+
+impl Display for DatatypeErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            DatatypeErrorKind::InvalidDiscriminant(value) => {
+                write!(f, "Invalid datatype: {}", value)
+            }
+            DatatypeErrorKind::TypeMismatch {
+                user_type,
+                tiledb_type,
+            } => {
+                write!(
+                    f,
+                    "Type mismatch: requested {}, but found {}",
+                    user_type, tiledb_type
+                )
+            }
         }
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// Internal error due to bugs in tiledb.
+    /// This should be not occur in normal usage of tiledb.
+    #[error("Internal error: {0}")]
+    Internal(String),
+    /// Error received from the libtiledb backend
+    #[error("libtiledb error: {0}")]
+    LibTileDB(String),
+    /// Error when a function has an invalid argument
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(#[source] anyhow::Error),
+    /// Error with datatype handling
+    #[error("Datatype error: {0}")]
+    Datatype(DatatypeErrorKind),
+    /// Error serializing data
+    #[error("Serialization error: {0}: {1}")]
+    Serialization(String, #[source] anyhow::Error),
+    /// Error deserializing data
+    #[error("Deserialization error: {0}: {1}")]
+    Deserialization(String, #[source] anyhow::Error),
+    /// Any error which cannot be categorized as any of the above
+    #[error("{0}")]
+    Other(String),
+}
+
+impl From<RawError> for Error {
+    fn from(e: RawError) -> Self {
+        let mut c_msg: *const std::os::raw::c_char = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_error_message(
+                *e,
+                &mut c_msg as *mut *const std::os::raw::c_char,
+            )
+        };
+        let message = if c_ret == ffi::TILEDB_OK && !c_msg.is_null() {
+            let c_message = unsafe { std::ffi::CStr::from_ptr(c_msg) };
+            String::from(c_message.to_string_lossy())
+        } else {
+            String::from("Failed to retrieve an error message from TileDB.")
+        };
+        Error::LibTileDB(message)
     }
 }
 
@@ -105,8 +105,25 @@ impl Serialize for Error {
     where
         S: Serializer,
     {
-        format!("<{}>", self.get_message()).serialize(serializer)
+        format!("<{}>", self).serialize(serializer)
     }
 }
 
-impl std::error::Error for Error {}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    /// Ensure that Error is Sync, fails to compile if not
+    fn is_sync() {
+        fn is_sync<T: Sync>() {}
+        is_sync::<Error>()
+    }
+
+    #[test]
+    /// Ensure that Error is Send, fails to compile if not
+    fn is_send() {
+        fn is_sync<T: Send>() {}
+        is_sync::<Error>()
+    }
+}

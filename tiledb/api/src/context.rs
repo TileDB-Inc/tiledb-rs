@@ -2,7 +2,7 @@ use std::convert::From;
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
-use crate::error::Error;
+use crate::error::{Error, RawError};
 use crate::Result as TileDBResult;
 
 pub enum ObjectType {
@@ -53,7 +53,7 @@ impl Context {
                 raw: RawContext::Owned(c_ctx),
             })
         } else {
-            Err(Error::from("Error creating context."))
+            Err(Error::LibTileDB(String::from("Could not create context")))
         }
     }
 
@@ -91,16 +91,17 @@ impl Context {
         let res =
             unsafe { ffi::tiledb_ctx_get_last_error(*self.raw, &mut c_err) };
         if res == ffi::TILEDB_OK && !c_err.is_null() {
-            Some(Error::from(c_err))
+            Some(Error::from(RawError::Owned(c_err)))
         } else {
             None
         }
     }
 
     pub fn expect_last_error(&self) -> Error {
-        self.get_last_error().unwrap_or(Error::from(
-            "TileDB internal error: expected error data but found none",
-        ))
+        self.get_last_error()
+            .unwrap_or(Error::Internal(String::from(
+                "libtiledb: expected error data but found none",
+            )))
     }
 
     pub fn is_supported_fs(&self, fs: ffi::Filesystem) -> bool {

@@ -5,12 +5,13 @@ use std::convert::From;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::context::Context;
 use crate::convert::{BitsEq, CAPIConverter};
-use crate::error::Error;
+use crate::error::{DatatypeErrorKind, Error};
 use crate::filter_list::{FilterList, FilterListData, RawFilterList};
 use crate::fn_typed;
 use crate::{Datatype, Factory, Result as TileDBResult};
@@ -167,7 +168,10 @@ impl<'ctx> Attribute<'ctx> {
         }
 
         if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
-            return Err(Error::from("Invalid value size returned by TileDB"));
+            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
+                user_type: std::any::type_name::<Conv>(),
+                tiledb_type: self.datatype()?,
+            }));
         }
 
         let c_val: Conv::CAPIType = unsafe { *c_ptr.cast::<Conv::CAPIType>() };
@@ -204,7 +208,10 @@ impl<'ctx> Attribute<'ctx> {
         }
 
         if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
-            return Err(Error::from("Invalid value size returned by TileDB"));
+            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
+                user_type: std::any::type_name::<Conv>(),
+                tiledb_type: self.datatype()?,
+            }));
         }
 
         let c_val: Conv::CAPIType = unsafe { *c_ptr.cast::<Conv::CAPIType>() };
@@ -378,11 +385,10 @@ impl<'ctx> Builder<'ctx> {
         value: Conv,
     ) -> TileDBResult<Self> {
         if !self.attr.datatype()?.is_compatible_type::<Conv>() {
-            return Err(Error::from(format!(
-                "Attribute type mismatch: expected {}, found {}",
-                self.attr.datatype()?,
-                std::any::type_name::<Conv>()
-            )));
+            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
+                user_type: std::any::type_name::<Conv>(),
+                tiledb_type: self.attr.datatype()?,
+            }));
         }
 
         let c_context = self.attr.context.capi();
@@ -423,11 +429,10 @@ impl<'ctx> Builder<'ctx> {
         }
 
         if !self.attr.datatype()?.is_compatible_type::<Conv>() {
-            return Err(Error::from(format!(
-                "Attribute type mismatch: expected {}, found {}",
-                self.attr.datatype()?,
-                std::any::type_name::<Conv>()
-            )));
+            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
+                user_type: std::any::type_name::<Conv>(),
+                tiledb_type: self.attr.datatype()?,
+            }));
         }
 
         let c_context = self.attr.context.capi();
@@ -540,10 +545,10 @@ impl<'ctx> Factory<'ctx> for AttributeData {
                     fill.data.clone(),
                 )
                 .map_err(|e| {
-                    Error::from(format!(
-                        "Error deserializing fill value: {}",
-                        e
-                    ))
+                    Error::Deserialization(
+                        format!("attribute '{}' fill value", self.name),
+                        anyhow!(e),
+                    )
                 })?;
                 if let Some(fill_nullability) = fill.nullability {
                     b.fill_value_nullability::<AT>(fill_value, fill_nullability)

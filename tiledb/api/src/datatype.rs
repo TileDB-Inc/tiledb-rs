@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
 
 #[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
@@ -472,10 +473,9 @@ impl TryFrom<ffi::tiledb_datatype_t> for Datatype {
             ffi::tiledb_datatype_t_TILEDB_GEOM_WKB => Datatype::GeometryWkb,
             ffi::tiledb_datatype_t_TILEDB_GEOM_WKT => Datatype::GeometryWkt,
             _ => {
-                return Err(crate::error::Error::from(format!(
-                    "Invalid datatype: {}",
-                    value
-                )))
+                return Err(crate::error::Error::Datatype(
+                    DatatypeErrorKind::InvalidDiscriminant(value as u64),
+                ))
             }
         })
     }

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tiledb::context::Context as TileDBContext;
@@ -57,10 +58,10 @@ impl AttributeMetadata {
             let fill_value =
                 serde_json::from_value::<AT>(self.fill_value.data.clone())
                     .map_err(|e| {
-                        TileDBError::from(format!(
-                            "Error deserializing attribute fill value: {}",
-                            e
-                        ))
+                        TileDBError::Deserialization(
+                            String::from("attribute fill value"),
+                            anyhow!(e),
+                        )
                     })?;
             builder
                 .cell_val_num(self.cell_val_num)?
@@ -81,10 +82,10 @@ pub fn arrow_field(
         let metadata =
             serde_json::ser::to_string(&AttributeMetadata::new(attr)?)
                 .map_err(|e| {
-                    TileDBError::from(format!(
-                        "Error serializing metadata for attribute {}: {}",
-                        name, e
-                    ))
+                    TileDBError::Serialization(
+                        format!("attribute {} metadata", name),
+                        anyhow!(e),
+                    )
                 })?;
         Ok(Some(
             arrow_schema::Field::new(name, arrow_dt, attr.is_nullable())
@@ -118,11 +119,10 @@ pub fn tiledb_attribute<'ctx>(
                 tiledb_metadata.as_ref(),
             ) {
                 Ok(attr_metadata) => Ok(Some(attr_metadata.apply(attr)?)),
-                Err(e) => Err(TileDBError::from(format!(
-                    "Error deserializing metadata for attribute {}: {}",
-                    field.name(),
-                    e
-                ))),
+                Err(e) => Err(TileDBError::Deserialization(
+                    format!("attribute {} metadata", field.name()),
+                    anyhow!(e),
+                )),
             }
         } else {
             Ok(Some(attr))

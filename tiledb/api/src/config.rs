@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::error::Error;
+use crate::error::{Error, RawError};
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawConfig {
@@ -68,7 +68,7 @@ impl Config {
                 raw: RawConfig::Owned(c_cfg),
             })
         } else {
-            Err(Error::from(c_err))
+            Err(Error::from(RawError::Owned(c_err)))
         }
     }
 
@@ -90,7 +90,7 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(c_err))
+            Err(Error::from(RawError::Owned(c_err)))
         }
     }
 
@@ -113,7 +113,7 @@ impl Config {
         } else if res == ffi::TILEDB_OK {
             Ok(None)
         } else {
-            Err(Error::from(c_err))
+            Err(Error::from(RawError::Owned(c_err)))
         }
     }
 
@@ -131,7 +131,7 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(c_err))
+            Err(Error::from(RawError::Owned(c_err)))
         }
     }
 
@@ -149,7 +149,7 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(c_err))
+            Err(Error::from(RawError::Owned(c_err)))
         }
     }
 
@@ -167,7 +167,7 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(c_err))
+            Err(Error::from(RawError::Owned(c_err)))
         }
     }
 }

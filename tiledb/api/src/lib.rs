@@ -1,5 +1,7 @@
+extern crate anyhow;
 extern crate serde;
 extern crate serde_json;
+extern crate thiserror;
 extern crate tiledb_sys as ffi;
 
 macro_rules! cstring {
@@ -7,7 +9,9 @@ macro_rules! cstring {
         match std::ffi::CString::new($arg) {
             Ok(c_arg) => c_arg,
             Err(nullity) => {
-                return Err(crate::error::Error::from(format!("{}", nullity)))
+                return Err(crate::error::Error::InvalidArgument(
+                    anyhow::anyhow!(nullity),
+                ))
             }
         }
     };

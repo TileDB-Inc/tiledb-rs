@@ -34,9 +34,10 @@ impl TryFrom<ffi::tiledb_array_type_t> for ArrayType {
         match value {
             ffi::tiledb_array_type_t_TILEDB_DENSE => Ok(ArrayType::Dense),
             ffi::tiledb_array_type_t_TILEDB_SPARSE => Ok(ArrayType::Sparse),
-            _ => {
-                Err(Self::Error::from(format!("Invalid array type: {}", value)))
-            }
+            _ => Err(Self::Error::LibTileDB(format!(
+                "Invalid array type: {}",
+                value
+            ))),
         }
     }
 }
