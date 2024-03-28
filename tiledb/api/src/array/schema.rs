@@ -693,11 +693,11 @@ mod tests {
         let domain = schema.domain().expect("Error reading domain");
 
         let rows = domain.dimension(0).expect("Error reading rows dimension");
-        assert_eq!(Datatype::Int32, rows.datatype());
+        assert_eq!(Datatype::Int32, rows.datatype().unwrap());
         // TODO: add method to check min/max
 
         let cols = domain.dimension(1).expect("Error reading cols dimension");
-        assert_eq!(Datatype::Int32, rows.datatype());
+        assert_eq!(Datatype::Int32, rows.datatype().unwrap());
         // TODO: add method to check min/max
 
         let rows_domain = rows.domain::<i32>().unwrap();

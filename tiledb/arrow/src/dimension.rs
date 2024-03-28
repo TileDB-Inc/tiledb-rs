@@ -22,7 +22,7 @@ pub struct DimensionMetadata {
 
 impl DimensionMetadata {
     pub fn new(dim: &tiledb::array::Dimension) -> TileDBResult<Self> {
-        fn_typed!(dim.datatype(), DT, {
+        fn_typed!(dim.datatype()?, DT, {
             let domain = dim.domain::<DT>()?;
             let extent = dim.extent::<DT>()?;
 
@@ -30,7 +30,7 @@ impl DimensionMetadata {
                 cell_val_num: dim.cell_val_num()?,
                 domain: [json!(domain[0]), json!(domain[1])],
                 extent: json!(extent),
-                filters: FilterMetadata::new(&dim.filters())?,
+                filters: FilterMetadata::new(&dim.filters()?)?,
             })
         })
     }
@@ -42,7 +42,7 @@ impl DimensionMetadata {
 pub fn arrow_field(
     dim: &tiledb::array::Dimension,
 ) -> TileDBResult<Option<arrow_schema::Field>> {
-    if let Some(arrow_dt) = arrow_type_physical(&dim.datatype()) {
+    if let Some(arrow_dt) = arrow_type_physical(&dim.datatype()?) {
         let name = dim.name()?;
         let metadata = serde_json::ser::to_string(&DimensionMetadata::new(
             dim,
