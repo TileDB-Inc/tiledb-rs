@@ -6,6 +6,7 @@ use tiledb::Result as TileDBResult;
 const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense_array";
 const QUICKSTART_ATTRIBUTE_NAME: &str = "a";
 
+/// Returns whether the example array already exists
 fn array_exists() -> bool {
     let tdb = match tiledb::context::Context::new() {
         Err(_) => return false,
@@ -18,6 +19,12 @@ fn array_exists() -> bool {
     )
 }
 
+/// Creates a dense array at URI `QUICKSTART_DENSE_ARRAY_URI`.
+/// The array has two i32 dimensions ["rows", "columns"] with a single int32
+/// attribute "a" stored in each cell.
+/// Both "rows" and "columns" dimensions range from 1 to 4, and the tiles
+/// span all 4 elements on each dimension.
+/// Hence we have 16 cells of data and a single tile for the whole array.
 fn create_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
@@ -65,6 +72,12 @@ fn create_array() -> TileDBResult<()> {
     tiledb::Array::create(&tdb, QUICKSTART_DENSE_ARRAY_URI, schema)
 }
 
+/// Writes data into the array in row-major order from a 1D-array buffer.
+/// After the write, the contents of the array will be:
+/// [[ 1,  2,  3,  4],
+///  [ 5,  6,  7,  8],
+///  [ 9, 10, 11, 12],
+///  [13, 14, 15, 16]]
 fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
@@ -88,6 +101,14 @@ fn write_array() -> TileDBResult<()> {
     query.submit().map(|_| ())
 }
 
+/// Query back a slice of our array and print the results to stdout.
+/// The slice on "rows" is [1, 2] and on "columns" is [2, 4],
+/// so the returned data should look like:
+/// [[ _,  2,  3,  4],
+///  [ _,  6,  7,  8],
+///  [ _,  _,  _,  _],
+///  [ _,  _,  _,  _]]]
+/// Data is emitted in row-major order, so this will print "2 3 4 6 7 8".
 fn read_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
