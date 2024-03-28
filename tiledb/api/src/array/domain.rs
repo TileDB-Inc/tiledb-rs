@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::array::{
     dimension::DimensionData, dimension::RawDimension, Dimension,
 };
-use crate::context::Context;
+use crate::context::{CApiBound, Context, ContextBound};
 use crate::{Factory, Result as TileDBResult};
 
 pub(crate) enum RawDomain {
@@ -67,6 +67,12 @@ pub struct Domain<'ctx> {
     raw: RawDomain,
 }
 
+impl<'ctx> ContextBound<'ctx> for Domain<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 impl<'ctx> Domain<'ctx> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_domain_t {
         *self.raw
@@ -77,13 +83,9 @@ impl<'ctx> Domain<'ctx> {
         Domain { context, raw }
     }
 
-    pub fn context(&self) -> &'ctx Context {
-        self.context
-    }
-
     pub fn ndim(&self) -> TileDBResult<usize> {
         let mut ndim: u32 = out_ptr!();
-        self.context.capi_return(unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_domain_get_ndim(
                 self.context.capi(),
                 *self.raw,
@@ -105,7 +107,7 @@ impl<'ctx> Domain<'ctx> {
                 let c_domain = *self.raw;
                 let c_name = cstring!(name);
                 let mut c_has: i32 = out_ptr!();
-                self.context.capi_return(unsafe {
+                self.capi_return(unsafe {
                     ffi::tiledb_domain_has_dimension(
                         c_context,
                         c_domain,
@@ -127,7 +129,7 @@ impl<'ctx> Domain<'ctx> {
         let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
 
-        self.context.capi_return(match key.into() {
+        self.capi_return(match key.into() {
             DimensionKey::Index(idx) => {
                 let c_idx: u32 = idx.try_into().map_err(
                     |e: <usize as TryInto<u32>>::Error| {
@@ -201,6 +203,12 @@ pub struct Builder<'ctx> {
     domain: Domain<'ctx>,
 }
 
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.domain.context
+    }
+}
+
 impl<'ctx> Builder<'ctx> {
     pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
@@ -216,10 +224,6 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
-    pub fn context(&self) -> &'ctx Context {
-        self.domain.context
-    }
-
     pub fn add_dimension(
         self,
         dimension: Dimension<'ctx>,
@@ -228,7 +232,7 @@ impl<'ctx> Builder<'ctx> {
         let c_domain = *self.domain.raw;
         let c_dim = dimension.capi();
 
-        self.context().capi_return(unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_domain_add_dimension(c_context, c_domain, c_dim)
         })?;
 
