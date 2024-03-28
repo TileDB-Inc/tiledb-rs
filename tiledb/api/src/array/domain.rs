@@ -77,18 +77,21 @@ impl<'ctx> Domain<'ctx> {
         Domain { context, raw }
     }
 
-    pub fn ndim(&self) -> usize {
+    pub fn context(&self) -> &'ctx Context {
+        self.context
+    }
+
+    pub fn ndim(&self) -> TileDBResult<usize> {
         let mut ndim: u32 = out_ptr!();
-        let c_ret = unsafe {
+        self.context.capi_return(unsafe {
             ffi::tiledb_domain_get_ndim(
                 self.context.capi(),
                 *self.raw,
                 &mut ndim,
             )
-        };
-        // the only errors are possible via mis-use of the C API, which Rust prevents
-        assert_eq!(ffi::TILEDB_OK, c_ret);
-        ndim as usize
+        })?;
+
+        Ok(ndim as usize)
     }
 
     pub fn has_dimension<K: Into<DimensionKey>>(
@@ -96,25 +99,22 @@ impl<'ctx> Domain<'ctx> {
         key: K,
     ) -> TileDBResult<bool> {
         match key.into() {
-            DimensionKey::Index(idx) => Ok(idx < self.ndim()),
+            DimensionKey::Index(idx) => Ok(idx < self.ndim()?),
             DimensionKey::Name(name) => {
                 let c_context = self.context.capi();
                 let c_domain = *self.raw;
                 let c_name = cstring!(name);
                 let mut c_has: i32 = out_ptr!();
-                let c_ret = unsafe {
+                self.context.capi_return(unsafe {
                     ffi::tiledb_domain_has_dimension(
                         c_context,
                         c_domain,
                         c_name.as_ptr(),
                         &mut c_has,
                     )
-                };
-                if c_ret == ffi::TILEDB_OK {
-                    Ok(c_has != 0)
-                } else {
-                    Err(self.context.expect_last_error())
-                }
+                })?;
+
+                Ok(c_has != 0)
             }
         }
     }
@@ -127,7 +127,7 @@ impl<'ctx> Domain<'ctx> {
         let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
 
-        let c_ret = match key.into() {
+        self.context.capi_return(match key.into() {
             DimensionKey::Index(idx) => {
                 let c_idx: u32 = idx.try_into().map_err(
                     |e: <usize as TryInto<u32>>::Error| {
@@ -154,15 +154,12 @@ impl<'ctx> Domain<'ctx> {
                     )
                 }
             }
-        };
-        if c_ret == ffi::TILEDB_OK {
-            Ok(Dimension::new(
-                self.context,
-                RawDimension::Owned(c_dimension),
-            ))
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        })?;
+
+        Ok(Dimension::new(
+            self.context,
+            RawDimension::Owned(c_dimension),
+        ))
     }
 }
 
@@ -178,12 +175,15 @@ impl<'ctx> Debug for Domain<'ctx> {
 
 impl<'c1, 'c2> PartialEq<Domain<'c2>> for Domain<'c1> {
     fn eq(&self, other: &Domain<'c2>) -> bool {
-        let ndim_match = self.ndim() == other.ndim();
+        let ndim_match = match (self.ndim(), other.ndim()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
         if !ndim_match {
             return false;
         }
 
-        for d in 0..self.ndim() {
+        for d in 0..self.ndim().unwrap() {
             let dim_match = match (self.dimension(d), other.dimension(d)) {
                 (Ok(mine), Ok(theirs)) => mine == theirs,
                 _ => false,
@@ -204,18 +204,20 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
-        let c_ret =
-            unsafe { ffi::tiledb_domain_alloc(context.capi(), &mut c_domain) };
-        if c_ret == ffi::TILEDB_OK {
-            Ok(Builder {
-                domain: Domain {
-                    context,
-                    raw: RawDomain::Owned(c_domain),
-                },
-            })
-        } else {
-            Err(context.expect_last_error())
-        }
+        context.capi_return(unsafe {
+            ffi::tiledb_domain_alloc(context.capi(), &mut c_domain)
+        })?;
+
+        Ok(Builder {
+            domain: Domain {
+                context,
+                raw: RawDomain::Owned(c_domain),
+            },
+        })
+    }
+
+    pub fn context(&self) -> &'ctx Context {
+        self.domain.context
     }
 
     pub fn add_dimension(
@@ -226,14 +228,11 @@ impl<'ctx> Builder<'ctx> {
         let c_domain = *self.domain.raw;
         let c_dim = dimension.capi();
 
-        let c_ret = unsafe {
+        self.context().capi_return(unsafe {
             ffi::tiledb_domain_add_dimension(c_context, c_domain, c_dim)
-        };
-        if c_ret == ffi::TILEDB_OK {
-            Ok(self)
-        } else {
-            Err(self.domain.context.expect_last_error())
-        }
+        })?;
+
+        Ok(self)
     }
 
     pub fn build(self) -> Domain<'ctx> {
@@ -258,7 +257,7 @@ impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {
 
     fn try_from(domain: &Domain<'ctx>) -> TileDBResult<Self> {
         Ok(DomainData {
-            dimension: (0..domain.ndim())
+            dimension: (0..domain.ndim()?)
                 .map(|d| DimensionData::try_from(&domain.dimension(d)?))
                 .collect::<TileDBResult<Vec<DimensionData>>>()?,
         })
@@ -292,7 +291,7 @@ mod tests {
         // no dimensions
         {
             let domain = Builder::new(&context).unwrap().build();
-            assert_eq!(0, domain.ndim());
+            assert_eq!(0, domain.ndim().unwrap());
 
             assert!(!domain.has_dimension(0).unwrap());
             assert!(!domain.has_dimension("d1").unwrap());
@@ -325,7 +324,7 @@ mod tests {
                 .add_dimension(dim_in)
                 .unwrap()
                 .build();
-            assert_eq!(1, domain.ndim());
+            assert_eq!(1, domain.ndim().unwrap());
 
             assert!(domain.has_dimension(0).unwrap());
             assert!(domain.has_dimension(dim_cmp.name().unwrap()).unwrap());
@@ -392,7 +391,7 @@ mod tests {
                 .add_dimension(dim2_in)
                 .unwrap()
                 .build();
-            assert_eq!(2, domain.ndim());
+            assert_eq!(2, domain.ndim().unwrap());
 
             assert!(domain.has_dimension(0).unwrap());
             assert!(domain.has_dimension(1).unwrap());

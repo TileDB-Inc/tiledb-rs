@@ -42,7 +42,7 @@ impl SchemaMetadata {
             )?,
             offsets_filters: FilterMetadata::new(&schema.offsets_filters()?)?,
             nullity_filters: FilterMetadata::new(&schema.nullity_filters()?)?,
-            ndim: schema.domain()?.ndim(),
+            ndim: schema.domain()?.ndim()?,
         })
     }
 }
@@ -53,7 +53,7 @@ pub fn arrow_schema<'ctx>(
     let mut builder =
         arrow_schema::SchemaBuilder::with_capacity(tiledb.nattributes());
 
-    for d in 0..tiledb.domain()?.ndim() {
+    for d in 0..tiledb.domain()?.ndim()? {
         let dim = tiledb.domain()?.dimension(d)?;
         if let Some(field) = crate::dimension::arrow_field(&dim)? {
             builder.push(field)
