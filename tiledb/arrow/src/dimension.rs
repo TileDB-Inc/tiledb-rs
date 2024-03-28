@@ -9,7 +9,8 @@ use tiledb::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 use crate::datatype::{arrow_type_physical, tiledb_type_physical};
 use crate::filter::FilterMetadata;
 
-/// Encapsulates fields of a TileDB dimension which are not part of an Arrow field
+/// Encapsulates fields of a TileDB dimension which are not part of an Arrow
+/// field
 #[derive(Deserialize, Serialize)]
 pub struct DimensionMetadata {
     pub cell_val_num: u32,
@@ -124,10 +125,15 @@ mod tests {
     fn test_tiledb_arrow_tiledb() {
         let c: TileDBContext = TileDBContext::new().unwrap();
 
-        proptest!(|(tdb_in in tiledb_test::dimension::arbitrary())| {
-            let tdb_in = tdb_in.create(&c).expect("Error constructing arbitrary tiledb dimension");
-            if let Some(arrow_dimension) = arrow_field(&tdb_in).expect("Error constructing arrow field") {
-                let tdb_out = tiledb_dimension(&c, &arrow_dimension).expect("Error converting back to tiledb dimension").unwrap().build();
+        proptest!(|(tdb_in in tdbtest::prop_dimension())| {
+            let tdb_in = tdb_in.create(&c)
+                .expect("Error constructing arbitrary tiledb dimension");
+            if let Some(arrow_dimension) = arrow_field(&tdb_in)
+                    .expect("Error constructing arrow field") {
+                let tdb_out = tiledb_dimension(&c, &arrow_dimension)
+                    .expect("Error converting back to tiledb dimension")
+                    .unwrap()
+                    .build();
                 assert_eq!(tdb_in, tdb_out);
             }
         });
