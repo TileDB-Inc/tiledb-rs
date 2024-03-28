@@ -7,6 +7,14 @@ use tiledb::{Array, Result as TileDBResult};
 const ARRAY_NAME: &str = "stats_array";
 const ATTRIBUTE_NAME: &str = "a";
 
+/// Creates a dense array at URI `QUICKSTART_DENSE_ARRAY_URI()`.
+/// The array has two i32 dimensions ["row", "col"] with a single int32
+/// attribute "a" stored in each cell.
+/// Both "row" and "col" dimensions range from 1 to 12000, and the tiles
+/// span all row_tile_extent elements on the "row" dimension, and
+/// col_tile_extent elements on the "col" dimension.
+/// Hence, we have 144,000,000 elements in the array. There are
+/// 144,000,000/(row_tile_extent * col_tile_extent) tiles in this array.
 pub fn create_array(
     row_tile_extent: u32,
     col_tile_extent: u32,
@@ -65,6 +73,12 @@ pub fn create_array(
     tiledb::Array::create(&tdb, ARRAY_NAME, schema)
 }
 
+/// Writes data into the array in row-major order from a 1D-array buffer.
+/// After the write, the contents of the array will be:
+/// [[ 0, 1 ... 11999],
+///  [ 12000, 12001, ... 23999],
+///  ...
+///  [143988000, 143988001 ... 143999999]]
 pub fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
     let array: Array =
@@ -81,6 +95,16 @@ pub fn write_array() -> TileDBResult<()> {
     Ok(())
 }
 
+/// Query back a slice of our array and print the stats collected on the query.
+/// The slice on "row" is [1, 3000] and on "col" is [1, 12000],
+/// so the returned data should look like:
+/// [[ 0, 1 ... 11999],
+///  [ 12000, 12001, ... 23999],
+///  ...
+///  [35988000, 35988001, ... 35999999],
+///  [_, _, ... , _],
+/// ...
+/// [_, _, ... , _]]
 pub fn read_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
@@ -92,11 +116,11 @@ pub fn read_array() -> TileDBResult<()> {
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
             .layout(tiledb::array::Layout::RowMajor)?
-            .dimension_buffer_typed(ARRAY_NAME, results.as_mut_slice())?
+            .dimension_buffer_typed(ATTRIBUTE_NAME, results.as_mut_slice())?
             .add_subarray()?
-            .dimension_range_typed::<i32>(0, &[1, 3000])?
+            .dimension_range_typed::<i32, _>(0, &[1, 3000])?
             .add_subarray()?
-            .dimension_range_typed::<i32>(1, &[1, 12000])?
+            .dimension_range_typed::<i32, _>(1, &[1, 12000])?
             .build();
 
     tiledb::stats::enable()?;
