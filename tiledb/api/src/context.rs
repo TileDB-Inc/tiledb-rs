@@ -178,6 +178,7 @@ impl Context {
         }
     }
 
+    /// Safely translate a return value from the C API into a TileDBResult
     pub(crate) fn capi_return(&self, c_ret: i32) -> TileDBResult<()> {
         if c_ret == ffi::TILEDB_OK {
             Ok(())
