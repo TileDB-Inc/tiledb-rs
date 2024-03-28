@@ -149,7 +149,7 @@ impl<'ctx> Schema<'ctx> {
             )
         })?;
 
-        Ok(ArrayType::try_from(c_atype)?)
+        ArrayType::try_from(c_atype)
     }
 
     pub fn capacity(&self) -> TileDBResult<u64> {
@@ -179,7 +179,7 @@ impl<'ctx> Schema<'ctx> {
             )
         })?;
 
-        Ok(Layout::try_from(c_cell_order)?)
+        Layout::try_from(c_cell_order)
     }
 
     pub fn tile_order(&self) -> TileDBResult<Layout> {
@@ -194,7 +194,7 @@ impl<'ctx> Schema<'ctx> {
             )
         })?;
 
-        Ok(Layout::try_from(c_tile_order)?)
+        Layout::try_from(c_tile_order)
     }
 
     pub fn allows_duplicates(&self) -> TileDBResult<bool> {

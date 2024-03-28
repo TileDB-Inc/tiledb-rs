@@ -74,7 +74,7 @@ impl<'ctx> Dimension<'ctx> {
             )
         })?;
 
-        Ok(Datatype::try_from(c_datatype)?)
+        Datatype::try_from(c_datatype)
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<u32> {
