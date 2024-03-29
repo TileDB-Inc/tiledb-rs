@@ -4,6 +4,7 @@ use serde_json::json;
 use crate::array::{attribute::FillData, AttributeData};
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
+use crate::filter::strategy::*;
 use crate::{fn_typed, Datatype};
 
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
@@ -28,7 +29,10 @@ fn prop_fill<T: Arbitrary>() -> impl Strategy<Value = T> {
 }
 
 fn prop_filters(datatype: Datatype) -> impl Strategy<Value = FilterListData> {
-    crate::filter::strategy::prop_filter_pipeline_for_datatype(datatype)
+    prop_filter_pipeline(crate::filter::strategy::Requirements {
+        input_datatype: Some(datatype),
+        ..Default::default()
+    })
 }
 
 pub fn prop_attribute_for_datatype(

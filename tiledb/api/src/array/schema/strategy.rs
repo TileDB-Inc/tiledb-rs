@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use proptest::prelude::*;
 
 use crate::array::attribute::strategy::*;
@@ -53,7 +55,13 @@ pub fn prop_coordinate_filters(
         }
     }
 
-    prop_filter_pipeline().prop_filter(
+    let req = Requirements {
+        context: Some(FilterContext::SchemaCoordinates(Rc::new(
+            domain.clone(),
+        ))),
+        ..Default::default()
+    };
+    prop_filter_pipeline(req).prop_filter(
         "Floating-point dimension cannot have DOUBLE DELTA compression",
         move |fl| {
             !(has_unfiltered_float_dimension
@@ -89,8 +97,8 @@ pub fn prop_schema_for_domain(
         allow_duplicates,
         proptest::collection::vec(prop_attribute(), MIN_ATTRS..=MAX_ATTRS),
         prop_coordinate_filters(&domain),
-        prop_filter_pipeline(),
-        prop_filter_pipeline(),
+        prop_filter_pipeline(Default::default()),
+        prop_filter_pipeline(Default::default()),
     )
         .prop_map(
             move |(
