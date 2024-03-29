@@ -3,7 +3,7 @@ use std::ops::Deref;
 pub use ffi::VFSMode;
 
 use crate::config::{Config, RawConfig};
-use crate::context::Context;
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::Result as TileDBResult;
 
 pub enum VFSLsStatus {
@@ -37,6 +37,12 @@ pub struct VFS<'ctx> {
     raw: RawVFS,
 }
 
+impl<'ctx> ContextBound<'ctx> for VFS<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 pub(crate) enum RawVFSHandle {
     Owned(*mut ffi::tiledb_vfs_fh_t),
 }
@@ -62,36 +68,35 @@ pub struct VFSHandle<'ctx> {
     raw: RawVFSHandle,
 }
 
+impl<'ctx> ContextBound<'ctx> for VFSHandle<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
+}
+
 impl<'ctx> VFS<'ctx> {
     pub fn new(ctx: &'ctx Context, config: &Config) -> TileDBResult<VFS<'ctx>> {
         let mut c_vfs: *mut ffi::tiledb_vfs_t = out_ptr!();
-        let res = unsafe {
+        ctx.capi_return(unsafe {
             ffi::tiledb_vfs_alloc(ctx.capi(), config.capi(), &mut c_vfs)
-        };
-        if res == ffi::TILEDB_OK {
-            Ok(VFS {
-                context: ctx,
-                raw: RawVFS::Owned(c_vfs),
-            })
-        } else {
-            Err(ctx.expect_last_error())
-        }
+        })?;
+        Ok(VFS {
+            context: ctx,
+            raw: RawVFS::Owned(c_vfs),
+        })
     }
 
     pub fn get_config(&self) -> TileDBResult<Config> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
-        let res =
-            unsafe { ffi::tiledb_vfs_get_config(c_ctx, c_vfs, &mut c_cfg) };
+        self.capi_return(unsafe {
+            ffi::tiledb_vfs_get_config(c_ctx, c_vfs, &mut c_cfg)
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(Config {
-                raw: RawConfig::Owned(c_cfg),
-            })
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(Config {
+            raw: RawConfig::Owned(c_cfg),
+        })
     }
 
     pub fn is_bucket(&self, uri: &str) -> TileDBResult<bool> {
@@ -99,20 +104,16 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_bucket: i32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_is_empty_bucket(
                 c_ctx,
                 c_vfs,
                 c_uri.as_ptr(),
                 &mut c_is_bucket,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(c_is_bucket == 1)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(c_is_bucket == 1)
     }
 
     pub fn is_empty_bucket(&self, uri: &str) -> TileDBResult<bool> {
@@ -120,65 +121,49 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_empty: i32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_is_empty_bucket(
                 c_ctx,
                 c_vfs,
                 c_uri.as_ptr(),
                 &mut c_is_empty,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(c_is_empty == 1)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(c_is_empty == 1)
     }
 
     pub fn create_bucket(&self, uri: &str) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_create_bucket(c_ctx, c_vfs, c_uri.as_ptr())
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn remove_bucket(&self, uri: &str) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_remove_bucket(c_ctx, c_vfs, c_uri.as_ptr())
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn empty_bucket(&self, uri: &str) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_empty_bucket(c_ctx, c_vfs, c_uri.as_ptr())
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn is_dir(&self, uri: &str) -> TileDBResult<bool> {
@@ -186,15 +171,11 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_dir: i32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_is_dir(c_ctx, c_vfs, c_uri.as_ptr(), &mut c_is_dir)
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(c_is_dir == 1)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(c_is_dir == 1)
     }
 
     pub fn dir_size(&self, uri: &str) -> TileDBResult<u64> {
@@ -202,43 +183,33 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_size: u64 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_dir_size(c_ctx, c_vfs, c_uri.as_ptr(), &mut c_size)
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(c_size)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(c_size)
     }
 
     pub fn create_dir(&self, uri: &str) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res =
-            unsafe { ffi::tiledb_vfs_create_dir(c_ctx, c_vfs, c_uri.as_ptr()) };
+        self.capi_return(unsafe {
+            ffi::tiledb_vfs_create_dir(c_ctx, c_vfs, c_uri.as_ptr())
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn remove_dir(&self, uri: &str) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res =
-            unsafe { ffi::tiledb_vfs_remove_dir(c_ctx, c_vfs, c_uri.as_ptr()) };
+        self.capi_return(unsafe {
+            ffi::tiledb_vfs_remove_dir(c_ctx, c_vfs, c_uri.as_ptr())
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn copy_dir(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
@@ -246,20 +217,16 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_copy_dir(
                 c_ctx,
                 c_vfs,
                 c_uri_src.as_ptr(),
                 c_uri_tgt.as_ptr(),
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn move_dir(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
@@ -267,20 +234,16 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_move_dir(
                 c_ctx,
                 c_vfs,
                 c_uri_src.as_ptr(),
                 c_uri_tgt.as_ptr(),
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn is_file(&self, uri: &str) -> TileDBResult<bool> {
@@ -288,20 +251,16 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_is_file: i32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_is_file(
                 c_ctx,
                 c_vfs,
                 c_uri.as_ptr(),
                 &mut c_is_file,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(c_is_file == 1)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(c_is_file == 1)
     }
 
     pub fn file_size(&self, uri: &str) -> TileDBResult<u64> {
@@ -309,29 +268,22 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
         let mut c_size: u64 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_file_size(c_ctx, c_vfs, c_uri.as_ptr(), &mut c_size)
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(c_size)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(c_size)
     }
 
     pub fn touch(&self, uri: &str) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res =
-            unsafe { ffi::tiledb_vfs_touch(c_ctx, c_vfs, c_uri.as_ptr()) };
+        self.capi_return(unsafe {
+            ffi::tiledb_vfs_touch(c_ctx, c_vfs, c_uri.as_ptr())
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn create_file(&self, uri: &str) -> TileDBResult<()> {
@@ -347,33 +299,25 @@ impl<'ctx> VFS<'ctx> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_open(c_ctx, c_vfs, c_uri.as_ptr(), mode, &mut c_fh)
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(VFSHandle {
-                context: self.context,
-                raw: RawVFSHandle::Owned(c_fh),
-            })
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(VFSHandle {
+            context: self.context,
+            raw: RawVFSHandle::Owned(c_fh),
+        })
     }
 
     pub fn remove_file(&self, uri: &str) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_remove_file(c_ctx, c_vfs, c_uri.as_ptr())
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn copy_file(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
@@ -381,20 +325,16 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_copy_file(
                 c_ctx,
                 c_vfs,
                 c_uri_src.as_ptr(),
                 c_uri_tgt.as_ptr(),
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn move_file(&self, uri_src: &str, uri_tgt: &str) -> TileDBResult<()> {
@@ -402,20 +342,16 @@ impl<'ctx> VFS<'ctx> {
         let c_vfs = *self.raw;
         let c_uri_src = cstring!(uri_src);
         let c_uri_tgt = cstring!(uri_tgt);
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_move_file(
                 c_ctx,
                 c_vfs,
                 c_uri_src.as_ptr(),
                 c_uri_tgt.as_ptr(),
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn ls<F>(&self, uri: &str, mut callback: F) -> TileDBResult<()>
@@ -430,7 +366,7 @@ impl<'ctx> VFS<'ctx> {
         let mut cb: &mut dyn FnMut(&str) -> VFSLsStatus = &mut callback;
         let cb = &mut cb;
 
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_ls(
                 c_ctx,
                 c_vfs,
@@ -438,13 +374,9 @@ impl<'ctx> VFS<'ctx> {
                 Some(vfs_ls_cb_handler),
                 cb as *mut _ as *mut std::ffi::c_void,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn ls_recursive<F>(
@@ -463,7 +395,7 @@ impl<'ctx> VFS<'ctx> {
         let mut cb: &mut dyn FnMut(&str, u64) -> VFSLsStatus = &mut callback;
         let cb = &mut cb;
 
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_ls_recursive(
                 c_ctx,
                 c_vfs,
@@ -471,13 +403,9 @@ impl<'ctx> VFS<'ctx> {
                 Some(vfs_ls_recursive_cb_handler),
                 cb as *mut _ as *mut std::ffi::c_void,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 }
 
@@ -553,33 +481,25 @@ impl<'ctx> VFSHandle<'ctx> {
         let c_ctx = self.context.capi();
         let c_fh = *self.raw;
         let mut c_is_closed: i32 = 0;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_fh_is_closed(c_ctx, c_fh, &mut c_is_closed)
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(c_is_closed == 1)
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(c_is_closed == 1)
     }
 
     pub fn close(&self) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_fh = *self.raw;
-        let res = unsafe { ffi::tiledb_vfs_close(c_ctx, c_fh) };
+        self.capi_return(unsafe { ffi::tiledb_vfs_close(c_ctx, c_fh) })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn read(&self, offset: u64, buffer: &mut [u8]) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_fh = *self.raw;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_read(
                 c_ctx,
                 c_fh,
@@ -587,44 +507,32 @@ impl<'ctx> VFSHandle<'ctx> {
                 buffer.as_ptr() as *mut std::ffi::c_void,
                 buffer.len() as u64,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn write(&self, buffer: &[u8]) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_fh = *self.raw;
-        let res = unsafe {
+        self.capi_return(unsafe {
             ffi::tiledb_vfs_write(
                 c_ctx,
                 c_fh,
                 buffer.as_ptr() as *const std::ffi::c_void,
                 buffer.len() as u64,
             )
-        };
+        })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 
     pub fn sync(&self) -> TileDBResult<()> {
         let c_ctx = self.context.capi();
         let c_fh = *self.raw;
-        let res = unsafe { ffi::tiledb_vfs_sync(c_ctx, c_fh) };
+        self.capi_return(unsafe { ffi::tiledb_vfs_sync(c_ctx, c_fh) })?;
 
-        if res == ffi::TILEDB_OK {
-            Ok(())
-        } else {
-            Err(self.context.expect_last_error())
-        }
+        Ok(())
     }
 }
 

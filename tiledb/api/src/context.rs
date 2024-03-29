@@ -31,6 +31,23 @@ impl Drop for RawContext {
     }
 }
 
+pub trait ContextBound<'ctx> {
+    fn context(&self) -> &'ctx Context;
+}
+
+pub(crate) trait CApiInterface {
+    fn capi_return(&self, c_ret: i32) -> TileDBResult<()>;
+}
+
+impl<'ctx, T> CApiInterface for T
+where
+    T: ContextBound<'ctx>,
+{
+    fn capi_return(&self, c_ret: i32) -> TileDBResult<()> {
+        self.context().capi_return(c_ret)
+    }
+}
+
 pub struct Context {
     raw: RawContext,
 }
@@ -156,6 +173,15 @@ impl Context {
                 ffi::tiledb_object_t_TILEDB_GROUP => Some(ObjectType::Group),
                 _ => None,
             })
+        } else {
+            Err(self.expect_last_error())
+        }
+    }
+
+    /// Safely translate a return value from the C API into a TileDBResult
+    pub(crate) fn capi_return(&self, c_ret: i32) -> TileDBResult<()> {
+        if c_ret == ffi::TILEDB_OK {
+            Ok(())
         } else {
             Err(self.expect_last_error())
         }
