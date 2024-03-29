@@ -1,5 +1,16 @@
+use std::collections::HashMap;
+
+use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
+
 use crate::error::Error;
 use crate::Result as TileDBResult;
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Metrics {
+    pub timers: HashMap<String, f64>,
+    pub counters: HashMap<String, u64>,
+}
 
 pub fn enable() -> TileDBResult<()> {
     let c_ret = unsafe { ffi::tiledb_stats_enable() };
@@ -55,4 +66,20 @@ pub fn dump() -> TileDBResult<Option<String>> {
     } else {
         Err(Error::LibTileDB(String::from("Failed to retrieve stats.")))
     }
+}
+
+pub fn dump_json() -> TileDBResult<Option<Vec<Metrics>>> {
+    let dump_option = dump()?;
+    let dump = match dump_option {
+        None => return Ok(None),
+        Some(dump_str) => dump_str,
+    };
+    let datas: Vec<Metrics> =
+        serde_json::from_str::<Vec<Metrics>>(dump.as_str()).map_err(|e| {
+            Error::Deserialization(
+                format!("Failed to deserialize stats JSON value {}", dump),
+                anyhow!(e),
+            )
+        })?;
+    Ok(Some(datas))
 }

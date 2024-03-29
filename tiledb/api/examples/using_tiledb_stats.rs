@@ -7,7 +7,23 @@ use tiledb::{Array, Result as TileDBResult};
 const ARRAY_NAME: &str = "stats_array";
 const ATTRIBUTE_NAME: &str = "a";
 
-/// Creates a dense array at URI `QUICKSTART_DENSE_ARRAY_URI()`.
+/// Function that takes a vector of tiledb::stats::Metrics struct and prints
+/// the data. The Metrics struct has two public fields: a HashMap<String, f64>
+/// with relevant timers, and a HashMap<String, u64> with relevant counters.
+pub fn print_metrics(metrics: &[tiledb::stats::Metrics]) {
+    println!("Printing query metrics...");
+    for metric in metrics.iter() {
+        for timer in metric.timers.iter() {
+            println!("Timer {}: {}", timer.0, timer.1);
+        }
+
+        for counter in metric.counters.iter() {
+            println!("Counter {}: {}", counter.0, counter.1);
+        }
+    }
+}
+
+/// Creates a dense array at URI `ARRAY_NAME()`.
 /// The array has two i32 dimensions ["row", "col"] with a single int32
 /// attribute "a" stored in each cell.
 /// Both "row" and "col" dimensions range from 1 to 12000, and the tiles
@@ -96,7 +112,10 @@ pub fn write_array() -> TileDBResult<()> {
 }
 
 /// Query back a slice of our array and print the stats collected on the query.
-/// The slice on "row" is [1, 3000] and on "col" is [1, 12000],
+/// The argument json will determine whether the stats are printed in JSON
+/// format or in string format.
+///
+/// For the read query, the slice on "row" is [1, 3000] and on "col" is [1, 12000],
 /// so the returned data should look like:
 /// [[ 0, 1 ... 11999],
 ///  [ 12000, 12001, ... 23999],
@@ -105,7 +124,7 @@ pub fn write_array() -> TileDBResult<()> {
 ///  [_, _, ... , _],
 /// ...
 /// [_, _, ... , _]]
-pub fn read_array() -> TileDBResult<()> {
+pub fn read_array(json: bool) -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array =
@@ -126,10 +145,18 @@ pub fn read_array() -> TileDBResult<()> {
     tiledb::stats::enable()?;
     query.submit()?;
 
-    let stats: Option<String> = tiledb::stats::dump()?;
-    match stats {
-        Some(stats_str) => println!("{}", &stats_str),
-        None => println!("No stats associated with this query."),
+    if json {
+        let stats = tiledb::stats::dump_json()?;
+        match stats {
+            Some(stats_json) => print_metrics(&stats_json),
+            None => println!("No stats associated with this query."),
+        }
+    } else {
+        let stats = tiledb::stats::dump()?;
+        match stats {
+            Some(stats_str) => println!("{}", &stats_str),
+            None => println!("No stats associated with this query."),
+        }
     }
     tiledb::stats::disable()?;
     Ok(())
@@ -138,6 +165,7 @@ pub fn read_array() -> TileDBResult<()> {
 fn main() -> TileDBResult<()> {
     create_array(1, 12000)?;
     write_array()?;
-    read_array()?;
+    read_array(false)?;
+    read_array(true)?;
     Ok(())
 }
