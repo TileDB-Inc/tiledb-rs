@@ -1,18 +1,16 @@
 use proptest::prelude::*;
-use tiledb::array::{ArrayType, DomainData, SchemaData};
-use tiledb::filter::{CompressionData, CompressionType, FilterData};
-use tiledb::filter_list::FilterListData;
 
-use crate::*;
+use crate::array::{ArrayType, DomainData, Layout, SchemaData};
+use crate::filter::{CompressionData, CompressionType, FilterData};
+use crate::filter_list::FilterListData;
+use crate::strategy::array::{attribute::*, domain::*};
+use crate::strategy::filter::*;
 
 pub fn prop_array_type() -> impl Strategy<Value = ArrayType> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]
 }
 
-pub fn prop_cell_order(
-    array_type: ArrayType,
-) -> impl Strategy<Value = tiledb::array::Layout> {
-    use tiledb::array::Layout;
+pub fn prop_cell_order(array_type: ArrayType) -> impl Strategy<Value = Layout> {
     match array_type {
         ArrayType::Sparse => prop_oneof![
             Just(Layout::Unordered),
@@ -30,8 +28,7 @@ pub fn prop_cell_order(
     }
 }
 
-pub fn prop_tile_order() -> impl Strategy<Value = tiledb::array::Layout> {
-    use tiledb::array::Layout;
+pub fn prop_tile_order() -> impl Strategy<Value = Layout> {
     prop_oneof![
         Just(Layout::Unordered),
         Just(Layout::RowMajor),
@@ -123,16 +120,16 @@ pub fn prop_schema_for_domain(
 
 pub fn prop_schema() -> impl Strategy<Value = SchemaData> {
     prop_array_type().prop_flat_map(|array_type| {
-        crate::domain::arbitrary_for_array_type(array_type).prop_flat_map(
-            move |domain| prop_schema_for_domain(array_type, domain),
-        )
+        prop_domain_for_array_type(array_type).prop_flat_map(move |domain| {
+            prop_schema_for_domain(array_type, domain)
+        })
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tiledb::{Context, Factory};
+    use crate::{Context, Factory};
 
     /// Test that the arbitrary schema construction always succeeds
     #[test]

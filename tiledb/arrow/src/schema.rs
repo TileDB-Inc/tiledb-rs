@@ -160,7 +160,7 @@ mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tdbtest::prop_schema())| {
+        proptest!(|(tdb_in in tiledb::strategy::array::prop_schema())| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_schema) = arrow_schema(&tdb_in)

@@ -132,15 +132,13 @@ pub fn tiledb_attribute<'ctx>(
     }
 }
 
-#[cfg(test)]
-pub mod tests {
-    use super::*;
+#[cfg(any(feature = "proptest-strategies", test))]
+pub mod strategy {
     use proptest::prelude::*;
-    use tiledb::Factory;
 
     pub fn prop_arrow_field() -> impl Strategy<Value = arrow_schema::Field> {
         (
-            tdbtest::prop_attribute_name(),
+            tiledb::strategy::array::prop_attribute_name(),
             crate::datatype::tests::prop_arrow_implemented(),
             proptest::prelude::any::<bool>(),
         )
@@ -154,13 +152,20 @@ pub mod tests {
          * preserved. Which the CAPI doesn't appear to offer a way to do anyway.
          */
     }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use tiledb::Factory;
 
     #[test]
     fn test_tiledb_arrow_tiledb() -> TileDBResult<()> {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tdbtest::prop_attribute())| {
+        proptest!(|(tdb_in in tiledb::strategy::attribute::prop_attribute())| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_field) = arrow_field(&tdb_in)
@@ -179,7 +184,7 @@ pub mod tests {
     fn test_arrow_tiledb_arrow() -> TileDBResult<()> {
         let c: TileDBContext = TileDBContext::new()?;
         /* arrow => tiledb => arrow */
-        proptest!(|(arrow_in in prop_arrow_field())| {
+        proptest!(|(arrow_in in strategy::prop_arrow_field())| {
             let tdb = tiledb_attribute(&c, &arrow_in);
             assert!(tdb.is_ok());
             let tdb = tdb.unwrap();

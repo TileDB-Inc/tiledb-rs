@@ -49,6 +49,9 @@ pub mod query;
 pub mod string;
 pub mod vfs;
 
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
+
 pub fn version() -> (i32, i32, i32) {
     let mut major: i32 = 0;
     let mut minor: i32 = 0;

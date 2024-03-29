@@ -4,10 +4,9 @@ use num_traits::{Bounded, Num};
 use proptest::prelude::*;
 use serde_json::json;
 
-use tiledb::array::{ArrayType, DimensionData};
-use tiledb::{fn_typed, Datatype};
-
-use crate::*;
+use crate::array::{ArrayType, DimensionData};
+use crate::strategy::datatype::*;
+use crate::{fn_typed, Datatype};
 
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {
     proptest::string::string_regex("[a-zA-Z0-9_]*")
@@ -108,7 +107,7 @@ pub fn prop_dimension_for_array_type(
 ) -> impl Strategy<Value = DimensionData> {
     match array_type {
         ArrayType::Dense => prop_datatype_for_dense_dimension().boxed(),
-        ArrayType::Sparse => datatype::prop_datatype_implemented().boxed(),
+        ArrayType::Sparse => prop_datatype_implemented().boxed(),
     }
     .prop_flat_map(prop_dimension_for_datatype)
 }
@@ -121,7 +120,7 @@ pub fn prop_dimension() -> impl Strategy<Value = DimensionData> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tiledb::{Context, Factory};
+    use crate::{Context, Factory};
 
     /// Test that the arbitrary dimension construction always succeeds
     #[test]
