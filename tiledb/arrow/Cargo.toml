@@ -5,8 +5,8 @@ edition = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-arrow = { version = "51.0.0", features = ["prettyprint"] }
-arrow-schema = { version = "51.0.0", default-features = false }
+arrow = { version = "50.0.0", features = ["prettyprint"] }
+arrow-schema = { version = "50.0.0", default-features = false }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { workspace = true }
 tiledb = { workspace = true }
