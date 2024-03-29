@@ -123,8 +123,22 @@ pub fn read_array() -> TileDBResult<()> {
             .dimension_range_typed::<i32, _>(1, &[1, 12000])?
             .build();
 
+    let array1 =
+        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
+    let query1 =
+        tiledb::QueryBuilder::new(&tdb, array1, tiledb::QueryType::Read)?
+            .layout(tiledb::array::Layout::RowMajor)?
+            .dimension_buffer_typed(ATTRIBUTE_NAME, results.as_mut_slice())?
+            .add_subarray()?
+            .dimension_range_typed::<i32, _>(0, &[1, 3000])?
+            .add_subarray()?
+            .dimension_range_typed::<i32, _>(1, &[1, 12000])?
+            .build();
+
     tiledb::stats::enable()?;
     query.submit()?;
+    query1.submit()?;
+
     let stats: Option<String> = tiledb::stats::dump()?;
     match stats {
         Some(stats_str) => println!("{}", &stats_str),

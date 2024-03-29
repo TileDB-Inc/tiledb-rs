@@ -45,12 +45,13 @@ pub fn dump() -> TileDBResult<Option<String>> {
         let free_c_ret = unsafe {
             ffi::tiledb_stats_free_str(&mut c_str as *mut *mut std::ffi::c_char)
         };
+        let stats_dump_rust_str = stats_dump.to_string_lossy().into_owned();
         if free_c_ret != ffi::TILEDB_OK {
             return Err(Error::LibTileDB(String::from(
                 "Failed to free stats str.",
             )));
         }
-        Ok(Some(stats_dump.to_string_lossy().into_owned()))
+        Ok(Some(stats_dump_rust_str))
     } else {
         Err(Error::LibTileDB(String::from("Failed to retrieve stats.")))
     }
