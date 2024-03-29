@@ -39,17 +39,17 @@ pub fn dump() -> TileDBResult<Option<String>> {
     if c_ret == ffi::TILEDB_OK {
         assert!(!c_str.is_null());
         let stats_dump = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        if stats_dump.is_empty() {
-            return Ok(None);
-        }
+        let stats_dump_rust_str = stats_dump.to_string_lossy().into_owned();
         let free_c_ret = unsafe {
             ffi::tiledb_stats_free_str(&mut c_str as *mut *mut std::ffi::c_char)
         };
-        let stats_dump_rust_str = stats_dump.to_string_lossy().into_owned();
         if free_c_ret != ffi::TILEDB_OK {
             return Err(Error::LibTileDB(String::from(
                 "Failed to free stats str.",
             )));
+        }
+        if stats_dump_rust_str.is_empty() {
+            return Ok(None);
         }
         Ok(Some(stats_dump_rust_str))
     } else {
