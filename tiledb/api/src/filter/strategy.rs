@@ -79,27 +79,42 @@ fn prop_compression(
                 with_double_delta
             };
 
-            let kind = proptest::strategy::Union::new(
+            let mut ok_double_delta =
                 match (requirements.input_datatype, reinterpret_datatype) {
-                    (None, _) => with_double_delta(),
+                    (None, _) => true,
                     (Some(input_datatype), Datatype::Any) => {
-                        if input_datatype.is_real_type() {
-                            compression_types.clone()
-                        } else {
-                            with_double_delta()
-                        }
+                        !input_datatype.is_real_type()
                     }
                     (Some(_), reinterpret_datatype) => {
-                        if reinterpret_datatype.is_real_type() {
-                            compression_types.clone()
-                        } else {
-                            with_double_delta()
-                        }
+                        !reinterpret_datatype.is_real_type()
                     }
+                };
+
+            if ok_double_delta {
+                if let Some(FilterContext::SchemaCoordinates(ref domain)) =
+                    requirements.context
+                {
+                    /*
+                     * See tiledb/array_schema/array_schema.cc for the rules.
+                     * DoubleDelta compressor is disallowed in the schema coordinates filter
+                     * if there is a floating-point dimension.
+                     */
+                    ok_double_delta = !domain.dimension.iter().any(|d| {
+                        d.datatype.is_real_type() && d.filters.is_empty()
+                    })
+                }
+            }
+
+            let kind = proptest::strategy::Union::new(
+                if ok_double_delta {
+                    with_double_delta()
+                } else {
+                    compression_types.clone()
                 }
                 .into_iter()
                 .map(Just),
             );
+
             (
                 kind,
                 MIN_COMPRESSION_LEVEL..=MAX_COMPRESSION_LEVEL,

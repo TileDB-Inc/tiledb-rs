@@ -7,7 +7,6 @@ use crate::array::domain::strategy::*;
 use crate::array::{ArrayType, DomainData, Layout, SchemaData};
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::*;
-use crate::filter::{CompressionData, CompressionType, FilterData};
 
 pub fn prop_array_type() -> impl Strategy<Value = ArrayType> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]
@@ -42,40 +41,13 @@ pub fn prop_tile_order() -> impl Strategy<Value = Layout> {
 pub fn prop_coordinate_filters(
     domain: &DomainData,
 ) -> impl Strategy<Value = FilterListData> {
-    /*
-     * See tiledb/array_schema/array_schema.cc for the rules.
-     * - DoubleDelta compressor is disallowed on floating-point dimensions
-     *   with no filters
-     */
-    let mut has_unfiltered_float_dimension = false;
-    for dim in domain.dimension.iter() {
-        if dim.datatype.is_real_type() && dim.filters.is_empty() {
-            has_unfiltered_float_dimension = true;
-            break;
-        }
-    }
-
     let req = Requirements {
         context: Some(FilterContext::SchemaCoordinates(Rc::new(
             domain.clone(),
         ))),
         ..Default::default()
     };
-    prop_filter_pipeline(req).prop_filter(
-        "Floating-point dimension cannot have DOUBLE DELTA compression",
-        move |fl| {
-            !(has_unfiltered_float_dimension
-                && fl.iter().any(|f| {
-                    matches!(
-                        f,
-                        FilterData::Compression(CompressionData {
-                            kind: CompressionType::DoubleDelta,
-                            ..
-                        })
-                    )
-                }))
-        },
-    )
+    prop_filter_pipeline(req)
 }
 
 pub fn prop_schema_for_domain(
