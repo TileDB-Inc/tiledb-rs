@@ -538,6 +538,9 @@ impl<'ctx> Factory<'ctx> for SchemaData {
     }
 }
 
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
+
 #[cfg(test)]
 mod tests {
     use std::io;
