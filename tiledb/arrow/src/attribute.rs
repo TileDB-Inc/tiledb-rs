@@ -139,7 +139,7 @@ pub mod strategy {
     pub fn prop_arrow_field() -> impl Strategy<Value = arrow_schema::Field> {
         (
             tiledb::strategy::array::prop_attribute_name(),
-            crate::datatype::tests::prop_arrow_implemented(),
+            crate::datatype::strategy::prop_arrow_implemented(),
             proptest::prelude::any::<bool>(),
         )
             .prop_map(|(name, data_type, nullable)| {

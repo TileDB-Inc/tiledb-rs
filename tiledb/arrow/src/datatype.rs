@@ -129,6 +129,45 @@ pub fn is_same_physical_type(
     }
 }
 
+#[cfg(any(feature = "proptest-strategies", test))]
+pub mod strategy {
+    use super::*;
+    use proptest::prelude::*;
+
+    /// Returns a strategy for generating any Arrow data type
+    /// which corresponds to a TileDB Datatype
+    pub fn prop_arrow_invertible(
+    ) -> impl Strategy<Value = arrow_schema::DataType> {
+        use arrow_schema::DataType as DT;
+        use arrow_schema::TimeUnit as TU;
+        prop_oneof![
+            Just(DT::Int8),
+            Just(DT::Int16),
+            Just(DT::Int32),
+            Just(DT::Int64),
+            Just(DT::UInt8),
+            Just(DT::UInt16),
+            Just(DT::UInt32),
+            Just(DT::UInt64),
+            Just(DT::Float32),
+            Just(DT::Float64),
+            Just(DT::Timestamp(TU::Second, None)),
+            Just(DT::Timestamp(TU::Millisecond, None)),
+            Just(DT::Timestamp(TU::Microsecond, None)),
+            Just(DT::Timestamp(TU::Nanosecond, None)),
+            Just(DT::Time64(TU::Microsecond)),
+            Just(DT::Time64(TU::Nanosecond))
+        ]
+    }
+
+    pub fn prop_arrow_implemented(
+    ) -> impl Strategy<Value = arrow_schema::DataType> {
+        tiledb::strategy::prop_datatype_implemented()
+            .prop_map(|dt| arrow_type_physical(&dt)
+                .expect("Datatype claims to be implemented but does not have an arrow equivalent"))
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
