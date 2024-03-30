@@ -110,3 +110,9 @@ pub struct tiledb_vfs_t {
 pub struct tiledb_vfs_fh_t {
     _unused: [u8; 0],
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_group_t {
+    _unused: [u8; 0],
+}
