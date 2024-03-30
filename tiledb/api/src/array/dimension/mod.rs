@@ -347,6 +347,9 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     }
 }
 
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
+
 #[cfg(test)]
 mod tests {
     use crate::array::dimension::*;

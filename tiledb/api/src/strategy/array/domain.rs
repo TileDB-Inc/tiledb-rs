@@ -1,7 +1,7 @@
 use proptest::prelude::*;
 
+use crate::array::dimension::strategy::*;
 use crate::array::{ArrayType, DomainData};
-use crate::strategy::array::dimension::*;
 use crate::strategy::datatype::*;
 
 pub fn prop_domain_for_array_type(

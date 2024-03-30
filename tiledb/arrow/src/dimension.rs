@@ -125,7 +125,7 @@ mod tests {
     fn test_tiledb_arrow_tiledb() {
         let c: TileDBContext = TileDBContext::new().unwrap();
 
-        proptest!(|(tdb_in in tiledb::strategy::array::prop_dimension())| {
+        proptest!(|(tdb_in in tiledb::array::dimension::strategy::prop_dimension())| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb dimension");
             if let Some(arrow_dimension) = arrow_field(&tdb_in)
