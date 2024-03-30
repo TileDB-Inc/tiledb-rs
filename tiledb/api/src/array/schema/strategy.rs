@@ -3,9 +3,9 @@ use proptest::prelude::*;
 use crate::array::attribute::strategy::*;
 use crate::array::domain::strategy::*;
 use crate::array::{ArrayType, DomainData, Layout, SchemaData};
+use crate::filter::list::FilterListData;
+use crate::filter::strategy::*;
 use crate::filter::{CompressionData, CompressionType, FilterData};
-use crate::filter_list::FilterListData;
-use crate::strategy::filter::*;
 
 pub fn prop_array_type() -> impl Strategy<Value = ArrayType> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]

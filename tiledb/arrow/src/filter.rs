@@ -10,7 +10,7 @@ pub struct FilterMetadata {
 
 impl FilterMetadata {
     pub fn new(
-        filters: &tiledb::filter_list::FilterList,
+        filters: &tiledb::filter::list::FilterList,
     ) -> TileDBResult<Self> {
         Ok(FilterMetadata {
             filters: filters
@@ -51,7 +51,7 @@ mod tests {
     fn test_serialize_invertibility() {
         let c: TileDBContext = TileDBContext::new().unwrap();
 
-        proptest!(|(filters_in in tiledb::strategy::prop_filter_pipeline())| {
+        proptest!(|(filters_in in tiledb::filter::strategy::prop_filter_pipeline())| {
             let filters_in = filters_in.create(&c)
                 .expect("Error constructing arbitrary filter list");
             let metadata = FilterMetadata::new(&filters_in)

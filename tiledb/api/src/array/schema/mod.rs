@@ -10,7 +10,7 @@ use crate::array::attribute::{AttributeData, RawAttribute};
 use crate::array::domain::{DomainData, RawDomain};
 use crate::array::{Attribute, Domain, Layout};
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::filter_list::{FilterList, FilterListData, RawFilterList};
+use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::{Factory, Result as TileDBResult};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

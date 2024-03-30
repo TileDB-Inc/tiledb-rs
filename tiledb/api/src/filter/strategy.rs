@@ -4,8 +4,8 @@ use proptest::prelude::*;
 use proptest::strategy::Just;
 
 use crate::datatype::strategy::*;
+use crate::filter::list::FilterListData;
 use crate::filter::*;
-use crate::filter_list::FilterListData;
 use crate::Datatype;
 
 fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {

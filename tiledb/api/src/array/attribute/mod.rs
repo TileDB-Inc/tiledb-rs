@@ -12,7 +12,7 @@ use serde_json::json;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::{BitsEq, CAPIConverter};
 use crate::error::{DatatypeErrorKind, Error};
-use crate::filter_list::{FilterList, FilterListData, RawFilterList};
+use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::fn_typed;
 use crate::{Datatype, Factory, Result as TileDBResult};
 
@@ -528,8 +528,8 @@ pub mod strategy;
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::filter::list::Builder as FilterListBuilder;
     use crate::filter::*;
-    use crate::filter_list::Builder as FilterListBuilder;
 
     #[test]
     fn attribute_get_name_and_type() {

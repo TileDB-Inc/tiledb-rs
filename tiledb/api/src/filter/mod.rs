@@ -8,7 +8,9 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::{Datatype, Result as TileDBResult};
 
-pub use crate::filter_list::{Builder as FilterListBuilder, FilterList};
+pub use crate::filter::list::{Builder as FilterListBuilder, FilterList};
+
+pub mod list;
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CompressionType {
@@ -671,6 +673,9 @@ impl<'c1, 'c2> PartialEq<Filter<'c2>> for Filter<'c1> {
         }
     }
 }
+
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
 
 #[cfg(test)]
 mod tests {
