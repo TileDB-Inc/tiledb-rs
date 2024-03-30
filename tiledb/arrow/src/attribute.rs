@@ -138,7 +138,7 @@ pub mod strategy {
 
     pub fn prop_arrow_field() -> impl Strategy<Value = arrow_schema::Field> {
         (
-            tiledb::strategy::array::prop_attribute_name(),
+            tiledb::array::attribute::strategy::prop_attribute_name(),
             crate::datatype::strategy::prop_arrow_implemented(),
             proptest::prelude::any::<bool>(),
         )
@@ -165,7 +165,7 @@ pub mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb::strategy::attribute::prop_attribute())| {
+        proptest!(|(tdb_in in tiledb::array::attribute::strategy::prop_attribute())| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_field) = arrow_field(&tdb_in)

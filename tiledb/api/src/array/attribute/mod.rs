@@ -522,6 +522,9 @@ impl<'ctx> Factory<'ctx> for AttributeData {
     }
 }
 
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
+
 #[cfg(test)]
 mod test {
     use super::*;
