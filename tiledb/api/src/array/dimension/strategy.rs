@@ -5,7 +5,7 @@ use proptest::prelude::*;
 use serde_json::json;
 
 use crate::array::{ArrayType, DimensionData};
-use crate::strategy::datatype::*;
+use crate::datatype::strategy::*;
 use crate::{fn_typed, Datatype};
 
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {

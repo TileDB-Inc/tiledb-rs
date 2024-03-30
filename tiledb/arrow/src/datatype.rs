@@ -162,7 +162,7 @@ pub mod strategy {
 
     pub fn prop_arrow_implemented(
     ) -> impl Strategy<Value = arrow_schema::DataType> {
-        tiledb::strategy::prop_datatype_implemented()
+        tiledb::datatype::strategy::prop_datatype_implemented()
             .prop_map(|dt| arrow_type_physical(&dt)
                 .expect("Datatype claims to be implemented but does not have an arrow equivalent"))
     }
@@ -201,7 +201,7 @@ pub mod tests {
 
     pub fn prop_arrow_implemented(
     ) -> impl Strategy<Value = arrow_schema::DataType> {
-        tiledb::strategy::prop_datatype_implemented()
+        tiledb::datatype::strategy::prop_datatype_implemented()
             .prop_map(|dt| arrow_type_physical(&dt)
                 .expect("Datatype claims to be implemented but does not have an arrow equivalent"))
     }
@@ -228,7 +228,7 @@ pub mod tests {
 
     proptest! {
         #[test]
-        fn test_physical(tdb_dt in tiledb::strategy::prop_datatype()) {
+        fn test_physical(tdb_dt in tiledb::datatype::strategy::prop_datatype()) {
             if let Some(arrow_dt) = arrow_type_physical(&tdb_dt) {
                 assert!(is_same_physical_type(&tdb_dt, &arrow_dt));
                 if let Some(adt_width) = arrow_dt.primitive_width() {

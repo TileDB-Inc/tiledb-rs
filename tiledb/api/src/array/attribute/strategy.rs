@@ -2,8 +2,8 @@ use proptest::prelude::*;
 use serde_json::json;
 
 use crate::array::{attribute::FillData, AttributeData};
+use crate::datatype::strategy::*;
 use crate::filter_list::FilterListData;
-use crate::strategy::datatype::*;
 use crate::{fn_typed, Datatype};
 
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
