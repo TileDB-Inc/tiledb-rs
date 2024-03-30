@@ -69,17 +69,17 @@ pub fn dump() -> TileDBResult<Option<String>> {
 }
 
 pub fn dump_json() -> TileDBResult<Option<Vec<Metrics>>> {
-    let dump_option = dump()?;
-    let dump = match dump_option {
-        None => return Ok(None),
-        Some(dump_str) => dump_str,
-    };
-    let datas: Vec<Metrics> =
-        serde_json::from_str::<Vec<Metrics>>(dump.as_str()).map_err(|e| {
+    if let Some(dump) = dump()? {
+        let datas: Vec<Metrics> = serde_json::from_str::<Vec<Metrics>>(
+            dump.as_str(),
+        )
+        .map_err(|e| {
             Error::Deserialization(
                 format!("Failed to deserialize stats JSON value {}", dump),
                 anyhow!(e),
             )
         })?;
-    Ok(Some(datas))
+        return Ok(Some(datas));
+    }
+    Ok(None)
 }
