@@ -44,7 +44,6 @@ pub mod convert;
 pub mod datatype;
 pub mod error;
 pub mod filter;
-pub mod filter_list;
 pub mod query;
 pub mod string;
 pub mod vfs;

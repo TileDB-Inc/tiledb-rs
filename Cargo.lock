@@ -1036,6 +1036,7 @@ name = "tiledb"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "num-traits",
  "proptest",
  "serde",
  "serde_json",
@@ -1055,22 +1056,11 @@ dependencies = [
  "serde",
  "serde_json",
  "tiledb",
- "tiledb-test",
 ]
 
 [[package]]
 name = "tiledb-sys"
 version = "0.1.0"
-
-[[package]]
-name = "tiledb-test"
-version = "0.1.0"
-dependencies = [
- "num-traits",
- "proptest",
- "serde_json",
- "tiledb",
-]
 
 [[package]]
 name = "tiny-keccak"

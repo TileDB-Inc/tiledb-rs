@@ -1,11 +1,10 @@
 use proptest::prelude::*;
 use serde_json::json;
 
-use tiledb::array::{attribute::FillData, AttributeData};
-use tiledb::filter_list::FilterListData;
-use tiledb::{fn_typed, Datatype};
-
-use crate::*;
+use crate::array::{attribute::FillData, AttributeData};
+use crate::datatype::strategy::*;
+use crate::filter::list::FilterListData;
+use crate::{fn_typed, Datatype};
 
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
     proptest::string::string_regex("[a-zA-Z0-9_]*")
@@ -29,7 +28,7 @@ fn prop_fill<T: Arbitrary>() -> impl Strategy<Value = T> {
 }
 
 fn prop_filters(datatype: Datatype) -> impl Strategy<Value = FilterListData> {
-    prop_filter_pipeline_for_datatype(datatype)
+    crate::filter::strategy::prop_filter_pipeline_for_datatype(datatype)
 }
 
 pub fn prop_attribute_for_datatype(
@@ -76,14 +75,14 @@ pub fn prop_attribute() -> impl Strategy<Value = AttributeData> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tiledb::{Context, Factory};
+    use crate::{Context, Factory};
 
     /// Test that the arbitrary attribute construction always succeeds
     #[test]
     fn attribute_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in arbitrary())| {
+        proptest!(|(attr in prop_attribute())| {
             attr.create(&ctx).expect("Error constructing arbitrary attribute");
         });
     }
@@ -92,7 +91,7 @@ mod tests {
     fn attribute_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in arbitrary())| {
+        proptest!(|(attr in prop_attribute())| {
             let attr = attr.create(&ctx)
                 .expect("Error constructing arbitrary attribute");
             assert_eq!(attr, attr);

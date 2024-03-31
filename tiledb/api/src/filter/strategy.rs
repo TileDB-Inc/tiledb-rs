@@ -3,11 +3,10 @@ use std::collections::VecDeque;
 use proptest::prelude::*;
 use proptest::strategy::Just;
 
-use tiledb::filter::*;
-use tiledb::filter_list::FilterListData;
-use tiledb::Datatype;
-
-use crate::*;
+use crate::datatype::strategy::*;
+use crate::filter::list::FilterListData;
+use crate::filter::*;
+use crate::Datatype;
 
 fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
     const MIN_WINDOW: u32 = 8;
@@ -182,7 +181,7 @@ pub fn prop_filter_pipeline() -> impl Strategy<Value = FilterListData> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tiledb::{Context, Factory};
+    use crate::{Context, Factory};
 
     #[test]
     /// Test that the arbitrary filter construction always succeeds

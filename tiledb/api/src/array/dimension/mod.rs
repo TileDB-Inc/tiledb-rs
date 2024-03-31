@@ -8,7 +8,7 @@ use serde_json::json;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
 use crate::error::Error;
-use crate::filter_list::{FilterList, FilterListData, RawFilterList};
+use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawDimension {
@@ -347,11 +347,14 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     }
 }
 
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
+
 #[cfg(test)]
 mod tests {
     use crate::array::dimension::*;
+    use crate::filter::list::Builder as FilterListBuilder;
     use crate::filter::*;
-    use crate::filter_list::Builder as FilterListBuilder;
 
     #[test]
     fn test_dimension_alloc() {
