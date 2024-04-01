@@ -303,7 +303,7 @@ fn prop_filter_pipeline_impl(
     }
 }
 
-pub fn prop_filter_pipeline(
+fn prop_filter_pipeline(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterListData> {
     const MIN_FILTERS: usize = 0;
