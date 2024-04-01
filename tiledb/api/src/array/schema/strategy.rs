@@ -1,6 +1,8 @@
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use proptest::prelude::*;
+use proptest::strategy::ValueTree;
 
 use crate::array::attribute::strategy::{
     prop_attribute, Requirements as AttributeRequirements,
@@ -106,9 +108,47 @@ fn prop_schema_for_domain(
                 offsets_filters,
                 nullity_filters,
             )| {
+                /*
+                 * Update the set of dimension/attribute names to be unique.
+                 * This probably ought to be threaded into the domain/attribute strategies
+                 * so that they have unique names in all scenarios, but this is way
+                 * easier as long as we only care about the Schema in the end.
+                 */
+                let mut domain = (*domain).clone();
+                let mut attributes = attributes;
+
+                {
+                    let mut runner =
+                        proptest::test_runner::TestRunner::new(Default::default());
+                    let mut names = HashSet::new();
+
+                    {
+                        let dimgen = crate::array::dimension::strategy::prop_dimension_name();
+                        for dim in domain.dimension.iter_mut() {
+                            if !names.insert(dim.name.clone()) {
+                                dim.name = dimgen
+                                    .new_tree(&mut runner)
+                                    .unwrap()
+                                    .current();
+                            }
+                        }
+                    }
+                    {
+                        let attgen = crate::array::attribute::strategy::prop_attribute_name();
+                        for attr in attributes.iter_mut() {
+                            if !names.insert(attr.name.clone()) {
+                                attr.name = attgen
+                                    .new_tree(&mut runner)
+                                    .unwrap()
+                                    .current();
+                            }
+                        }
+                    }
+                }
+
                 SchemaData {
                     array_type,
-                    domain: (*domain).clone(),
+                    domain,
                     capacity: Some(capacity),
                     cell_order: Some(cell_order),
                     tile_order: Some(tile_order),
