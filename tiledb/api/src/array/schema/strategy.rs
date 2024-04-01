@@ -173,7 +173,6 @@ pub fn prop_schema(
     array_type.prop_flat_map(|array_type| {
         prop_domain(Rc::new(DomainRequirements {
             array_type: Some(array_type),
-            ..Default::default()
         }))
         .prop_flat_map(move |domain| {
             prop_schema_for_domain(array_type, Rc::new(domain))

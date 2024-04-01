@@ -51,14 +51,12 @@ fn prop_filters(
     };
 
     let pipeline_requirements = FilterRequirements {
-        context: match requirements.context.as_ref() {
-            None => None,
-            Some(StrategyContext::Schema(array_type, domain)) => {
-                Some(FilterContext::Domain(*array_type, domain.clone()))
-            }
-        },
+        context: requirements.context.as_ref().map(
+            |StrategyContext::Schema(array_type, domain)| {
+                FilterContext::Domain(*array_type, domain.clone())
+            },
+        ),
         input_datatype: Some(datatype),
-        ..Default::default()
     };
 
     prop_filter_pipeline(Rc::new(pipeline_requirements))

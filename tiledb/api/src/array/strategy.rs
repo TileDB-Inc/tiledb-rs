@@ -20,7 +20,7 @@ mod tests {
                 let tempdir = TempDir::new("test_array_create").expect("Error creating temp dir");
                 let uri = String::from("file:///") + tempdir.path().join("array").to_str().unwrap();
 
-                Array::create(&ctx, &uri, schema)
+                Array::create(&ctx, uri, schema)
             };
             array_create.expect("Error creating array from arbitrary schema");
         });

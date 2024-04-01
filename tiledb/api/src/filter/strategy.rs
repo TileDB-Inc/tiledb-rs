@@ -159,11 +159,11 @@ fn prop_webp(
     if let Some(StrategyContext::Domain(array_type, ref domain)) =
         requirements.context.as_ref()
     {
-        if *array_type == ArrayType::Sparse || domain.dimension.len() != 2 {
-            return None;
-        } else if !domain.dimension[0].datatype.is_integral_type() {
-            return None;
-        } else if domain.dimension[0].datatype != domain.dimension[1].datatype {
+        if *array_type == ArrayType::Sparse
+            || domain.dimension.len() != 2
+            || !domain.dimension[0].datatype.is_integral_type()
+            || domain.dimension[0].datatype != domain.dimension[1].datatype
+        {
             return None;
         }
 
@@ -198,9 +198,7 @@ fn prop_webp(
 
         Some(
             (
-                proptest::strategy::Union::new(
-                    formats.into_iter().map(|m| Just(m)),
-                ),
+                proptest::strategy::Union::new(formats.into_iter().map(Just)),
                 prop_oneof![Just(false), Just(true)],
                 0f32..=100f32,
             )
