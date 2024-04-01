@@ -32,7 +32,6 @@ pub enum ChecksumType {
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum WebPFilterInputFormat {
-    None,
     Rgb,
     Bgr,
     Rgba,
@@ -42,7 +41,6 @@ pub enum WebPFilterInputFormat {
 impl WebPFilterInputFormat {
     pub(crate) fn capi_enum(&self) -> u32 {
         let ffi_enum = match *self {
-            WebPFilterInputFormat::None => ffi::WebPFilterInputFormat::NONE,
             WebPFilterInputFormat::Rgb => ffi::WebPFilterInputFormat::RGB,
             WebPFilterInputFormat::Bgr => ffi::WebPFilterInputFormat::BGR,
             WebPFilterInputFormat::Rgba => ffi::WebPFilterInputFormat::RGBA,
@@ -50,13 +48,19 @@ impl WebPFilterInputFormat {
         };
         ffi_enum as u32
     }
+
+    pub fn pixel_depth(&self) -> usize {
+        match *self {
+            WebPFilterInputFormat::Rgb | WebPFilterInputFormat::Bgr => 3,
+            WebPFilterInputFormat::Rgba | WebPFilterInputFormat::Bgra => 4,
+        }
+    }
 }
 
 impl TryFrom<u32> for WebPFilterInputFormat {
     type Error = crate::error::Error;
     fn try_from(value: u32) -> TileDBResult<WebPFilterInputFormat> {
         match value {
-            0 => Ok(WebPFilterInputFormat::None),
             1 => Ok(WebPFilterInputFormat::Rgb),
             2 => Ok(WebPFilterInputFormat::Bgr),
             3 => Ok(WebPFilterInputFormat::Rgba),
@@ -150,7 +154,7 @@ pub enum FilterData {
         offset: Option<f64>,
     },
     WebP {
-        input_format: Option<WebPFilterInputFormat>,
+        input_format: WebPFilterInputFormat,
         lossless: Option<bool>,
         quality: Option<f32>,
     },
@@ -469,7 +473,7 @@ impl<'ctx> Filter<'ctx> {
                 lossless,
                 quality,
             } => {
-                if let Some(input_format) = input_format {
+                {
                     let c_format =
                         input_format.capi_enum() as std::ffi::c_uchar;
                     Self::set_option(
@@ -607,11 +611,11 @@ impl<'ctx> Filter<'ctx> {
                 )?),
             }),
             Some(ffi::FilterType::WebP) => Ok(FilterData::WebP {
-                input_format: Some(WebPFilterInputFormat::try_from(
+                input_format: WebPFilterInputFormat::try_from(
                     self.get_option::<u32>(
                         ffi::FilterOption::WEBP_INPUT_FORMAT,
                     )?,
-                )?),
+                )?,
                 lossless: Some(
                     self.get_option::<std::ffi::c_uchar>(
                         ffi::FilterOption::WEBP_LOSSLESS,
@@ -755,14 +759,17 @@ mod tests {
             let f = Filter::create(
                 &ctx,
                 FilterData::WebP {
-                    input_format: None,
+                    input_format: WebPFilterInputFormat::Rgba,
                     lossless: None,
                     quality: None,
                 },
             )
             .expect("Error creating webp filter");
 
-            assert!(matches!(f.filter_data(), Ok(FilterData::WebP { .. })));
+            assert!(matches!(
+                f.filter_data().expect("Error reading webp filter data"),
+                FilterData::WebP { .. }
+            ));
         }
     }
 
@@ -864,7 +871,7 @@ mod tests {
         let f = Filter::create(
             &ctx,
             FilterData::WebP {
-                input_format: Some(WebPFilterInputFormat::Bgra),
+                input_format: WebPFilterInputFormat::Bgra,
                 lossless: Some(true),
                 quality: Some(0.712),
             },
@@ -878,7 +885,7 @@ mod tests {
                 quality,
             } => {
                 assert_eq!(Some(0.712), quality);
-                assert_eq!(Some(WebPFilterInputFormat::Bgra), input_format);
+                assert_eq!(WebPFilterInputFormat::Bgra, input_format);
                 assert_eq!(Some(true), lossless);
             }
             _ => unreachable!(),

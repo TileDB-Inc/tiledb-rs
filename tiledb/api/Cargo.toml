@@ -11,6 +11,7 @@ path = "src/lib.rs"
 anyhow = { workspace = true }
 num-traits = { version = "0.2", optional = true }
 proptest = { version = "1.0.0", optional = true }
+proptest-derive = { version = "0.4.0", optional = true }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = "1.0.58"
@@ -21,4 +22,4 @@ tempdir = "0.3.7"
 
 [features]
 default = []
-proptest-strategies = ["dep:num-traits", "dep:proptest"]
+proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:proptest-derive"]

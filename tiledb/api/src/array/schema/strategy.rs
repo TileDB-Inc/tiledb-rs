@@ -1,11 +1,24 @@
-use proptest::prelude::*;
+use std::collections::HashSet;
+use std::rc::Rc;
 
-use crate::array::attribute::strategy::*;
-use crate::array::domain::strategy::*;
+use proptest::prelude::*;
+use proptest::strategy::ValueTree;
+
+use crate::array::attribute::strategy::{
+    prop_attribute, Requirements as AttributeRequirements,
+    StrategyContext as AttributeContext,
+};
+use crate::array::domain::strategy::{Requirements as DomainRequirements, *};
 use crate::array::{ArrayType, DomainData, Layout, SchemaData};
 use crate::filter::list::FilterListData;
-use crate::filter::strategy::*;
-use crate::filter::{CompressionData, CompressionType, FilterData};
+use crate::filter::strategy::{
+    Requirements as FilterRequirements, StrategyContext as FilterContext, *,
+};
+
+#[derive(Clone, Default)]
+pub struct Requirements {
+    array_type: Option<ArrayType>,
+}
 
 pub fn prop_array_type() -> impl Strategy<Value = ArrayType> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]
@@ -40,39 +53,18 @@ pub fn prop_tile_order() -> impl Strategy<Value = Layout> {
 pub fn prop_coordinate_filters(
     domain: &DomainData,
 ) -> impl Strategy<Value = FilterListData> {
-    /*
-     * See tiledb/array_schema/array_schema.cc for the rules.
-     * - DoubleDelta compressor is disallowed on floating-point dimensions
-     *   with no filters
-     */
-    let mut has_unfiltered_float_dimension = false;
-    for dim in domain.dimension.iter() {
-        if dim.datatype.is_real_type() && dim.filters.is_empty() {
-            has_unfiltered_float_dimension = true;
-            break;
-        }
-    }
-
-    prop_filter_pipeline().prop_filter(
-        "Floating-point dimension cannot have DOUBLE DELTA compression",
-        move |fl| {
-            !(has_unfiltered_float_dimension
-                && fl.iter().any(|f| {
-                    matches!(
-                        f,
-                        FilterData::Compression(CompressionData {
-                            kind: CompressionType::DoubleDelta,
-                            ..
-                        })
-                    )
-                }))
-        },
-    )
+    let req = FilterRequirements {
+        context: Some(FilterContext::SchemaCoordinates(Rc::new(
+            domain.clone(),
+        ))),
+        ..Default::default()
+    };
+    prop_filter_pipeline(Rc::new(req))
 }
 
-pub fn prop_schema_for_domain(
+fn prop_schema_for_domain(
     array_type: ArrayType,
-    domain: DomainData,
+    domain: Rc<DomainData>,
 ) -> impl Strategy<Value = SchemaData> {
     const MIN_ATTRS: usize = 1;
     const MAX_ATTRS: usize = 32;
@@ -82,15 +74,28 @@ pub fn prop_schema_for_domain(
         ArrayType::Sparse => any::<bool>().boxed(),
     };
 
+    let capacity = match array_type {
+        ArrayType::Dense => 0..=std::u64::MAX,
+        ArrayType::Sparse => 1..=std::u64::MAX,
+    };
+
+    let attr_requirements = AttributeRequirements {
+        context: Some(AttributeContext::Schema(array_type, Rc::clone(&domain))),
+        ..Default::default()
+    };
+
     (
-        any::<u64>(),
+        capacity,
         prop_cell_order(array_type),
         prop_tile_order(),
         allow_duplicates,
-        proptest::collection::vec(prop_attribute(), MIN_ATTRS..=MAX_ATTRS),
+        proptest::collection::vec(
+            prop_attribute(Rc::new(attr_requirements)),
+            MIN_ATTRS..=MAX_ATTRS,
+        ),
         prop_coordinate_filters(&domain),
-        prop_filter_pipeline(),
-        prop_filter_pipeline(),
+        prop_filter_pipeline(Default::default()),
+        prop_filter_pipeline(Default::default()),
     )
         .prop_map(
             move |(
@@ -103,9 +108,47 @@ pub fn prop_schema_for_domain(
                 offsets_filters,
                 nullity_filters,
             )| {
+                /*
+                 * Update the set of dimension/attribute names to be unique.
+                 * This probably ought to be threaded into the domain/attribute strategies
+                 * so that they have unique names in all scenarios, but this is way
+                 * easier as long as we only care about the Schema in the end.
+                 */
+                let mut domain = (*domain).clone();
+                let mut attributes = attributes;
+
+                {
+                    let mut runner =
+                        proptest::test_runner::TestRunner::new(Default::default());
+                    let mut names = HashSet::new();
+
+                    {
+                        let dimgen = crate::array::dimension::strategy::prop_dimension_name();
+                        for dim in domain.dimension.iter_mut() {
+                            while !names.insert(dim.name.clone()) {
+                                dim.name = dimgen
+                                    .new_tree(&mut runner)
+                                    .unwrap()
+                                    .current();
+                            }
+                        }
+                    }
+                    {
+                        let attgen = crate::array::attribute::strategy::prop_attribute_name();
+                        for attr in attributes.iter_mut() {
+                            while !names.insert(attr.name.clone()) {
+                                attr.name = attgen
+                                    .new_tree(&mut runner)
+                                    .unwrap()
+                                    .current();
+                            }
+                        }
+                    }
+                }
+
                 SchemaData {
                     array_type,
-                    domain: domain.clone(),
+                    domain,
                     capacity: Some(capacity),
                     cell_order: Some(cell_order),
                     tile_order: Some(tile_order),
@@ -119,10 +162,20 @@ pub fn prop_schema_for_domain(
         )
 }
 
-pub fn prop_schema() -> impl Strategy<Value = SchemaData> {
-    prop_array_type().prop_flat_map(|array_type| {
-        prop_domain_for_array_type(array_type).prop_flat_map(move |domain| {
-            prop_schema_for_domain(array_type, domain)
+pub fn prop_schema(
+    requirements: Rc<Requirements>,
+) -> impl Strategy<Value = SchemaData> {
+    let array_type = requirements
+        .array_type
+        .map(|at| Just(at).boxed())
+        .unwrap_or(prop_array_type().boxed());
+
+    array_type.prop_flat_map(|array_type| {
+        prop_domain(Rc::new(DomainRequirements {
+            array_type: Some(array_type),
+        }))
+        .prop_flat_map(move |domain| {
+            prop_schema_for_domain(array_type, Rc::new(domain))
         })
     })
 }
@@ -137,7 +190,7 @@ mod tests {
     fn schema_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema())| {
+        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
             maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
         });
@@ -147,7 +200,7 @@ mod tests {
     fn schema_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema())| {
+        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
             let schema = maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);

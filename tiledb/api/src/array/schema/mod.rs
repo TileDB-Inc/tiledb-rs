@@ -14,6 +14,7 @@ use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::{Factory, Result as TileDBResult};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[cfg_attr(feature = "proptest-strategies", derive(proptest_derive::Arbitrary))]
 pub enum ArrayType {
     Dense,
     Sparse,
