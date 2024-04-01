@@ -1,11 +1,27 @@
+use std::rc::Rc;
+
 use proptest::prelude::*;
 use serde_json::json;
 
-use crate::array::{attribute::FillData, AttributeData};
+use crate::array::{attribute::FillData, ArrayType, AttributeData, DomainData};
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::*;
 use crate::{fn_typed, Datatype};
+
+#[derive(Clone)]
+pub enum StrategyContext {
+    /// This attribute is being generated for an array schema
+    Schema(ArrayType, Rc<DomainData>),
+}
+
+#[derive(Clone, Default)]
+pub struct Requirements {
+    pub name: Option<String>,
+    pub datatype: Option<Datatype>,
+    pub nullability: Option<bool>,
+    pub context: Option<StrategyContext>,
+}
 
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
     proptest::string::string_regex("[a-zA-Z0-9_]*")
@@ -16,10 +32,6 @@ pub fn prop_attribute_name() -> impl Strategy<Value = String> {
         )
 }
 
-fn prop_nullable() -> impl Strategy<Value = bool> {
-    any::<bool>()
-}
-
 fn prop_cell_val_num() -> impl Strategy<Value = Option<u32>> {
     Just(None)
 }
@@ -28,23 +40,51 @@ fn prop_fill<T: Arbitrary>() -> impl Strategy<Value = T> {
     any::<T>()
 }
 
-fn prop_filters(datatype: Datatype) -> impl Strategy<Value = FilterListData> {
-    prop_filter_pipeline(crate::filter::strategy::Requirements {
+/// Returns a strategy to generate a filter pipeline for an attribute with the given
+/// datatype and other user requirements
+fn prop_filters(
+    datatype: Datatype,
+    requirements: Rc<Requirements>,
+) -> impl Strategy<Value = FilterListData> {
+    use crate::filter::strategy::{
+        Requirements as FilterRequirements, StrategyContext as FilterContext,
+    };
+
+    let pipeline_requirements = FilterRequirements {
+        context: match requirements.context.as_ref() {
+            None => None,
+            Some(StrategyContext::Schema(array_type, domain)) => {
+                Some(FilterContext::Domain(*array_type, domain.clone()))
+            }
+        },
         input_datatype: Some(datatype),
         ..Default::default()
-    })
+    };
+
+    prop_filter_pipeline(Rc::new(pipeline_requirements))
 }
 
-pub fn prop_attribute_for_datatype(
+/// Returns a strategy for generating an arbitrary Attribute of the given datatype
+/// that satisfies the other user requirements
+fn prop_attribute_for_datatype(
     datatype: Datatype,
+    requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = AttributeData> {
     fn_typed!(datatype, DT, {
-        let name = prop_attribute_name();
-        let nullable = prop_nullable();
+        let name = requirements
+            .name
+            .as_ref()
+            .map(|n| Just(n.clone()).boxed())
+            .unwrap_or(prop_attribute_name().boxed());
+        let nullable = requirements
+            .nullability
+            .as_ref()
+            .map(|n| Just(*n).boxed())
+            .unwrap_or(any::<bool>().boxed());
         let cell_val_num = prop_cell_val_num();
         let fill = prop_fill::<DT>();
         let fill_nullable = any::<bool>();
-        let filters = prop_filters(datatype);
+        let filters = prop_filters(datatype, requirements);
         (name, nullable, cell_val_num, fill, fill_nullable, filters)
             .prop_map(
                 move |(
@@ -72,8 +112,17 @@ pub fn prop_attribute_for_datatype(
     })
 }
 
-pub fn prop_attribute() -> impl Strategy<Value = AttributeData> {
-    prop_datatype_implemented().prop_flat_map(prop_attribute_for_datatype)
+pub fn prop_attribute(
+    requirements: Rc<Requirements>,
+) -> impl Strategy<Value = AttributeData> {
+    let datatype = requirements
+        .datatype
+        .map(|d| Just(d).boxed())
+        .unwrap_or(prop_datatype_implemented().boxed());
+
+    datatype.prop_flat_map(move |datatype| {
+        prop_attribute_for_datatype(datatype, requirements.clone())
+    })
 }
 
 #[cfg(test)]
@@ -86,7 +135,7 @@ mod tests {
     fn attribute_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in prop_attribute())| {
+        proptest!(|(attr in prop_attribute(Default::default()))| {
             attr.create(&ctx).expect("Error constructing arbitrary attribute");
         });
     }
@@ -95,7 +144,7 @@ mod tests {
     fn attribute_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in prop_attribute())| {
+        proptest!(|(attr in prop_attribute(Default::default()))| {
             let attr = attr.create(&ctx)
                 .expect("Error constructing arbitrary attribute");
             assert_eq!(attr, attr);

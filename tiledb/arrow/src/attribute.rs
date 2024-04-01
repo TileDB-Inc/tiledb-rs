@@ -165,7 +165,7 @@ pub mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb::array::attribute::strategy::prop_attribute())| {
+        proptest!(|(tdb_in in tiledb::array::attribute::strategy::prop_attribute(Default::default()))| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_field) = arrow_field(&tdb_in)

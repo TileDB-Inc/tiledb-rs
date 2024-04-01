@@ -1,10 +1,17 @@
+use std::rc::Rc;
+
 use proptest::prelude::*;
 
 use crate::array::dimension::strategy::*;
 use crate::array::{ArrayType, DomainData};
 use crate::datatype::strategy::*;
 
-pub fn prop_domain_for_array_type(
+#[derive(Clone, Default)]
+pub struct Requirements {
+    pub array_type: Option<ArrayType>,
+}
+
+fn prop_domain_for_array_type(
     array_type: ArrayType,
 ) -> impl Strategy<Value = DomainData> {
     const MIN_DIMENSIONS: usize = 1;
@@ -28,9 +35,16 @@ pub fn prop_domain_for_array_type(
     .prop_map(|dimension| DomainData { dimension })
 }
 
-pub fn prop_domain() -> impl Strategy<Value = DomainData> {
-    prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-        .prop_flat_map(prop_domain_for_array_type)
+pub fn prop_domain(
+    requirements: Rc<Requirements>,
+) -> impl Strategy<Value = DomainData> {
+    if let Some(array_type) = requirements.array_type {
+        prop_domain_for_array_type(array_type).boxed()
+    } else {
+        prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
+            .prop_flat_map(prop_domain_for_array_type)
+            .boxed()
+    }
 }
 
 #[cfg(test)]
@@ -43,7 +57,7 @@ mod tests {
     fn domain_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_domain in prop_domain())| {
+        proptest!(|(maybe_domain in prop_domain(Default::default()))| {
             maybe_domain.create(&ctx)
                 .expect("Error constructing arbitrary domain");
         });
@@ -53,7 +67,7 @@ mod tests {
     fn domain_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_domain in prop_domain())| {
+        proptest!(|(maybe_domain in prop_domain(Default::default()))| {
             let domain = maybe_domain.create(&ctx)
                 .expect("Error constructing arbitrary domain");
             assert_eq!(domain, domain);

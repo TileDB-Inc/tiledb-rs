@@ -2,11 +2,21 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 
-use crate::array::attribute::strategy::*;
-use crate::array::domain::strategy::*;
+use crate::array::attribute::strategy::{
+    prop_attribute, Requirements as AttributeRequirements,
+    StrategyContext as AttributeContext,
+};
+use crate::array::domain::strategy::{Requirements as DomainRequirements, *};
 use crate::array::{ArrayType, DomainData, Layout, SchemaData};
 use crate::filter::list::FilterListData;
-use crate::filter::strategy::*;
+use crate::filter::strategy::{
+    Requirements as FilterRequirements, StrategyContext as FilterContext, *,
+};
+
+#[derive(Clone, Default)]
+pub struct Requirements {
+    array_type: Option<ArrayType>,
+}
 
 pub fn prop_array_type() -> impl Strategy<Value = ArrayType> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]
@@ -41,18 +51,18 @@ pub fn prop_tile_order() -> impl Strategy<Value = Layout> {
 pub fn prop_coordinate_filters(
     domain: &DomainData,
 ) -> impl Strategy<Value = FilterListData> {
-    let req = Requirements {
+    let req = FilterRequirements {
         context: Some(FilterContext::SchemaCoordinates(Rc::new(
             domain.clone(),
         ))),
         ..Default::default()
     };
-    prop_filter_pipeline(req)
+    prop_filter_pipeline(Rc::new(req))
 }
 
-pub fn prop_schema_for_domain(
+fn prop_schema_for_domain(
     array_type: ArrayType,
-    domain: DomainData,
+    domain: Rc<DomainData>,
 ) -> impl Strategy<Value = SchemaData> {
     const MIN_ATTRS: usize = 1;
     const MAX_ATTRS: usize = 32;
@@ -62,12 +72,25 @@ pub fn prop_schema_for_domain(
         ArrayType::Sparse => any::<bool>().boxed(),
     };
 
+    let capacity = match array_type {
+        ArrayType::Dense => 0..=std::u64::MAX,
+        ArrayType::Sparse => 1..=std::u64::MAX,
+    };
+
+    let attr_requirements = AttributeRequirements {
+        context: Some(AttributeContext::Schema(array_type, Rc::clone(&domain))),
+        ..Default::default()
+    };
+
     (
-        any::<u64>(),
+        capacity,
         prop_cell_order(array_type),
         prop_tile_order(),
         allow_duplicates,
-        proptest::collection::vec(prop_attribute(), MIN_ATTRS..=MAX_ATTRS),
+        proptest::collection::vec(
+            prop_attribute(Rc::new(attr_requirements)),
+            MIN_ATTRS..=MAX_ATTRS,
+        ),
         prop_coordinate_filters(&domain),
         prop_filter_pipeline(Default::default()),
         prop_filter_pipeline(Default::default()),
@@ -85,7 +108,7 @@ pub fn prop_schema_for_domain(
             )| {
                 SchemaData {
                     array_type,
-                    domain: domain.clone(),
+                    domain: (*domain).clone(),
                     capacity: Some(capacity),
                     cell_order: Some(cell_order),
                     tile_order: Some(tile_order),
@@ -99,10 +122,21 @@ pub fn prop_schema_for_domain(
         )
 }
 
-pub fn prop_schema() -> impl Strategy<Value = SchemaData> {
-    prop_array_type().prop_flat_map(|array_type| {
-        prop_domain_for_array_type(array_type).prop_flat_map(move |domain| {
-            prop_schema_for_domain(array_type, domain)
+pub fn prop_schema(
+    requirements: Rc<Requirements>,
+) -> impl Strategy<Value = SchemaData> {
+    let array_type = requirements
+        .array_type
+        .map(|at| Just(at).boxed())
+        .unwrap_or(prop_array_type().boxed());
+
+    array_type.prop_flat_map(|array_type| {
+        prop_domain(Rc::new(DomainRequirements {
+            array_type: Some(array_type),
+            ..Default::default()
+        }))
+        .prop_flat_map(move |domain| {
+            prop_schema_for_domain(array_type, Rc::new(domain))
         })
     })
 }
@@ -117,7 +151,7 @@ mod tests {
     fn schema_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema())| {
+        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
             maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
         });
@@ -127,7 +161,7 @@ mod tests {
     fn schema_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema())| {
+        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
             let schema = maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);

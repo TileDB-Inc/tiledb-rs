@@ -4,37 +4,57 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::strategy::Just;
 
-use crate::array::DomainData;
+use crate::array::{ArrayType, DomainData};
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
 use crate::filter::*;
 use crate::Datatype;
 
 #[derive(Clone)]
-pub enum FilterContext {
-    Domain(Rc<DomainData>),
+pub enum StrategyContext {
+    Domain(ArrayType, Rc<DomainData>),
     SchemaCoordinates(Rc<DomainData>),
-}
-
-impl FilterContext {
-    pub fn domain(&self) -> Rc<DomainData> {
-        match self {
-            FilterContext::Domain(domain) => domain.clone(),
-            FilterContext::SchemaCoordinates(domain) => domain.clone(),
-        }
-    }
 }
 
 /// Defines requirements for what a generated filter must be able to accept
 #[derive(Clone, Default)]
 pub struct Requirements {
-    pub context: Option<FilterContext>,
     pub input_datatype: Option<Datatype>,
+    pub context: Option<StrategyContext>,
 }
 
 impl Requirements {
-    pub fn domain(&self) -> Option<Rc<DomainData>> {
-        Some(self.context.as_ref()?.domain())
+    /// @return true if and only if the webp filter type is allowed given the requirements.
+    /// In an array schema, webp is allowed for attributes only if:
+    /// - there are exactly two dimensions
+    /// - the two dimensions have the same integral datatype
+    /// - the array is a dense array
+    fn ok_webp(&self) -> bool {
+        let ok_datatype = match self.input_datatype {
+            None => true,
+            Some(Datatype::UInt8) => true,
+            Some(_) => false,
+        };
+        if !ok_datatype {
+            return false;
+        }
+
+        let ok_context = match self.context.as_ref() {
+            Some(StrategyContext::Domain(array_type, domain)) => {
+                if *array_type == ArrayType::Sparse {
+                    false
+                } else if domain.dimension.len() != 2 {
+                    false
+                } else if !domain.dimension[0].datatype.is_integral_type() {
+                    false
+                } else {
+                    domain.dimension[0].datatype == domain.dimension[1].datatype
+                }
+            }
+            _ => true,
+        };
+
+        ok_context
     }
 }
 
@@ -56,7 +76,7 @@ fn prop_compression_reinterpret_datatype() -> impl Strategy<Value = Datatype> {
 }
 
 fn prop_compression(
-    requirements: Requirements,
+    requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterData> {
     const MIN_COMPRESSION_LEVEL: i32 = 1;
     const MAX_COMPRESSION_LEVEL: i32 = 9;
@@ -91,7 +111,7 @@ fn prop_compression(
                 };
 
             if ok_double_delta {
-                if let Some(FilterContext::SchemaCoordinates(ref domain)) =
+                if let Some(StrategyContext::SchemaCoordinates(ref domain)) =
                     requirements.context
                 {
                     /*
@@ -177,7 +197,7 @@ fn prop_webp() -> impl Strategy<Value = FilterData> {
 }
 
 pub fn prop_filter(
-    requirements: Requirements,
+    requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterData> {
     let mut filter_strategies = vec![
         Just(FilterData::BitShuffle).boxed(),
@@ -200,7 +220,7 @@ pub fn prop_filter(
         filter_strategies.push(prop_positivedelta().boxed());
     }
 
-    filter_strategies.push(prop_compression(requirements.clone()).boxed());
+    filter_strategies.push(prop_compression(Rc::clone(&requirements)).boxed());
 
     let ok_scale_float = match requirements.input_datatype {
         None => true,
@@ -211,11 +231,7 @@ pub fn prop_filter(
         filter_strategies.push(prop_scalefloat().boxed());
     }
 
-    let ok_webp = match (requirements.input_datatype, requirements.domain()) {
-        (Some(Datatype::UInt8), Some(domain)) => domain.dimension.len() == 2,
-        (None, None) => true,
-        _ => false,
-    };
+    let ok_webp = requirements.ok_webp();
     if ok_webp {
         filter_strategies.push(prop_webp().boxed());
     }
@@ -234,13 +250,13 @@ pub fn prop_filter(
 }
 
 fn prop_filter_pipeline_impl(
-    requirements: Requirements,
+    requirements: Rc<Requirements>,
     nfilters: usize,
 ) -> impl Strategy<Value = VecDeque<FilterData>> {
     if nfilters == 0 {
         Just(VecDeque::new()).boxed()
     } else {
-        prop_filter(requirements.clone())
+        prop_filter(Rc::clone(&requirements))
             .prop_flat_map(move |filter| {
                 // This unwrap is guaranteed to succeed because the filter was
                 // already checked before being returned from
@@ -252,46 +268,48 @@ fn prop_filter_pipeline_impl(
                     .unwrap();
                 let next_requirements = Requirements {
                     input_datatype: Some(next),
-                    ..requirements.clone()
+                    ..(*requirements).clone()
                 };
-                prop_filter_pipeline_impl(next_requirements, nfilters - 1)
-                    .boxed()
-                    .prop_map(move |mut filter_vec| {
-                        filter_vec.push_front(filter.clone());
-                        filter_vec
-                    })
+                prop_filter_pipeline_impl(
+                    Rc::new(next_requirements),
+                    nfilters - 1,
+                )
+                .boxed()
+                .prop_map(move |mut filter_vec| {
+                    filter_vec.push_front(filter.clone());
+                    filter_vec
+                })
             })
             .boxed()
     }
 }
 
 pub fn prop_filter_pipeline(
-    requirements: Requirements,
+    requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterListData> {
     const MIN_FILTERS: usize = 0;
     const MAX_FILTERS: usize = 4;
 
     fn with_datatype(
-        requirements: Requirements,
+        requirements: Rc<Requirements>,
     ) -> impl Strategy<Value = FilterListData> {
         (MIN_FILTERS..=MAX_FILTERS).prop_flat_map(move |nfilters| {
-            prop_filter_pipeline_impl(requirements.clone(), nfilters).prop_map(
-                move |filter_deque| {
+            prop_filter_pipeline_impl(Rc::clone(&requirements), nfilters)
+                .prop_map(move |filter_deque| {
                     filter_deque.into_iter().collect::<FilterListData>()
-                },
-            )
+                })
         })
     }
 
     if requirements.input_datatype.is_some() {
-        with_datatype(requirements).boxed()
+        with_datatype(Rc::clone(&requirements)).boxed()
     } else {
         prop_datatype_implemented()
             .prop_flat_map(move |input_datatype| {
-                with_datatype(Requirements {
+                with_datatype(Rc::new(Requirements {
                     input_datatype: Some(input_datatype),
-                    ..requirements.clone()
-                })
+                    ..(*requirements).clone()
+                }))
             })
             .boxed()
     }
@@ -319,10 +337,10 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|((dt, filt) in prop_datatype().prop_flat_map(
-                |dt| (Just(dt), prop_filter(Requirements {
+                |dt| (Just(dt), prop_filter(Rc::new(Requirements {
                     input_datatype: Some(dt),
                     ..Default::default()
-                }))))| {
+                })))))| {
             let filt = filt.create(&ctx)
                 .expect("Error constructing arbitrary filter");
 
@@ -349,10 +367,10 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|((dt, fl) in prop_datatype_implemented().prop_flat_map(
-                |dt| (Just(dt), prop_filter_pipeline(Requirements {
+                |dt| (Just(dt), prop_filter_pipeline(Rc::new(Requirements {
                     input_datatype: Some(dt),
                     ..Default::default()
-                }))))| {
+                })))))| {
             let fl = fl.create(&ctx)
                 .expect("Error constructing arbitrary filter");
 
