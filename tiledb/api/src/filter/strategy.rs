@@ -2,7 +2,8 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use proptest::prelude::*;
-use proptest::strategy::Just;
+use proptest::strategy::{Just, NewTree, Strategy, ValueTree};
+use proptest::test_runner::TestRunner;
 
 use crate::array::{ArrayType, DomainData};
 use crate::datatype::strategy::*;
@@ -10,14 +11,14 @@ use crate::filter::list::FilterListData;
 use crate::filter::*;
 use crate::Datatype;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum StrategyContext {
     Domain(ArrayType, Rc<DomainData>),
     SchemaCoordinates(Rc<DomainData>),
 }
 
 /// Defines requirements for what a generated filter must be able to accept
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Requirements {
     pub input_datatype: Option<Datatype>,
     pub context: Option<StrategyContext>,
@@ -302,7 +303,7 @@ fn prop_filter_pipeline_impl(
     }
 }
 
-pub fn prop_filter_pipeline(
+fn prop_filter_pipeline(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterListData> {
     const MIN_FILTERS: usize = 0;
@@ -333,10 +334,96 @@ pub fn prop_filter_pipeline(
     }
 }
 
+/// Value tree to search through the complexity space of some filter pipeline.
+/// A filter pipeline has a bit more structure than just a list of filters,
+/// because the output of each filter feeds into the next one.
+/// The input type is fixed, but the final output can be any data type.
+///
+/// The complexity search space is more restricted than a generic vector strategy.
+/// 1) the filters themselves are basically scalars, so we don't need to shrink them
+/// 2) we must preserve the soundness of the pipeline with contiguous elements,
+///    so our only option is to delete from (or restore) the back of the pipeline
+#[derive(Debug)]
+pub struct FilterPipelineValueTree {
+    initial_pipeline: FilterListData,
+    sublen: usize,
+}
+
+impl FilterPipelineValueTree {
+    pub fn new(init: FilterListData) -> Self {
+        let sublen = init.len();
+        FilterPipelineValueTree {
+            initial_pipeline: init,
+            sublen,
+        }
+    }
+}
+
+impl ValueTree for FilterPipelineValueTree {
+    type Value = FilterListData;
+
+    fn current(&self) -> Self::Value {
+        self.initial_pipeline
+            .iter()
+            .take(self.sublen)
+            .cloned()
+            .collect::<FilterListData>()
+    }
+
+    fn simplify(&mut self) -> bool {
+        if self.sublen > 0 {
+            self.sublen -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn complicate(&mut self) -> bool {
+        if self.sublen < self.initial_pipeline.len() {
+            self.sublen += 1;
+            true
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FilterPipelineStrategy {
+    requirements: Rc<Requirements>,
+}
+
+impl Strategy for FilterPipelineStrategy {
+    type Tree = FilterPipelineValueTree;
+    type Value = FilterListData;
+
+    fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        let initial_pipeline =
+            prop_filter_pipeline(Rc::clone(&self.requirements))
+                .new_tree(runner)?
+                .current();
+
+        Ok(FilterPipelineValueTree::new(initial_pipeline))
+    }
+}
+
+impl Arbitrary for FilterListData {
+    type Parameters = Rc<Requirements>;
+    type Strategy = FilterPipelineStrategy;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        FilterPipelineStrategy {
+            requirements: Rc::clone(&args),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use proptest::strategy::{Strategy, ValueTree};
 
     #[test]
     /// Test that the arbitrary filter construction always succeeds
@@ -430,5 +517,26 @@ mod tests {
                 .expect("Error constructing arbitrary filter");
             assert_eq!(attr, attr);
         });
+    }
+
+    /// Ensure that filter pipelines can shrink
+    #[test]
+    fn pipeline_shrinking() {
+        let strat = any::<FilterListData>();
+
+        let mut runner =
+            proptest::test_runner::TestRunner::new(Default::default());
+
+        let mut value = loop {
+            let value = strat.new_tree(&mut runner).unwrap();
+            if value.current().len() > 2 {
+                break value;
+            }
+        };
+
+        let init = value.current();
+        while value.simplify() {
+            assert!(value.current().len() < init.len());
+        }
     }
 }

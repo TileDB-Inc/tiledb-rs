@@ -6,7 +6,6 @@ use serde_json::json;
 use crate::array::{attribute::FillData, ArrayType, AttributeData, DomainData};
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
-use crate::filter::strategy::*;
 use crate::{fn_typed, Datatype};
 
 #[derive(Clone)]
@@ -59,7 +58,7 @@ fn prop_filters(
         input_datatype: Some(datatype),
     };
 
-    prop_filter_pipeline(Rc::new(pipeline_requirements))
+    any_with::<FilterListData>(Rc::new(pipeline_requirements))
 }
 
 /// Returns a strategy for generating an arbitrary Attribute of the given datatype

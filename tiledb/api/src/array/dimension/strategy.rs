@@ -96,7 +96,7 @@ pub fn prop_dimension_for_datatype(
                 domain: [json!(values.0[0]), json!(values.0[1])],
                 extent: json!(values.1),
                 cell_val_num: None,
-                filters: vec![],
+                filters: Default::default(),
             })
             .boxed()
     })

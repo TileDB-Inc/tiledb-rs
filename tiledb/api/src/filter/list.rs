@@ -2,6 +2,8 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
+
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::{Filter, FilterData, RawFilter};
 use crate::Result as TileDBResult;
@@ -191,7 +193,25 @@ impl<'ctx> Builder<'ctx> {
     }
 }
 
-pub type FilterListData = Vec<FilterData>;
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct FilterListData(Vec<FilterData>);
+
+impl Deref for FilterListData {
+    type Target = Vec<FilterData>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl FromIterator<FilterData> for FilterListData {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = FilterData>,
+    {
+        FilterListData(iter.into_iter().collect::<Vec<FilterData>>())
+    }
+}
 
 impl<'ctx> TryFrom<&FilterList<'ctx>> for FilterListData {
     type Error = crate::error::Error;

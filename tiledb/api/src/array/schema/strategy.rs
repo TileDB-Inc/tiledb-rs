@@ -12,7 +12,7 @@ use crate::array::domain::strategy::{Requirements as DomainRequirements, *};
 use crate::array::{ArrayType, DomainData, Layout, SchemaData};
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
-    Requirements as FilterRequirements, StrategyContext as FilterContext, *,
+    Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
 
 #[derive(Clone, Default)]
@@ -59,7 +59,7 @@ pub fn prop_coordinate_filters(
         ))),
         ..Default::default()
     };
-    prop_filter_pipeline(Rc::new(req))
+    any_with::<FilterListData>(Rc::new(req))
 }
 
 fn prop_schema_for_domain(
@@ -94,8 +94,8 @@ fn prop_schema_for_domain(
             MIN_ATTRS..=MAX_ATTRS,
         ),
         prop_coordinate_filters(&domain),
-        prop_filter_pipeline(Default::default()),
-        prop_filter_pipeline(Default::default()),
+        any::<FilterListData>(),
+        any::<FilterListData>()
     )
         .prop_map(
             move |(
