@@ -8,7 +8,7 @@ use crate::array::attribute::strategy::{
     prop_attribute, Requirements as AttributeRequirements,
     StrategyContext as AttributeContext,
 };
-use crate::array::domain::strategy::{Requirements as DomainRequirements, *};
+use crate::array::domain::strategy::Requirements as DomainRequirements;
 use crate::array::{ArrayType, DomainData, Layout, SchemaData};
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
@@ -171,7 +171,7 @@ pub fn prop_schema(
         .unwrap_or(prop_array_type().boxed());
 
     array_type.prop_flat_map(|array_type| {
-        prop_domain(Rc::new(DomainRequirements {
+        any_with::<DomainData>(Rc::new(DomainRequirements {
             array_type: Some(array_type),
         }))
         .prop_flat_map(move |domain| {
