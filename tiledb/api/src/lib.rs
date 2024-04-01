@@ -47,6 +47,7 @@ pub mod filter;
 pub mod query;
 pub mod stats;
 pub mod string;
+pub mod util;
 pub mod vfs;
 
 pub fn version() -> (i32, i32, i32) {

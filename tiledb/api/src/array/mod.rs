@@ -9,11 +9,15 @@ use crate::Result as TileDBResult;
 pub mod attribute;
 pub mod dimension;
 pub mod domain;
+pub mod enumeration;
 pub mod schema;
 
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
 pub use dimension::{Builder as DimensionBuilder, Dimension, DimensionData};
 pub use domain::{Builder as DomainBuilder, DimensionKey, Domain, DomainData};
+pub use enumeration::{
+    Builder as EnumerationBuilder, Enumeration, EnumerationData,
+};
 pub use schema::{ArrayType, Builder as SchemaBuilder, Schema, SchemaData};
 
 pub enum Mode {
