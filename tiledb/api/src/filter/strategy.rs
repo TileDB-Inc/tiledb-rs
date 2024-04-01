@@ -23,41 +23,6 @@ pub struct Requirements {
     pub context: Option<StrategyContext>,
 }
 
-impl Requirements {
-    /// @return true if and only if the webp filter type is allowed given the requirements.
-    /// In an array schema, webp is allowed for attributes only if:
-    /// - there are exactly two dimensions
-    /// - the two dimensions have the same integral datatype
-    /// - the array is a dense array
-    fn ok_webp(&self) -> bool {
-        let ok_datatype = match self.input_datatype {
-            None => true,
-            Some(Datatype::UInt8) => true,
-            Some(_) => false,
-        };
-        if !ok_datatype {
-            return false;
-        }
-
-        let ok_context = match self.context.as_ref() {
-            Some(StrategyContext::Domain(array_type, domain)) => {
-                if *array_type == ArrayType::Sparse {
-                    false
-                } else if domain.dimension.len() != 2 {
-                    false
-                } else if !domain.dimension[0].datatype.is_integral_type() {
-                    false
-                } else {
-                    domain.dimension[0].datatype == domain.dimension[1].datatype
-                }
-            }
-            _ => true,
-        };
-
-        ok_context
-    }
-}
-
 fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
     const MIN_WINDOW: u32 = 8;
     const MAX_WINDOW: u32 = 1024;
@@ -177,23 +142,79 @@ fn prop_scalefloat() -> impl Strategy<Value = FilterData> {
         })
 }
 
-fn prop_webp() -> impl Strategy<Value = FilterData> {
-    (
-        prop_oneof![
-            Just(WebPFilterInputFormat::None),
-            Just(WebPFilterInputFormat::Rgb),
-            Just(WebPFilterInputFormat::Bgr),
-            Just(WebPFilterInputFormat::Rgba),
-            Just(WebPFilterInputFormat::Bgra),
-        ],
-        prop_oneof![Just(false), Just(true)],
-        0f32..=100f32,
-    )
-        .prop_map(|(input_format, lossless, quality)| FilterData::WebP {
-            input_format: Some(input_format),
-            lossless: Some(lossless),
-            quality: Some(quality),
-        })
+/// If conditions allow, return a strategy which generates an arbitrary WebP filter.
+/// In an array schema, webp is allowed for attributes only if:
+/// - there are exactly two dimensions
+/// - the two dimensions have the same integral datatype
+/// - the array is a dense array
+///
+/// Note that this probably could be more permissive returning Some in other non-Domain scenarios.
+fn prop_webp(
+    requirements: &Rc<Requirements>,
+) -> Option<impl Strategy<Value = FilterData>> {
+    if requirements.input_datatype? != Datatype::UInt8 {
+        return None;
+    }
+
+    if let Some(StrategyContext::Domain(array_type, ref domain)) =
+        requirements.context.as_ref()
+    {
+        if *array_type == ArrayType::Sparse || domain.dimension.len() != 2 {
+            return None;
+        } else if !domain.dimension[0].datatype.is_integral_type() {
+            return None;
+        } else if domain.dimension[0].datatype != domain.dimension[1].datatype {
+            return None;
+        }
+
+        const MAX_EXTENT: usize = 16383;
+
+        let e0 = serde_json::value::from_value::<usize>(
+            domain.dimension[0].extent.clone(),
+        )
+        .ok()?;
+        let e1 = serde_json::value::from_value::<usize>(
+            domain.dimension[1].extent.clone(),
+        )
+        .ok()?;
+
+        if e0 > MAX_EXTENT {
+            return None;
+        }
+
+        let mut formats: Vec<WebPFilterInputFormat> = vec![];
+        if e1 / 3 <= MAX_EXTENT && e1 % 3 == 0 {
+            formats.push(WebPFilterInputFormat::Rgb);
+            formats.push(WebPFilterInputFormat::Bgr);
+        }
+        if e1 / 4 <= MAX_EXTENT && e1 % 4 == 0 {
+            formats.push(WebPFilterInputFormat::Rgba);
+            formats.push(WebPFilterInputFormat::Bgra);
+        }
+
+        if formats.is_empty() {
+            return None;
+        }
+
+        Some(
+            (
+                proptest::strategy::Union::new(
+                    formats.into_iter().map(|m| Just(m)),
+                ),
+                prop_oneof![Just(false), Just(true)],
+                0f32..=100f32,
+            )
+                .prop_map(|(input_format, lossless, quality)| {
+                    FilterData::WebP {
+                        input_format,
+                        lossless: Some(lossless),
+                        quality: Some(quality),
+                    }
+                }),
+        )
+    } else {
+        None
+    }
 }
 
 pub fn prop_filter(
@@ -231,9 +252,8 @@ pub fn prop_filter(
         filter_strategies.push(prop_scalefloat().boxed());
     }
 
-    let ok_webp = requirements.ok_webp();
-    if ok_webp {
-        filter_strategies.push(prop_webp().boxed());
+    if let Some(webp) = prop_webp(&requirements) {
+        filter_strategies.push(webp.boxed());
     }
 
     let ok_xor = match requirements.input_datatype {
