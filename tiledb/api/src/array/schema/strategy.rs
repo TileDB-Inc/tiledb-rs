@@ -125,7 +125,7 @@ fn prop_schema_for_domain(
                     {
                         let dimgen = crate::array::dimension::strategy::prop_dimension_name();
                         for dim in domain.dimension.iter_mut() {
-                            if !names.insert(dim.name.clone()) {
+                            while !names.insert(dim.name.clone()) {
                                 dim.name = dimgen
                                     .new_tree(&mut runner)
                                     .unwrap()
@@ -136,7 +136,7 @@ fn prop_schema_for_domain(
                     {
                         let attgen = crate::array::attribute::strategy::prop_attribute_name();
                         for attr in attributes.iter_mut() {
-                            if !names.insert(attr.name.clone()) {
+                            while !names.insert(attr.name.clone()) {
                                 attr.name = attgen
                                     .new_tree(&mut runner)
                                     .unwrap()
