@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::array::*;
     use crate::context::Context;
@@ -17,7 +17,7 @@ mod tests {
             assert_eq!(schema, schema);
 
             let array_create = {
-                let tempdir = TempDir::new("test_array_create").expect("Error creating temp dir");
+                let tempdir = TempDir::new().expect("Error creating temp dir");
                 let uri = String::from("file:///") + tempdir.path().join("array").to_str().unwrap();
 
                 Array::create(&ctx, uri, schema)

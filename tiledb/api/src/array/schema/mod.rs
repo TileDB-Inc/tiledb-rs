@@ -545,7 +545,7 @@ pub mod strategy;
 #[cfg(test)]
 mod tests {
     use std::io;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::array::schema::*;
     use crate::array::tests::*;
@@ -676,7 +676,7 @@ mod tests {
 
     #[test]
     fn test_load() -> io::Result<()> {
-        let tmp_dir = TempDir::new("tiledb_array_schema_test_load")?;
+        let tmp_dir = TempDir::new()?;
 
         let c: Context = Context::new().unwrap();
 

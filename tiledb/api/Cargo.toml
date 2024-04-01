@@ -18,7 +18,7 @@ thiserror = "1.0.58"
 tiledb-sys = { workspace = true }
 
 [dev-dependencies]
-tempdir = "0.3.7"
+tempfile = "3"
 
 [features]
 default = []

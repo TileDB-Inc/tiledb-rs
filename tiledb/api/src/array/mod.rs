@@ -185,7 +185,7 @@ pub mod strategy;
 #[cfg(test)]
 pub mod tests {
     use std::io;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     use crate::array::*;
     use crate::context::Context;
@@ -245,7 +245,7 @@ pub mod tests {
 
     #[test]
     fn test_array_create() -> io::Result<()> {
-        let tmp_dir = TempDir::new("test_rs_bdelit")?;
+        let tmp_dir = TempDir::new()?;
 
         let c: Context = Context::new().unwrap();
 
