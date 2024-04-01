@@ -175,6 +175,9 @@ impl Drop for Array<'_> {
     }
 }
 
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
+
 #[cfg(test)]
 pub mod tests {
     use std::io;
