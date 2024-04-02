@@ -1,0 +1,8 @@
+[package]
+name = "tiledb-utils"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+tiledb-proc-macro = { workspace = true }

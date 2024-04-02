@@ -1003,7 +1003,9 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+ "tiledb-proc-macro",
  "tiledb-sys",
+ "tiledb-utils",
 ]
 
 [[package]]
@@ -1020,8 +1022,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiledb-proc-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.53",
+]
+
+[[package]]
 name = "tiledb-sys"
 version = "0.1.0"
+
+[[package]]
+name = "tiledb-utils"
+version = "0.1.0"
+dependencies = [
+ "tiledb-proc-macro",
+]
 
 [[package]]
 name = "tiny-keccak"
