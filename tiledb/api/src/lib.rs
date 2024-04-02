@@ -45,6 +45,7 @@ pub mod datatype;
 pub mod error;
 pub mod filter;
 pub mod query;
+pub mod stats;
 pub mod string;
 pub mod vfs;
 
