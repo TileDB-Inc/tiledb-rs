@@ -89,7 +89,7 @@ fn write_array() -> TileDBResult<()> {
 
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
-            .layout(tiledb::array::Layout::RowMajor)?
+            .layout(tiledb::query::QueryLayout::RowMajor)?
             .dimension_buffer_typed(
                 QUICKSTART_ATTRIBUTE_NAME,
                 data.as_mut_slice(),
@@ -120,7 +120,7 @@ fn read_array() -> TileDBResult<()> {
 
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
-            .layout(tiledb::array::Layout::RowMajor)?
+            .layout(tiledb::query::QueryLayout::RowMajor)?
             .dimension_buffer_typed(
                 QUICKSTART_ATTRIBUTE_NAME,
                 results.as_mut_slice(),

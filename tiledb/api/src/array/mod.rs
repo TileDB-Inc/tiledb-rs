@@ -39,34 +39,67 @@ impl Mode {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Layout {
-    Unordered,
+#[cfg_attr(feature = "proptest-strategies", derive(proptest_derive::Arbitrary))]
+pub enum TileOrder {
     RowMajor,
     ColumnMajor,
-    Hilbert,
 }
 
-impl Layout {
+impl TileOrder {
     pub(crate) fn capi_enum(&self) -> ffi::tiledb_layout_t {
         match *self {
-            Layout::Unordered => ffi::tiledb_layout_t_TILEDB_UNORDERED,
-            Layout::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
-            Layout::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
-            Layout::Hilbert => ffi::tiledb_layout_t_TILEDB_HILBERT,
+            TileOrder::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
+            TileOrder::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
         }
     }
 }
 
-impl TryFrom<ffi::tiledb_layout_t> for Layout {
+impl TryFrom<ffi::tiledb_layout_t> for TileOrder {
     type Error = crate::error::Error;
     fn try_from(value: ffi::tiledb_layout_t) -> TileDBResult<Self> {
         match value {
-            ffi::tiledb_layout_t_TILEDB_UNORDERED => Ok(Layout::Unordered),
-            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(Layout::RowMajor),
-            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(Layout::ColumnMajor),
-            ffi::tiledb_layout_t_TILEDB_HILBERT => Ok(Layout::Hilbert),
+            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(TileOrder::RowMajor),
+            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(TileOrder::ColumnMajor),
             _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid layout: {}",
+                "Invalid tile order: {}",
+                value
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum CellOrder {
+    Unordered,
+    RowMajor,
+    ColumnMajor,
+    Global,
+    Hilbert,
+}
+
+impl CellOrder {
+    pub(crate) fn capi_enum(&self) -> ffi::tiledb_layout_t {
+        match *self {
+            CellOrder::Unordered => ffi::tiledb_layout_t_TILEDB_UNORDERED,
+            CellOrder::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
+            CellOrder::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
+            CellOrder::Global => ffi::tiledb_layout_t_TILEDB_GLOBAL_ORDER,
+            CellOrder::Hilbert => ffi::tiledb_layout_t_TILEDB_HILBERT,
+        }
+    }
+}
+
+impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
+    type Error = crate::error::Error;
+    fn try_from(value: ffi::tiledb_layout_t) -> TileDBResult<Self> {
+        match value {
+            ffi::tiledb_layout_t_TILEDB_UNORDERED => Ok(CellOrder::Unordered),
+            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(CellOrder::RowMajor),
+            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(CellOrder::ColumnMajor),
+            ffi::tiledb_layout_t_TILEDB_GLOBAL_ORDER => Ok(CellOrder::Global),
+            ffi::tiledb_layout_t_TILEDB_HILBERT => Ok(CellOrder::Hilbert),
+            _ => Err(Self::Error::LibTileDB(format!(
+                "Invalid cell order: {}",
                 value
             ))),
         }

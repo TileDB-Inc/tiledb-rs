@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::array::attribute::{AttributeData, RawAttribute};
 use crate::array::domain::{DomainData, RawDomain};
-use crate::array::{Attribute, Domain, Layout};
+use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::{Factory, Result as TileDBResult};
@@ -168,7 +168,7 @@ impl<'ctx> Schema<'ctx> {
         Ok(c_capacity)
     }
 
-    pub fn cell_order(&self) -> TileDBResult<Layout> {
+    pub fn cell_order(&self) -> TileDBResult<CellOrder> {
         let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_cell_order: ffi::tiledb_layout_t = out_ptr!();
@@ -180,10 +180,10 @@ impl<'ctx> Schema<'ctx> {
             )
         })?;
 
-        Layout::try_from(c_cell_order)
+        CellOrder::try_from(c_cell_order)
     }
 
-    pub fn tile_order(&self) -> TileDBResult<Layout> {
+    pub fn tile_order(&self) -> TileDBResult<TileOrder> {
         let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_tile_order: ffi::tiledb_layout_t = out_ptr!();
@@ -195,7 +195,7 @@ impl<'ctx> Schema<'ctx> {
             )
         })?;
 
-        Layout::try_from(c_tile_order)
+        TileOrder::try_from(c_tile_order)
     }
 
     pub fn allows_duplicates(&self) -> TileDBResult<bool> {
@@ -361,7 +361,7 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn cell_order(self, order: Layout) -> TileDBResult<Self> {
+    pub fn cell_order(self, order: CellOrder) -> TileDBResult<Self> {
         let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
         let c_order = order.capi_enum();
@@ -373,7 +373,7 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn tile_order(self, order: Layout) -> TileDBResult<Self> {
+    pub fn tile_order(self, order: TileOrder) -> TileDBResult<Self> {
         let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
         let c_order = order.capi_enum();
@@ -478,8 +478,8 @@ pub struct SchemaData {
     pub array_type: ArrayType,
     pub domain: DomainData,
     pub capacity: Option<u64>,
-    pub cell_order: Option<Layout>,
-    pub tile_order: Option<Layout>,
+    pub cell_order: Option<CellOrder>,
+    pub tile_order: Option<TileOrder>,
     pub allow_duplicates: Option<bool>,
     pub attributes: Vec<AttributeData>,
     pub coordinate_filters: FilterListData,
@@ -754,55 +754,39 @@ mod tests {
                 &c,
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
             )
-            .tile_order(Layout::RowMajor)
+            .tile_order(TileOrder::RowMajor)
             .unwrap()
-            .cell_order(Layout::RowMajor)
+            .cell_order(CellOrder::RowMajor)
             .unwrap()
             .build()
             .unwrap();
             let tile = s.tile_order().unwrap();
             let cell = s.cell_order().unwrap();
-            assert_eq!(Layout::RowMajor, tile);
-            assert_eq!(Layout::RowMajor, cell);
+            assert_eq!(TileOrder::RowMajor, tile);
+            assert_eq!(CellOrder::RowMajor, cell);
         }
         {
             let s: Schema = with_attribute(
                 &c,
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
             )
-            .tile_order(Layout::ColumnMajor)
+            .tile_order(TileOrder::ColumnMajor)
             .unwrap()
-            .cell_order(Layout::ColumnMajor)
+            .cell_order(CellOrder::ColumnMajor)
             .unwrap()
             .build()
             .unwrap();
             let tile = s.tile_order().unwrap();
             let cell = s.cell_order().unwrap();
-            assert_eq!(Layout::ColumnMajor, tile);
-            assert_eq!(Layout::ColumnMajor, cell);
+            assert_eq!(TileOrder::ColumnMajor, tile);
+            assert_eq!(CellOrder::ColumnMajor, cell);
         }
         {
             let r = with_attribute(
                 &c,
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
             )
-            .tile_order(Layout::Hilbert);
-            assert!(r.is_err());
-        }
-        {
-            let r = with_attribute(
-                &c,
-                Builder::new(&c, ArrayType::Sparse, sample_domain(&c)).unwrap(),
-            )
-            .tile_order(Layout::Hilbert);
-            assert!(r.is_err());
-        }
-        {
-            let r = with_attribute(
-                &c,
-                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
-            )
-            .cell_order(Layout::Hilbert);
+            .cell_order(CellOrder::Hilbert);
             assert!(r.is_err());
         }
         {
@@ -810,12 +794,12 @@ mod tests {
                 &c,
                 Builder::new(&c, ArrayType::Sparse, sample_domain(&c)).unwrap(),
             )
-            .cell_order(Layout::Hilbert)
+            .cell_order(CellOrder::Hilbert)
             .unwrap()
             .build()
             .unwrap();
             let cell = s.cell_order().unwrap();
-            assert_eq!(Layout::Hilbert, cell);
+            assert_eq!(CellOrder::Hilbert, cell);
         }
 
         Ok(())
@@ -1025,11 +1009,13 @@ mod tests {
         // cell order change
         {
             let cmp = start_schema(base.array_type().unwrap())
-                .cell_order(if base.cell_order().unwrap() == Layout::RowMajor {
-                    Layout::ColumnMajor
-                } else {
-                    Layout::RowMajor
-                })
+                .cell_order(
+                    if base.cell_order().unwrap() == CellOrder::RowMajor {
+                        CellOrder::ColumnMajor
+                    } else {
+                        CellOrder::RowMajor
+                    },
+                )
                 .unwrap()
                 .build()
                 .unwrap();
@@ -1039,11 +1025,13 @@ mod tests {
         // tile order change
         {
             let cmp = start_schema(base.array_type().unwrap())
-                .tile_order(if base.tile_order().unwrap() == Layout::RowMajor {
-                    Layout::ColumnMajor
-                } else {
-                    Layout::RowMajor
-                })
+                .tile_order(
+                    if base.tile_order().unwrap() == TileOrder::RowMajor {
+                        TileOrder::ColumnMajor
+                    } else {
+                        TileOrder::RowMajor
+                    },
+                )
                 .unwrap()
                 .build()
                 .unwrap();
