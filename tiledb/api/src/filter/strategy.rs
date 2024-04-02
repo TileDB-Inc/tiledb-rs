@@ -13,7 +13,7 @@ use crate::Datatype;
 
 #[derive(Clone, Debug)]
 pub enum StrategyContext {
-    Domain(ArrayType, Rc<DomainData>),
+    Attribute(Datatype, ArrayType, Rc<DomainData>),
     SchemaCoordinates(Rc<DomainData>),
 }
 
@@ -145,6 +145,7 @@ fn prop_scalefloat() -> impl Strategy<Value = FilterData> {
 
 /// If conditions allow, return a strategy which generates an arbitrary WebP filter.
 /// In an array schema, webp is allowed for attributes only if:
+/// - the attribute type is UInt8
 /// - there are exactly two dimensions
 /// - the two dimensions have the same integral datatype
 /// - the array is a dense array
@@ -153,14 +154,14 @@ fn prop_scalefloat() -> impl Strategy<Value = FilterData> {
 fn prop_webp(
     requirements: &Rc<Requirements>,
 ) -> Option<impl Strategy<Value = FilterData>> {
-    if requirements.input_datatype? != Datatype::UInt8 {
-        return None;
-    }
-
-    if let Some(StrategyContext::Domain(array_type, ref domain)) =
-        requirements.context.as_ref()
+    if let Some(StrategyContext::Attribute(
+        attribute_type,
+        array_type,
+        ref domain,
+    )) = requirements.context.as_ref()
     {
-        if *array_type == ArrayType::Sparse
+        if *attribute_type != Datatype::UInt8
+            || *array_type == ArrayType::Sparse
             || domain.dimension.len() != 2
             || !domain.dimension[0].datatype.is_integral_type()
             || domain.dimension[0].datatype != domain.dimension[1].datatype
