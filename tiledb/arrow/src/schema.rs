@@ -168,7 +168,7 @@ mod tests {
                 // convert back to TileDB attribute
                 let tdb_out = tiledb_schema(&c, &arrow_schema)?
                     .expect("Arrow schema did not invert")
-                    .build();
+                    .build().expect("Error creating TileDB schema");
                 assert_eq!(tdb_in, tdb_out);
             }
         });

@@ -84,7 +84,7 @@ pub fn create_array(
         domain,
     )?
     .add_attribute(attribute_a)?
-    .build();
+    .build()?;
 
     tiledb::Array::create(&tdb, ARRAY_NAME, schema)
 }

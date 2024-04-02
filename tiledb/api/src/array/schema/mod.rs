@@ -454,13 +454,20 @@ impl<'ctx> Builder<'ctx> {
         )
     }
 
-    pub fn build(self) -> Schema<'ctx> {
-        self.schema
+    pub fn build(self) -> TileDBResult<Schema<'ctx>> {
+        let c_context = self.context().capi();
+        let c_schema = *self.schema.raw;
+        self.capi_return(unsafe {
+            ffi::tiledb_array_schema_check(c_context, c_schema)
+        })
+        .map(|_| self.schema)
     }
 }
 
-impl<'ctx> From<Builder<'ctx>> for Schema<'ctx> {
-    fn from(builder: Builder<'ctx>) -> Schema<'ctx> {
+impl<'ctx> TryFrom<Builder<'ctx>> for Schema<'ctx> {
+    type Error = crate::error::Error;
+
+    fn try_from(builder: Builder<'ctx>) -> TileDBResult<Schema<'ctx>> {
         builder.build()
     }
 }
@@ -535,7 +542,7 @@ impl<'ctx> Factory<'ctx> for SchemaData {
             b = b.tile_order(o)?;
         }
 
-        Ok(b.build())
+        b.build()
     }
 }
 
@@ -553,6 +560,20 @@ mod tests {
     use crate::context::Context;
     use crate::filter::*;
     use crate::Datatype;
+
+    fn sample_attribute(c: &Context) -> Attribute {
+        AttributeBuilder::new(&c, "a1", Datatype::Int32)
+            .unwrap()
+            .build()
+    }
+
+    // helper function since schemata must have at least one attribute to be valid
+    fn with_attribute<'ctx>(
+        c: &'ctx Context,
+        b: Builder<'ctx>,
+    ) -> Builder<'ctx> {
+        b.add_attribute(sample_attribute(c)).unwrap()
+    }
 
     fn sample_domain_builder(c: &Context) -> DomainBuilder {
         let dim = DimensionBuilder::new::<i32>(
@@ -576,12 +597,14 @@ mod tests {
     fn test_get_version() {
         let c: Context = Context::new().unwrap();
 
-        let b: Builder = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-            .unwrap()
-            .allow_duplicates(false)
-            .unwrap();
+        let b: Builder = with_attribute(
+            &c,
+            Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+        )
+        .allow_duplicates(false)
+        .unwrap();
 
-        let s: Schema = b.into();
+        let s: Schema = b.build().unwrap();
         assert_eq!(0, s.version().unwrap());
     }
 
@@ -590,19 +613,23 @@ mod tests {
         let c: Context = Context::new()?;
 
         {
-            let s: Schema =
-                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-                    .unwrap()
-                    .build();
+            let s: Schema = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+            )
+            .build()
+            .unwrap();
             let t = s.array_type().unwrap();
             assert_eq!(ArrayType::Dense, t);
         }
 
         {
-            let s: Schema =
-                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
-                    .unwrap()
-                    .build();
+            let s: Schema = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c)).unwrap(),
+            )
+            .build()
+            .unwrap();
             let t = s.array_type().unwrap();
             assert_eq!(ArrayType::Sparse, t);
         }
@@ -616,12 +643,15 @@ mod tests {
 
         {
             let cap_in = 100;
-            let s: Schema =
+            let s: Schema = with_attribute(
+                &c,
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c))
                     .unwrap()
                     .capacity(cap_in)
-                    .unwrap()
-                    .build();
+                    .unwrap(),
+            )
+            .build()
+            .unwrap();
             let cap_out = s.capacity().unwrap();
             assert_eq!(cap_in, cap_out);
         }
@@ -634,42 +664,47 @@ mod tests {
 
         // dense, no duplicates
         {
-            let b: Builder =
-                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-                    .unwrap()
-                    .allow_duplicates(false)
-                    .unwrap();
+            let b: Builder = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+            )
+            .allow_duplicates(false)
+            .unwrap();
 
-            let s: Schema = b.into();
+            let s: Schema = b.build().unwrap();
             assert!(!s.allows_duplicates().unwrap());
         }
         // dense, duplicates (should error)
         {
-            let e = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-                .unwrap()
-                .allow_duplicates(true);
+            let e = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+            )
+            .allow_duplicates(true);
             assert!(e.is_err());
         }
         // sparse, no duplicates
         {
-            let b: Builder =
-                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
-                    .unwrap()
-                    .allow_duplicates(false)
-                    .unwrap();
+            let b: Builder = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c)).unwrap(),
+            )
+            .allow_duplicates(false)
+            .unwrap();
 
-            let s: Schema = b.into();
+            let s: Schema = b.build().unwrap();
             assert!(!s.allows_duplicates().unwrap());
         }
         // sparse, duplicates
         {
-            let b: Builder =
-                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
-                    .unwrap()
-                    .allow_duplicates(true)
-                    .unwrap();
+            let b: Builder = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c)).unwrap(),
+            )
+            .allow_duplicates(true)
+            .unwrap();
 
-            let s: Schema = b.into();
+            let s: Schema = b.build().unwrap();
             assert!(s.allows_duplicates().unwrap());
         }
     }
@@ -715,58 +750,70 @@ mod tests {
         let c: Context = Context::new()?;
 
         {
-            let s: Schema =
-                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-                    .unwrap()
-                    .tile_order(Layout::RowMajor)
-                    .unwrap()
-                    .cell_order(Layout::RowMajor)
-                    .unwrap()
-                    .build();
+            let s: Schema = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+            )
+            .tile_order(Layout::RowMajor)
+            .unwrap()
+            .cell_order(Layout::RowMajor)
+            .unwrap()
+            .build()
+            .unwrap();
             let tile = s.tile_order().unwrap();
             let cell = s.cell_order().unwrap();
             assert_eq!(Layout::RowMajor, tile);
             assert_eq!(Layout::RowMajor, cell);
         }
         {
-            let s: Schema =
-                Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-                    .unwrap()
-                    .tile_order(Layout::ColumnMajor)
-                    .unwrap()
-                    .cell_order(Layout::ColumnMajor)
-                    .unwrap()
-                    .build();
+            let s: Schema = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+            )
+            .tile_order(Layout::ColumnMajor)
+            .unwrap()
+            .cell_order(Layout::ColumnMajor)
+            .unwrap()
+            .build()
+            .unwrap();
             let tile = s.tile_order().unwrap();
             let cell = s.cell_order().unwrap();
             assert_eq!(Layout::ColumnMajor, tile);
             assert_eq!(Layout::ColumnMajor, cell);
         }
         {
-            let r = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-                .unwrap()
-                .tile_order(Layout::Hilbert);
+            let r = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+            )
+            .tile_order(Layout::Hilbert);
             assert!(r.is_err());
         }
         {
-            let r = Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
-                .unwrap()
-                .tile_order(Layout::Hilbert);
+            let r = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c)).unwrap(),
+            )
+            .tile_order(Layout::Hilbert);
             assert!(r.is_err());
         }
         {
-            let r = Builder::new(&c, ArrayType::Dense, sample_domain(&c))
-                .unwrap()
-                .cell_order(Layout::Hilbert);
+            let r = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Dense, sample_domain(&c)).unwrap(),
+            )
+            .cell_order(Layout::Hilbert);
             assert!(r.is_err());
         }
         {
-            let s: Schema =
-                Builder::new(&c, ArrayType::Sparse, sample_domain(&c))
-                    .unwrap()
-                    .cell_order(Layout::Hilbert)
-                    .unwrap()
-                    .build();
+            let s: Schema = with_attribute(
+                &c,
+                Builder::new(&c, ArrayType::Sparse, sample_domain(&c)).unwrap(),
+            )
+            .cell_order(Layout::Hilbert)
+            .unwrap()
+            .build()
+            .unwrap();
             let cell = s.cell_order().unwrap();
             assert_eq!(Layout::Hilbert, cell);
         }
@@ -779,9 +826,13 @@ mod tests {
         let c: Context = Context::new()?;
 
         {
-            let s: Schema =
+            let e =
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c))?.build();
-            assert_eq!(0, s.nattributes()?);
+            assert!(e.is_err());
+            assert!(matches!(
+                e.unwrap_err(),
+                crate::error::Error::LibTileDB(_)
+            ));
         }
         {
             let s: Schema = {
@@ -790,6 +841,7 @@ mod tests {
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
                     .add_attribute(a1)?
                     .build()
+                    .unwrap()
             };
             assert_eq!(1, s.nattributes()?);
 
@@ -810,6 +862,7 @@ mod tests {
                     .add_attribute(a1)?
                     .add_attribute(a2)?
                     .build()
+                    .unwrap()
             };
             assert_eq!(2, s.nattributes()?);
 
@@ -863,6 +916,7 @@ mod tests {
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
                     .add_attribute(a1)?
                     .build()
+                    .unwrap()
             };
 
             assert_eq!(coordinates_default, s.coordinate_filters()?);
@@ -879,6 +933,7 @@ mod tests {
                     .add_attribute(a1)?
                     .coordinate_filters(&target)?
                     .build()
+                    .unwrap()
             };
 
             assert_eq!(offsets_default, s.offsets_filters()?);
@@ -897,6 +952,7 @@ mod tests {
                     .add_attribute(a1)?
                     .offsets_filters(&target)?
                     .build()
+                    .unwrap()
             };
 
             assert_eq!(coordinates_default, s.coordinate_filters()?);
@@ -915,6 +971,7 @@ mod tests {
                     .add_attribute(a1)?
                     .nullity_filters(&target)?
                     .build()
+                    .unwrap()
             };
 
             assert_eq!(coordinates_default, s.coordinate_filters()?);
@@ -942,14 +999,14 @@ mod tests {
                 .unwrap()
         };
 
-        let base = start_schema(ArrayType::Sparse).build();
+        let base = start_schema(ArrayType::Sparse).build().unwrap();
 
         // reflexive
         assert_eq!(base, base);
 
         // array type change
         {
-            let cmp = start_schema(ArrayType::Dense).build();
+            let cmp = start_schema(ArrayType::Dense).build().unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -960,7 +1017,8 @@ mod tests {
             let cmp = start_schema(base.array_type().unwrap())
                 .capacity((base.capacity().unwrap() + 1) * 2)
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -973,7 +1031,8 @@ mod tests {
                     Layout::RowMajor
                 })
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -986,7 +1045,8 @@ mod tests {
                     Layout::RowMajor
                 })
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -995,7 +1055,8 @@ mod tests {
             let cmp = start_schema(base.array_type().unwrap())
                 .allow_duplicates(!base.allows_duplicates().unwrap())
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -1006,7 +1067,8 @@ mod tests {
                     &FilterListBuilder::new(&c).unwrap().build(),
                 )
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -1015,7 +1077,8 @@ mod tests {
             let cmp = start_schema(base.array_type().unwrap())
                 .offsets_filters(&FilterListBuilder::new(&c).unwrap().build())
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -1024,7 +1087,8 @@ mod tests {
             let cmp = start_schema(base.array_type().unwrap())
                 .nullity_filters(&FilterListBuilder::new(&c).unwrap().build())
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -1039,7 +1103,8 @@ mod tests {
                             .build(),
                     )
                     .unwrap()
-                    .build();
+                    .build()
+                    .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -1052,7 +1117,8 @@ mod tests {
                         .build(),
                 )
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
 
@@ -1080,7 +1146,8 @@ mod tests {
                         .build(),
                 )
                 .unwrap()
-                .build();
+                .build()
+                .unwrap();
             assert_ne!(base, cmp);
         }
     }

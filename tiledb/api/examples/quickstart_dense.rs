@@ -65,7 +65,7 @@ fn create_array() -> TileDBResult<()> {
         domain,
     )?
     .add_attribute(attribute_a)?
-    .build();
+    .build()?;
 
     tiledb::Array::create(&tdb, QUICKSTART_DENSE_ARRAY_URI, schema)
 }

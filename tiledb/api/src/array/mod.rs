@@ -234,7 +234,8 @@ pub mod tests {
                     .build(),
             )
             .unwrap()
-            .into();
+            .build()
+            .unwrap();
 
         // domain not set
         // TODO
