@@ -3,7 +3,8 @@ mod tests {
     use proptest::prelude::*;
     use tempfile::TempDir;
 
-    use crate::array::*;
+    use crate::array::schema::SchemaData;
+    use crate::array::Array;
     use crate::context::Context;
     use crate::Factory;
 
@@ -11,7 +12,7 @@ mod tests {
     fn test_array_create() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in crate::array::schema::strategy::prop_schema(Default::default()))| {
+        proptest!(|(maybe_schema in any::<SchemaData>())| {
             let schema = maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);

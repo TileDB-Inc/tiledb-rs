@@ -162,7 +162,7 @@ fn prop_schema_for_domain(
         )
 }
 
-pub fn prop_schema(
+fn prop_schema(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = SchemaData> {
     let array_type = requirements
@@ -180,6 +180,15 @@ pub fn prop_schema(
     })
 }
 
+impl Arbitrary for SchemaData {
+    type Parameters = Rc<Requirements>;
+    type Strategy = BoxedStrategy<SchemaData>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        prop_schema(Rc::clone(&args)).boxed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,7 +199,7 @@ mod tests {
     fn schema_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
+        proptest!(|(maybe_schema in any::<SchemaData>())| {
             maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
         });
@@ -200,7 +209,7 @@ mod tests {
     fn schema_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
+        proptest!(|(maybe_schema in any::<SchemaData>())| {
             let schema = maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);

@@ -153,6 +153,7 @@ pub fn tiledb_schema<'ctx>(
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use tiledb::array::schema::SchemaData;
     use tiledb::Factory;
 
     #[test]
@@ -160,7 +161,7 @@ mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb::array::schema::strategy::prop_schema(Default::default()))| {
+        proptest!(|(tdb_in in any::<SchemaData>())| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_schema) = arrow_schema(&tdb_in)
