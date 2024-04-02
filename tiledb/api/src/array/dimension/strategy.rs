@@ -109,12 +109,12 @@ pub fn prop_dimension_for_array_type(
         ArrayType::Dense => prop_datatype_for_dense_dimension().boxed(),
         ArrayType::Sparse => prop_datatype_implemented().boxed(),
     }
-    .prop_flat_map(prop_dimension_for_datatype)
+    .prop_ind_flat_map(prop_dimension_for_datatype)
 }
 
 pub fn prop_dimension() -> impl Strategy<Value = DimensionData> {
     prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-        .prop_flat_map(prop_dimension_for_array_type)
+        .prop_ind_flat_map(prop_dimension_for_array_type)
 }
 
 #[cfg(test)]

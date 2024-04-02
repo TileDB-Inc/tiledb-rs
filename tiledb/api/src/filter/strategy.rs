@@ -48,7 +48,7 @@ fn prop_compression(
     const MAX_COMPRESSION_LEVEL: i32 = 9;
 
     prop_compression_reinterpret_datatype()
-        .prop_flat_map(move |reinterpret_datatype| {
+        .prop_ind_flat_map(move |reinterpret_datatype| {
             let compression_types = vec![
                 CompressionType::Bzip2,
                 CompressionType::Dictionary,
@@ -325,7 +325,7 @@ fn prop_filter_pipeline(
         with_datatype(Rc::clone(&requirements)).boxed()
     } else {
         prop_datatype_implemented()
-            .prop_flat_map(move |input_datatype| {
+            .prop_ind_flat_map(move |input_datatype| {
                 with_datatype(Rc::new(Requirements {
                     input_datatype: Some(input_datatype),
                     ..(*requirements).clone()
