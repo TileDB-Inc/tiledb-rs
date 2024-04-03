@@ -60,7 +60,7 @@ impl Arbitrary for DomainData {
 mod tests {
     use super::*;
     use crate::{Context, Factory};
-    use proptest::strategy::{Strategy, ValueTree};
+    use proptest::strategy::ValueTree;
     use util::option::OptionSubset;
 
     /// Test that the arbitrary domain construction always succeeds

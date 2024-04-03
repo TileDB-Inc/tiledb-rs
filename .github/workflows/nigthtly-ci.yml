@@ -4,16 +4,22 @@ on:
     - cron: "45 01 * * *"
   workflow_dispatch:
 
-name: Stable Build and Test Nightly
+name: Nightlies
 
 jobs:
   update_build_and_test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: ["stable", "nightly"]
     steps:
       - name: Checkout tiledb-rs
         uses: actions/checkout@v4
-      - name: Install Rust Stable
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust ${{ matrix.version }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.version }}
+          components: clippy, rustfmt
       - name: Install TileDB
         uses: ./.github/actions/install-tiledb
       - name: Check Formatting
@@ -21,7 +27,11 @@ jobs:
       - name: Update Dependencies
         run: cargo update --recursive
       - name: Lint
+        if: ${{ matrix.version != 'nightly' }}
         run: cargo clippy --all-targets --all-features -- -Dwarnings
+      - name: Lint
+        if: ${{ matrix.version == 'nightly' }}
+        run: cargo clippy --all-targets --all-features -- --cfg ci_nightly -Dwarnings
       - name: Build
         run: cargo build --all-targets --all-features
       - name: Test

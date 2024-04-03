@@ -14,7 +14,7 @@ concurrency:
   group: ${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-name: Stable Build and Test
+name: PR Checks
 
 jobs:
   build_and_test:
