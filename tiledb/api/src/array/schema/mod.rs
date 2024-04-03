@@ -508,10 +508,10 @@ impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {
                 &schema.coordinate_filters()?,
             )?,
             offsets_filters: FilterListData::try_from(
-                &schema.coordinate_filters()?,
+                &schema.offsets_filters()?,
             )?,
             nullity_filters: FilterListData::try_from(
-                &schema.coordinate_filters()?,
+                &schema.nullity_filters()?,
             )?,
         })
     }
