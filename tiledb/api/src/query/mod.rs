@@ -1,3 +1,4 @@
+pub mod conditions;
 pub mod subarray;
 
 use std::ops::Deref;
@@ -10,6 +11,7 @@ pub mod buffer;
 pub mod read;
 pub mod write;
 
+pub use self::conditions::{QueryCondition, QueryConditionExpr};
 pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };
@@ -142,6 +144,16 @@ pub trait QueryBuilder<'ctx>: Sized {
 
     fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>> {
         SubarrayBuilder::for_query(self)
+    }
+
+    fn query_condition(self, qc: QueryCondition<'ctx>) -> TileDBResult<Self> {
+        let c_context = self.base().context().capi();
+        let c_query = **self.base().cquery();
+        let c_cond = qc.capi();
+        self.base().capi_return(unsafe {
+            ffi::tiledb_query_set_condition(c_context, c_query, c_cond)
+        })?;
+        Ok(self)
     }
 
     fn build(self) -> Self::Query;

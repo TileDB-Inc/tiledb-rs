@@ -190,6 +190,24 @@ impl Processor {
         }
     }
 
+    fn table_row<L, C, T, P>(&self, label: L, count: C, total: T, perc: P)
+    where
+        L: std::fmt::Display,
+        C: std::fmt::Display,
+        T: std::fmt::Display,
+        P: std::fmt::Display,
+    {
+        println!(
+            "<tr>\
+            <th align=\"left\">{}</th>\
+            <td align=\"right\">{}</td>\
+            <td align=\"right\">{}</td>\
+            <td align=\"right\">{}</td>\
+            </tr>",
+            label, count, total, perc
+        )
+    }
+
     fn report(&self) -> bool {
         let (
             mismatch_constants,
@@ -208,31 +226,76 @@ impl Processor {
 
         println!("<table>");
         println!("  <tr>");
-        println!("    <th></th>");
-        println!("    <th>Count</th>");
-        println!("    <th>Total</th>");
-        println!("    <th>Percent</th>");
+        println!("    <th align=\"left\">Constants</th>");
+        println!("    <th align=\"right\">Count</th>");
+        println!("    <th align=\"right\">Total</th>");
+        println!("    <th align=\"right\">Percent</th>");
         println!("  </tr>");
 
-        println!(
-            "<tr><th>Constants</th><td>{}</td><td>{}</td><td>{:.2}%</td></tr>",
+        self.table_row(
+            "Generated",
+            "",
+            self.generated_defs.constants.len()
+                + self.ignored_defs.constants.len(),
+            "",
+        );
+
+        self.table_row("Ignored", "", self.ignored_defs.constants.len(), "");
+
+        self.table_row("Remapped", "", self.remapped_defs.constants.len(), "");
+
+        self.table_row(
+            "Wrapped",
             declared_constants,
             generated_constants,
-            declared_constants as f64 / generated_constants as f64 * 100.0f64
+            format!(
+                "{:.2}%",
+                declared_constants as f64 / generated_constants as f64
+                    * 100.0f64
+            ),
         );
 
-        println!(
-            "<tr><th>Declared APIs</th><td>{}</td><td>{}</td><td>{:.2}%</td></tr>",
+        println!("</table>");
+        println!();
+
+        println!("<table>");
+        println!("  <tr>");
+        println!("    <th align=\"left\">APIs</th>");
+        println!("    <th align=\"right\">Count</th>");
+        println!("    <th align=\"right\">Total</th>");
+        println!("    <th align=\"right\">Percent</th>");
+        println!("  </tr>");
+
+        self.table_row(
+            "Generated",
+            "",
+            self.generated_defs.signatures.len()
+                + self.ignored_defs.signatures.len(),
+            "",
+        );
+
+        self.table_row("Ignored", "", self.ignored_defs.signatures.len(), "");
+
+        self.table_row("Remapped", "", self.remapped_defs.signatures.len(), "");
+
+        self.table_row(
+            "Declared",
             declared_apis,
             generated_apis,
-            declared_apis as f64 / generated_apis as f64 * 100.0f64
+            format!(
+                "{:.2}%",
+                declared_apis as f64 / generated_apis as f64 * 100.0f64
+            ),
         );
 
-        println!(
-            "<tr><th>Called APIs</th><td>{}</td><td>{}</td><td>{:.2}%</td></tr>",
+        self.table_row(
+            "Called",
             called_apis,
             generated_apis,
-            called_apis as f64 / generated_apis as f64 * 100.0f64
+            format!(
+                "{:.2}%",
+                called_apis as f64 / generated_apis as f64 * 100.0f64
+            ),
         );
 
         println!("</table>");
