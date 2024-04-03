@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -255,6 +255,12 @@ impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
 #[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct DomainData {
     pub dimension: Vec<DimensionData>,
+}
+
+impl Display for DomainData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
 }
 
 impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {

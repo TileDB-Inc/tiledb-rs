@@ -2,7 +2,7 @@ extern crate tiledb_sys as ffi;
 
 use std::borrow::Borrow;
 use std::convert::From;
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -460,6 +460,12 @@ pub struct AttributeData {
     pub cell_val_num: Option<u32>,
     pub fill: Option<FillData>,
     pub filters: FilterListData,
+}
+
+impl Display for AttributeData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
 }
 
 impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {

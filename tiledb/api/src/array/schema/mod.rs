@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::convert::TryFrom;
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
@@ -488,6 +488,12 @@ pub struct SchemaData {
     pub coordinate_filters: FilterListData,
     pub offsets_filters: FilterListData,
     pub nullity_filters: FilterListData,
+}
+
+impl Display for SchemaData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
 }
 
 impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {
