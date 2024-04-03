@@ -37,8 +37,98 @@ fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
     ]
 }
 
-fn prop_compression_reinterpret_datatype() -> impl Strategy<Value = Datatype> {
-    prop_datatype_implemented()
+fn prop_compression_delta_strategies(
+    input_datatype: Option<Datatype>,
+) -> Vec<BoxedStrategy<CompressionType>> {
+    /*
+    let dt_filter = if let Some(input_datatype) = input_datatype {
+        Box::<FnType>::new(|dt: Datatype| {
+            if input_datatype.is_real_type() {
+                dt != Datatype::Any
+            } else {
+                !dt.is_real_type()
+            }
+        })
+    } else {
+        Box::<FnType>::new(|dt: Datatype| !dt.is_real_type())
+    };
+    */
+
+    /*
+    let delta = prop_datatype()
+        .prop_filter(
+            "Input to delta filter cannot be floating-point type",
+            move |dt| dt_filter(*dt),
+        )
+        .prop_map(|dt| CompressionType::Delta {
+            reinterpret_datatype: Some(dt),
+        });
+
+    let double_delta = prop_datatype()
+        .prop_filter(
+            "Input to delta filter cannot be floating-point type",
+            move |dt| dt_filter(*dt),
+        )
+        .prop_map(|dt| CompressionType::DoubleDelta {
+            reinterpret_datatype: Some(dt),
+        });
+
+    vec![delta.boxed(), double_delta.boxed()]
+    */
+
+    if let Some(input_datatype) = input_datatype {
+        if input_datatype.is_real_type() {
+            let delta = prop_datatype()
+                .prop_filter(
+                    "input_datatype is floating-point, input must not be Any",
+                    move |dt| {
+                        if input_datatype.is_real_type() {
+                            !dt.is_real_type() && *dt != Datatype::Any
+                        } else {
+                            !dt.is_real_type()
+                        }
+                    },
+                )
+                .prop_map(|dt| CompressionType::Delta {
+                    reinterpret_datatype: Some(dt),
+                });
+
+            let double_delta = prop_datatype()
+                .prop_filter(
+                    "input_datatype is floating-point, input must not be Any",
+                    move |dt| {
+                        if input_datatype.is_real_type() {
+                            !dt.is_real_type() && *dt != Datatype::Any
+                        } else {
+                            !dt.is_real_type()
+                        }
+                    },
+                )
+                .prop_map(|dt| CompressionType::DoubleDelta {
+                    reinterpret_datatype: Some(dt),
+                });
+
+            return vec![delta.boxed(), double_delta.boxed()];
+        }
+    }
+
+    /* any non-float type is allowed */
+    let delta = prop_datatype()
+        .prop_filter("reinterpret_datatype cannot be floating-point", |dt| {
+            !dt.is_real_type()
+        })
+        .prop_map(|dt| CompressionType::Delta {
+            reinterpret_datatype: Some(dt),
+        });
+    let double_delta = prop_datatype()
+        .prop_filter("reinterpret_datatype cannot be floating-point", |dt| {
+            !dt.is_real_type()
+        })
+        .prop_map(|dt| CompressionType::DoubleDelta {
+            reinterpret_datatype: Some(dt),
+        });
+
+    vec![delta.boxed(), double_delta.boxed()]
 }
 
 fn prop_compression(
@@ -47,77 +137,58 @@ fn prop_compression(
     const MIN_COMPRESSION_LEVEL: i32 = 1;
     const MAX_COMPRESSION_LEVEL: i32 = 9;
 
-    prop_compression_reinterpret_datatype()
-        .prop_ind_flat_map(move |reinterpret_datatype| {
-            let compression_types = vec![
-                CompressionType::Bzip2,
-                CompressionType::Dictionary,
-                CompressionType::Gzip,
-                CompressionType::Lz4,
-                CompressionType::Rle,
-                CompressionType::Zstd,
-            ];
+    // always availalble
+    let compression_types = vec![
+        CompressionType::Bzip2,
+        CompressionType::Dictionary,
+        CompressionType::Gzip,
+        CompressionType::Lz4,
+        CompressionType::Rle,
+        CompressionType::Zstd,
+    ];
 
-            let with_double_delta = || -> Vec<CompressionType> {
-                let mut with_double_delta = compression_types.clone();
-                with_double_delta.push(CompressionType::Delta);
-                with_double_delta.push(CompressionType::DoubleDelta);
-                with_double_delta
-            };
+    let try_delta =
+        if let Some(StrategyContext::SchemaCoordinates(ref domain)) =
+            requirements.context
+        {
+            /*
+             * See tiledb/array_schema/array_schema.cc for the rules.
+             * DoubleDelta compressor is disallowed in the schema coordinates filter
+             * if there is a floating-point dimension
+             */
+            !domain.dimension.iter().any(|d| {
+                d.datatype.is_real_type()
+                    && d.filters
+                        .as_ref()
+                        .map(|fl| fl.is_empty())
+                        .unwrap_or(true)
+            })
+        } else {
+            true
+        };
+    let strat_kind = if try_delta {
+        let delta_strategies =
+            prop_compression_delta_strategies(requirements.input_datatype);
 
-            let mut ok_double_delta =
-                match (requirements.input_datatype, reinterpret_datatype) {
-                    (None, _) => true,
-                    (Some(input_datatype), Datatype::Any) => {
-                        !input_datatype.is_real_type()
-                    }
-                    (Some(_), reinterpret_datatype) => {
-                        !reinterpret_datatype.is_real_type()
-                    }
-                };
+        let strats = compression_types
+            .into_iter()
+            .map(|ct| Just(ct).boxed())
+            .chain(delta_strategies.into_iter())
+            .collect::<Vec<_>>();
+        proptest::strategy::Union::new(strats).boxed()
+    } else {
+        proptest::strategy::Union::new(compression_types.into_iter().map(Just))
+            .boxed()
+    };
 
-            if ok_double_delta {
-                if let Some(StrategyContext::SchemaCoordinates(ref domain)) =
-                    requirements.context
-                {
-                    /*
-                     * See tiledb/array_schema/array_schema.cc for the rules.
-                     * DoubleDelta compressor is disallowed in the schema coordinates filter
-                     * if there is a floating-point dimension.
-                     */
-                    ok_double_delta = !domain.dimension.iter().any(|d| {
-                        d.datatype.is_real_type()
-                            && d.filters
-                                .as_ref()
-                                .map(|fl| fl.is_empty())
-                                .unwrap_or(true)
-                    })
-                }
-            }
-
-            let kind = proptest::strategy::Union::new(
-                if ok_double_delta {
-                    with_double_delta()
-                } else {
-                    compression_types.clone()
-                }
-                .into_iter()
-                .map(Just),
-            );
-
-            (
-                kind,
-                MIN_COMPRESSION_LEVEL..=MAX_COMPRESSION_LEVEL,
-                Just(reinterpret_datatype),
-            )
-        })
-        .prop_map(|(kind, level, reinterpret_datatype)| {
+    (strat_kind, MIN_COMPRESSION_LEVEL..=MAX_COMPRESSION_LEVEL).prop_map(
+        |(kind, level)| {
             FilterData::Compression(CompressionData {
                 kind,
                 level: Some(level),
-                reinterpret_datatype: Some(reinterpret_datatype),
             })
-        })
+        },
+    )
 }
 
 fn prop_positivedelta() -> impl Strategy<Value = FilterData> {
@@ -282,16 +353,14 @@ fn prop_filter_pipeline_impl(
     } else {
         prop_filter(Rc::clone(&requirements))
             .prop_flat_map(move |filter| {
-                // This unwrap is guaranteed to succeed because the filter was
-                // already checked before being returned from
-                // prop_filter_for_datatype.
-                let next = filter
-                    .transform_datatype(&requirements.input_datatype.expect(
-                        "Input datatype required to construct pipeline",
-                    ))
-                    .unwrap();
+                // If the transformed datatype is None then we have a bug.
+                // Do not panic here, that will swallow what the pipeline looked like.
+                // Let the unit test will fail and print the input.
+                let next = requirements
+                    .input_datatype
+                    .and_then(|dt| filter.transform_datatype(&dt));
                 let next_requirements = Requirements {
-                    input_datatype: Some(next),
+                    input_datatype: next,
                     ..(*requirements).clone()
                 };
                 prop_filter_pipeline_impl(
@@ -494,8 +563,8 @@ mod tests {
                     .transform_datatype(&current_dt) {
                         current_dt = next_dt
                 } else {
-                    panic!("Constructed invalid filter list: \
-                        {:?}, invalid at position {}", fl, fi)
+                    panic!("Constructed invalid filter list for datatype {}: \
+                        {:?}, invalid at position {}", dt, fl, fi)
                 }
             }
         });
