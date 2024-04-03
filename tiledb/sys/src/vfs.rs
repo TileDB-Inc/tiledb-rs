@@ -186,6 +186,8 @@ extern "C" {
         fh: *mut *mut tiledb_vfs_fh_t,
     ) -> capi_return_t;
 
+    pub fn tiledb_vfs_fh_free(fh: *mut *mut tiledb_vfs_fh_t);
+
     pub fn tiledb_vfs_close(
         ctx: *mut tiledb_ctx_t,
         fh: *mut tiledb_vfs_fh_t,
@@ -210,8 +212,6 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         fh: *mut tiledb_vfs_fh_t,
     ) -> capi_return_t;
-
-    pub fn tiledb_vfs_fh_free(fh: *mut *mut tiledb_vfs_fh_t);
 
     pub fn tiledb_vfs_fh_is_closed(
         ctx: *mut tiledb_ctx_t,

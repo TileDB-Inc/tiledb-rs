@@ -3,6 +3,7 @@ use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
 use crate::error::{Error, RawError};
+use crate::filesystem::Filesystem;
 use crate::Result as TileDBResult;
 
 pub enum ObjectType {
@@ -121,7 +122,7 @@ impl Context {
             )))
     }
 
-    pub fn is_supported_fs(&self, fs: ffi::Filesystem) -> bool {
+    pub fn is_supported_fs(&self, fs: Filesystem) -> bool {
         let mut supported: i32 = 0;
         let res = unsafe {
             ffi::tiledb_ctx_is_supported_fs(
@@ -225,7 +226,7 @@ mod tests {
         // MEMFS is by default enabled in TileDB builds while HDFS is rarely
         // enabled. These tests failing most likely means a non "standard"
         // build of libtiledb.{so,dylib,dll}
-        assert!(ctx.is_supported_fs(ffi::Filesystem::MEMFS));
+        assert!(ctx.is_supported_fs(Filesystem::Memfs));
 
         // We can't guarantee that any VFS backend is not present so any test
         // for an unsupported backend is guaranteed to fail somewhere.

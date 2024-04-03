@@ -1,7 +1,6 @@
-use crate::types::capi_return_t;
-use crate::types::tiledb_config_t;
-use crate::types::tiledb_ctx_t;
-use crate::types::tiledb_error_t;
+use crate::types::{
+    capi_return_t, tiledb_config_t, tiledb_ctx_t, tiledb_error_t,
+};
 
 extern "C" {
     pub fn tiledb_ctx_alloc(
@@ -31,9 +30,6 @@ extern "C" {
         fs: u32,
         is_supported: *mut i32,
     ) -> capi_return_t;
-
-    // Ignoring this for now. It really shouldn't exist.
-    // pub fn tiledb_ctx_cancel_tasks(ctx: *mut tiledb_ctx_t) -> capi_return_t;
 
     pub fn tiledb_ctx_set_tag(
         ctx: *mut tiledb_ctx_t,

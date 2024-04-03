@@ -9,93 +9,93 @@ use crate::Result as TileDBResult;
 #[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
 #[repr(u64)]
 pub enum Datatype {
-    #[doc = " 32-bit signed integer"]
+    /// A 32-bit signed integer
     Int32,
-    #[doc = " 64-bit signed integer"]
+    /// A 64-bit signed integer
     Int64,
-    #[doc = " 32-bit floating point value"]
+    /// A 32-bit floating point value
     Float32,
-    #[doc = " 64-bit floating point value"]
+    /// A 64-bit floating point value
     Float64,
-    #[doc = " Character"]
+    /// An 8-bit character value
     Char,
-    #[doc = " 8-bit signed integer"]
+    /// An 8-bit signed integer
     Int8,
-    #[doc = " 8-bit unsigned integer"]
+    /// An 8-bit unsigned integer
     UInt8,
-    #[doc = " 16-bit signed integer"]
+    /// A 16-bit signed integer
     Int16,
-    #[doc = " 16-bit unsigned integer"]
+    /// A 16-bit unsigned integer
     UInt16,
-    #[doc = " 32-bit unsigned integer"]
+    /// A 32-bit unsigned integer
     UInt32,
-    #[doc = " 64-bit unsigned integer"]
+    /// A 64-bit unsigned integer
     UInt64,
-    #[doc = " ASCII string"]
+    /// An ASCII string
     StringAscii,
-    #[doc = " UTF-8 string"]
+    /// A UTF-8 string
     StringUtf8,
-    #[doc = " UTF-16 string"]
+    /// A UTF-16 string
     StringUtf16,
-    #[doc = " UTF-32 string"]
+    /// A UTF-32 string
     StringUtf32,
-    #[doc = " UCS2 string"]
+    /// A UCS2 string
     StringUcs2,
-    #[doc = " UCS4 string"]
+    /// A UCS4 string
     StringUcs4,
-    #[doc = " This can be any datatype. Must store (type tag, value) pairs."]
+    /// An arbitrary type
     Any,
-    #[doc = " DateTime with year resolution"]
+    /// DateTime with year resolution
     DateTimeYear,
-    #[doc = " DateTime with month resolution"]
+    /// DateTime with month resolution
     DateTimeMonth,
-    #[doc = " DateTime with week resolution"]
+    /// DateTime with week resolution
     DateTimeWeek,
-    #[doc = " DateTime with day resolution"]
+    /// DateTime with day resolution
     DateTimeDay,
-    #[doc = " DateTime with hour resolution"]
+    /// DateTime with hour resolution
     DateTimeHour,
-    #[doc = " DateTime with minute resolution"]
+    /// DateTime with minute resolution
     DateTimeMinute,
-    #[doc = " DateTime with second resolution"]
+    /// DateTime with second resolution
     DateTimeSecond,
-    #[doc = " DateTime with millisecond resolution"]
+    /// DateTime with millisecond resolution
     DateTimeMillisecond,
-    #[doc = " DateTime with microsecond resolution"]
+    /// DateTime with microsecond resolution
     DateTimeMicrosecond,
-    #[doc = " DateTime with nanosecond resolution"]
+    /// DateTime with nanosecond resolution
     DateTimeNanosecond,
-    #[doc = " DateTime with picosecond resolution"]
+    /// DateTime with picosecond resolution
     DateTimePicosecond,
-    #[doc = " DateTime with femtosecond resolution"]
+    /// DateTime with femtosecond resolution
     DateTimeFemtosecond,
-    #[doc = " DateTime with attosecond resolution"]
+    /// DateTime with attosecond resolution
     DateTimeAttosecond,
-    #[doc = " Time with hour resolution"]
+    /// Time with hour resolution
     TimeHour,
-    #[doc = " Time with minute resolution"]
+    /// Time with minute resolution
     TimeMinute,
-    #[doc = " Time with second resolution"]
+    /// Time with second resolution
     TimeSecond,
-    #[doc = " Time with millisecond resolution"]
+    /// Time with millisecond resolution
     TimeMillisecond,
-    #[doc = " Time with microsecond resolution"]
+    /// Time with nanosecond resolution
     TimeMicrosecond,
-    #[doc = " Time with nanosecond resolution"]
+    /// Time with nanosecond resolution
     TimeNanosecond,
-    #[doc = " Time with picosecond resolution"]
+    /// Time with picosecond resolution
     TimePicosecond,
-    #[doc = " Time with femtosecond resolution"]
+    /// Time with femtosecond resolution
     TimeFemtosecond,
-    #[doc = " Time with attosecond resolution"]
+    /// Time with attosecond resolution
     TimeAttosecond,
-    #[doc = " Byte sequence"]
+    /// Byte sequence
     Blob,
-    #[doc = " Boolean"]
+    /// Boolean
     Boolean,
-    #[doc = " Geometry data in well-known binary (WKB) format, stored as std::byte"]
+    /// A Geometry in well-known binary (WKB) format
     GeometryWkb,
-    #[doc = " Geometry data in well-known text (WKT) format, stored as std::byte"]
+    /// A Geometry in well-known text (WKT) format
     GeometryWkt,
 }
 
@@ -812,6 +812,20 @@ pub mod strategy {
 mod tests {
     use super::*;
     use util::{assert_not_option_subset, assert_option_subset};
+
+    #[test]
+    fn datatype_roundtrips() {
+        for i in 0..256 {
+            let maybe_dt = Datatype::try_from(i);
+            if maybe_dt.is_ok() {
+                let dt = maybe_dt.unwrap();
+                let dt_str = dt.to_string().expect("Error creating string.");
+                let str_dt = Datatype::from_string(&dt_str)
+                    .expect("Error round tripping datatype string.");
+                assert_eq!(str_dt, dt);
+            }
+        }
+    }
 
     #[test]
     fn datatype_test() {

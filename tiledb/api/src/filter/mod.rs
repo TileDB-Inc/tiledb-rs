@@ -9,9 +9,17 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::{Datatype, Result as TileDBResult};
 
-pub use crate::filter::list::{Builder as FilterListBuilder, FilterList};
-
 pub mod list;
+pub mod webp;
+
+pub use crate::filter::list::{Builder as FilterListBuilder, FilterList};
+pub use crate::filter::webp::WebPFilterInputFormat;
+
+mod ftype;
+mod option;
+
+use crate::filter::ftype::FilterType;
+use crate::filter::option::FilterOption;
 
 #[derive(
     Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
@@ -37,51 +45,6 @@ pub enum CompressionType {
 pub enum ChecksumType {
     Md5,
     Sha256,
-}
-
-#[derive(
-    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum WebPFilterInputFormat {
-    Rgb,
-    Bgr,
-    Rgba,
-    Bgra,
-}
-
-impl WebPFilterInputFormat {
-    pub(crate) fn capi_enum(&self) -> u32 {
-        let ffi_enum = match *self {
-            WebPFilterInputFormat::Rgb => ffi::WebPFilterInputFormat::RGB,
-            WebPFilterInputFormat::Bgr => ffi::WebPFilterInputFormat::BGR,
-            WebPFilterInputFormat::Rgba => ffi::WebPFilterInputFormat::RGBA,
-            WebPFilterInputFormat::Bgra => ffi::WebPFilterInputFormat::BGRA,
-        };
-        ffi_enum as u32
-    }
-
-    pub fn pixel_depth(&self) -> usize {
-        match *self {
-            WebPFilterInputFormat::Rgb | WebPFilterInputFormat::Bgr => 3,
-            WebPFilterInputFormat::Rgba | WebPFilterInputFormat::Bgra => 4,
-        }
-    }
-}
-
-impl TryFrom<u32> for WebPFilterInputFormat {
-    type Error = crate::error::Error;
-    fn try_from(value: u32) -> TileDBResult<WebPFilterInputFormat> {
-        match value {
-            1 => Ok(WebPFilterInputFormat::Rgb),
-            2 => Ok(WebPFilterInputFormat::Bgr),
-            3 => Ok(WebPFilterInputFormat::Rgba),
-            4 => Ok(WebPFilterInputFormat::Bgra),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid webp filter type: {}",
-                value
-            ))),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
@@ -177,56 +140,54 @@ impl FilterData {
         Filter::create(context, self)
     }
 
-    pub fn capi_enum(&self) -> ffi::FilterType {
+    pub fn get_type(&self) -> FilterType {
         match *self {
-            FilterData::None => ffi::FilterType::None,
-            FilterData::BitShuffle { .. } => ffi::FilterType::BitShuffle,
-            FilterData::ByteShuffle { .. } => ffi::FilterType::ByteShuffle,
+            FilterData::None => FilterType::None,
+            FilterData::BitShuffle { .. } => FilterType::BitShuffle,
+            FilterData::ByteShuffle { .. } => FilterType::ByteShuffle,
             FilterData::BitWidthReduction { .. } => {
-                ffi::FilterType::BitWidthReduction
+                FilterType::BitWidthReduction
             }
-            FilterData::Checksum(ChecksumType::Md5) => {
-                ffi::FilterType::ChecksumMD5
-            }
+            FilterData::Checksum(ChecksumType::Md5) => FilterType::ChecksumMD5,
             FilterData::Checksum(ChecksumType::Sha256) => {
-                ffi::FilterType::ChecksumSHA256
+                FilterType::ChecksumSHA256
             }
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Bzip2,
                 ..
-            }) => ffi::FilterType::Bzip2,
+            }) => FilterType::Bzip2,
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Delta { .. },
                 ..
-            }) => ffi::FilterType::Delta,
+            }) => FilterType::Delta,
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Dictionary,
                 ..
-            }) => ffi::FilterType::Dictionary,
+            }) => FilterType::Dictionary,
             FilterData::Compression(CompressionData {
                 kind: CompressionType::DoubleDelta { .. },
                 ..
-            }) => ffi::FilterType::DoubleDelta,
+            }) => FilterType::DoubleDelta,
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Gzip,
                 ..
-            }) => ffi::FilterType::Gzip,
+            }) => FilterType::Gzip,
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Lz4,
                 ..
-            }) => ffi::FilterType::Lz4,
+            }) => FilterType::Lz4,
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Rle,
                 ..
-            }) => ffi::FilterType::Rle,
+            }) => FilterType::Rle,
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Zstd,
                 ..
-            }) => ffi::FilterType::Zstd,
-            FilterData::PositiveDelta { .. } => ffi::FilterType::PositiveDelta,
-            FilterData::ScaleFloat { .. } => ffi::FilterType::ScaleFloat,
-            FilterData::WebP { .. } => ffi::FilterType::WebP,
-            FilterData::Xor => ffi::FilterType::Xor,
+            }) => FilterType::Zstd,
+            FilterData::PositiveDelta { .. } => FilterType::PositiveDelta,
+            FilterData::ScaleFloat { .. } => FilterType::ScaleFloat,
+            FilterData::WebP { .. } => FilterType::WebP,
+            FilterData::Xor => FilterType::Xor,
         }
     }
 
@@ -383,7 +344,7 @@ impl<'ctx> Filter<'ctx> {
         let filter_data = filter_data.borrow();
         let c_context = context.capi();
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
-        let ftype = filter_data.capi_enum() as u32;
+        let ftype = filter_data.get_type().capi_enum();
         context.capi_return(unsafe {
             ffi::tiledb_filter_alloc(c_context, ftype, &mut c_filter)
         })?;
@@ -400,7 +361,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::BIT_WIDTH_MAX_WINDOW,
+                        FilterOption::BitWidthMaxWindow,
                         c_size,
                     )?;
                 }
@@ -415,7 +376,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::COMPRESSION_LEVEL,
+                        FilterOption::CompressionLevel,
                         c_level,
                     )?;
                 }
@@ -431,7 +392,7 @@ impl<'ctx> Filter<'ctx> {
                         Self::set_option(
                             context,
                             *raw,
-                            ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
+                            FilterOption::CompressionReinterpretDatatype,
                             c_datatype,
                         )?;
                     }
@@ -444,7 +405,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::POSITIVE_DELTA_MAX_WINDOW,
+                        FilterOption::PositiveDeltaMaxWindow,
                         c_size,
                     )?;
                 }
@@ -459,7 +420,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::SCALE_FLOAT_BYTEWIDTH,
+                        FilterOption::ScaleFloatByteWidth,
                         c_width,
                     )?;
                 }
@@ -469,7 +430,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::SCALE_FLOAT_FACTOR,
+                        FilterOption::ScaleFloatFactor,
                         c_factor,
                     )?;
                 }
@@ -479,7 +440,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         c_filter,
-                        ffi::FilterOption::SCALE_FLOAT_OFFSET,
+                        FilterOption::ScaleFloatOffset,
                         c_offset,
                     )?;
                 }
@@ -495,7 +456,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::WEBP_INPUT_FORMAT,
+                        FilterOption::WebPInputFormat,
                         c_format,
                     )?;
                 }
@@ -506,7 +467,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::WEBP_LOSSLESS,
+                        FilterOption::WebPLossless,
                         c_lossless,
                     )?;
                 }
@@ -516,7 +477,7 @@ impl<'ctx> Filter<'ctx> {
                     Self::set_option(
                         context,
                         *raw,
-                        ffi::FilterOption::WEBP_QUALITY,
+                        FilterOption::WebPQuality,
                         c_quality,
                     )?;
                 }
@@ -538,41 +499,25 @@ impl<'ctx> Filter<'ctx> {
         })?;
 
         let get_compression_data = |kind| -> TileDBResult<FilterData> {
-            let level = Some(
-                self.get_option::<i32>(ffi::FilterOption::COMPRESSION_LEVEL)?,
-            );
+            let level =
+                Some(self.get_option::<i32>(FilterOption::CompressionLevel)?);
             Ok(FilterData::Compression(CompressionData { kind, level }))
         };
 
-        match ffi::FilterType::from_u32(c_ftype) {
-            None => Err(crate::error::Error::LibTileDB(format!(
-                "Invalid filter type: {}",
-                c_ftype
-            ))),
-            Some(ffi::FilterType::None) => Ok(FilterData::None),
-            Some(ffi::FilterType::Gzip) => {
-                get_compression_data(CompressionType::Gzip)
-            }
-            Some(ffi::FilterType::Zstd) => {
-                get_compression_data(CompressionType::Zstd)
-            }
-            Some(ffi::FilterType::Lz4) => {
-                get_compression_data(CompressionType::Lz4)
-            }
-            Some(ffi::FilterType::Rle) => {
-                get_compression_data(CompressionType::Rle)
-            }
-            Some(ffi::FilterType::Bzip2) => {
-                get_compression_data(CompressionType::Bzip2)
-            }
-            Some(ffi::FilterType::Dictionary) => {
+        match FilterType::try_from(c_ftype)? {
+            FilterType::None => Ok(FilterData::None),
+            FilterType::Gzip => get_compression_data(CompressionType::Gzip),
+            FilterType::Zstd => get_compression_data(CompressionType::Zstd),
+            FilterType::Lz4 => get_compression_data(CompressionType::Lz4),
+            FilterType::Rle => get_compression_data(CompressionType::Rle),
+            FilterType::Bzip2 => get_compression_data(CompressionType::Bzip2),
+            FilterType::Dictionary => {
                 get_compression_data(CompressionType::Dictionary)
             }
-            Some(ffi::FilterType::Delta)
-            | Some(ffi::FilterType::DoubleDelta) => {
+            FilterType::Delta | FilterType::DoubleDelta => {
                 let reinterpret_datatype = Some({
                     let dtype = self.get_option::<std::ffi::c_uchar>(
-                        ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
+                        FilterOption::CompressionReinterpretDatatype,
                     )?;
                     Datatype::try_from(dtype as ffi::tiledb_datatype_t)
                         .map_err(|_| {
@@ -583,9 +528,7 @@ impl<'ctx> Filter<'ctx> {
                             )
                         })?
                 });
-                if ffi::FilterType::from_u32(c_ftype).unwrap()
-                    == ffi::FilterType::Delta
-                {
+                if FilterType::try_from(c_ftype).unwrap() == FilterType::Delta {
                     get_compression_data(CompressionType::Delta {
                         reinterpret_datatype,
                     })
@@ -595,67 +538,65 @@ impl<'ctx> Filter<'ctx> {
                     })
                 }
             }
-            Some(ffi::FilterType::BitShuffle) => Ok(FilterData::BitShuffle),
-            Some(ffi::FilterType::ByteShuffle) => Ok(FilterData::ByteShuffle),
-            Some(ffi::FilterType::Xor) => Ok(FilterData::Xor),
-            Some(ffi::FilterType::BitWidthReduction) => {
+            FilterType::BitShuffle => Ok(FilterData::BitShuffle),
+            FilterType::ByteShuffle => Ok(FilterData::ByteShuffle),
+            FilterType::Xor => Ok(FilterData::Xor),
+            FilterType::BitWidthReduction => {
                 Ok(FilterData::BitWidthReduction {
-                    max_window: Some(self.get_option::<u32>(
-                        ffi::FilterOption::BIT_WIDTH_MAX_WINDOW,
-                    )?),
+                    max_window: Some(
+                        self.get_option::<u32>(
+                            FilterOption::BitWidthMaxWindow,
+                        )?,
+                    ),
                 })
             }
-            Some(ffi::FilterType::PositiveDelta) => {
-                Ok(FilterData::PositiveDelta {
-                    max_window: Some(self.get_option::<std::ffi::c_uint>(
-                        ffi::FilterOption::POSITIVE_DELTA_MAX_WINDOW,
-                    )?),
-                })
-            }
-            Some(ffi::FilterType::ChecksumMD5) => {
+            FilterType::PositiveDelta => Ok(FilterData::PositiveDelta {
+                max_window: Some(self.get_option::<std::ffi::c_uint>(
+                    FilterOption::PositiveDeltaMaxWindow,
+                )?),
+            }),
+            FilterType::ChecksumMD5 => {
                 Ok(FilterData::Checksum(ChecksumType::Md5))
             }
-            Some(ffi::FilterType::ChecksumSHA256) => {
+            FilterType::ChecksumSHA256 => {
                 Ok(FilterData::Checksum(ChecksumType::Sha256))
             }
-            Some(ffi::FilterType::ScaleFloat) => Ok(FilterData::ScaleFloat {
+            FilterType::ScaleFloat => Ok(FilterData::ScaleFloat {
                 byte_width: Some(ScaleFloatByteWidth::try_from(
                     self.get_option::<std::ffi::c_ulonglong>(
-                        ffi::FilterOption::SCALE_FLOAT_BYTEWIDTH,
+                        FilterOption::ScaleFloatByteWidth,
                     )?,
                 )?),
                 factor: Some(self.get_option::<std::ffi::c_double>(
-                    ffi::FilterOption::SCALE_FLOAT_FACTOR,
+                    FilterOption::ScaleFloatFactor,
                 )?),
                 offset: Some(self.get_option::<std::ffi::c_double>(
-                    ffi::FilterOption::SCALE_FLOAT_OFFSET,
+                    FilterOption::ScaleFloatOffset,
                 )?),
             }),
-            Some(ffi::FilterType::WebP) => Ok(FilterData::WebP {
+            FilterType::WebP => Ok(FilterData::WebP {
                 input_format: WebPFilterInputFormat::try_from(
-                    self.get_option::<u32>(
-                        ffi::FilterOption::WEBP_INPUT_FORMAT,
-                    )?,
+                    self.get_option::<u32>(FilterOption::WebPInputFormat)?,
                 )?,
                 lossless: Some(
                     self.get_option::<std::ffi::c_uchar>(
-                        ffi::FilterOption::WEBP_LOSSLESS,
+                        FilterOption::WebPLossless,
                     )? != 0,
                 ),
                 quality: Some(self.get_option::<std::ffi::c_float>(
-                    ffi::FilterOption::WEBP_QUALITY,
+                    FilterOption::WebPQuality,
                 )?),
             }),
         }
     }
 
-    fn get_option<T>(&self, fopt: ffi::FilterOption) -> TileDBResult<T> {
+    fn get_option<T>(&self, fopt: FilterOption) -> TileDBResult<T> {
         let mut val: T = out_ptr!();
         self.capi_return(unsafe {
             ffi::tiledb_filter_get_option(
                 self.context.capi(),
                 self.capi(),
-                fopt as u32,
+                fopt.capi_enum(),
                 &mut val as *mut T as *mut std::ffi::c_void,
             )
         })?;
@@ -665,7 +606,7 @@ impl<'ctx> Filter<'ctx> {
     fn set_option<T>(
         context: &Context,
         raw: *mut ffi::tiledb_filter_t,
-        fopt: ffi::FilterOption,
+        fopt: FilterOption,
         val: T,
     ) -> TileDBResult<()> {
         let c_val = &val as *const T as *const std::ffi::c_void;
@@ -673,7 +614,7 @@ impl<'ctx> Filter<'ctx> {
             ffi::tiledb_filter_set_option(
                 context.capi(),
                 raw,
-                fopt as u32,
+                fopt.capi_enum(),
                 c_val,
             )
         })?;

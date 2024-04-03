@@ -3,6 +3,7 @@
 #![allow(non_snake_case)]
 
 mod array;
+mod array_type;
 mod attribute;
 mod capi_enum;
 mod config;
@@ -29,6 +30,7 @@ mod version;
 mod vfs;
 
 pub use array::*;
+pub use array_type::*;
 pub use attribute::*;
 pub use capi_enum::*;
 pub use config::*;
