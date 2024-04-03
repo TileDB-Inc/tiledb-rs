@@ -236,6 +236,7 @@ fn prop_webp(
     )) = requirements.context.as_ref()
     {
         if *attribute_type != Datatype::UInt8
+            || requirements.input_datatype != Some(Datatype::UInt8)
             || *array_type == ArrayType::Sparse
             || domain.dimension.len() != 2
             || !domain.dimension[0].datatype.is_integral_type()
