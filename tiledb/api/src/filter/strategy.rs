@@ -429,6 +429,7 @@ mod tests {
     use super::*;
     use crate::{Context, Factory};
     use proptest::strategy::{Strategy, ValueTree};
+    use util::assert_option_subset;
 
     #[test]
     /// Test that the arbitrary filter construction always succeeds
@@ -519,7 +520,7 @@ mod tests {
 
         proptest!(|(pipeline in prop_filter_pipeline(Default::default()))| {
             assert_eq!(pipeline, pipeline);
-            assert!(pipeline.option_subset(&pipeline));
+            assert_option_subset!(pipeline, pipeline);
 
             let pipeline = pipeline.create(&ctx)
                 .expect("Error constructing arbitrary filter");

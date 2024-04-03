@@ -132,6 +132,7 @@ pub fn prop_dimension() -> impl Strategy<Value = DimensionData> {
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use util::assert_option_subset;
     use util::option::OptionSubset;
 
     /// Test that the arbitrary dimension construction always succeeds
@@ -151,7 +152,7 @@ mod tests {
 
         proptest!(|(dimension in prop_dimension())| {
             assert_eq!(dimension, dimension);
-            assert!(dimension.option_subset(&dimension));
+            assert_option_subset!(dimension, dimension);
 
             let dimension = dimension
                 .create(&ctx).expect("Error constructing arbitrary attribute");
