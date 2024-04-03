@@ -1,4 +1,4 @@
-use crate::datatype::tiledb_datatype_t;
+use crate::capi_enum::tiledb_datatype_t;
 use crate::types::{
     capi_return_t, tiledb_ctx_t, tiledb_enumeration_t, tiledb_string_t,
 };

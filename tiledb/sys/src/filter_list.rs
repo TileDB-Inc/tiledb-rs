@@ -1,7 +1,6 @@
-use crate::types::capi_return_t;
-use crate::types::tiledb_ctx_t;
-use crate::types::tiledb_filter_list_t;
-use crate::types::tiledb_filter_t;
+use crate::types::{
+    capi_return_t, tiledb_ctx_t, tiledb_filter_list_t, tiledb_filter_t,
+};
 
 extern "C" {
     pub fn tiledb_filter_list_alloc(

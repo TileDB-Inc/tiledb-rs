@@ -1,5 +1,4 @@
-use crate::types::capi_return_t;
-use crate::types::tiledb_error_t;
+use crate::types::{capi_return_t, tiledb_error_t};
 
 extern "C" {
     pub fn tiledb_error_message(

@@ -1,6 +1,4 @@
-use crate::types::tiledb_attribute_t;
-use crate::types::tiledb_ctx_t;
-use crate::types::tiledb_filter_list_t;
+use crate::types::{tiledb_attribute_t, tiledb_ctx_t, tiledb_filter_list_t};
 
 extern "C" {
     pub fn tiledb_attribute_alloc(
@@ -65,14 +63,6 @@ extern "C" {
         attr: *const tiledb_attribute_t,
         cell_size: *mut u64,
     ) -> i32;
-
-    // I don't feel like figuring out how to wrap a *mut FILE at this point
-    // so I'm ignoring it for now.
-    // pub fn tiledb_attribute_dump(
-    //     ctx: *mut tiledb_ctx_t,
-    //     attr: *const tiledb_attribute_t,
-    //     out: *mut FILE,
-    // ) -> i32;
 
     pub fn tiledb_attribute_set_fill_value(
         ctx: *mut tiledb_ctx_t,

@@ -1,7 +1,6 @@
-use crate::types::capi_return_t;
-use crate::types::tiledb_config_iter_t;
-use crate::types::tiledb_config_t;
-use crate::types::tiledb_error_t;
+use crate::types::{
+    capi_return_t, tiledb_config_iter_t, tiledb_config_t, tiledb_error_t,
+};
 
 extern "C" {
     pub fn tiledb_config_alloc(
@@ -55,14 +54,6 @@ extern "C" {
         config_iter: *mut *mut tiledb_config_iter_t,
         error: *mut *mut tiledb_error_t,
     ) -> capi_return_t;
-
-    // Not used.
-    // pub fn tiledb_config_iter_reset(
-    //     config: *mut tiledb_config_t,
-    //     config_iter: *mut tiledb_config_iter_t,
-    //     prefix: *const ::std::os::raw::c_char,
-    //     error: *mut *mut tiledb_error_t,
-    // ) -> capi_return_t;
 
     pub fn tiledb_config_iter_free(config_iter: *mut *mut tiledb_config_iter_t);
 

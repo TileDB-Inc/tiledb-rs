@@ -46,6 +46,7 @@ pub mod context;
 pub mod convert;
 pub mod datatype;
 pub mod error;
+pub mod filesystem;
 pub mod filter;
 pub mod query;
 pub mod stats;

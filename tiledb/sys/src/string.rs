@@ -1,5 +1,4 @@
-use crate::types::capi_return_t;
-use crate::types::tiledb_string_t;
+use crate::types::{capi_return_t, tiledb_string_t};
 
 extern "C" {
     pub fn tiledb_string_view(
