@@ -48,6 +48,7 @@ pub mod datatype;
 pub mod error;
 pub mod filesystem;
 pub mod filter;
+pub mod group;
 pub mod query;
 pub mod stats;
 pub mod string;
