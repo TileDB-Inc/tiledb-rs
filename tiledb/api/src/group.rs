@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+use crate::config::{Config, RawConfig};
 use crate::context::ObjectType;
 use crate::{Context, ContextBound};
 
@@ -116,7 +117,6 @@ impl<'ctx> Group<'ctx> {
         QueryType::try_from(c_type)
     }
 
-    /// Group modification functions
     pub fn delete_group<S>(
         &self,
         context: &'ctx Context,
@@ -347,6 +347,31 @@ impl<'ctx> Group<'ctx> {
 
         // ABI TODO: free string here?
         Ok(Some(group_dump_rust_str))
+    }
+
+    pub fn set_config(
+        &self,
+        context: &'ctx Context,
+        config: &Config,
+    ) -> TileDBResult<()> {
+        let ctx = context.capi();
+        let cfg = config.capi();
+        context.capi_return(unsafe {
+            ffi::tiledb_group_set_config(ctx, Self::capi(self), cfg)
+        })?;
+        Ok(())
+    }
+
+    pub fn get_config(&self, context: &'ctx Context) -> TileDBResult<Config> {
+        let ctx = context.capi();
+        let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
+        context.capi_return(unsafe {
+            ffi::tiledb_group_get_config(ctx, Self::capi(self), &mut c_cfg)
+        })?;
+
+        Ok(Config {
+            raw: RawConfig::Owned(c_cfg),
+        })
     }
 }
 
