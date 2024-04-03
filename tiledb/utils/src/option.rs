@@ -2,7 +2,8 @@
 /// The `option_subset` method should return true if it finds that all required data
 /// of two objects are equal, and the non-required data are either equal or not set
 /// for the method receiver.  For objects which only have required data, this should be
-/// the same as `eq`.
+/// the same as `eq` - you can use the `option_subset_partialeq` macro as a convenience
+/// to use this implementation.
 ///
 /// The target usage of this trait is data with optional fields
 /// which could be filled in with arbitrary values across some logical boundary.
@@ -16,6 +17,19 @@
 /// if all fields are `option_subsets` of the corresponding fields of the other instance.
 pub trait OptionSubset {
     fn option_subset(&self, other: &Self) -> bool;
+}
+
+#[macro_export]
+macro_rules! option_subset_partialeq {
+    ($($T:ty),+) => {
+        $(
+            impl $crate::option::OptionSubset for $T {
+                fn option_subset(&self, other: &Self) -> bool {
+                    self == other
+                }
+            }
+        )+
+    };
 }
 
 #[macro_export]
@@ -97,24 +111,47 @@ where
     }
 }
 
-macro_rules! option_subset_partialeq {
-    ($($T:ty),+) => {
-        $(
-            impl $crate::option::OptionSubset for $T {
-                fn option_subset(&self, other: &Self) -> bool {
-                    self == other
+#[cfg(feature = "serde_json")]
+mod serde_json {
+    use super::*;
+    use crate::option_subset_partialeq;
+    use crate::serde_json::value::{Map, Number, Value};
+
+    option_subset_partialeq!(Number);
+
+    impl OptionSubset for Map<String, Value> {
+        fn option_subset(&self, other: &Self) -> bool {
+            for (k, self_v) in self.iter() {
+                if let Some(other_v) = other.get(k) {
+                    if !self_v.option_subset(other_v) {
+                        return false;
+                    }
+                } else {
+                    return false;
                 }
             }
-        )+
-    };
+            true
+        }
+    }
+
+    impl OptionSubset for Value {
+        fn option_subset(&self, other: &Self) -> bool {
+            match (self, other) {
+                (Value::Null, _) => true, /* sorry SQL folks */
+                (Value::Bool(lb), Value::Bool(rb)) => lb.option_subset(&rb),
+                (Value::Number(ln), Value::Number(rn)) => ln.option_subset(&rn),
+                (Value::String(ls), Value::String(rs)) => ls.option_subset(&rs),
+                (Value::Array(lv), Value::Array(rv)) => lv.option_subset(&rv),
+                (Value::Object(lo), Value::Object(ro)) => lo.option_subset(&ro),
+                _ => false,
+            }
+        }
+    }
 }
 
 option_subset_partialeq!(u8, u16, u32, u64, usize);
 option_subset_partialeq!(i8, i16, i32, i64, isize);
 option_subset_partialeq!(bool, f32, f64, String);
-
-#[cfg(feature = "serde_json")]
-option_subset_partialeq!(serde_json::value::Value);
 
 #[cfg(test)]
 mod tests {
@@ -605,5 +642,154 @@ mod tests {
                     .chain(sfs.iter())
             )
             .all(|(xor, other)| !xor.option_subset(other)));
+    }
+
+    #[cfg(feature = "serde_json")]
+    mod serde_json {
+        use super::*;
+        use crate::serde_json::json;
+        use crate::serde_json::value::{Map, Value};
+
+        #[test]
+        fn map() {
+            let m_empty = Map::new();
+
+            let m_nullval = {
+                let mut m = Map::new();
+                m.insert("k".to_string(), Value::Null);
+                m
+            };
+            let m_someval = {
+                let mut m = Map::new();
+                m.insert("k".to_string(), json!(1));
+                m
+            };
+            let m_mapval = {
+                let mut m = Map::new();
+                m.insert("k".to_string(), json!(Map::new()));
+                m
+            };
+            let m_nested_nullval = {
+                let mut subm = Map::new();
+                subm.insert("subk".to_string(), Value::Null);
+                let mut m = Map::new();
+                m.insert("k".to_string(), Value::Object(subm));
+                m
+            };
+            let m_nested_someval = {
+                let mut subm = Map::new();
+                subm.insert("subk".to_string(), json!("gub"));
+                let mut m = Map::new();
+                m.insert("k".to_string(), Value::Object(subm));
+                m
+            };
+
+            let m_extrakey = {
+                let mut m = Map::new();
+                m.insert("k".to_string(), Value::Null);
+                m.insert("z".to_string(), Value::Null);
+                m
+            };
+
+            assert_option_subset!(m_empty, m_empty);
+            assert_option_subset!(m_empty, m_nullval);
+            assert_option_subset!(m_empty, m_someval);
+            assert_option_subset!(m_empty, m_mapval);
+            assert_option_subset!(m_empty, m_nested_nullval);
+            assert_option_subset!(m_empty, m_nested_someval);
+
+            assert_option_subset!(m_nullval, m_someval);
+            assert_option_subset!(m_nullval, m_mapval);
+            assert_option_subset!(m_nullval, m_nested_nullval);
+            assert_option_subset!(m_nullval, m_nested_someval);
+
+            assert_option_subset!(m_mapval, m_nested_nullval);
+            assert_option_subset!(m_mapval, m_nested_someval);
+
+            assert_not_option_subset!(m_nullval, m_empty);
+            assert_not_option_subset!(m_someval, m_nullval);
+            assert_not_option_subset!(m_mapval, m_nullval);
+            assert_not_option_subset!(m_nested_nullval, m_mapval);
+            assert_not_option_subset!(m_nested_someval, m_nested_nullval);
+
+            // type mismatch
+            assert_not_option_subset!(m_someval, m_mapval);
+
+            // key present in left but not right
+            assert_option_subset!(m_empty, m_extrakey);
+            assert_option_subset!(m_nullval, m_extrakey);
+            assert_not_option_subset!(m_extrakey, m_empty);
+            assert_not_option_subset!(m_extrakey, m_nullval);
+        }
+
+        #[test]
+        fn serde_json_value() {
+            let j_null = Value::Null;
+            let j_true = Value::Bool(true);
+            let j_false = Value::Bool(false);
+            let j_zero = json!(0);
+            let j_one = json!(1);
+            let j_hello = json!("hello");
+            let j_world = json!("world");
+
+            let j_arrnullelt0 = Value::Array(vec![Value::Null, json!(1)]);
+            let j_arrnullelt1 = Value::Array(vec![json!(0), Value::Null]);
+            let j_arrnonnull = Value::Array(vec![json!(0), json!(1)]);
+            let j_arrnoteq = Value::Array(vec![json!(1), json!(2)]);
+
+            let j_empty = Value::Object(Map::<String, Value>::new());
+
+            assert_option_subset!(j_null, j_null);
+            assert_option_subset!(j_null, j_true);
+            assert_option_subset!(j_null, j_false);
+            assert_option_subset!(j_null, j_zero);
+            assert_option_subset!(j_null, j_one);
+            assert_option_subset!(j_null, j_hello);
+            assert_option_subset!(j_null, j_arrnullelt0);
+            assert_option_subset!(j_null, j_arrnullelt1);
+            assert_option_subset!(j_null, j_arrnonnull);
+            assert_option_subset!(j_null, j_arrnoteq);
+            assert_option_subset!(j_null, j_empty);
+
+            assert_option_subset!(j_true, j_true);
+            assert_not_option_subset!(j_true, j_null);
+            assert_not_option_subset!(j_true, j_false);
+            assert_not_option_subset!(j_true, j_zero);
+            assert_not_option_subset!(j_true, j_hello);
+            assert_not_option_subset!(j_true, j_arrnullelt0);
+            assert_not_option_subset!(j_true, j_empty);
+
+            assert_option_subset!(j_zero, j_zero);
+            assert_not_option_subset!(j_zero, j_null);
+            assert_not_option_subset!(j_zero, j_false);
+            assert_not_option_subset!(j_zero, j_one);
+            assert_not_option_subset!(j_zero, j_hello);
+            assert_not_option_subset!(j_zero, j_arrnullelt0);
+            assert_not_option_subset!(j_zero, j_empty);
+
+            assert_option_subset!(j_hello, j_hello);
+            assert_not_option_subset!(j_hello, j_null);
+            assert_not_option_subset!(j_hello, j_false);
+            assert_not_option_subset!(j_hello, j_one);
+            assert_not_option_subset!(j_hello, j_world);
+            assert_not_option_subset!(j_hello, j_arrnullelt0);
+            assert_not_option_subset!(j_hello, j_empty);
+
+            assert_option_subset!(j_arrnullelt0, j_arrnullelt0);
+            assert_option_subset!(j_arrnullelt0, j_arrnonnull);
+            assert_not_option_subset!(j_arrnullelt0, j_null);
+            assert_not_option_subset!(j_arrnullelt0, j_true);
+            assert_not_option_subset!(j_arrnullelt0, j_zero);
+            assert_not_option_subset!(j_arrnullelt0, j_arrnullelt1);
+            assert_not_option_subset!(j_arrnullelt0, j_arrnoteq);
+            assert_not_option_subset!(j_arrnullelt0, j_empty);
+
+            assert_not_option_subset!(j_empty, j_null);
+            assert_not_option_subset!(j_empty, j_null);
+            assert_not_option_subset!(j_empty, j_false);
+            assert_not_option_subset!(j_empty, j_one);
+            assert_not_option_subset!(j_empty, j_hello);
+            assert_not_option_subset!(j_empty, j_arrnullelt0);
+        }
     }
 }
