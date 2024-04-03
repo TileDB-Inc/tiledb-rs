@@ -571,7 +571,7 @@ mod tests {
     use crate::Datatype;
 
     fn sample_attribute(c: &Context) -> Attribute {
-        AttributeBuilder::new(&c, "a1", Datatype::Int32)
+        AttributeBuilder::new(c, "a1", Datatype::Int32)
             .unwrap()
             .build()
     }

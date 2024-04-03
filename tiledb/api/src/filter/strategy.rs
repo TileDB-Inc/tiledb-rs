@@ -173,7 +173,7 @@ fn prop_compression(
         let strats = compression_types
             .into_iter()
             .map(|ct| Just(ct).boxed())
-            .chain(delta_strategies.into_iter())
+            .chain(delta_strategies)
             .collect::<Vec<_>>();
         proptest::strategy::Union::new(strats).boxed()
     } else {

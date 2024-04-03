@@ -138,11 +138,11 @@ mod serde_json {
         fn option_subset(&self, other: &Self) -> bool {
             match (self, other) {
                 (Value::Null, _) => true, /* sorry SQL folks */
-                (Value::Bool(lb), Value::Bool(rb)) => lb.option_subset(&rb),
-                (Value::Number(ln), Value::Number(rn)) => ln.option_subset(&rn),
-                (Value::String(ls), Value::String(rs)) => ls.option_subset(&rs),
-                (Value::Array(lv), Value::Array(rv)) => lv.option_subset(&rv),
-                (Value::Object(lo), Value::Object(ro)) => lo.option_subset(&ro),
+                (Value::Bool(lb), Value::Bool(rb)) => lb.option_subset(rb),
+                (Value::Number(ln), Value::Number(rn)) => ln.option_subset(rn),
+                (Value::String(ls), Value::String(rs)) => ls.option_subset(rs),
+                (Value::Array(lv), Value::Array(rv)) => lv.option_subset(rv),
+                (Value::Object(lo), Value::Object(ro)) => lo.option_subset(ro),
                 _ => false,
             }
         }
@@ -448,9 +448,9 @@ mod tests {
         assert_not_option_subset!(lzo_l5, lzo_l4);
         assert_option_subset!(lzo_l5, lzo_l5);
 
-        let lzos = vec![lzo_nl, lzo_l4, lzo_l5];
-        let lz4s = vec![lz4_nl, lz4_l4, lz4_l5];
-        let zstds = vec![zstd_nl, zstd_l4, zstd_l5];
+        let lzos = [lzo_nl, lzo_l4, lzo_l5];
+        let lz4s = [lz4_nl, lz4_l4, lz4_l5];
+        let zstds = [zstd_nl, zstd_l4, zstd_l5];
 
         assert!(lzos
             .iter()
@@ -591,11 +591,11 @@ mod tests {
         assert_not_option_subset!(lzo_l5, lzo_l4);
         assert_option_subset!(lzo_l5, lzo_l5);
 
-        let lzos = vec![lzo_nl, lzo_l4, lzo_l5];
-        let lz4s = vec![lz4_nl, lz4_l4, lz4_l5];
-        let zstds = vec![zstd_nl, zstd_l4, zstd_l5];
-        let sfs = vec![sf_none, sf_factor, sf_offset, sf_all];
-        let xors = vec![FilterData::Xor];
+        let lzos = [lzo_nl, lzo_l4, lzo_l5];
+        let lz4s = [lz4_nl, lz4_l4, lz4_l5];
+        let zstds = [zstd_nl, zstd_l4, zstd_l5];
+        let sfs = [sf_none, sf_factor, sf_offset, sf_all];
+        let xors = [FilterData::Xor];
 
         assert!(lzos
             .iter()
