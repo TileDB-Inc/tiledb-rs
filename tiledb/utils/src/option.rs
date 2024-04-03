@@ -18,6 +18,40 @@ pub trait OptionSubset {
     fn option_subset(&self, other: &Self) -> bool;
 }
 
+#[macro_export]
+macro_rules! assert_option_subset {
+    ($left:expr, $right:expr $(,)?) => {
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(left_val.option_subset(right_val)) {
+                    panic!(
+                        r#"assertion `(left).option_subset(right)` failed
+ left: {left_val:?}
+right: {right_val:?}"#
+                    )
+                }
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! assert_not_option_subset {
+    ($left:expr, $right:expr $(,)?) => {
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if left_val.option_subset(right_val) {
+                    panic!(
+                        r#"assertion `!(left).option_subset(right)` failed
+ left: {left_val:?}
+right: {right_val:?}"#
+                    )
+                }
+            }
+        }
+    };
+}
+
 impl<T> OptionSubset for Option<T>
 where
     T: OptionSubset,
@@ -88,22 +122,22 @@ mod tests {
 
     #[test]
     fn unit() {
-        #[derive(OptionSubset)]
+        #[derive(Debug, OptionSubset)]
         struct Unit;
 
-        assert!(Unit.option_subset(&Unit));
+        assert_option_subset!(Unit, Unit);
     }
 
     #[test]
     fn point_unnamed() {
-        #[derive(OptionSubset)]
+        #[derive(Debug, OptionSubset)]
         struct PointUnnamed(i64, i64);
 
-        assert!(PointUnnamed(0, 0).option_subset(&PointUnnamed(0, 0)));
-        assert!(!PointUnnamed(0, 0).option_subset(&PointUnnamed(0, 1)));
+        assert_option_subset!(PointUnnamed(0, 0), PointUnnamed(0, 0));
+        assert_not_option_subset!(PointUnnamed(0, 0), PointUnnamed(0, 1));
     }
 
-    #[derive(OptionSubset)]
+    #[derive(Debug, OptionSubset)]
     struct PointNamed {
         x: i64,
         y: i64,
@@ -117,13 +151,13 @@ mod tests {
             }
         }
 
-        assert!(PointNamed::new(0, 0).option_subset(&PointNamed::new(0, 0)));
-        assert!(!PointNamed::new(0, 0).option_subset(&PointNamed::new(0, 1)));
+        assert_option_subset!(PointNamed::new(0, 0), PointNamed::new(0, 0));
+        assert_not_option_subset!(PointNamed::new(0, 0), PointNamed::new(0, 1));
     }
 
     #[test]
     fn point_kd_named() {
-        #[derive(OptionSubset)]
+        #[derive(Debug, OptionSubset)]
         struct PointKDNamed {
             axes: Vec<i64>,
         }
@@ -134,42 +168,60 @@ mod tests {
             }
         }
 
-        assert!(
-            PointKDNamed::new(vec![]).option_subset(&PointKDNamed::new(vec![]))
+        assert_option_subset!(
+            PointKDNamed::new(vec![]),
+            PointKDNamed::new(vec![])
         );
-        assert!(PointKDNamed::new(vec![0])
-            .option_subset(&PointKDNamed::new(vec![0])));
-        assert!(PointKDNamed::new(vec![0, 0])
-            .option_subset(&PointKDNamed::new(vec![0, 0])));
-        assert!(!PointKDNamed::new(vec![0, 0])
-            .option_subset(&PointKDNamed::new(vec![0])));
-        assert!(!PointKDNamed::new(vec![0, 0])
-            .option_subset(&PointKDNamed::new(vec![0, 0, 0])));
-        assert!(!PointKDNamed::new(vec![0, 0])
-            .option_subset(&PointKDNamed::new(vec![0, 1])));
+        assert_option_subset!(
+            PointKDNamed::new(vec![0]),
+            PointKDNamed::new(vec![0])
+        );
+        assert_option_subset!(
+            PointKDNamed::new(vec![0, 0]),
+            PointKDNamed::new(vec![0, 0])
+        );
+        assert_not_option_subset!(
+            PointKDNamed::new(vec![0, 0]),
+            PointKDNamed::new(vec![0])
+        );
+        assert_not_option_subset!(
+            PointKDNamed::new(vec![0, 0]),
+            PointKDNamed::new(vec![0, 0, 0])
+        );
+        assert_not_option_subset!(
+            PointKDNamed::new(vec![0, 0]),
+            PointKDNamed::new(vec![0, 1])
+        );
     }
 
     #[test]
     fn point_kd_unnamed() {
-        #[derive(OptionSubset)]
+        #[derive(Debug, OptionSubset)]
         struct PointKDUnnamed(Vec<i64>);
 
-        assert!(PointKDUnnamed(vec![]).option_subset(&PointKDUnnamed(vec![])));
-        assert!(PointKDUnnamed(vec![0]).option_subset(&PointKDUnnamed(vec![0])));
-        assert!(PointKDUnnamed(vec![0, 0])
-            .option_subset(&PointKDUnnamed(vec![0, 0])));
-        assert!(
-            !PointKDUnnamed(vec![0, 0]).option_subset(&PointKDUnnamed(vec![0]))
+        assert_option_subset!(PointKDUnnamed(vec![]), PointKDUnnamed(vec![]));
+        assert_option_subset!(PointKDUnnamed(vec![0]), PointKDUnnamed(vec![0]));
+        assert_option_subset!(
+            PointKDUnnamed(vec![0, 0]),
+            PointKDUnnamed(vec![0, 0])
         );
-        assert!(!PointKDUnnamed(vec![0, 0])
-            .option_subset(&PointKDUnnamed(vec![0, 0, 0])));
-        assert!(!PointKDUnnamed(vec![0, 0])
-            .option_subset(&PointKDUnnamed(vec![0, 1])));
+        assert_not_option_subset!(
+            PointKDUnnamed(vec![0, 0]),
+            PointKDUnnamed(vec![0])
+        );
+        assert_not_option_subset!(
+            PointKDUnnamed(vec![0, 0]),
+            PointKDUnnamed(vec![0, 0, 0])
+        );
+        assert_not_option_subset!(
+            PointKDUnnamed(vec![0, 0]),
+            PointKDUnnamed(vec![0, 1])
+        );
     }
 
     #[test]
     fn point_or_plane_named() {
-        #[derive(OptionSubset)]
+        #[derive(Debug, OptionSubset)]
         struct PointOrPlane {
             x: Option<i64>,
             y: Option<i64>,
@@ -201,42 +253,42 @@ mod tests {
             y: Some(1),
         };
 
-        assert!(everything.option_subset(&everything));
-        assert!(everything.option_subset(&y_axis));
-        assert!(everything.option_subset(&x_axis));
-        assert!(everything.option_subset(&origin));
-        assert!(everything.option_subset(&y_point));
-        assert!(everything.option_subset(&x_point));
-        assert!(everything.option_subset(&point));
+        assert_option_subset!(everything, everything);
+        assert_option_subset!(everything, y_axis);
+        assert_option_subset!(everything, x_axis);
+        assert_option_subset!(everything, origin);
+        assert_option_subset!(everything, y_point);
+        assert_option_subset!(everything, x_point);
+        assert_option_subset!(everything, point);
 
-        assert!(y_axis.option_subset(&y_axis));
-        assert!(y_axis.option_subset(&origin));
-        assert!(y_axis.option_subset(&y_point));
-        assert!(!y_axis.option_subset(&everything));
-        assert!(!y_axis.option_subset(&x_axis));
-        assert!(!y_axis.option_subset(&x_point));
-        assert!(!y_axis.option_subset(&point));
+        assert_option_subset!(y_axis, y_axis);
+        assert_option_subset!(y_axis, origin);
+        assert_option_subset!(y_axis, y_point);
+        assert_not_option_subset!(y_axis, everything);
+        assert_not_option_subset!(y_axis, x_axis);
+        assert_not_option_subset!(y_axis, x_point);
+        assert_not_option_subset!(y_axis, point);
 
-        assert!(x_axis.option_subset(&x_axis));
-        assert!(x_axis.option_subset(&origin));
-        assert!(x_axis.option_subset(&x_point));
-        assert!(!x_axis.option_subset(&everything));
-        assert!(!x_axis.option_subset(&y_axis));
-        assert!(!x_axis.option_subset(&y_point));
-        assert!(!x_axis.option_subset(&point));
+        assert_option_subset!(x_axis, x_axis);
+        assert_option_subset!(x_axis, origin);
+        assert_option_subset!(x_axis, x_point);
+        assert_not_option_subset!(x_axis, everything);
+        assert_not_option_subset!(x_axis, y_axis);
+        assert_not_option_subset!(x_axis, y_point);
+        assert_not_option_subset!(x_axis, point);
 
-        assert!(origin.option_subset(&origin));
-        assert!(!origin.option_subset(&everything));
-        assert!(!origin.option_subset(&y_axis));
-        assert!(!origin.option_subset(&x_axis));
-        assert!(!origin.option_subset(&y_point));
-        assert!(!origin.option_subset(&x_point));
-        assert!(!origin.option_subset(&point));
+        assert_option_subset!(origin, origin);
+        assert_not_option_subset!(origin, everything);
+        assert_not_option_subset!(origin, y_axis);
+        assert_not_option_subset!(origin, x_axis);
+        assert_not_option_subset!(origin, y_point);
+        assert_not_option_subset!(origin, x_point);
+        assert_not_option_subset!(origin, point);
     }
 
     #[test]
     fn point_or_plan_unnamed() {
-        #[derive(OptionSubset)]
+        #[derive(Debug, OptionSubset)]
         struct PointOrPlane(Option<i64>, Option<i64>);
 
         let everything = PointOrPlane(None, None);
@@ -247,40 +299,40 @@ mod tests {
         let y_point = PointOrPlane(Some(0), Some(1));
         let point = PointOrPlane(Some(1), Some(1));
 
-        assert!(everything.option_subset(&everything));
-        assert!(everything.option_subset(&y_axis));
-        assert!(everything.option_subset(&x_axis));
-        assert!(everything.option_subset(&origin));
-        assert!(everything.option_subset(&y_point));
-        assert!(everything.option_subset(&x_point));
-        assert!(everything.option_subset(&point));
+        assert_option_subset!(everything, everything);
+        assert_option_subset!(everything, y_axis);
+        assert_option_subset!(everything, x_axis);
+        assert_option_subset!(everything, origin);
+        assert_option_subset!(everything, y_point);
+        assert_option_subset!(everything, x_point);
+        assert_option_subset!(everything, point);
 
-        assert!(y_axis.option_subset(&y_axis));
-        assert!(y_axis.option_subset(&origin));
-        assert!(y_axis.option_subset(&y_point));
-        assert!(!y_axis.option_subset(&everything));
-        assert!(!y_axis.option_subset(&x_axis));
-        assert!(!y_axis.option_subset(&x_point));
-        assert!(!y_axis.option_subset(&point));
+        assert_option_subset!(y_axis, y_axis);
+        assert_option_subset!(y_axis, origin);
+        assert_option_subset!(y_axis, y_point);
+        assert_not_option_subset!(y_axis, everything);
+        assert_not_option_subset!(y_axis, x_axis);
+        assert_not_option_subset!(y_axis, x_point);
+        assert_not_option_subset!(y_axis, point);
 
-        assert!(x_axis.option_subset(&x_axis));
-        assert!(x_axis.option_subset(&origin));
-        assert!(x_axis.option_subset(&x_point));
-        assert!(!x_axis.option_subset(&everything));
-        assert!(!x_axis.option_subset(&y_axis));
-        assert!(!x_axis.option_subset(&y_point));
-        assert!(!x_axis.option_subset(&point));
+        assert_option_subset!(x_axis, x_axis);
+        assert_option_subset!(x_axis, origin);
+        assert_option_subset!(x_axis, x_point);
+        assert_not_option_subset!(x_axis, everything);
+        assert_not_option_subset!(x_axis, y_axis);
+        assert_not_option_subset!(x_axis, y_point);
+        assert_not_option_subset!(x_axis, point);
 
-        assert!(origin.option_subset(&origin));
-        assert!(!origin.option_subset(&everything));
-        assert!(!origin.option_subset(&y_axis));
-        assert!(!origin.option_subset(&x_axis));
-        assert!(!origin.option_subset(&y_point));
-        assert!(!origin.option_subset(&x_point));
-        assert!(!origin.option_subset(&point));
+        assert_option_subset!(origin, origin);
+        assert_not_option_subset!(origin, everything);
+        assert_not_option_subset!(origin, y_axis);
+        assert_not_option_subset!(origin, x_axis);
+        assert_not_option_subset!(origin, y_point);
+        assert_not_option_subset!(origin, x_point);
+        assert_not_option_subset!(origin, point);
     }
 
-    #[derive(OptionSubset)]
+    #[derive(Debug, OptionSubset)]
     enum CompressionType {
         Lzo,
         Lz4,
@@ -289,20 +341,20 @@ mod tests {
 
     #[test]
     fn compression_type() {
-        assert!(CompressionType::Lzo.option_subset(&CompressionType::Lzo));
-        assert!(!CompressionType::Lzo.option_subset(&CompressionType::Lz4));
-        assert!(!CompressionType::Lzo.option_subset(&CompressionType::Zstd));
+        assert_option_subset!(CompressionType::Lzo, CompressionType::Lzo);
+        assert_not_option_subset!(CompressionType::Lzo, CompressionType::Lz4);
+        assert_not_option_subset!(CompressionType::Lzo, CompressionType::Zstd);
 
-        assert!(CompressionType::Lz4.option_subset(&CompressionType::Lz4));
-        assert!(!CompressionType::Lz4.option_subset(&CompressionType::Lzo));
-        assert!(!CompressionType::Lz4.option_subset(&CompressionType::Zstd));
+        assert_option_subset!(CompressionType::Lz4, CompressionType::Lz4);
+        assert_not_option_subset!(CompressionType::Lz4, CompressionType::Lzo);
+        assert_not_option_subset!(CompressionType::Lz4, CompressionType::Zstd);
 
-        assert!(CompressionType::Zstd.option_subset(&CompressionType::Zstd));
-        assert!(!CompressionType::Zstd.option_subset(&CompressionType::Lzo));
-        assert!(!CompressionType::Zstd.option_subset(&CompressionType::Lz4));
+        assert_option_subset!(CompressionType::Zstd, CompressionType::Zstd);
+        assert_not_option_subset!(CompressionType::Zstd, CompressionType::Lzo);
+        assert_not_option_subset!(CompressionType::Zstd, CompressionType::Lz4);
     }
 
-    #[derive(OptionSubset)]
+    #[derive(Debug, OptionSubset)]
     struct CompressionData {
         kind: CompressionType,
         level: Option<u64>,
@@ -347,17 +399,17 @@ mod tests {
             level: Some(5),
         };
 
-        assert!(lzo_nl.option_subset(&lzo_nl));
-        assert!(lzo_nl.option_subset(&lzo_l4));
-        assert!(lzo_nl.option_subset(&lzo_l5));
+        assert_option_subset!(lzo_nl, lzo_nl);
+        assert_option_subset!(lzo_nl, lzo_l4);
+        assert_option_subset!(lzo_nl, lzo_l5);
 
-        assert!(!lzo_l4.option_subset(&lzo_nl));
-        assert!(lzo_l4.option_subset(&lzo_l4));
-        assert!(!lzo_l4.option_subset(&lzo_l5));
+        assert_not_option_subset!(lzo_l4, lzo_nl);
+        assert_option_subset!(lzo_l4, lzo_l4);
+        assert_not_option_subset!(lzo_l4, lzo_l5);
 
-        assert!(!lzo_l5.option_subset(&lzo_nl));
-        assert!(!lzo_l5.option_subset(&lzo_l4));
-        assert!(lzo_l5.option_subset(&lzo_l5));
+        assert_not_option_subset!(lzo_l5, lzo_nl);
+        assert_not_option_subset!(lzo_l5, lzo_l4);
+        assert_option_subset!(lzo_l5, lzo_l5);
 
         let lzos = vec![lzo_nl, lzo_l4, lzo_l5];
         let lz4s = vec![lz4_nl, lz4_l4, lz4_l5];
@@ -379,7 +431,7 @@ mod tests {
 
     #[test]
     fn filter_data() {
-        #[derive(OptionSubset)]
+        #[derive(Debug, OptionSubset)]
         enum FilterData {
             Compression(CompressionData),
             ScaleFloat {
@@ -411,25 +463,25 @@ mod tests {
             offset: Some(1.0),
         };
 
-        assert!(sf_none.option_subset(&sf_none));
-        assert!(sf_none.option_subset(&sf_factor));
-        assert!(sf_none.option_subset(&sf_offset));
-        assert!(sf_none.option_subset(&sf_all));
+        assert_option_subset!(sf_none, sf_none);
+        assert_option_subset!(sf_none, sf_factor);
+        assert_option_subset!(sf_none, sf_offset);
+        assert_option_subset!(sf_none, sf_all);
 
-        assert!(!sf_factor.option_subset(&sf_none));
-        assert!(sf_factor.option_subset(&sf_factor));
-        assert!(!sf_factor.option_subset(&sf_offset));
-        assert!(sf_factor.option_subset(&sf_all));
+        assert_not_option_subset!(sf_factor, sf_none);
+        assert_option_subset!(sf_factor, sf_factor);
+        assert_not_option_subset!(sf_factor, sf_offset);
+        assert_option_subset!(sf_factor, sf_all);
 
-        assert!(!sf_offset.option_subset(&sf_none));
-        assert!(!sf_offset.option_subset(&sf_factor));
-        assert!(sf_offset.option_subset(&sf_offset));
-        assert!(sf_offset.option_subset(&sf_all));
+        assert_not_option_subset!(sf_offset, sf_none);
+        assert_not_option_subset!(sf_offset, sf_factor);
+        assert_option_subset!(sf_offset, sf_offset);
+        assert_option_subset!(sf_offset, sf_all);
 
-        assert!(!sf_all.option_subset(&sf_none));
-        assert!(!sf_all.option_subset(&sf_factor));
-        assert!(!sf_all.option_subset(&sf_offset));
-        assert!(sf_all.option_subset(&sf_all));
+        assert_not_option_subset!(sf_all, sf_none);
+        assert_not_option_subset!(sf_all, sf_factor);
+        assert_not_option_subset!(sf_all, sf_offset);
+        assert_option_subset!(sf_all, sf_all);
 
         let sf_bw1 = FilterData::ScaleFloat {
             byte_width: 1,
@@ -437,21 +489,21 @@ mod tests {
             offset: None,
         };
 
-        assert!(!sf_none.option_subset(&sf_bw1));
-        assert!(!sf_factor.option_subset(&sf_bw1));
-        assert!(!sf_offset.option_subset(&sf_bw1));
-        assert!(!sf_all.option_subset(&sf_bw1));
+        assert_not_option_subset!(sf_none, sf_bw1);
+        assert_not_option_subset!(sf_factor, sf_bw1);
+        assert_not_option_subset!(sf_offset, sf_bw1);
+        assert_not_option_subset!(sf_all, sf_bw1);
 
-        assert!(FilterData::Xor.option_subset(&FilterData::Xor));
+        assert_option_subset!(FilterData::Xor, FilterData::Xor);
 
-        assert!(!sf_none.option_subset(&FilterData::Xor));
-        assert!(!sf_factor.option_subset(&FilterData::Xor));
-        assert!(!sf_offset.option_subset(&FilterData::Xor));
-        assert!(!sf_all.option_subset(&FilterData::Xor));
-        assert!(!FilterData::Xor.option_subset(&sf_none));
-        assert!(!FilterData::Xor.option_subset(&sf_factor));
-        assert!(!FilterData::Xor.option_subset(&sf_offset));
-        assert!(!FilterData::Xor.option_subset(&sf_all));
+        assert_not_option_subset!(sf_none, FilterData::Xor);
+        assert_not_option_subset!(sf_factor, FilterData::Xor);
+        assert_not_option_subset!(sf_offset, FilterData::Xor);
+        assert_not_option_subset!(sf_all, FilterData::Xor);
+        assert_not_option_subset!(FilterData::Xor, sf_none);
+        assert_not_option_subset!(FilterData::Xor, sf_factor);
+        assert_not_option_subset!(FilterData::Xor, sf_offset);
+        assert_not_option_subset!(FilterData::Xor, sf_all);
 
         let lzo_nl = FilterData::Compression(CompressionData {
             kind: CompressionType::Lzo,
@@ -490,17 +542,17 @@ mod tests {
             level: Some(5),
         });
 
-        assert!(lzo_nl.option_subset(&lzo_nl));
-        assert!(lzo_nl.option_subset(&lzo_l4));
-        assert!(lzo_nl.option_subset(&lzo_l5));
+        assert_option_subset!(lzo_nl, lzo_nl);
+        assert_option_subset!(lzo_nl, lzo_l4);
+        assert_option_subset!(lzo_nl, lzo_l5);
 
-        assert!(!lzo_l4.option_subset(&lzo_nl));
-        assert!(lzo_l4.option_subset(&lzo_l4));
-        assert!(!lzo_l4.option_subset(&lzo_l5));
+        assert_not_option_subset!(lzo_l4, lzo_nl);
+        assert_option_subset!(lzo_l4, lzo_l4);
+        assert_not_option_subset!(lzo_l4, lzo_l5);
 
-        assert!(!lzo_l5.option_subset(&lzo_nl));
-        assert!(!lzo_l5.option_subset(&lzo_l4));
-        assert!(lzo_l5.option_subset(&lzo_l5));
+        assert_not_option_subset!(lzo_l5, lzo_nl);
+        assert_not_option_subset!(lzo_l5, lzo_l4);
+        assert_option_subset!(lzo_l5, lzo_l5);
 
         let lzos = vec![lzo_nl, lzo_l4, lzo_l5];
         let lz4s = vec![lz4_nl, lz4_l4, lz4_l5];

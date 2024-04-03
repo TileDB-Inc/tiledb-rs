@@ -6,4 +6,5 @@ extern crate tiledb_proc_macro;
 extern crate serde_json;
 
 pub mod numbers;
+#[macro_use]
 pub mod option;
