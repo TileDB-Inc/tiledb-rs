@@ -1,4 +1,7 @@
-use std::convert::TryFrom;
+// This is for the derive(proptest::Arbitrary) macro which triggers this
+// lint on nightly.
+#![cfg_attr(ci_nightly, allow(non_local_definitions))]
+
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
@@ -226,7 +229,6 @@ pub mod tests {
     use tempfile::TempDir;
 
     use crate::array::*;
-    use crate::context::Context;
     use crate::Datatype;
 
     /// Create the array used in the "quickstart_dense" example

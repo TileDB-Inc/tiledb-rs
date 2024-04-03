@@ -114,7 +114,6 @@ where
 #[cfg(feature = "serde_json")]
 mod serde_json {
     use super::*;
-    use crate::option_subset_partialeq;
     use crate::serde_json::value::{Map, Number, Value};
 
     option_subset_partialeq!(Number);
@@ -180,14 +179,14 @@ mod tests {
         y: i64,
     }
 
+    impl PointNamed {
+        pub fn new(x: i64, y: i64) -> Self {
+            PointNamed { x, y }
+        }
+    }
+
     #[test]
     fn point_named() {
-        impl PointNamed {
-            pub fn new(x: i64, y: i64) -> Self {
-                PointNamed { x, y }
-            }
-        }
-
         assert_option_subset!(PointNamed::new(0, 0), PointNamed::new(0, 0));
         assert_not_option_subset!(PointNamed::new(0, 0), PointNamed::new(0, 1));
     }

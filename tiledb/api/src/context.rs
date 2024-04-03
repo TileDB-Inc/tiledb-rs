@@ -1,4 +1,3 @@
-use std::convert::From;
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};

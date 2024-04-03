@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
@@ -566,7 +565,6 @@ mod tests {
     use crate::array::schema::*;
     use crate::array::tests::*;
     use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
-    use crate::context::Context;
     use crate::filter::*;
     use crate::Datatype;
 

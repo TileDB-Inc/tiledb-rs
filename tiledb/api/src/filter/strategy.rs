@@ -2,14 +2,13 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use proptest::prelude::*;
-use proptest::strategy::{Just, NewTree, Strategy, ValueTree};
+use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
 use crate::array::{ArrayType, DomainData};
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
 use crate::filter::*;
-use crate::Datatype;
 
 #[derive(Clone, Debug)]
 pub enum StrategyContext {
@@ -461,8 +460,7 @@ impl Arbitrary for FilterListData {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Context, Factory};
-    use proptest::strategy::{Strategy, ValueTree};
+    use crate::Factory;
     use util::assert_option_subset;
 
     #[test]

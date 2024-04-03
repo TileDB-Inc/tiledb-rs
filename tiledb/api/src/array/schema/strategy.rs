@@ -68,8 +68,8 @@ fn prop_schema_for_domain(
     };
 
     let capacity = match array_type {
-        ArrayType::Dense => 0..=std::u64::MAX,
-        ArrayType::Sparse => 1..=std::u64::MAX,
+        ArrayType::Dense => 0..=u64::MAX,
+        ArrayType::Sparse => 1..=u64::MAX,
     };
 
     let attr_requirements = AttributeRequirements {

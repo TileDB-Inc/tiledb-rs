@@ -1,7 +1,6 @@
 extern crate tiledb_sys as ffi;
 
 use std::borrow::Borrow;
-use std::convert::From;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
