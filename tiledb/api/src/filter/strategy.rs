@@ -513,10 +513,13 @@ mod tests {
     fn filter_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in prop_filter_pipeline(Default::default()))| {
-            let attr = attr.create(&ctx)
+        proptest!(|(pipeline in prop_filter_pipeline(Default::default()))| {
+            assert_eq!(pipeline, pipeline);
+            assert!(pipeline.option_subset(&pipeline));
+
+            let pipeline = pipeline.create(&ctx)
                 .expect("Error constructing arbitrary filter");
-            assert_eq!(attr, attr);
+            assert_eq!(pipeline, pipeline);
         });
     }
 

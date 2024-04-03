@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
+use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::Result as TileDBResult;
@@ -38,7 +39,9 @@ impl Mode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 #[cfg_attr(feature = "proptest-strategies", derive(proptest_derive::Arbitrary))]
 pub enum TileOrder {
     RowMajor,
@@ -68,7 +71,9 @@ impl TryFrom<ffi::tiledb_layout_t> for TileOrder {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 pub enum CellOrder {
     Unordered,
     RowMajor,

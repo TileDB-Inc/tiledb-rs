@@ -186,6 +186,7 @@ impl Arbitrary for SchemaData {
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use util::option::OptionSubset;
 
     /// Test that the arbitrary schema construction always succeeds
     #[test]
@@ -202,8 +203,11 @@ mod tests {
     fn schema_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in any::<SchemaData>())| {
-            let schema = maybe_schema.create(&ctx)
+        proptest!(|(schema in any::<SchemaData>())| {
+            assert_eq!(schema, schema);
+            assert!(schema.option_subset(&schema));
+
+            let schema = schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);
         });

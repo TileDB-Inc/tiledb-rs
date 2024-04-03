@@ -126,6 +126,7 @@ pub fn prop_attribute(
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use util::option::OptionSubset;
 
     /// Test that the arbitrary attribute construction always succeeds
     #[test]
@@ -142,6 +143,9 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|(attr in prop_attribute(Default::default()))| {
+            assert_eq!(attr, attr);
+            assert!(attr.option_subset(&attr));
+
             let attr = attr.create(&ctx)
                 .expect("Error constructing arbitrary attribute");
             assert_eq!(attr, attr);

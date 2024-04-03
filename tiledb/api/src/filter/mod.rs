@@ -3,6 +3,7 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
+use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::{DatatypeErrorKind, Error};
@@ -12,7 +13,9 @@ pub use crate::filter::list::{Builder as FilterListBuilder, FilterList};
 
 pub mod list;
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 pub enum CompressionType {
     Bzip2,
     Delta,
@@ -24,13 +27,17 @@ pub enum CompressionType {
     Zstd,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 pub enum ChecksumType {
     Md5,
     Sha256,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 pub enum WebPFilterInputFormat {
     Rgb,
     Bgr,
@@ -73,7 +80,7 @@ impl TryFrom<u32> for WebPFilterInputFormat {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct CompressionData {
     pub kind: CompressionType,
     pub level: Option<i32>,
@@ -90,7 +97,9 @@ impl CompressionData {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, OptionSubset, PartialEq, Serialize,
+)]
 pub enum ScaleFloatByteWidth {
     I8,
     I16,
@@ -135,7 +144,7 @@ impl TryFrom<std::ffi::c_ulonglong> for ScaleFloatByteWidth {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub enum FilterData {
     None,
     BitShuffle,

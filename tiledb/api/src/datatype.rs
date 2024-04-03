@@ -1,11 +1,12 @@
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use serde::{Deserialize, Serialize};
+use util::option::OptionSubset;
 
 use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Deserialize, Eq, OptionSubset, PartialEq, Serialize)]
 #[repr(u64)]
 pub enum Datatype {
     #[doc = " 32-bit signed integer"]

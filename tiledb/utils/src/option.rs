@@ -32,7 +32,7 @@ where
     }
 }
 
-impl<T> OptionSubset for Vec<T>
+impl<T> OptionSubset for [T]
 where
     T: OptionSubset,
 {
@@ -42,6 +42,24 @@ where
                 .iter()
                 .zip(other.iter())
                 .all(|(mine, theirs)| mine.option_subset(theirs))
+    }
+}
+
+impl<T, const K: usize> OptionSubset for [T; K]
+where
+    T: OptionSubset,
+{
+    fn option_subset(&self, other: &Self) -> bool {
+        self.as_slice().option_subset(other.as_slice())
+    }
+}
+
+impl<T> OptionSubset for Vec<T>
+where
+    T: OptionSubset,
+{
+    fn option_subset(&self, other: &Self) -> bool {
+        self.as_slice().option_subset(other.as_slice())
     }
 }
 
@@ -60,6 +78,9 @@ macro_rules! option_subset_partialeq {
 option_subset_partialeq!(u8, u16, u32, u64, usize);
 option_subset_partialeq!(i8, i16, i32, i64, isize);
 option_subset_partialeq!(bool, f32, f64, String);
+
+#[cfg(feature = "serde_json")]
+option_subset_partialeq!(serde_json::value::Value);
 
 #[cfg(test)]
 mod tests {

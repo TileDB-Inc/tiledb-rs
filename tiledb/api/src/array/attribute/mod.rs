@@ -8,6 +8,7 @@ use std::ops::Deref;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::{BitsEq, CAPIConverter};
@@ -444,14 +445,14 @@ impl<'ctx> Builder<'ctx> {
 }
 
 /// Encapsulation of data needed to construct an Attribute's fill value
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct FillData {
     pub data: serde_json::value::Value,
     pub nullability: Option<bool>,
 }
 
 /// Encapsulation of data needed to construct an Attribute
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
 pub struct AttributeData {
     pub name: String,
     pub datatype: Datatype,

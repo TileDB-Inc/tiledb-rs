@@ -5,7 +5,7 @@ pub trait AnyNumCmp {
 macro_rules! derive_primitive_anynumcmp {
     ($($T:ty),+) => {
         $(
-            impl $crate::util::strategy::AnyNumCmp for $T {
+            impl AnyNumCmp for $T {
                 fn cmp(&self, other: &Self) -> std::cmp::Ordering {
                     std::cmp::Ord::cmp(self, other)
                 }
@@ -17,7 +17,7 @@ macro_rules! derive_primitive_anynumcmp {
 macro_rules! derive_float_anynumcmp {
     ($($T:ty),+) => {
         $(
-            impl $crate::util::strategy::AnyNumCmp for $T {
+            impl AnyNumCmp for $T {
                 fn cmp(&self, other: &Self) -> std::cmp::Ordering {
                     self.total_cmp(other)
                 }

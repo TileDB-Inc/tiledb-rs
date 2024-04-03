@@ -4,6 +4,7 @@ use std::ops::Deref;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
@@ -269,7 +270,7 @@ impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
 }
 
 /// Encapsulation of data needed to construct a Dimension
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct DimensionData {
     pub name: String,
     pub datatype: Datatype,

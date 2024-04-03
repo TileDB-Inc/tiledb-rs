@@ -121,6 +121,7 @@ pub fn prop_dimension() -> impl Strategy<Value = DimensionData> {
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use util::option::OptionSubset;
 
     /// Test that the arbitrary dimension construction always succeeds
     #[test]
@@ -134,11 +135,14 @@ mod tests {
     }
 
     #[test]
-    fn test_prop_dimension_equality() {
+    fn dimension_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in prop_dimension())| {
-            let dimension = maybe_dimension
+        proptest!(|(dimension in prop_dimension())| {
+            assert_eq!(dimension, dimension);
+            assert!(dimension.option_subset(&dimension));
+
+            let dimension = dimension
                 .create(&ctx).expect("Error constructing arbitrary attribute");
             assert_eq!(dimension, dimension);
         });

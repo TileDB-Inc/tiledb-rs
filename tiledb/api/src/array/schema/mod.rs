@@ -5,6 +5,7 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use util::option::OptionSubset;
 
 use crate::array::attribute::{AttributeData, RawAttribute};
 use crate::array::domain::{DomainData, RawDomain};
@@ -13,7 +14,9 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::{Factory, Result as TileDBResult};
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 #[cfg_attr(feature = "proptest-strategies", derive(proptest_derive::Arbitrary))]
 pub enum ArrayType {
     Dense,
@@ -473,7 +476,7 @@ impl<'ctx> TryFrom<Builder<'ctx>> for Schema<'ctx> {
 }
 
 /// Encapsulation of data needed to construct a Schema
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct SchemaData {
     pub array_type: ArrayType,
     pub domain: DomainData,
