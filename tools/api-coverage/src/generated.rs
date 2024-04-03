@@ -23,8 +23,16 @@ impl<'ast> Visit<'ast> for BindgenDefs {
         if self.constants.get(&ident).is_some() {
             panic!("Duplicate constant defintion: {}", ident);
         }
+
+        // Drop all attributes on const definitions to avoid spurious
+        // mismatches when the C API generates documentation attributes.
+        let node = syn::ItemConst {
+            attrs: vec![],
+            ..node.clone()
+        };
+
         self.constants.insert(ident, node.clone());
-        visit::visit_item_const(self, node);
+        visit::visit_item_const(self, &node);
     }
 
     fn visit_signature(&mut self, node: &'ast syn::Signature) {
