@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -277,7 +277,17 @@ pub struct DimensionData {
     pub domain: [serde_json::value::Value; 2],
     pub extent: serde_json::value::Value,
     pub cell_val_num: Option<u32>,
-    pub filters: FilterListData,
+
+    /// Optional filters to apply to the dimension. If None or Some(empty),
+    /// then filters will be inherited from the schema's `coordinate_filters`
+    /// field when the array is constructed.
+    pub filters: Option<FilterListData>,
+}
+
+impl Display for DimensionData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
 }
 
 impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
@@ -298,7 +308,14 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
             domain,
             extent,
             cell_val_num: Some(dim.cell_val_num()?),
-            filters: FilterListData::try_from(&dim.filters()?)?,
+            filters: {
+                let fl = FilterListData::try_from(&dim.filters()?)?;
+                if fl.is_empty() {
+                    None
+                } else {
+                    Some(fl)
+                }
+            },
         })
     }
 }
@@ -307,7 +324,7 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     type Item = Dimension<'ctx>;
 
     fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
-        let b = fn_typed!(self.datatype, DT, {
+        let mut b = fn_typed!(self.datatype, DT, {
             let d0 = serde_json::from_value::<DT>(self.domain[0].clone())
                 .map_err(|e| {
                     Error::Deserialization(
@@ -336,8 +353,10 @@ impl<'ctx> Factory<'ctx> for DimensionData {
                 &[d0, d1],
                 &extent,
             )
-        })?
-        .filters(self.filters.create(context)?)?;
+        })?;
+        if let Some(fl) = self.filters.as_ref() {
+            b = b.filters(fl.create(context)?)?;
+        }
 
         Ok(if let Some(c) = self.cell_val_num {
             b.cell_val_num(c)?

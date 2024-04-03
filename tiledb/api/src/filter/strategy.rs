@@ -86,7 +86,11 @@ fn prop_compression(
                      * if there is a floating-point dimension.
                      */
                     ok_double_delta = !domain.dimension.iter().any(|d| {
-                        d.datatype.is_real_type() && d.filters.is_empty()
+                        d.datatype.is_real_type()
+                            && d.filters
+                                .as_ref()
+                                .map(|fl| fl.is_empty())
+                                .unwrap_or(true)
                     })
                 }
             }
