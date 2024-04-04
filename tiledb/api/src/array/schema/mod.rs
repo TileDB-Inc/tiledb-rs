@@ -517,6 +517,14 @@ impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {
     }
 }
 
+impl<'ctx> TryFrom<Schema<'ctx>> for SchemaData {
+    type Error = crate::error::Error;
+
+    fn try_from(schema: Schema<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&schema)
+    }
+}
+
 impl<'ctx> Factory<'ctx> for SchemaData {
     type Item = Schema<'ctx>;
 

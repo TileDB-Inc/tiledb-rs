@@ -312,6 +312,14 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
     }
 }
 
+impl<'ctx> TryFrom<Dimension<'ctx>> for DimensionData {
+    type Error = crate::error::Error;
+
+    fn try_from(dim: Dimension<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&dim)
+    }
+}
+
 impl<'ctx> Factory<'ctx> for DimensionData {
     type Item = Dimension<'ctx>;
 

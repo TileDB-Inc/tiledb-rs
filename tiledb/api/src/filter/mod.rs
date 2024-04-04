@@ -286,6 +286,14 @@ impl<'ctx> TryFrom<&Filter<'ctx>> for FilterData {
     }
 }
 
+impl<'ctx> TryFrom<Filter<'ctx>> for FilterData {
+    type Error = crate::error::Error;
+
+    fn try_from(filter: Filter<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&filter)
+    }
+}
+
 impl<'ctx> crate::Factory<'ctx> for FilterData {
     type Item = Filter<'ctx>;
 
