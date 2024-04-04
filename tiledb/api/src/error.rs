@@ -5,6 +5,8 @@ use std::ops::Deref;
 
 use serde::{Serialize, Serializer};
 
+use crate::array::Mode;
+use crate::context::ObjectType;
 use crate::Datatype;
 
 pub(crate) enum RawError {
@@ -84,6 +86,64 @@ impl Display for DatatypeErrorKind {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ObjectTypeErrorKind {
+    InvalidDiscriminant(u64),
+    TypeMismatch {
+        user_type: &'static str,
+        tiledb_type: ObjectType,
+    },
+}
+
+impl Display for ObjectTypeErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            ObjectTypeErrorKind::InvalidDiscriminant(value) => {
+                write!(f, "Invalid object type: {}", value)
+            }
+            ObjectTypeErrorKind::TypeMismatch {
+                user_type,
+                tiledb_type,
+            } => {
+                write!(
+                    f,
+                    "Type mismatch: requested {}, but found {}",
+                    user_type, tiledb_type
+                )
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ModeErrorKind {
+    InvalidDiscriminant(u64),
+    TypeMismatch {
+        user_type: &'static str,
+        tiledb_type: Mode,
+    },
+}
+
+impl Display for ModeErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            ModeErrorKind::InvalidDiscriminant(value) => {
+                write!(f, "Invalid mode type: {}", value)
+            }
+            ModeErrorKind::TypeMismatch {
+                user_type,
+                tiledb_type,
+            } => {
+                write!(
+                    f,
+                    "Type mismatch: requested {}, but found {}",
+                    user_type, tiledb_type
+                )
+            }
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Internal error due to bugs in tiledb.
@@ -102,6 +162,12 @@ pub enum Error {
     /// Error with datatype handling
     #[error("Datatype error: {0}")]
     Datatype(DatatypeErrorKind),
+    /// Error with ObjectType handling
+    #[error("Object type error: {0}")]
+    ObjectType(ObjectTypeErrorKind),
+    /// Error with Mode handling
+    #[error("Mode type error: {0}")]
+    ModeType(ModeErrorKind),
     /// Error serializing data
     #[error("Serialization error: {0}: {1}")]
     Serialization(String, #[source] anyhow::Error),

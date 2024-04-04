@@ -2,6 +2,8 @@
 // lint on nightly.
 #![cfg_attr(ci_nightly, allow(non_local_definitions))]
 
+use std::convert::TryFrom;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +11,7 @@ use util::option::OptionSubset;
 
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
+use crate::error::ModeErrorKind;
 use crate::Result as TileDBResult;
 
 pub mod attribute;
@@ -29,6 +32,7 @@ pub use schema::{
     ArrayType, Builder as SchemaBuilder, CellValNum, Schema, SchemaData,
 };
 
+#[derive(Clone)]
 pub enum Mode {
     Read,
     Write,
@@ -44,6 +48,42 @@ impl Mode {
             Mode::Delete => ffi::tiledb_query_type_t_TILEDB_DELETE,
             Mode::Update => ffi::tiledb_query_type_t_TILEDB_UPDATE,
         }
+    }
+}
+
+impl TryFrom<ffi::tiledb_query_type_t> for Mode {
+    type Error = crate::error::Error;
+
+    fn try_from(value: ffi::tiledb_datatype_t) -> TileDBResult<Self> {
+        Ok(match value {
+            ffi::tiledb_query_type_t_TILEDB_READ => Mode::Read,
+            ffi::tiledb_query_type_t_TILEDB_WRITE => Mode::Write,
+            ffi::tiledb_query_type_t_TILEDB_DELETE => Mode::Delete,
+            ffi::tiledb_query_type_t_TILEDB_UPDATE => Mode::Update,
+            _ => {
+                return Err(crate::error::Error::ModeType(
+                    ModeErrorKind::InvalidDiscriminant(value as u64),
+                ))
+            }
+        })
+    }
+}
+
+impl Debug for Mode {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        <Self as Display>::fmt(self, f)
+    }
+}
+
+impl Display for Mode {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let mode_str = match *self {
+            Mode::Delete => String::from("Mode::Delete"),
+            Mode::Write => String::from("Mode::Write"),
+            Mode::Read => String::from("Mode::Read"),
+            Mode::Update => String::from("Mode::Update"),
+        };
+        write!(f, "{}", mode_str)
     }
 }
 

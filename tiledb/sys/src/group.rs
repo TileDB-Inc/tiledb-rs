@@ -1,6 +1,9 @@
+use crate::capi_enum::{tiledb_object_t, tiledb_query_type_t};
 use crate::tiledb_datatype_t;
-use crate::types::{capi_return_t, tiledb_config_t, tiledb_ctx_t, tiledb_group_t, tiledb_string_t};
-use crate::capi_enum::{tiledb_query_type_t, tiledb_object_t};
+use crate::types::{
+    capi_return_t, tiledb_config_t, tiledb_ctx_t, tiledb_group_t,
+    tiledb_string_t,
+};
 
 extern "C" {
     #[doc = " Creates a new TileDB group.\n\n **Example:**\n\n @code{.c}\n tiledb_group_create(ctx, \"my_group\");\n @endcode\n\n @param ctx The TileDB context.\n @param group_uri The group URI.\n @return `TILEDB_OK` for success and `TILEDB_ERR` for error."]
@@ -132,16 +135,6 @@ extern "C" {
         count: *mut u64,
     ) -> capi_return_t;
 
-    #[doc = " Get a member of a group by index and details of group.\n Deprecated, use \\p tiledb_group_get_member_by_index_v2 instead.\n\n **Example:**\n\n @code{.c}\n tiledb_group_t* group;\n tiledb_group_alloc(ctx, \"s3://tiledb_bucket/my_group\", &group);\n tiledb_group_open(ctx, group, TILEDB_WRITE);\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_array\");\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_group_2\");\n\n tiledb_group_close(ctx, group);\n tiledb_group_open(ctx, group, TILEDB_READ);\n char *uri;\n tiledb_object_t type;\n tiledb_group_get_member_by_index(ctx, group, 0, &uri, &type);\n\n free(uri);\n\n @endcode\n\n @param ctx The TileDB context.\n @param group An group opened in READ mode.\n @param index index of member to fetch\n @param uri URI of member.\n @param type type of member\n @param name name of member. NULL if name was not set\n @return `TILEDB_OK` for success and `TILEDB_ERR` for error."]
-    pub fn tiledb_group_get_member_by_index(
-        ctx: *mut tiledb_ctx_t,
-        group: *mut tiledb_group_t,
-        index: u64,
-        uri: *mut *mut ::std::ffi::c_char,
-        type_: *mut tiledb_object_t,
-        name: *mut *mut ::std::ffi::c_char,
-    ) -> capi_return_t;
-
     #[doc = " Get a member of a group by index and details of group\n\n **Example:**\n\n @code{.c}\n tiledb_group_t* group;\n tiledb_group_alloc(ctx, \"s3://tiledb_bucket/my_group\", &group);\n tiledb_group_open(ctx, group, TILEDB_WRITE);\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_array\");\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_group_2\");\n\n tiledb_group_close(ctx, group);\n tiledb_group_open(ctx, group, TILEDB_READ);\n tiledb_string_t *uri, *name;\n tiledb_object_t type;\n tiledb_group_get_member_by_index_v2(ctx, group, 0, &uri, &type, &name);\n\n tiledb_string_free(uri);\n tiledb_string_free(name);\n\n @endcode\n\n @param ctx The TileDB context.\n @param group An group opened in READ mode.\n @param index index of member to fetch\n @param uri Handle to the URI of the member.\n @param type type of member\n @param name Handle to the name of the member. NULL if name was not set\n @return `TILEDB_OK` for success and `TILEDB_ERR` for error."]
     pub fn tiledb_group_get_member_by_index_v2(
         ctx: *mut tiledb_ctx_t,
@@ -152,15 +145,6 @@ extern "C" {
         name: *mut *mut tiledb_string_t,
     ) -> capi_return_t;
 
-    #[doc = " Get a member of a group by name and details of group.\n Deprecated, use \\p tiledb_group_get_member_by_name_v2.\n\n **Example:**\n\n @code{.c}\n tiledb_group_t* group;\n tiledb_group_alloc(ctx, \"s3://tiledb_bucket/my_group\", &group);\n tiledb_group_open(ctx, group, TILEDB_WRITE);\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_array\", \"array1\");\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_group_2\",\n \"group2\");\n\n tiledb_group_close(ctx, group);\n tiledb_group_open(ctx, group, TILEDB_READ);\n char *uri;\n tiledb_object_t type;\n tiledb_group_get_member_by_name(ctx, group, \"array1\", &uri, &type);\n\n free(uri);\n\n @endcode\n\n @param ctx The TileDB context.\n @param group An group opened in READ mode.\n @param name name of member to fetch\n @param uri URI of member\n @param type type of member\n @return `TILEDB_OK` for success and `TILEDB_ERR` for error."]
-    pub fn tiledb_group_get_member_by_name(
-        ctx: *mut tiledb_ctx_t,
-        group: *mut tiledb_group_t,
-        name: *const ::std::ffi::c_char,
-        uri: *mut *mut ::std::ffi::c_char,
-        type_: *mut tiledb_object_t,
-    ) -> capi_return_t;
-
     #[doc = " Get a member of a group by name and details of group.\n\n **Example:**\n\n @code{.c}\n tiledb_group_t* group;\n tiledb_group_alloc(ctx, \"s3://tiledb_bucket/my_group\", &group);\n tiledb_group_open(ctx, group, TILEDB_WRITE);\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_array\", \"array1\");\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_group_2\",\n \"group2\");\n\n tiledb_group_close(ctx, group);\n tiledb_group_open(ctx, group, TILEDB_READ);\n tilledb_string_t *uri;\n tiledb_object_t type;\n tiledb_group_get_member_by_name(ctx, group, \"array1\", &uri, &type);\n\n tiledb_string_free(uri);\n\n @endcode\n\n @param ctx The TileDB context.\n @param group An group opened in READ mode.\n @param name name of member to fetch\n @param uri Handle to the URI of the member.\n @param type type of member\n @return `TILEDB_OK` for success and `TILEDB_ERR` for error."]
     pub fn tiledb_group_get_member_by_name_v2(
         ctx: *mut tiledb_ctx_t,
@@ -169,7 +153,6 @@ extern "C" {
         uri: *mut *mut tiledb_string_t,
         type_: *mut tiledb_object_t,
     ) -> capi_return_t;
-
 
     #[doc = " Get a member of a group by name and relative characteristic of that name\n\n **Example:**\n\n @code{.c}\n tiledb_group_t* group;\n tiledb_group_alloc(ctx, \"s3://tiledb_bucket/my_group\", &group);\n tiledb_group_open(ctx, group, TILEDB_WRITE);\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_array\", true,\n     \"array1\");\n tiledb_group_add_member(ctx, group, \"s3://tiledb_bucket/my_group_2\",\n     false, \"group2\");\n\n tiledb_group_close(ctx, group);\n tiledb_group_open(ctx, group, TILEDB_READ);\n uint8_t is_relative;\n tiledb_group_get_is_relative_uri_by_name(ctx, group, \"array1\", &is_relative);\n\n @endcode\n\n @param[in] ctx The TileDB context.\n @param[in] group An group opened in READ mode.\n @param[in] name name of member to fetch\n @param[out] is_relative to receive relative characteristic of named member\n @return `TILEDB_OK` for success and `TILEDB_ERR` for error."]
     pub fn tiledb_group_get_is_relative_uri_by_name(
