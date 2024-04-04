@@ -117,7 +117,7 @@ pub fn prop_attribute(
         .map(|d| Just(d).boxed())
         .unwrap_or(prop_datatype_implemented().boxed());
 
-    datatype.prop_ind_flat_map(move |datatype| {
+    datatype.prop_flat_map(move |datatype| {
         prop_attribute_for_datatype(datatype, requirements.clone())
     })
 }

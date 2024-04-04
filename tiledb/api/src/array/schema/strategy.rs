@@ -163,7 +163,7 @@ fn prop_schema(
         .map(|at| Just(at).boxed())
         .unwrap_or(any::<ArrayType>().boxed());
 
-    array_type.prop_ind_flat_map(|array_type| {
+    array_type.prop_flat_map(|array_type| {
         any_with::<DomainData>(Rc::new(DomainRequirements {
             array_type: Some(array_type),
         }))

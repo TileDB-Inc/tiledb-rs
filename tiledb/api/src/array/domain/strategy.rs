@@ -19,7 +19,7 @@ fn prop_domain_for_array_type(
 ) -> impl Strategy<Value = DomainData> {
     match array_type {
         ArrayType::Dense => prop_datatype_for_dense_dimension()
-            .prop_ind_flat_map(|dimension_type| {
+            .prop_flat_map(|dimension_type| {
                 proptest::collection::vec(
                     prop_dimension_for_datatype(dimension_type),
                     MIN_DIMENSIONS..=MAX_DIMENSIONS,
@@ -42,7 +42,7 @@ fn prop_domain(
         prop_domain_for_array_type(array_type).boxed()
     } else {
         prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-            .prop_ind_flat_map(prop_domain_for_array_type)
+            .prop_flat_map(prop_domain_for_array_type)
             .boxed()
     }
 }

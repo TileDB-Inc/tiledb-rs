@@ -363,7 +363,7 @@ fn prop_filter_pipeline(
         with_datatype(Rc::clone(&requirements)).boxed()
     } else {
         prop_datatype_implemented()
-            .prop_ind_flat_map(move |input_datatype| {
+            .prop_flat_map(move |input_datatype| {
                 with_datatype(Rc::new(Requirements {
                     input_datatype: Some(input_datatype),
                     ..(*requirements).clone()
