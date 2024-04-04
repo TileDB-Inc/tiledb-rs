@@ -1,14 +1,48 @@
+use std::convert::From;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
-use crate::error::{Error, RawError};
+use crate::error::{Error, ObjectTypeErrorKind, RawError};
 use crate::filesystem::Filesystem;
 use crate::stats::RawStatsString;
 use crate::Result as TileDBResult;
 
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ObjectType {
     Array,
     Group,
+}
+
+impl TryFrom<ffi::tiledb_object_t> for ObjectType {
+    type Error = crate::error::Error;
+    fn try_from(value: ffi::tiledb_object_t) -> TileDBResult<Self> {
+        Ok(match value {
+            ffi::tiledb_object_t_TILEDB_ARRAY => ObjectType::Array,
+            ffi::tiledb_object_t_TILEDB_GROUP => ObjectType::Group,
+            _ => {
+                return Err(crate::error::Error::ObjectType(
+                    ObjectTypeErrorKind::InvalidDiscriminant(value as u64),
+                ))
+            }
+        })
+    }
+}
+
+impl Debug for ObjectType {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        <Self as Display>::fmt(self, f)
+    }
+}
+
+impl Display for ObjectType {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let object_type_str = match *self {
+            ObjectType::Array => String::from("ObjectType::Array"),
+            ObjectType::Group => String::from("ObjectType::Group"),
+        };
+        write!(f, "{}", object_type_str)
+    }
 }
 
 pub(crate) enum RawContext {
