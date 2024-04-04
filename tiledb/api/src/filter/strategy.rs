@@ -40,42 +40,6 @@ fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
 fn prop_compression_delta_strategies(
     input_datatype: Option<Datatype>,
 ) -> Vec<BoxedStrategy<CompressionType>> {
-    /*
-    let dt_filter = if let Some(input_datatype) = input_datatype {
-        Box::<FnType>::new(|dt: Datatype| {
-            if input_datatype.is_real_type() {
-                dt != Datatype::Any
-            } else {
-                !dt.is_real_type()
-            }
-        })
-    } else {
-        Box::<FnType>::new(|dt: Datatype| !dt.is_real_type())
-    };
-    */
-
-    /*
-    let delta = prop_datatype()
-        .prop_filter(
-            "Input to delta filter cannot be floating-point type",
-            move |dt| dt_filter(*dt),
-        )
-        .prop_map(|dt| CompressionType::Delta {
-            reinterpret_datatype: Some(dt),
-        });
-
-    let double_delta = prop_datatype()
-        .prop_filter(
-            "Input to delta filter cannot be floating-point type",
-            move |dt| dt_filter(*dt),
-        )
-        .prop_map(|dt| CompressionType::DoubleDelta {
-            reinterpret_datatype: Some(dt),
-        });
-
-    vec![delta.boxed(), double_delta.boxed()]
-    */
-
     if let Some(input_datatype) = input_datatype {
         if input_datatype.is_real_type() {
             let delta = prop_datatype()
@@ -356,7 +320,7 @@ fn prop_filter_pipeline_impl(
             .prop_flat_map(move |filter| {
                 // If the transformed datatype is None then we have a bug.
                 // Do not panic here, that will swallow what the pipeline looked like.
-                // Let the unit test will fail and print the input.
+                // Let the unit test fail and print the input.
                 let next = requirements
                     .input_datatype
                     .and_then(|dt| filter.transform_datatype(&dt));

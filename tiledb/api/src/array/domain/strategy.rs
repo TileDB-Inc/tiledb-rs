@@ -103,7 +103,7 @@ mod tests {
         };
 
         let init = value.current();
-        for _ in 0..1024 {
+        for _ in 0..runner.config().max_shrink_iters {
             if value.simplify() {
                 assert_ne!(init, value.current());
             } else {
