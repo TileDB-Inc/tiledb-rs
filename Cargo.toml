@@ -1,6 +1,20 @@
 [workspace]
-members = [ "tiledb/api", "tiledb/arrow", "tiledb/proc-macro", "tiledb/sys", "tiledb/utils" ]
 resolver = "2"
+members = [
+  "tiledb/api",
+  "tiledb/arrow",
+  "tiledb/proc-macro",
+  "tiledb/sys",
+  "tiledb/utils",
+  "tools/api-coverage"
+]
+default-members = [
+  "tiledb/api",
+  "tiledb/arrow",
+  "tiledb/proc-macro",
+  "tiledb/sys",
+  "tiledb/utils",
+]
 
 [workspace.package]
 edition = "2021"
