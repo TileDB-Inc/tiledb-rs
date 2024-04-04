@@ -1,0 +1,16 @@
+[package]
+name = "api-coverage"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow = { version = "1.0.81" }
+bindgen = { version = "0.69.4" }
+clap = { version = "4.5.4", features = ["derive"] }
+prettyplease = { version = "0.2.17" }
+proc-macro2 = { version = "1.0.79" }
+quote = { version = "1.0.35" }
+regex = { version = "1.10.4" }
+syn = { version = "2.0.58", features = ["full", "visit", "extra-traits"] }
+walkdir = { version = "2.5.0" }
