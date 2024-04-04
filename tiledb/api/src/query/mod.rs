@@ -3,7 +3,6 @@ pub mod subarray;
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use crate::array::Layout;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
 use crate::{Array, Result as TileDBResult};
@@ -11,6 +10,7 @@ use crate::{Array, Result as TileDBResult};
 pub use crate::query::subarray::{Builder as SubarrayBuilder, Subarray};
 
 pub type QueryType = crate::array::Mode;
+pub type QueryLayout = crate::array::CellOrder;
 
 pub(crate) enum RawQuery {
     Owned(*mut ffi::tiledb_query_t),
@@ -102,7 +102,7 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
-    pub fn layout(self, layout: Layout) -> TileDBResult<Self> {
+    pub fn layout(self, layout: QueryLayout) -> TileDBResult<Self> {
         let c_context = self.query.context.capi();
         let c_query = *self.query.raw;
         let c_layout = layout.capi_enum();

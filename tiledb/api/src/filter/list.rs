@@ -3,6 +3,7 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
+use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::{Filter, FilterData, RawFilter};
@@ -193,7 +194,9 @@ impl<'ctx> Builder<'ctx> {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(
+    Clone, Debug, Default, Deserialize, OptionSubset, PartialEq, Serialize,
+)]
 pub struct FilterListData(Vec<FilterData>);
 
 impl Deref for FilterListData {

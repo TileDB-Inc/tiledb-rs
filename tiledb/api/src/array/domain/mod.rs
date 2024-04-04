@@ -1,9 +1,10 @@
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use util::option::OptionSubset;
 
 use crate::array::{
     dimension::DimensionData, dimension::RawDimension, Dimension,
@@ -251,9 +252,15 @@ impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
 }
 
 /// Encapsulation of data needed to construct a Domain
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct DomainData {
     pub dimension: Vec<DimensionData>,
+}
+
+impl Display for DomainData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
 }
 
 impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {

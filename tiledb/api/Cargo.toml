@@ -15,10 +15,12 @@ proptest-derive = { version = "0.4.0", optional = true }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = "1.0.58"
+tiledb-proc-macro = { workspace = true }
 tiledb-sys = { workspace = true }
+tiledb-utils = { workspace = true, features = ["serde_json"] }
 
 [dev-dependencies]
-tempdir = "0.3.7"
+tempfile = "3"
 
 [features]
 default = []

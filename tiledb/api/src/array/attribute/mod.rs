@@ -2,12 +2,13 @@ extern crate tiledb_sys as ffi;
 
 use std::borrow::Borrow;
 use std::convert::From;
-use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::{BitsEq, CAPIConverter};
@@ -444,14 +445,14 @@ impl<'ctx> Builder<'ctx> {
 }
 
 /// Encapsulation of data needed to construct an Attribute's fill value
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct FillData {
     pub data: serde_json::value::Value,
     pub nullability: Option<bool>,
 }
 
 /// Encapsulation of data needed to construct an Attribute
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
 pub struct AttributeData {
     pub name: String,
     pub datatype: Datatype,
@@ -459,6 +460,12 @@ pub struct AttributeData {
     pub cell_val_num: Option<u32>,
     pub fill: Option<FillData>,
     pub filters: FilterListData,
+}
+
+impl Display for AttributeData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
 }
 
 impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {

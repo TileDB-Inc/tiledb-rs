@@ -84,7 +84,7 @@ pub fn create_array(
         domain,
     )?
     .add_attribute(attribute_a)?
-    .build();
+    .build()?;
 
     tiledb::Array::create(&tdb, ARRAY_NAME, schema)
 }
@@ -103,7 +103,7 @@ pub fn write_array() -> TileDBResult<()> {
 
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
-            .layout(tiledb::array::Layout::RowMajor)?
+            .layout(tiledb::query::QueryLayout::RowMajor)?
             .dimension_buffer_typed(ATTRIBUTE_NAME, data.as_mut_slice())?
             .build();
 
@@ -134,7 +134,7 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
 
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
-            .layout(tiledb::array::Layout::RowMajor)?
+            .layout(tiledb::query::QueryLayout::RowMajor)?
             .dimension_buffer_typed(ATTRIBUTE_NAME, results.as_mut_slice())?
             .add_subarray()?
             .dimension_range_typed::<i32, _>(0, &[1, 3000])?

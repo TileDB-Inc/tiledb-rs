@@ -52,7 +52,7 @@ fn prop_filters(
     let pipeline_requirements = FilterRequirements {
         context: requirements.context.as_ref().map(
             |StrategyContext::Schema(array_type, domain)| {
-                FilterContext::Domain(*array_type, domain.clone())
+                FilterContext::Attribute(datatype, *array_type, domain.clone())
             },
         ),
         input_datatype: Some(datatype),
@@ -126,6 +126,8 @@ pub fn prop_attribute(
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use util::assert_option_subset;
+    use util::option::OptionSubset;
 
     /// Test that the arbitrary attribute construction always succeeds
     #[test]
@@ -142,6 +144,9 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|(attr in prop_attribute(Default::default()))| {
+            assert_eq!(attr, attr);
+            assert_option_subset!(attr, attr);
+
             let attr = attr.create(&ctx)
                 .expect("Error constructing arbitrary attribute");
             assert_eq!(attr, attr);

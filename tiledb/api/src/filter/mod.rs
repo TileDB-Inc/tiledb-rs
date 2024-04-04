@@ -3,6 +3,7 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
+use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::{DatatypeErrorKind, Error};
@@ -12,25 +13,35 @@ pub use crate::filter::list::{Builder as FilterListBuilder, FilterList};
 
 pub mod list;
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 pub enum CompressionType {
     Bzip2,
-    Delta,
     Dictionary,
-    DoubleDelta,
     Gzip,
     Lz4,
     Rle,
     Zstd,
+    Delta {
+        reinterpret_datatype: Option<Datatype>,
+    },
+    DoubleDelta {
+        reinterpret_datatype: Option<Datatype>,
+    },
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 pub enum ChecksumType {
     Md5,
     Sha256,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
 pub enum WebPFilterInputFormat {
     Rgb,
     Bgr,
@@ -73,24 +84,21 @@ impl TryFrom<u32> for WebPFilterInputFormat {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct CompressionData {
     pub kind: CompressionType,
     pub level: Option<i32>,
-    pub reinterpret_datatype: Option<Datatype>,
 }
 
 impl CompressionData {
     pub fn new(kind: CompressionType) -> Self {
-        CompressionData {
-            kind,
-            level: None,
-            reinterpret_datatype: None,
-        }
+        CompressionData { kind, level: None }
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, OptionSubset, PartialEq, Serialize,
+)]
 pub enum ScaleFloatByteWidth {
     I8,
     I16,
@@ -135,7 +143,7 @@ impl TryFrom<std::ffi::c_ulonglong> for ScaleFloatByteWidth {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub enum FilterData {
     None,
     BitShuffle,
@@ -188,7 +196,7 @@ impl FilterData {
                 ..
             }) => ffi::FilterType::Bzip2,
             FilterData::Compression(CompressionData {
-                kind: CompressionType::Delta,
+                kind: CompressionType::Delta { .. },
                 ..
             }) => ffi::FilterType::Delta,
             FilterData::Compression(CompressionData {
@@ -196,7 +204,7 @@ impl FilterData {
                 ..
             }) => ffi::FilterType::Dictionary,
             FilterData::Compression(CompressionData {
-                kind: CompressionType::DoubleDelta,
+                kind: CompressionType::DoubleDelta { .. },
                 ..
             }) => ffi::FilterType::DoubleDelta,
             FilterData::Compression(CompressionData {
@@ -250,12 +258,14 @@ impl FilterData {
                     None
                 }
             }
-            FilterData::Compression(CompressionData {
-                kind,
-                reinterpret_datatype,
-                ..
-            }) => match kind {
-                CompressionType::Delta | CompressionType::DoubleDelta => {
+            FilterData::Compression(CompressionData { kind, .. }) => match kind
+            {
+                CompressionType::Delta {
+                    reinterpret_datatype,
+                }
+                | CompressionType::DoubleDelta {
+                    reinterpret_datatype,
+                } => {
                     // these filters do not accept floating point
                     let check_type =
                         if let Some(Datatype::Any) = reinterpret_datatype {
@@ -398,9 +408,7 @@ impl<'ctx> Filter<'ctx> {
             FilterData::Checksum(ChecksumType::Md5) => (),
             FilterData::Checksum(ChecksumType::Sha256) => (),
             FilterData::Compression(CompressionData {
-                level,
-                reinterpret_datatype,
-                ..
+                kind, level, ..
             }) => {
                 if let Some(level) = level {
                     let c_level = level as std::ffi::c_int;
@@ -411,15 +419,23 @@ impl<'ctx> Filter<'ctx> {
                         c_level,
                     )?;
                 }
-                if let Some(reinterpret_datatype) = reinterpret_datatype {
-                    let c_datatype =
-                        reinterpret_datatype.capi_enum() as std::ffi::c_uchar;
-                    Self::set_option(
-                        context,
-                        *raw,
-                        ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
-                        c_datatype,
-                    )?;
+                match kind {
+                    CompressionType::Delta {
+                        reinterpret_datatype: Some(reinterpret_datatype),
+                    }
+                    | CompressionType::DoubleDelta {
+                        reinterpret_datatype: Some(reinterpret_datatype),
+                    } => {
+                        let c_datatype = reinterpret_datatype.capi_enum()
+                            as std::ffi::c_uchar;
+                        Self::set_option(
+                            context,
+                            *raw,
+                            ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
+                            c_datatype,
+                        )?;
+                    }
+                    _ => (),
                 }
             }
             FilterData::PositiveDelta { max_window } => {
@@ -525,23 +541,7 @@ impl<'ctx> Filter<'ctx> {
             let level = Some(
                 self.get_option::<i32>(ffi::FilterOption::COMPRESSION_LEVEL)?,
             );
-            let reinterpret_datatype = Some({
-                let dtype = self.get_option::<std::ffi::c_uchar>(
-                    ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
-                )?;
-                Datatype::try_from(dtype as ffi::tiledb_datatype_t).map_err(
-                    |_| {
-                        Error::Datatype(DatatypeErrorKind::InvalidDiscriminant(
-                            dtype as u64,
-                        ))
-                    },
-                )?
-            });
-            Ok(FilterData::Compression(CompressionData {
-                kind,
-                level,
-                reinterpret_datatype,
-            }))
+            Ok(FilterData::Compression(CompressionData { kind, level }))
         };
 
         match ffi::FilterType::from_u32(c_ftype) {
@@ -568,11 +568,32 @@ impl<'ctx> Filter<'ctx> {
             Some(ffi::FilterType::Dictionary) => {
                 get_compression_data(CompressionType::Dictionary)
             }
-            Some(ffi::FilterType::DoubleDelta) => {
-                get_compression_data(CompressionType::DoubleDelta)
-            }
-            Some(ffi::FilterType::Delta) => {
-                get_compression_data(CompressionType::Delta)
+            Some(ffi::FilterType::Delta)
+            | Some(ffi::FilterType::DoubleDelta) => {
+                let reinterpret_datatype = Some({
+                    let dtype = self.get_option::<std::ffi::c_uchar>(
+                        ffi::FilterOption::COMPRESSION_REINTERPRET_DATATYPE,
+                    )?;
+                    Datatype::try_from(dtype as ffi::tiledb_datatype_t)
+                        .map_err(|_| {
+                            Error::Datatype(
+                                DatatypeErrorKind::InvalidDiscriminant(
+                                    dtype as u64,
+                                ),
+                            )
+                        })?
+                });
+                if ffi::FilterType::from_u32(c_ftype).unwrap()
+                    == ffi::FilterType::Delta
+                {
+                    get_compression_data(CompressionType::Delta {
+                        reinterpret_datatype,
+                    })
+                } else {
+                    get_compression_data(CompressionType::DoubleDelta {
+                        reinterpret_datatype,
+                    })
+                }
             }
             Some(ffi::FilterType::BitShuffle) => Ok(FilterData::BitShuffle),
             Some(ffi::FilterType::ByteShuffle) => Ok(FilterData::ByteShuffle),
@@ -781,23 +802,29 @@ mod tests {
             FilterData::Compression(CompressionData {
                 kind: CompressionType::Lz4,
                 level: Some(23),
-                reinterpret_datatype: Some(Datatype::UInt16),
             }),
         )
         .expect("Error creating compression filter");
 
         match f.filter_data().expect("Error reading filter data") {
-            FilterData::Compression(CompressionData {
-                kind,
-                level,
-                reinterpret_datatype,
-            }) => {
+            FilterData::Compression(CompressionData { kind, level }) => {
                 assert_eq!(CompressionType::Lz4, kind);
                 assert_eq!(Some(23), level);
-                assert_eq!(Some(Datatype::UInt16), reinterpret_datatype);
             }
             _ => unreachable!(),
-        }
+        };
+
+        let delta_in = FilterData::Compression(CompressionData {
+            kind: CompressionType::DoubleDelta {
+                reinterpret_datatype: Some(Datatype::UInt16),
+            },
+            level: Some(5),
+        });
+        let delta_c = Filter::create(&ctx, &delta_in)
+            .expect("Error creating double delta compression filter");
+        let delta_out =
+            delta_c.filter_data().expect("Error reading filter data");
+        assert_eq!(delta_in, delta_out);
     }
 
     #[test]

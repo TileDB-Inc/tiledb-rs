@@ -8,8 +8,8 @@ use crate::array::attribute::strategy::{
     prop_attribute, Requirements as AttributeRequirements,
     StrategyContext as AttributeContext,
 };
-use crate::array::domain::strategy::{Requirements as DomainRequirements, *};
-use crate::array::{ArrayType, DomainData, Layout, SchemaData};
+use crate::array::domain::strategy::Requirements as DomainRequirements;
+use crate::array::{ArrayType, CellOrder, DomainData, SchemaData, TileOrder};
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
     Requirements as FilterRequirements, StrategyContext as FilterContext,
@@ -20,34 +20,27 @@ pub struct Requirements {
     array_type: Option<ArrayType>,
 }
 
-pub fn prop_array_type() -> impl Strategy<Value = ArrayType> {
-    prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse),]
-}
+impl Arbitrary for CellOrder {
+    type Strategy = BoxedStrategy<CellOrder>;
+    type Parameters = Option<ArrayType>;
 
-pub fn prop_cell_order(array_type: ArrayType) -> impl Strategy<Value = Layout> {
-    match array_type {
-        ArrayType::Sparse => prop_oneof![
-            Just(Layout::Unordered),
-            Just(Layout::RowMajor),
-            Just(Layout::ColumnMajor),
-            Just(Layout::Hilbert),
-        ]
-        .boxed(),
-        ArrayType::Dense => prop_oneof![
-            Just(Layout::Unordered),
-            Just(Layout::RowMajor),
-            Just(Layout::ColumnMajor),
-        ]
-        .boxed(),
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        match args {
+            None | Some(ArrayType::Sparse) => prop_oneof![
+                Just(CellOrder::Unordered),
+                Just(CellOrder::RowMajor),
+                Just(CellOrder::ColumnMajor),
+                Just(CellOrder::Hilbert),
+            ]
+            .boxed(),
+            Some(ArrayType::Dense) => prop_oneof![
+                Just(CellOrder::Unordered),
+                Just(CellOrder::RowMajor),
+                Just(CellOrder::ColumnMajor),
+            ]
+            .boxed(),
+        }
     }
-}
-
-pub fn prop_tile_order() -> impl Strategy<Value = Layout> {
-    prop_oneof![
-        Just(Layout::Unordered),
-        Just(Layout::RowMajor),
-        Just(Layout::ColumnMajor),
-    ]
 }
 
 pub fn prop_coordinate_filters(
@@ -86,8 +79,8 @@ fn prop_schema_for_domain(
 
     (
         capacity,
-        prop_cell_order(array_type),
-        prop_tile_order(),
+        any_with::<CellOrder>(Some(array_type)),
+        any::<TileOrder>(),
         allow_duplicates,
         proptest::collection::vec(
             prop_attribute(Rc::new(attr_requirements)),
@@ -162,16 +155,16 @@ fn prop_schema_for_domain(
         )
 }
 
-pub fn prop_schema(
+fn prop_schema(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = SchemaData> {
     let array_type = requirements
         .array_type
         .map(|at| Just(at).boxed())
-        .unwrap_or(prop_array_type().boxed());
+        .unwrap_or(any::<ArrayType>().boxed());
 
     array_type.prop_flat_map(|array_type| {
-        prop_domain(Rc::new(DomainRequirements {
+        any_with::<DomainData>(Rc::new(DomainRequirements {
             array_type: Some(array_type),
         }))
         .prop_flat_map(move |domain| {
@@ -180,17 +173,27 @@ pub fn prop_schema(
     })
 }
 
+impl Arbitrary for SchemaData {
+    type Parameters = Rc<Requirements>;
+    type Strategy = BoxedStrategy<SchemaData>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        prop_schema(Rc::clone(&args)).boxed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use util::option::OptionSubset;
 
     /// Test that the arbitrary schema construction always succeeds
     #[test]
     fn schema_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
+        proptest!(|(maybe_schema in any::<SchemaData>())| {
             maybe_schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
         });
@@ -200,8 +203,11 @@ mod tests {
     fn schema_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_schema in prop_schema(Default::default()))| {
-            let schema = maybe_schema.create(&ctx)
+        proptest!(|(schema in any::<SchemaData>())| {
+            assert_eq!(schema, schema);
+            assert!(schema.option_subset(&schema));
+
+            let schema = schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);
         });

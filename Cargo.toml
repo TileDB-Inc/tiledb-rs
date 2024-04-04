@@ -1,5 +1,5 @@
 [workspace]
-members = [ "tiledb/api", "tiledb/arrow", "tiledb/sys" ]
+members = [ "tiledb/api", "tiledb/arrow", "tiledb/proc-macro", "tiledb/sys", "tiledb/utils" ]
 resolver = "2"
 
 [workspace.package]
@@ -11,4 +11,6 @@ version = "0.1.0"
 anyhow = "1.0"
 serde_json = { version = "1.0.114", features = ["float_roundtrip"] }
 tiledb = { path = "tiledb/api", version = "0.1.0" }
+tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
+tiledb-utils = { path = "tiledb/utils", version = "0.1.0" }

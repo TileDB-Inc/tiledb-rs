@@ -2,7 +2,10 @@ extern crate anyhow;
 extern crate serde;
 extern crate serde_json;
 extern crate thiserror;
+#[macro_use]
+extern crate tiledb_proc_macro;
 extern crate tiledb_sys as ffi;
+extern crate tiledb_utils as util;
 
 macro_rules! cstring {
     ($arg:expr) => {
@@ -47,7 +50,6 @@ pub mod filter;
 pub mod query;
 pub mod stats;
 pub mod string;
-pub mod util;
 pub mod vfs;
 
 pub fn version() -> (i32, i32, i32) {

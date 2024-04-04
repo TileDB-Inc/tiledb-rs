@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use serde::{Deserialize, Serialize};
+use util::option::OptionSubset;
 
 use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
@@ -398,6 +399,16 @@ impl Display for Datatype {
                 None => String::from("<UNKNOWN DATA TYPE>"),
             }
         )
+    }
+}
+
+impl OptionSubset for Datatype {
+    fn option_subset(&self, other: &Self) -> bool {
+        if let Datatype::Any = *self {
+            true
+        } else {
+            self == other
+        }
     }
 }
 
@@ -800,6 +811,7 @@ pub mod strategy {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use util::{assert_not_option_subset, assert_option_subset};
 
     #[test]
     fn datatype_test() {
@@ -863,5 +875,18 @@ mod tests {
         }
 
         count == 1
+    }
+
+    #[test]
+    fn option_subset() {
+        assert_option_subset!(Datatype::Any, Datatype::Any);
+        assert_option_subset!(Datatype::Any, Datatype::UInt16);
+        assert_option_subset!(Datatype::Any, Datatype::UInt32);
+        assert_option_subset!(Datatype::UInt16, Datatype::UInt16);
+        assert_option_subset!(Datatype::UInt32, Datatype::UInt32);
+        assert_not_option_subset!(Datatype::UInt32, Datatype::Any);
+        assert_not_option_subset!(Datatype::UInt32, Datatype::UInt16);
+        assert_not_option_subset!(Datatype::UInt16, Datatype::Any);
+        assert_not_option_subset!(Datatype::UInt16, Datatype::UInt32);
     }
 }

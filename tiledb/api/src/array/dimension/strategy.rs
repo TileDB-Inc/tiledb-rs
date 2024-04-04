@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::rc::Rc;
 
 use num_traits::{Bounded, Num};
 use proptest::prelude::*;
@@ -6,6 +7,8 @@ use serde_json::json;
 
 use crate::array::{ArrayType, DimensionData};
 use crate::datatype::strategy::*;
+use crate::filter::list::FilterListData;
+use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::{fn_typed, Datatype};
 
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {
@@ -89,14 +92,22 @@ pub fn prop_dimension_for_datatype(
     fn_typed!(datatype, DT, {
         let name = prop_dimension_name();
         let range_and_extent = prop_range_and_extent::<DT>();
-        (name, range_and_extent)
-            .prop_map(move |(name, values)| DimensionData {
+        let filters = any_with::<FilterListData>(Rc::new(FilterRequirements {
+            input_datatype: Some(datatype),
+            ..Default::default()
+        }));
+        (name, range_and_extent, filters)
+            .prop_map(move |(name, values, filters)| DimensionData {
                 name,
                 datatype,
                 domain: [json!(values.0[0]), json!(values.0[1])],
                 extent: json!(values.1),
                 cell_val_num: None,
-                filters: Default::default(),
+                filters: if filters.is_empty() {
+                    None
+                } else {
+                    Some(filters)
+                },
             })
             .boxed()
     })
@@ -121,6 +132,8 @@ pub fn prop_dimension() -> impl Strategy<Value = DimensionData> {
 mod tests {
     use super::*;
     use crate::{Context, Factory};
+    use util::assert_option_subset;
+    use util::option::OptionSubset;
 
     /// Test that the arbitrary dimension construction always succeeds
     #[test]
@@ -134,11 +147,14 @@ mod tests {
     }
 
     #[test]
-    fn test_prop_dimension_equality() {
+    fn dimension_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in prop_dimension())| {
-            let dimension = maybe_dimension
+        proptest!(|(dimension in prop_dimension())| {
+            assert_eq!(dimension, dimension);
+            assert_option_subset!(dimension, dimension);
+
+            let dimension = dimension
                 .create(&ctx).expect("Error constructing arbitrary attribute");
             assert_eq!(dimension, dimension);
         });

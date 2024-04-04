@@ -17,8 +17,8 @@ pub struct SchemaMetadata {
     version: i64,
     capacity: u64,
     allows_duplicates: bool,
-    cell_order: tiledb::array::Layout,
-    tile_order: tiledb::array::Layout,
+    cell_order: tiledb::array::CellOrder,
+    tile_order: tiledb::array::TileOrder,
     coordinate_filters: FilterMetadata,
     offsets_filters: FilterMetadata,
     nullity_filters: FilterMetadata,
@@ -153,6 +153,7 @@ pub fn tiledb_schema<'ctx>(
 mod tests {
     use super::*;
     use proptest::prelude::*;
+    use tiledb::array::schema::SchemaData;
     use tiledb::Factory;
 
     #[test]
@@ -160,7 +161,7 @@ mod tests {
         let c: TileDBContext = TileDBContext::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb::array::schema::strategy::prop_schema(Default::default()))| {
+        proptest!(|(tdb_in in any::<SchemaData>())| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_schema) = arrow_schema(&tdb_in)
@@ -168,7 +169,7 @@ mod tests {
                 // convert back to TileDB attribute
                 let tdb_out = tiledb_schema(&c, &arrow_schema)?
                     .expect("Arrow schema did not invert")
-                    .build();
+                    .build().expect("Error creating TileDB schema");
                 assert_eq!(tdb_in, tdb_out);
             }
         });

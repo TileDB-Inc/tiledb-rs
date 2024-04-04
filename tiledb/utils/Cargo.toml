@@ -1,0 +1,12 @@
+[package]
+name = "tiledb-utils"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+serde_json = { workspace = true, optional = true }
+tiledb-proc-macro = { workspace = true }
+
+[features]
+serde_json = ["dep:serde_json"]

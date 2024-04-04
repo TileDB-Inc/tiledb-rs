@@ -2,10 +2,10 @@ use std::cmp::Ordering;
 
 use proptest::collection::vec;
 use proptest::prelude::*;
+use util::numbers::AnyNumCmp;
 
 use crate::array::EnumerationData;
 use crate::datatype::strategy::*;
-use crate::util::strategy::AnyNumCmp;
 use crate::{fn_typed, Datatype};
 
 const MIN_ENUMERATION_VALUES: usize = 1;

@@ -539,7 +539,7 @@ impl<'ctx> VFSHandle<'ctx> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     #[test]
     fn vfs_alloc() -> TileDBResult<()> {
@@ -555,7 +555,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         let tmp_uri = String::from("file://")
             + tmp_dir.path().to_str().expect("Error creating tmp_uri");
@@ -632,7 +632,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         let file1_uri = String::from("file://")
             + tmp_dir
@@ -752,7 +752,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         create_test_dir_structure(&vfs, &tmp_dir)?;
 
@@ -783,7 +783,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         let tmp_uri = tmp_dir.path().to_str().expect("Error getting tmp_uri");
         let mut count: u64 = 0;
@@ -809,7 +809,7 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new("test_rs_bdelit").unwrap();
+        let tmp_dir = TempDir::new().unwrap();
 
         create_test_dir_structure(&vfs, &tmp_dir)?;
 
