@@ -1,10 +1,11 @@
+use crate::capi_enum::tiledb_datatype_t;
 use crate::types::{tiledb_attribute_t, tiledb_ctx_t, tiledb_filter_list_t};
 
 extern "C" {
     pub fn tiledb_attribute_alloc(
         ctx: *mut tiledb_ctx_t,
         name: *const ::std::os::raw::c_char,
-        type_: u32,
+        type_: tiledb_datatype_t,
         attr: *mut *mut tiledb_attribute_t,
     ) -> i32;
 
