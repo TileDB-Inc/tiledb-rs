@@ -110,9 +110,12 @@ impl<'ctx> Schema<'ctx> {
     }
 
     /// Retrieve the schema of an array from storage
-    pub fn load(context: &'ctx Context, uri: &str) -> TileDBResult<Self> {
+    pub fn load<S>(context: &'ctx Context, uri: S) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+    {
         let c_context: *mut ffi::tiledb_ctx_t = context.capi();
-        let c_uri = cstring!(uri);
+        let c_uri = cstring!(uri.as_ref());
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
 
         context.capi_return(unsafe {
