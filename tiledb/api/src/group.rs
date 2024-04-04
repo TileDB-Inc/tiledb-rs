@@ -222,7 +222,7 @@ impl<'ctx> Group<'ctx> {
                 &mut tiledb_name as *mut *mut ffi::tiledb_string_t,
             )
         })?;
-        let mut data_uri: *const std::os::raw::c_char = std::ptr::null();
+        let mut data_uri: *const std::os::raw::c_uchar = std::ptr::null();
         let mut length_uri: usize = 0;
         context.capi_return(unsafe {
             ffi::tiledb_string_view(
@@ -234,7 +234,7 @@ impl<'ctx> Group<'ctx> {
         let c_uri = unsafe { std::ffi::CStr::from_ptr(data_uri) };
         let uri = c_uri.to_string_lossy().to_string();
 
-        let mut data_name: *const std::os::raw::c_char = std::ptr::null();
+        let mut data_name: *const std::os::raw::c_uchar = std::ptr::null();
         let mut length_name: usize = 0;
         context.capi_return(unsafe {
             ffi::tiledb_string_view(
@@ -276,7 +276,7 @@ impl<'ctx> Group<'ctx> {
             )
         })?;
 
-        let mut data_uri: *const std::os::raw::c_char = std::ptr::null();
+        let mut data_uri: *const std::os::raw::c_uchar = std::ptr::null();
         let mut length_uri: usize = 0;
         context.capi_return(unsafe {
             ffi::tiledb_string_view(
