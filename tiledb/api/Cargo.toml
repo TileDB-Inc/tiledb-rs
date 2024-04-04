@@ -26,6 +26,7 @@ num-traits = { version = "0.2" }
 proptest = { version = "1.0.0" }
 proptest-derive = { version = "0.4.0" }
 tempfile = "3"
+proptest = { version = "1.0.0", optional = false }
 
 [features]
 default = []
