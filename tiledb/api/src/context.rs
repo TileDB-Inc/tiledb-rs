@@ -4,6 +4,7 @@ use std::ops::Deref;
 use crate::config::{Config, RawConfig};
 use crate::error::{Error, RawError};
 use crate::filesystem::Filesystem;
+use crate::stats::RawStatsString;
 use crate::Result as TileDBResult;
 
 pub enum ObjectType {
@@ -85,7 +86,8 @@ impl Context {
         };
         if res == ffi::TILEDB_OK {
             assert!(!c_json.is_null());
-            let json = unsafe { std::ffi::CStr::from_ptr(c_json) };
+            let raw = RawStatsString::Owned(c_json);
+            let json = unsafe { std::ffi::CStr::from_ptr(*raw) };
             Ok(String::from(json.to_string_lossy()))
         } else {
             Err(self.expect_last_error())
