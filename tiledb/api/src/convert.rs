@@ -151,35 +151,40 @@ impl<'data, T> DerefMut for BufferMut<'data, T> {
     }
 }
 
-pub struct OutputLocation<'data> {
-    pub data: BufferMut<'data>,
+pub struct OutputLocation<'data, T = u8> {
+    pub data: BufferMut<'data, T>,
     pub cell_offsets: Option<BufferMut<'data, u64>>,
 }
 
-pub trait DataReceiver<D> {
+pub trait DataReceiver<'data, D> {
     type Parameters: Default;
+    type BufferUnit;
 
-    fn allocate(&mut self) -> OutputLocation;
+    fn destination<'obj>(
+        &'obj mut self,
+    ) -> &'obj mut OutputLocation<'data, Self::BufferUnit>;
     fn finish(self, records_written: usize, bytes_written: usize) -> D;
 }
 
-pub trait DataCollector: Sized {
-    type Receiver: DataReceiver<Self>;
+pub trait DataCollector<'data>: Sized {
+    type Receiver: DataReceiver<'data, Self>;
 
     fn prepare(
-        parameters: <<Self as DataCollector>::Receiver as DataReceiver<Self>>::Parameters,
+        parameters: <<Self as DataCollector<'data>>::Receiver as DataReceiver<'data, Self>>::Parameters,
     ) -> Self::Receiver;
 }
 
-pub struct CAPISameReprVecReceiver<C> {
-    buffer: Box<[C]>,
+pub struct CAPISameReprVecReceiver<'data, C> {
+    destination: OutputLocation<'data, C>,
 }
 
-impl<C> CAPISameReprVecReceiver<C>
+impl<'data, C> CAPISameReprVecReceiver<'data, C>
 where
-    C: CAPISameRepr,
+    C: 'data + CAPISameRepr,
 {
-    pub fn new(parameters: <Self as DataReceiver<Vec<C>>>::Parameters) -> Self {
+    pub fn new(
+        parameters: <Self as DataReceiver<'data, Vec<C>>>::Parameters,
+    ) -> Self {
         const DEFAULT_CAPACITY: usize = 1024;
 
         let capacity = if let Some(capacity) = parameters {
@@ -188,68 +193,64 @@ where
             DEFAULT_CAPACITY
         };
 
-        let buffer: Box<[C]> = vec![C::default(); capacity].into_boxed_slice();
-        CAPISameReprVecReceiver { buffer }
+        let data = vec![C::default(); capacity].into_boxed_slice();
+
+        let destination = OutputLocation {
+            data: BufferMut::Owned(data),
+            cell_offsets: None,
+        };
+        CAPISameReprVecReceiver { destination }
     }
 }
 
-impl<C> DataReceiver<Vec<C>> for CAPISameReprVecReceiver<C>
+impl<'data, C> DataReceiver<'data, Vec<C>> for CAPISameReprVecReceiver<'data, C>
 where
     C: CAPISameRepr,
 {
     type Parameters = Option<usize>;
+    type BufferUnit = C;
 
-    fn allocate(&mut self) -> OutputLocation {
-        let buffer = {
-            let dst_ptr = if self.buffer.len() == 0 {
-                std::ptr::NonNull::dangling().as_ptr() as *mut u8
-            } else {
-                self.buffer.as_mut_ptr() as *mut u8
-            };
-
-            let byte_capacity = std::mem::size_of_val(&*self.buffer);
-            unsafe { std::slice::from_raw_parts_mut(dst_ptr, byte_capacity) }
-        };
-
-        OutputLocation {
-            data: BufferMut::Borrowed(buffer),
-            cell_offsets: None,
-        }
+    fn destination<'obj>(&'obj mut self) -> &'obj mut OutputLocation<'data, C> {
+        &mut self.destination
     }
 
     fn finish(self, records_written: usize, _bytes_written: usize) -> Vec<C> {
-        let mut v = Vec::from(self.buffer);
+        let mut v = match self.destination.data {
+            BufferMut::Borrowed(_) => unreachable!(),
+            BufferMut::Owned(slice) => slice.into_vec(),
+        };
         v.truncate(records_written);
         v
     }
 }
 
-impl<C> DataCollector for Vec<C>
+impl<'data, C> DataCollector<'data> for Vec<C>
 where
-    C: CAPISameRepr,
+    C: 'data + CAPISameRepr,
 {
-    type Receiver = CAPISameReprVecReceiver<C>;
+    type Receiver = CAPISameReprVecReceiver<'data, C>;
 
     fn prepare(
-        parameters: <<Self as DataCollector>::Receiver as DataReceiver<Self>>::Parameters,
+        parameters: <<Self as DataCollector<'data>>::Receiver as DataReceiver<
+            'data, Self,
+        >>::Parameters,
     ) -> Self::Receiver {
         CAPISameReprVecReceiver::new(parameters)
     }
 }
 
-pub struct VarSizeDataReceiver<T, F> {
-    data_buffer: Box<[u8]>,
-    offset_buffer: Box<[u64]>,
+pub struct VarSizeDataReceiver<'data, T, F> {
+    destination: OutputLocation<'data, u8>,
     record_callback: F,
     _marker: std::marker::PhantomData<T>,
 }
 
-impl<T, F> VarSizeDataReceiver<T, F>
+impl<'data, T, F> VarSizeDataReceiver<'data, T, F>
 where
-    F: FnMut(&[u8]) -> T,
+    F: 'data + FnMut(&[u8]) -> T,
 {
     pub fn new(
-        parameters: <Self as DataReceiver<Vec<T>>>::Parameters,
+        parameters: <Self as DataReceiver<'data, Vec<T>>>::Parameters,
         record_callback: F,
     ) -> Self {
         const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
@@ -262,26 +263,31 @@ where
         let offset_buffer: Box<[u64]> =
             vec![0; record_capacity].into_boxed_slice();
 
+        let destination = OutputLocation {
+            data: BufferMut::Owned(data_buffer),
+            cell_offsets: Some(BufferMut::Owned(offset_buffer)),
+        };
+
         VarSizeDataReceiver {
-            data_buffer,
-            offset_buffer,
+            destination,
             record_callback,
             _marker: std::marker::PhantomData,
         }
     }
 }
 
-impl<T, F> DataReceiver<Vec<T>> for VarSizeDataReceiver<T, F>
+impl<'data, T, F> DataReceiver<'data, Vec<T>>
+    for VarSizeDataReceiver<'data, T, F>
 where
-    F: FnMut(&[u8]) -> T,
+    F: 'data + FnMut(&[u8]) -> T,
 {
     type Parameters = (Option<usize>, Option<usize>);
+    type BufferUnit = u8;
 
-    fn allocate(&mut self) -> OutputLocation {
-        OutputLocation {
-            data: BufferMut::Borrowed(&mut *self.data_buffer),
-            cell_offsets: Some(BufferMut::Borrowed(&mut *self.offset_buffer)),
-        }
+    fn destination<'obj>(
+        &'obj mut self,
+    ) -> &mut OutputLocation<'data, Self::BufferUnit> {
+        &mut self.destination
     }
 
     fn finish(
@@ -291,16 +297,19 @@ where
     ) -> Vec<T> {
         let mut results: Vec<T> = vec![];
 
+        let offset_buffer = self.destination.cell_offsets.as_mut().unwrap();
+
         for s in 0..records_written {
-            let start = self.offset_buffer[s] as usize;
+            let start = offset_buffer[s] as usize;
             let slen = if s + 1 < records_written {
-                self.offset_buffer[s + 1] as usize - start
+                offset_buffer[s + 1] as usize - start
             } else {
                 bytes_written - start
             };
 
-            let t =
-                (self.record_callback)(&self.data_buffer[start..start + slen]);
+            let t = (self.record_callback)(
+                &self.destination.data[start..start + slen],
+            );
             results.push(t);
         }
 
@@ -308,12 +317,15 @@ where
     }
 }
 
-impl DataCollector for Vec<String> {
+impl<'data> DataCollector<'data> for Vec<String> {
     type Receiver =
-        VarSizeDataReceiver<String, Box<dyn FnMut(&[u8]) -> String>>;
+        VarSizeDataReceiver<'data, String, Box<dyn FnMut(&[u8]) -> String>>;
 
     fn prepare(
-        parameters: <<Self as DataCollector>::Receiver as DataReceiver<Self>>::Parameters,
+        parameters: <<Self as DataCollector<'data>>::Receiver as DataReceiver<
+            'data,
+            Self,
+        >>::Parameters,
     ) -> Self::Receiver {
         Self::Receiver::new(
             parameters,
@@ -409,32 +421,66 @@ mod tests {
         }
     }
 
+    fn do_output_collector_repr<C>(dst_unit_capacity: usize, unitsrc: Vec<C>)
+    where
+        C: CAPISameRepr + std::fmt::Debug + PartialEq,
+    {
+        let ncells = std::cmp::min(dst_unit_capacity, unitsrc.len());
+
+        let unitdst = {
+            let mut receiver =
+                <Vec<C> as DataCollector>::prepare(Some(dst_unit_capacity));
+            {
+                let output = receiver.destination();
+                let (unitdst, offsets) =
+                    (output.data.as_mut(), output.cell_offsets.as_ref());
+                assert!(offsets.is_none());
+
+                unsafe {
+                    std::ptr::copy_nonoverlapping::<C>(
+                        unitsrc.as_ptr(),
+                        unitdst.as_mut_ptr(),
+                        ncells,
+                    )
+                }
+            }
+            receiver.finish(ncells, ncells * std::mem::size_of::<u64>())
+        };
+
+        assert_eq!(ncells, unitdst.len());
+        assert_eq!(dst_unit_capacity, unitdst.capacity());
+        assert_eq!(unitdst[0..ncells], unitsrc[0..ncells]);
+    }
+
     proptest! {
         #[test]
-        fn output_collector_u64(dst_u64_capacity in MIN_RECORDS..=MAX_RECORDS, u64src in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
-            let dst_u8_capacity = dst_u64_capacity * std::mem::size_of::<u64>();
-            let ncells = std::cmp::min(dst_u64_capacity, u64src.len());
+        fn output_collector_u64(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_output_collector_repr::<u64>(dst_unit_capacity, unitsrc)
+        }
 
-            let u64dst = {
-                let mut receiver = <Vec<u64> as DataCollector>::prepare(Some(dst_u64_capacity));
-                {
-                    let mut output = receiver.allocate();
-                    let (u8dst, offsets) = (output.data.as_mut(), output.cell_offsets);
-                    assert!(offsets.is_none());
+        #[test]
+        fn output_collector_u32(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u32>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_output_collector_repr::<u32>(dst_unit_capacity, unitsrc)
+        }
 
-                    assert_eq!(dst_u8_capacity, u8dst.len());
+        #[test]
+        fn output_collector_u16(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u16>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_output_collector_repr::<u16>(dst_unit_capacity, unitsrc)
+        }
 
-                    let u64dst = u8dst.as_mut_ptr() as *mut u64;
-                    unsafe {
-                        std::ptr::copy_nonoverlapping::<u64>(u64src.as_ptr(), u64dst, ncells)
-                    }
-                }
-                receiver.finish(ncells, ncells * std::mem::size_of::<u64>())
-            };
+        #[test]
+        fn output_collector_u8(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u8>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_output_collector_repr::<u8>(dst_unit_capacity, unitsrc)
+        }
 
-            assert_eq!(ncells, u64dst.len());
-            assert_eq!(dst_u64_capacity, u64dst.capacity());
-            assert_eq!(u64dst[0..ncells], u64src[0..ncells]);
+        #[test]
+        fn output_collector_f64(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<f64>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_output_collector_repr::<f64>(dst_unit_capacity, unitsrc)
+        }
+
+        #[test]
+        fn output_collector_f32(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<f32>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_output_collector_repr::<f32>(dst_unit_capacity, unitsrc)
         }
     }
 
@@ -487,11 +533,11 @@ mod tests {
                 Some(byte_capacity),
             ));
             let (nrecords, nbytes) = {
-                let mut output = receiver.allocate();
+                let output = receiver.destination();
                 let (u8dst, offsets) =
-                    (output.data.as_mut(), output.cell_offsets);
+                    (output.data.as_mut(), output.cell_offsets.as_mut());
                 assert!(offsets.is_some());
-                let mut offsets = offsets.unwrap();
+                let offsets = offsets.unwrap();
 
                 /* write the offsets first */
                 let (nrecords, nbytes) = {
