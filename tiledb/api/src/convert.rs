@@ -144,26 +144,30 @@ pub struct OutputLocation<'data> {
     pub cell_offsets: Option<BufferMut<'data, u64>>,
 }
 
-pub trait DataReceiver<D: DataCollector> {
-    fn prepare(parameters: D::Parameters) -> Self;
+pub trait DataReceiver<D> {
+    type Parameters: Default;
+
     fn allocate(&mut self) -> OutputLocation;
     fn finish(self, records_written: usize, bytes_written: usize) -> D;
 }
 
 pub trait DataCollector: Sized {
     type Receiver: DataReceiver<Self>;
-    type Parameters: Default;
+
+    fn prepare(
+        parameters: <<Self as DataCollector>::Receiver as DataReceiver<Self>>::Parameters,
+    ) -> Self::Receiver;
 }
 
 pub struct CAPISameReprVecReceiver<C> {
     buffer: Box<[C]>,
 }
 
-impl<C> DataReceiver<Vec<C>> for CAPISameReprVecReceiver<C>
+impl<C> CAPISameReprVecReceiver<C>
 where
     C: CAPISameRepr,
 {
-    fn prepare(parameters: Option<usize>) -> Self {
+    pub fn new(parameters: <Self as DataReceiver<Vec<C>>>::Parameters) -> Self {
         const DEFAULT_CAPACITY: usize = 1024;
 
         let capacity = if let Some(capacity) = parameters {
@@ -175,6 +179,13 @@ where
         let buffer: Box<[C]> = vec![C::default(); capacity].into_boxed_slice();
         CAPISameReprVecReceiver { buffer }
     }
+}
+
+impl<C> DataReceiver<Vec<C>> for CAPISameReprVecReceiver<C>
+where
+    C: CAPISameRepr,
+{
+    type Parameters = Option<usize>;
 
     fn allocate(&mut self) -> OutputLocation {
         let buffer = {
@@ -206,16 +217,29 @@ where
     C: CAPISameRepr,
 {
     type Receiver = CAPISameReprVecReceiver<C>;
-    type Parameters = Option<usize>;
+
+    fn prepare(
+        parameters: <<Self as DataCollector>::Receiver as DataReceiver<Self>>::Parameters,
+    ) -> Self::Receiver {
+        CAPISameReprVecReceiver::new(parameters)
+    }
 }
 
-pub struct VarSizeDataReceiver {
+pub struct VarSizeDataReceiver<T, F> {
     data_buffer: Box<[u8]>,
     offset_buffer: Box<[u64]>,
+    record_callback: F,
+    _marker: std::marker::PhantomData<T>,
 }
 
-impl DataReceiver<Vec<String>> for VarSizeDataReceiver {
-    fn prepare(parameters: <Vec<String> as DataCollector>::Parameters) -> Self {
+impl<T, F> VarSizeDataReceiver<T, F>
+where
+    F: FnMut(&[u8]) -> T,
+{
+    pub fn new(
+        parameters: <Self as DataReceiver<Vec<T>>>::Parameters,
+        record_callback: F,
+    ) -> Self {
         const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
         const DEFAULT_BYTE_CAPACITY: usize = 1024 * 1024;
 
@@ -225,11 +249,21 @@ impl DataReceiver<Vec<String>> for VarSizeDataReceiver {
         let data_buffer: Box<[u8]> = vec![0; byte_capacity].into_boxed_slice();
         let offset_buffer: Box<[u64]> =
             vec![0; record_capacity].into_boxed_slice();
+
         VarSizeDataReceiver {
             data_buffer,
             offset_buffer,
+            record_callback,
+            _marker: std::marker::PhantomData,
         }
     }
+}
+
+impl<T, F> DataReceiver<Vec<T>> for VarSizeDataReceiver<T, F>
+where
+    F: FnMut(&[u8]) -> T,
+{
+    type Parameters = (Option<usize>, Option<usize>);
 
     fn allocate(&mut self) -> OutputLocation {
         OutputLocation {
@@ -239,11 +273,11 @@ impl DataReceiver<Vec<String>> for VarSizeDataReceiver {
     }
 
     fn finish(
-        self,
+        mut self,
         records_written: usize,
         bytes_written: usize,
-    ) -> Vec<String> {
-        let mut strs: Vec<String> = vec![];
+    ) -> Vec<T> {
+        let mut results: Vec<T> = vec![];
 
         for s in 0..records_written {
             let start = self.offset_buffer[s] as usize;
@@ -253,18 +287,27 @@ impl DataReceiver<Vec<String>> for VarSizeDataReceiver {
                 bytes_written - start
             };
 
-            let s =
-                String::from_utf8_lossy(&self.data_buffer[start..start + slen]);
-            strs.push(s.to_string());
+            let t =
+                (self.record_callback)(&self.data_buffer[start..start + slen]);
+            results.push(t);
         }
 
-        strs
+        results
     }
 }
 
 impl DataCollector for Vec<String> {
-    type Receiver = VarSizeDataReceiver;
-    type Parameters = (Option<usize>, Option<usize>);
+    type Receiver =
+        VarSizeDataReceiver<String, Box<dyn FnMut(&[u8]) -> String>>;
+
+    fn prepare(
+        parameters: <<Self as DataCollector>::Receiver as DataReceiver<Self>>::Parameters,
+    ) -> Self::Receiver {
+        Self::Receiver::new(
+            parameters,
+            Box::new(|b| String::from_utf8_lossy(b).to_string()),
+        )
+    }
 }
 
 /// Trait for comparisons based on value bits.
@@ -361,7 +404,7 @@ mod tests {
             let ncells = std::cmp::min(dst_u64_capacity, u64src.len());
 
             let u64dst = {
-                let mut receiver = <Vec<u64> as DataCollector>::Receiver::prepare(Some(dst_u64_capacity));
+                let mut receiver = <Vec<u64> as DataCollector>::prepare(Some(dst_u64_capacity));
                 {
                     let mut output = receiver.allocate();
                     let (u8dst, offsets) = (output.data.as_mut(), output.cell_offsets);
@@ -427,11 +470,10 @@ mod tests {
         stringsrc: Vec<String>,
     ) {
         let (stringdst, nrecords, nbytes) = {
-            let mut receiver =
-                <Vec<String> as DataCollector>::Receiver::prepare((
-                    Some(record_capacity),
-                    Some(byte_capacity),
-                ));
+            let mut receiver = <Vec<String> as DataCollector>::prepare((
+                Some(record_capacity),
+                Some(byte_capacity),
+            ));
             let (nrecords, nbytes) = {
                 let mut output = receiver.allocate();
                 let (u8dst, offsets) =
