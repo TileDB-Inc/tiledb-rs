@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 pub trait CAPISameRepr: Copy + Default {}
 
@@ -58,15 +58,15 @@ pub struct InputData<'data> {
     pub cell_offsets: Option<Buffer<'data, u64>>,
 }
 
-pub trait InputConverter {
-    fn for_tiledb(&self) -> InputData;
+pub trait DataProvider {
+    fn as_tiledb_input(&self) -> InputData;
 }
 
-impl<C> InputConverter for Vec<C>
+impl<C> DataProvider for Vec<C>
 where
     C: CAPISameRepr,
 {
-    fn for_tiledb(&self) -> InputData {
+    fn as_tiledb_input(&self) -> InputData {
         let ptr = self.as_ptr();
         let byte_len = self.len() * std::mem::size_of::<C>();
         let raw_slice =
@@ -78,8 +78,8 @@ where
     }
 }
 
-impl InputConverter for Vec<String> {
-    fn for_tiledb(&self) -> InputData {
+impl DataProvider for Vec<String> {
+    fn as_tiledb_input(&self) -> InputData {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -101,6 +101,170 @@ impl InputConverter for Vec<String> {
             cell_offsets: Some(Buffer::Owned(offsets)),
         }
     }
+}
+
+pub enum BufferMut<'data, T = u8> {
+    Borrowed(&'data mut [T]),
+    Owned(Box<[T]>),
+}
+
+impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
+    fn as_ref(&self) -> &[T] {
+        match self {
+            BufferMut::Borrowed(data) => data,
+            BufferMut::Owned(data) => &*data,
+        }
+    }
+}
+
+impl<'data, T> AsMut<[T]> for BufferMut<'data, T> {
+    fn as_mut(&mut self) -> &mut [T] {
+        match self {
+            BufferMut::Borrowed(data) => data,
+            BufferMut::Owned(data) => &mut *data,
+        }
+    }
+}
+
+impl<'data, T> Deref for BufferMut<'data, T> {
+    type Target = [T];
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<'data, T> DerefMut for BufferMut<'data, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
+pub struct OutputLocation<'data> {
+    pub data: BufferMut<'data>,
+    pub cell_offsets: Option<BufferMut<'data, u64>>,
+}
+
+pub trait DataReceiver<D: DataCollector> {
+    fn prepare(parameters: D::Parameters) -> Self;
+    fn allocate(&mut self) -> OutputLocation;
+    fn finish(self, records_written: usize, bytes_written: usize) -> D;
+}
+
+pub trait DataCollector: Sized {
+    type Receiver: DataReceiver<Self>;
+    type Parameters: Default;
+}
+
+pub struct CAPISameReprVecReceiver<C> {
+    buffer: Box<[C]>,
+}
+
+impl<C> DataReceiver<Vec<C>> for CAPISameReprVecReceiver<C>
+where
+    C: CAPISameRepr,
+{
+    fn prepare(parameters: Option<usize>) -> Self {
+        const DEFAULT_CAPACITY: usize = 1024;
+
+        let capacity = if let Some(capacity) = parameters {
+            capacity
+        } else {
+            DEFAULT_CAPACITY
+        };
+
+        let buffer: Box<[C]> = vec![C::default(); capacity].into_boxed_slice();
+        CAPISameReprVecReceiver { buffer }
+    }
+
+    fn allocate(&mut self) -> OutputLocation {
+        let buffer = {
+            let dst_ptr = if self.buffer.len() == 0 {
+                std::ptr::NonNull::dangling().as_ptr() as *mut u8
+            } else {
+                self.buffer.as_mut_ptr() as *mut u8
+            };
+
+            let byte_capacity = std::mem::size_of_val(&*self.buffer);
+            unsafe { std::slice::from_raw_parts_mut(dst_ptr, byte_capacity) }
+        };
+
+        OutputLocation {
+            data: BufferMut::Borrowed(buffer),
+            cell_offsets: None,
+        }
+    }
+
+    fn finish(self, records_written: usize, _bytes_written: usize) -> Vec<C> {
+        let mut v = Vec::from(self.buffer);
+        v.truncate(records_written);
+        v
+    }
+}
+
+impl<C> DataCollector for Vec<C>
+where
+    C: CAPISameRepr,
+{
+    type Receiver = CAPISameReprVecReceiver<C>;
+    type Parameters = Option<usize>;
+}
+
+pub struct VarSizeDataReceiver {
+    data_buffer: Box<[u8]>,
+    offset_buffer: Box<[u64]>,
+}
+
+impl DataReceiver<Vec<String>> for VarSizeDataReceiver {
+    fn prepare(parameters: <Vec<String> as DataCollector>::Parameters) -> Self {
+        const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
+        const DEFAULT_BYTE_CAPACITY: usize = 1024 * 1024;
+
+        let record_capacity = parameters.0.unwrap_or(DEFAULT_RECORD_CAPACITY);
+        let byte_capacity = parameters.1.unwrap_or(DEFAULT_BYTE_CAPACITY);
+
+        let data_buffer: Box<[u8]> = vec![0; byte_capacity].into_boxed_slice();
+        let offset_buffer: Box<[u64]> =
+            vec![0; record_capacity].into_boxed_slice();
+        VarSizeDataReceiver {
+            data_buffer,
+            offset_buffer,
+        }
+    }
+
+    fn allocate(&mut self) -> OutputLocation {
+        OutputLocation {
+            data: BufferMut::Borrowed(&mut *self.data_buffer),
+            cell_offsets: Some(BufferMut::Borrowed(&mut *self.offset_buffer)),
+        }
+    }
+
+    fn finish(
+        self,
+        records_written: usize,
+        bytes_written: usize,
+    ) -> Vec<String> {
+        let mut strs: Vec<String> = vec![];
+
+        for s in 0..records_written {
+            let start = self.offset_buffer[s] as usize;
+            let slen = if s + 1 < records_written {
+                self.offset_buffer[s + 1] as usize - start
+            } else {
+                bytes_written - start
+            };
+
+            let s =
+                String::from_utf8_lossy(&self.data_buffer[start..start + slen]);
+            strs.push(s.to_string());
+        }
+
+        strs
+    }
+}
+
+impl DataCollector for Vec<String> {
+    type Receiver = VarSizeDataReceiver;
+    type Parameters = (Option<usize>, Option<usize>);
 }
 
 /// Trait for comparisons based on value bits.
@@ -161,15 +325,19 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::collection::vec;
     use proptest::prelude::*;
 
-    const MIN_CELLS: usize = 0;
-    const MAX_CELLS: usize = 1024;
+    const MIN_RECORDS: usize = 0;
+    const MAX_RECORDS: usize = 1024;
+
+    const MIN_BYTE_CAPACITY: usize = 0;
+    const MAX_BYTE_CAPACITY: usize = 1024 * 1024;
 
     proptest! {
         #[test]
-        fn input_converter_u64(u64vec in proptest::collection::vec(any::<u64>(), MIN_CELLS..=MAX_CELLS)) {
-            let input = u64vec.for_tiledb();
+        fn input_provider_u64(u64vec in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
+            let input = u64vec.as_tiledb_input();
             let (bytes, offsets) = (input.data.as_ref(), input.cell_offsets);
             assert!(offsets.is_none());
 
@@ -188,8 +356,37 @@ mod tests {
 
     proptest! {
         #[test]
-        fn input_converter_strings(stringvec in proptest::collection::vec(any::<String>(), MIN_CELLS..=MAX_CELLS)) {
-            let input = stringvec.for_tiledb();
+        fn output_collector_u64(dst_u64_capacity in MIN_RECORDS..=MAX_RECORDS, u64src in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
+            let dst_u8_capacity = dst_u64_capacity * std::mem::size_of::<u64>();
+            let ncells = std::cmp::min(dst_u64_capacity, u64src.len());
+
+            let u64dst = {
+                let mut receiver = <Vec<u64> as DataCollector>::Receiver::prepare(Some(dst_u64_capacity));
+                {
+                    let mut output = receiver.allocate();
+                    let (u8dst, offsets) = (output.data.as_mut(), output.cell_offsets);
+                    assert!(offsets.is_none());
+
+                    assert_eq!(dst_u8_capacity, u8dst.len());
+
+                    let u64dst = u8dst.as_mut_ptr() as *mut u64;
+                    unsafe {
+                        std::ptr::copy_nonoverlapping::<u64>(u64src.as_ptr(), u64dst, ncells)
+                    }
+                }
+                receiver.finish(ncells, ncells * std::mem::size_of::<u64>())
+            };
+
+            assert_eq!(ncells, u64dst.len());
+            assert_eq!(dst_u64_capacity, u64dst.capacity());
+            assert_eq!(u64dst[0..ncells], u64src[0..ncells]);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn input_provider_strings(stringvec in vec(any::<String>(), MIN_RECORDS..=MAX_RECORDS)) {
+            let input = stringvec.as_tiledb_input();
             let (bytes, offsets) = (input.data.as_ref(), input.cell_offsets);
             assert!(offsets.is_some());
             let mut offsets = offsets.unwrap().to_vec();
@@ -206,7 +403,6 @@ mod tests {
 
                 offsets.push(bytes.len() as u64);
 
-                /* TODO probably have a trait for converting back at some point */
                 for (expected, offset) in stringvec.iter().zip(offsets.windows(2)) {
                     assert!(offset[1] >= offset[0]);
 
@@ -222,6 +418,109 @@ mod tests {
                     assert_eq!(*expected, s);
                 }
             }
+        }
+    }
+
+    fn do_output_collector_strings(
+        record_capacity: usize,
+        byte_capacity: usize,
+        stringsrc: Vec<String>,
+    ) {
+        let (stringdst, nrecords, nbytes) = {
+            let mut receiver =
+                <Vec<String> as DataCollector>::Receiver::prepare((
+                    Some(record_capacity),
+                    Some(byte_capacity),
+                ));
+            let (nrecords, nbytes) = {
+                let mut output = receiver.allocate();
+                let (u8dst, offsets) =
+                    (output.data.as_mut(), output.cell_offsets);
+                assert!(offsets.is_some());
+                let mut offsets = offsets.unwrap();
+
+                /* write the offsets first */
+                let (nrecords, nbytes) = {
+                    let mut i = 0;
+                    let mut off = 0;
+                    let mut src = stringsrc.iter();
+                    loop {
+                        if i >= offsets.len() {
+                            break (i, off);
+                        }
+                        if let Some(src) = src.next() {
+                            if off + src.len() <= u8dst.len() {
+                                offsets[i] = off as u64;
+                                off += src.len();
+                            } else {
+                                break (i, off);
+                            }
+                        } else {
+                            break (i, off);
+                        }
+                        i += 1;
+                    }
+                };
+
+                /* then transfer contents */
+                for i in 0..nrecords {
+                    let s = &stringsrc[i];
+                    let start = offsets[i] as usize;
+                    let end = if i + 1 < nrecords {
+                        offsets[i + 1] as usize
+                    } else {
+                        nbytes
+                    };
+                    u8dst[start..end].copy_from_slice(s.as_bytes())
+                }
+
+                (nrecords, nbytes)
+            };
+
+            (receiver.finish(nrecords, nbytes), nrecords, nbytes)
+        };
+
+        let dstbytes: usize = stringdst.iter().map(|s| s.len()).sum();
+        let srcbytes: usize = stringsrc.iter().map(|s| s.len()).sum();
+
+        let srccopyable: usize = {
+            let mut acc = 0;
+            stringsrc
+                .iter()
+                .take_while(|s| {
+                    acc += s.len();
+                    acc <= byte_capacity
+                })
+                .map(|s| s.len())
+                .sum()
+        };
+
+        assert!(dstbytes <= srcbytes);
+        assert_eq!(nbytes, dstbytes);
+
+        assert!(stringdst.len() <= stringsrc.len());
+        assert_eq!(nrecords, stringdst.len());
+
+        if srcbytes < byte_capacity {
+            assert_eq!(
+                std::cmp::min(record_capacity, stringsrc.len()),
+                stringdst.len()
+            );
+        }
+        if stringsrc.len() < record_capacity {
+            assert_eq!(srccopyable, dstbytes);
+        }
+
+        for (src, dst) in stringsrc.iter().zip(stringdst.iter()) {
+            assert_eq!(src, dst);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn output_collector_strings(record_capacity in MIN_RECORDS..=MAX_RECORDS, byte_capacity in MIN_BYTE_CAPACITY..=MAX_BYTE_CAPACITY, stringsrc in vec(any::<String>(), MIN_RECORDS..=MAX_RECORDS))
+        {
+            do_output_collector_strings(record_capacity, byte_capacity, stringsrc)
         }
     }
 }
