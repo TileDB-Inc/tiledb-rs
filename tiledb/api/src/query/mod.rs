@@ -7,12 +7,20 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
 use crate::{Array, Result as TileDBResult};
 
+mod private {
+    use super::*;
+
+    pub trait QueryCAPIInterface {
+        fn raw(&self) -> &RawQuery;
+    }
+}
+
 pub use crate::query::subarray::{Builder as SubarrayBuilder, Subarray};
 
 pub type QueryType = crate::array::Mode;
 pub type QueryLayout = crate::array::CellOrder;
 
-pub(crate) enum RawQuery {
+pub enum RawQuery {
     Owned(*mut ffi::tiledb_query_t),
 }
 
@@ -44,6 +52,10 @@ pub struct Query<'ctx> {
     raw: RawQuery,
 }
 
+pub trait QueryBuilder: private::QueryCAPIInterface {
+    fn array(&self) -> &Array;
+}
+
 impl<'ctx> Query<'ctx> {
     // TODO: what should the return type be?
     // if you can re-submit the query then Self makes sense.
@@ -62,6 +74,18 @@ impl<'ctx> Query<'ctx> {
 pub struct Builder<'ctx> {
     #[base(ContextBound)]
     query: Query<'ctx>,
+}
+
+impl<'ctx> private::QueryCAPIInterface for Builder<'ctx> {
+    fn raw(&self) -> &RawQuery {
+        &self.query.raw
+    }
+}
+
+impl<'ctx> QueryBuilder for Builder<'ctx> {
+    fn array(&self) -> &Array {
+        &self.query.array
+    }
 }
 
 impl<'ctx> Builder<'ctx> {
@@ -102,7 +126,7 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn add_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx>> {
+    pub fn add_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>> {
         SubarrayBuilder::for_query(self)
     }
 
