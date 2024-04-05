@@ -37,6 +37,12 @@ pub enum Buffer<'data, T = u8> {
     Owned(Box<[T]>),
 }
 
+impl<'data, T> Buffer<'data, T> {
+    pub fn size(&self) -> usize {
+        std::mem::size_of_val(self.as_ref())
+    }
+}
+
 impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
     fn as_ref(&self) -> &[T] {
         match self {
@@ -106,6 +112,12 @@ impl DataProvider for Vec<String> {
 pub enum BufferMut<'data, T = u8> {
     Borrowed(&'data mut [T]),
     Owned(Box<[T]>),
+}
+
+impl<'data, T> BufferMut<'data, T> {
+    pub fn size(&self) -> usize {
+        std::mem::size_of_val(self.as_ref())
+    }
 }
 
 impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
