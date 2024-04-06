@@ -1,5 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
+use crate::Result as TileDBResult;
+
 pub trait CAPISameRepr: Copy + Default {}
 
 impl CAPISameRepr for u8 {}
@@ -33,6 +35,7 @@ impl<T: CAPISameRepr> CAPIConverter for T {
 }
 
 pub enum Buffer<'data, T = u8> {
+    Empty,
     Borrowed(&'data [T]),
     Owned(Box<[T]>),
 }
@@ -46,6 +49,12 @@ impl<'data, T> Buffer<'data, T> {
 impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
     fn as_ref(&self) -> &[T] {
         match self {
+            Buffer::Empty => unsafe {
+                std::slice::from_raw_parts(
+                    std::ptr::NonNull::dangling().as_ptr(),
+                    0,
+                )
+            },
             Buffer::Borrowed(data) => data,
             Buffer::Owned(data) => &*data,
         }
@@ -110,6 +119,7 @@ impl DataProvider for Vec<String> {
 }
 
 pub enum BufferMut<'data, T = u8> {
+    Empty,
     Borrowed(&'data mut [T]),
     Owned(Box<[T]>),
 }
@@ -123,6 +133,12 @@ impl<'data, T> BufferMut<'data, T> {
 impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
     fn as_ref(&self) -> &[T] {
         match self {
+            BufferMut::Empty => unsafe {
+                std::slice::from_raw_parts(
+                    std::ptr::NonNull::dangling().as_ptr(),
+                    0,
+                )
+            },
             BufferMut::Borrowed(data) => data,
             BufferMut::Owned(data) => &*data,
         }
@@ -132,6 +148,12 @@ impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
 impl<'data, T> AsMut<[T]> for BufferMut<'data, T> {
     fn as_mut(&mut self) -> &mut [T] {
         match self {
+            BufferMut::Empty => unsafe {
+                std::slice::from_raw_parts_mut(
+                    std::ptr::NonNull::dangling().as_ptr(),
+                    0,
+                )
+            },
             BufferMut::Borrowed(data) => data,
             BufferMut::Owned(data) => &mut *data,
         }
@@ -156,35 +178,34 @@ pub struct OutputLocation<'data, T = u8> {
     pub cell_offsets: Option<BufferMut<'data, u64>>,
 }
 
-pub trait DataReceiver<'data, D> {
+pub struct ReadResult<'this, 'data, T = u8> {
+    buffers: &'this mut OutputLocation<'data, T>,
+    records: usize,
+    bytes: usize,
+}
+
+pub trait DataCollector<'data, T = u8>: Sized
+where
+    T: CAPISameRepr,
+{
     type Parameters: Default;
-    type BufferUnit;
 
-    fn destination<'obj>(
-        &'obj mut self,
-    ) -> &'obj mut OutputLocation<'data, Self::BufferUnit>;
-    fn finish(self, records_written: usize, bytes_written: usize) -> D;
+    /// Allocate memory for raw TileDB-format daata
+    fn prepare(parameters: Self::Parameters) -> OutputLocation<'data, T>;
+
+    /// Create an instance of this type from the
+    fn construct<'this>(
+        receiver: ReadResult<'this, 'data, T>,
+    ) -> TileDBResult<Self>;
 }
 
-pub trait DataCollector<'data>: Sized {
-    type Receiver: DataReceiver<'data, Self>;
-
-    fn prepare(
-        parameters: <<Self as DataCollector<'data>>::Receiver as DataReceiver<'data, Self>>::Parameters,
-    ) -> Self::Receiver;
-}
-
-pub struct CAPISameReprVecReceiver<'data, C> {
-    destination: OutputLocation<'data, C>,
-}
-
-impl<'data, C> CAPISameReprVecReceiver<'data, C>
+impl<'data, C> DataCollector<'data, C> for Vec<C>
 where
     C: 'data + CAPISameRepr,
 {
-    pub fn new(
-        parameters: <Self as DataReceiver<'data, Vec<C>>>::Parameters,
-    ) -> Self {
+    type Parameters = Option<usize>;
+
+    fn prepare(parameters: Self::Parameters) -> OutputLocation<'data, C> {
         const DEFAULT_CAPACITY: usize = 1024;
 
         let capacity = if let Some(capacity) = parameters {
@@ -195,64 +216,32 @@ where
 
         let data = vec![C::default(); capacity].into_boxed_slice();
 
-        let destination = OutputLocation {
+        OutputLocation {
             data: BufferMut::Owned(data),
             cell_offsets: None,
-        };
-        CAPISameReprVecReceiver { destination }
-    }
-}
-
-impl<'data, C> DataReceiver<'data, Vec<C>> for CAPISameReprVecReceiver<'data, C>
-where
-    C: CAPISameRepr,
-{
-    type Parameters = Option<usize>;
-    type BufferUnit = C;
-
-    fn destination<'obj>(&'obj mut self) -> &'obj mut OutputLocation<'data, C> {
-        &mut self.destination
+        }
     }
 
-    fn finish(self, records_written: usize, _bytes_written: usize) -> Vec<C> {
-        let mut v = match self.destination.data {
+    fn construct<'this>(
+        receiver: ReadResult<'this, 'data, C>,
+    ) -> TileDBResult<Self> {
+        let mut v = match std::mem::replace(
+            &mut receiver.buffers.data,
+            BufferMut::Empty,
+        ) {
+            BufferMut::Empty => unreachable!(),
             BufferMut::Borrowed(_) => unreachable!(),
             BufferMut::Owned(slice) => slice.into_vec(),
         };
-        v.truncate(records_written);
-        v
+        v.truncate(receiver.records);
+        Ok(v)
     }
 }
 
-impl<'data, C> DataCollector<'data> for Vec<C>
-where
-    C: 'data + CAPISameRepr,
-{
-    type Receiver = CAPISameReprVecReceiver<'data, C>;
+impl<'data> DataCollector<'data, u8> for Vec<String> {
+    type Parameters = (Option<usize>, Option<usize>);
 
-    fn prepare(
-        parameters: <<Self as DataCollector<'data>>::Receiver as DataReceiver<
-            'data, Self,
-        >>::Parameters,
-    ) -> Self::Receiver {
-        CAPISameReprVecReceiver::new(parameters)
-    }
-}
-
-pub struct VarSizeDataReceiver<'data, T, F> {
-    destination: OutputLocation<'data, u8>,
-    record_callback: F,
-    _marker: std::marker::PhantomData<T>,
-}
-
-impl<'data, T, F> VarSizeDataReceiver<'data, T, F>
-where
-    F: 'data + FnMut(&[u8]) -> T,
-{
-    pub fn new(
-        parameters: <Self as DataReceiver<'data, Vec<T>>>::Parameters,
-        record_callback: F,
-    ) -> Self {
+    fn prepare(parameters: Self::Parameters) -> OutputLocation<'data, u8> {
         const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
         const DEFAULT_BYTE_CAPACITY: usize = 1024 * 1024;
 
@@ -263,74 +252,34 @@ where
         let offset_buffer: Box<[u64]> =
             vec![0; record_capacity].into_boxed_slice();
 
-        let destination = OutputLocation {
+        OutputLocation {
             data: BufferMut::Owned(data_buffer),
             cell_offsets: Some(BufferMut::Owned(offset_buffer)),
-        };
-
-        VarSizeDataReceiver {
-            destination,
-            record_callback,
-            _marker: std::marker::PhantomData,
         }
     }
-}
 
-impl<'data, T, F> DataReceiver<'data, Vec<T>>
-    for VarSizeDataReceiver<'data, T, F>
-where
-    F: 'data + FnMut(&[u8]) -> T,
-{
-    type Parameters = (Option<usize>, Option<usize>);
-    type BufferUnit = u8;
+    fn construct<'this>(
+        receiver: ReadResult<'this, 'data, u8>,
+    ) -> TileDBResult<Self> {
+        let mut results: Vec<String> = vec![];
 
-    fn destination<'obj>(
-        &'obj mut self,
-    ) -> &mut OutputLocation<'data, Self::BufferUnit> {
-        &mut self.destination
-    }
+        let offset_buffer = receiver.buffers.cell_offsets.as_mut().unwrap();
 
-    fn finish(
-        mut self,
-        records_written: usize,
-        bytes_written: usize,
-    ) -> Vec<T> {
-        let mut results: Vec<T> = vec![];
-
-        let offset_buffer = self.destination.cell_offsets.as_mut().unwrap();
-
-        for s in 0..records_written {
+        for s in 0..receiver.records {
             let start = offset_buffer[s] as usize;
-            let slen = if s + 1 < records_written {
+            let slen = if s + 1 < receiver.records {
                 offset_buffer[s + 1] as usize - start
             } else {
-                bytes_written - start
+                receiver.bytes - start
             };
 
-            let t = (self.record_callback)(
-                &self.destination.data[start..start + slen],
+            let s = String::from_utf8_lossy(
+                &receiver.buffers.data[start..start + slen],
             );
-            results.push(t);
+            results.push(s.to_string());
         }
 
-        results
-    }
-}
-
-impl<'data> DataCollector<'data> for Vec<String> {
-    type Receiver =
-        VarSizeDataReceiver<'data, String, Box<dyn FnMut(&[u8]) -> String>>;
-
-    fn prepare(
-        parameters: <<Self as DataCollector<'data>>::Receiver as DataReceiver<
-            'data,
-            Self,
-        >>::Parameters,
-    ) -> Self::Receiver {
-        Self::Receiver::new(
-            parameters,
-            Box::new(|b| String::from_utf8_lossy(b).to_string()),
-        )
+        Ok(results)
     }
 }
 
@@ -428,24 +377,26 @@ mod tests {
         let ncells = std::cmp::min(dst_unit_capacity, unitsrc.len());
 
         let unitdst = {
-            let mut receiver =
-                <Vec<C> as DataCollector>::prepare(Some(dst_unit_capacity));
-            {
-                let output = receiver.destination();
-                let (unitdst, offsets) =
-                    (output.data.as_mut(), output.cell_offsets.as_ref());
-                assert!(offsets.is_none());
+            let mut output =
+                <Vec<C> as DataCollector<C>>::prepare(Some(dst_unit_capacity));
+            let (unitdst, offsets) =
+                (output.data.as_mut(), output.cell_offsets.as_ref());
+            assert!(offsets.is_none());
 
-                unsafe {
-                    std::ptr::copy_nonoverlapping::<C>(
-                        unitsrc.as_ptr(),
-                        unitdst.as_mut_ptr(),
-                        ncells,
-                    )
-                }
+            unsafe {
+                std::ptr::copy_nonoverlapping::<C>(
+                    unitsrc.as_ptr(),
+                    unitdst.as_mut_ptr(),
+                    ncells,
+                )
             }
-            receiver.finish(ncells, ncells * std::mem::size_of::<u64>())
-        };
+            <Vec<C> as DataCollector<C>>::construct(ReadResult {
+                buffers: &mut output,
+                records: ncells,
+                bytes: ncells * std::mem::size_of::<u64>(),
+            })
+        }
+        .unwrap();
 
         assert_eq!(ncells, unitdst.len());
         assert_eq!(dst_unit_capacity, unitdst.capacity());
@@ -528,56 +479,61 @@ mod tests {
         stringsrc: Vec<String>,
     ) {
         let (stringdst, nrecords, nbytes) = {
-            let mut receiver = <Vec<String> as DataCollector>::prepare((
+            let mut output = <Vec<String> as DataCollector>::prepare((
                 Some(record_capacity),
                 Some(byte_capacity),
             ));
-            let (nrecords, nbytes) = {
-                let output = receiver.destination();
-                let (u8dst, offsets) =
-                    (output.data.as_mut(), output.cell_offsets.as_mut());
-                assert!(offsets.is_some());
-                let offsets = offsets.unwrap();
 
-                /* write the offsets first */
-                let (nrecords, nbytes) = {
-                    let mut i = 0;
-                    let mut off = 0;
-                    let mut src = stringsrc.iter();
-                    loop {
-                        if i >= offsets.len() {
-                            break (i, off);
-                        }
-                        if let Some(src) = src.next() {
-                            if off + src.len() <= u8dst.len() {
-                                offsets[i] = off as u64;
-                                off += src.len();
-                            } else {
-                                break (i, off);
-                            }
+            let (u8dst, offsets) =
+                (output.data.as_mut(), output.cell_offsets.as_mut());
+            assert!(offsets.is_some());
+            let offsets = offsets.unwrap();
+
+            /* write the offsets first */
+            let (nrecords, nbytes) = {
+                let mut i = 0;
+                let mut off = 0;
+                let mut src = stringsrc.iter();
+                loop {
+                    if i >= offsets.len() {
+                        break (i, off);
+                    }
+                    if let Some(src) = src.next() {
+                        if off + src.len() <= u8dst.len() {
+                            offsets[i] = off as u64;
+                            off += src.len();
                         } else {
                             break (i, off);
                         }
-                        i += 1;
-                    }
-                };
-
-                /* then transfer contents */
-                for i in 0..nrecords {
-                    let s = &stringsrc[i];
-                    let start = offsets[i] as usize;
-                    let end = if i + 1 < nrecords {
-                        offsets[i + 1] as usize
                     } else {
-                        nbytes
-                    };
-                    u8dst[start..end].copy_from_slice(s.as_bytes())
+                        break (i, off);
+                    }
+                    i += 1;
                 }
-
-                (nrecords, nbytes)
             };
 
-            (receiver.finish(nrecords, nbytes), nrecords, nbytes)
+            /* then transfer contents */
+            for i in 0..nrecords {
+                let s = &stringsrc[i];
+                let start = offsets[i] as usize;
+                let end = if i + 1 < nrecords {
+                    offsets[i + 1] as usize
+                } else {
+                    nbytes
+                };
+                u8dst[start..end].copy_from_slice(s.as_bytes())
+            }
+
+            (
+                <Vec<String> as DataCollector>::construct(ReadResult {
+                    buffers: &mut output,
+                    records: nrecords,
+                    bytes: nbytes,
+                })
+                .unwrap(),
+                nrecords,
+                nbytes,
+            )
         };
 
         let dstbytes: usize = stringdst.iter().map(|s| s.len()).sum();
