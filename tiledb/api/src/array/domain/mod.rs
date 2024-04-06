@@ -63,15 +63,11 @@ macro_rules! impl_dimension_key_for_str {
 }
 impl_dimension_key_for_str!(&str, String);
 
+#[derive(ContextBound)]
 pub struct Domain<'ctx> {
+    #[context]
     context: &'ctx Context,
     raw: RawDomain,
-}
-
-impl<'ctx> ContextBound<'ctx> for Domain<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> Domain<'ctx> {
@@ -200,14 +196,10 @@ impl<'c1, 'c2> PartialEq<Domain<'c2>> for Domain<'c1> {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Builder<'ctx> {
+    #[ContextBound]
     domain: Domain<'ctx>,
-}
-
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.domain.context
-    }
 }
 
 impl<'ctx> Builder<'ctx> {
