@@ -1,5 +1,6 @@
 extern crate tiledb;
 use tiledb::config::Config;
+use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::vfs::VFS;
 use tiledb::Datatype;
 use tiledb::{Array, Result as TileDBResult};
@@ -99,13 +100,12 @@ pub fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
     let array: Array =
         tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
-    let mut data: Vec<i32> = Vec::from_iter(0..12000 * 12000);
+    let data: Vec<i32> = Vec::from_iter(0..12000 * 12000);
 
-    let query =
-        tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
-            .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(ATTRIBUTE_NAME, data.as_mut_slice())?
-            .build();
+    let query = tiledb::query::WriteBuilder::new(&tdb, array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .data_typed(ATTRIBUTE_NAME, &data)?
+        .build();
 
     query.submit()?;
     Ok(())
@@ -130,20 +130,17 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
     let array =
         tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
 
-    let mut results = vec![0; 3000 * 12000];
-
-    let query =
-        tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
-            .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(ATTRIBUTE_NAME, results.as_mut_slice())?
-            .add_subarray()?
-            .dimension_range_typed::<i32, _>(0, &[1, 3000])?
-            .add_subarray()?
-            .dimension_range_typed::<i32, _>(1, &[1, 12000])?
-            .build();
+    let query = tiledb::query::ReadBuilder::new(&tdb, array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .data_typed::<_, Vec<i32>>(ATTRIBUTE_NAME, Default::default())?
+        .add_subarray()?
+        .dimension_range_typed::<i32, _>(0, &[1, 3000])?
+        .add_subarray()?
+        .dimension_range_typed::<i32, _>(1, &[1, 12000])?
+        .build();
 
     tiledb::stats::enable()?;
-    query.submit()?;
+    let ((_results, _), _query) = query.submit()?;
 
     if json {
         let stats = tiledb::stats::dump_json()?;

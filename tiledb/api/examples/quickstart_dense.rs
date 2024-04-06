@@ -1,5 +1,6 @@
 extern crate tiledb;
 
+use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
@@ -85,16 +86,12 @@ fn write_array() -> TileDBResult<()> {
         tiledb::array::Mode::Write,
     )?;
 
-    let mut data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-    let query =
-        tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
-            .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(
-                QUICKSTART_ATTRIBUTE_NAME,
-                data.as_mut_slice(),
-            )?
-            .build();
+    let query = tiledb::query::WriteBuilder::new(&tdb, array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .data_typed(QUICKSTART_ATTRIBUTE_NAME, &data)?
+        .build();
 
     query.submit().map(|_| ())
 }
@@ -116,22 +113,19 @@ fn read_array() -> TileDBResult<()> {
         tiledb::array::Mode::Read,
     )?;
 
-    let mut results = vec![0; 6];
+    let query = tiledb::query::ReadBuilder::new(&tdb, array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .data_typed::<_, Vec<i32>>(
+            QUICKSTART_ATTRIBUTE_NAME,
+            Default::default(),
+        )?
+        .add_subarray()?
+        .dimension_range_typed::<i32, _>("rows", &[1, 2])?
+        .add_subarray()?
+        .dimension_range_typed::<i32, _>("columns", &[2, 4])?
+        .build();
 
-    let query =
-        tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
-            .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(
-                QUICKSTART_ATTRIBUTE_NAME,
-                results.as_mut_slice(),
-            )?
-            .add_subarray()?
-            .dimension_range_typed::<i32, _>("rows", &[1, 2])?
-            .add_subarray()?
-            .dimension_range_typed::<i32, _>("columns", &[2, 4])?
-            .build();
-
-    query.submit()?;
+    let ((results, _), _) = query.submit()?;
 
     for value in results {
         print!("{} ", value)

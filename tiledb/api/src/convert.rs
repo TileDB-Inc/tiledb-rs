@@ -179,33 +179,36 @@ pub struct OutputLocation<'data, T = u8> {
 }
 
 pub struct ReadResult<'this, 'data, T = u8> {
-    buffers: &'this mut OutputLocation<'data, T>,
-    records: usize,
-    bytes: usize,
+    pub buffers: &'this mut OutputLocation<'data, T>,
+    pub records: usize,
+    pub bytes: usize,
 }
 
-pub trait DataCollector<'data, T = u8>: Sized
-where
-    T: CAPISameRepr,
-{
+pub trait DataCollector<'data>: Sized {
     type Parameters: Default;
+    type Unit: CAPISameRepr;
 
     /// Allocate memory for raw TileDB-format daata
-    fn prepare(parameters: Self::Parameters) -> OutputLocation<'data, T>;
+    fn prepare(
+        parameters: Self::Parameters,
+    ) -> OutputLocation<'data, Self::Unit>;
 
     /// Create an instance of this type from the
     fn construct<'this>(
-        receiver: ReadResult<'this, 'data, T>,
+        receiver: ReadResult<'this, 'data, Self::Unit>,
     ) -> TileDBResult<Self>;
 }
 
-impl<'data, C> DataCollector<'data, C> for Vec<C>
+impl<'data, C> DataCollector<'data> for Vec<C>
 where
     C: 'data + CAPISameRepr,
 {
     type Parameters = Option<usize>;
+    type Unit = C;
 
-    fn prepare(parameters: Self::Parameters) -> OutputLocation<'data, C> {
+    fn prepare(
+        parameters: Self::Parameters,
+    ) -> OutputLocation<'data, Self::Unit> {
         const DEFAULT_CAPACITY: usize = 1024;
 
         let capacity = if let Some(capacity) = parameters {
@@ -223,7 +226,7 @@ where
     }
 
     fn construct<'this>(
-        receiver: ReadResult<'this, 'data, C>,
+        receiver: ReadResult<'this, 'data, Self::Unit>,
     ) -> TileDBResult<Self> {
         let mut v = match std::mem::replace(
             &mut receiver.buffers.data,
@@ -238,10 +241,13 @@ where
     }
 }
 
-impl<'data> DataCollector<'data, u8> for Vec<String> {
+impl<'data> DataCollector<'data> for Vec<String> {
     type Parameters = (Option<usize>, Option<usize>);
+    type Unit = u8;
 
-    fn prepare(parameters: Self::Parameters) -> OutputLocation<'data, u8> {
+    fn prepare(
+        parameters: Self::Parameters,
+    ) -> OutputLocation<'data, Self::Unit> {
         const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
         const DEFAULT_BYTE_CAPACITY: usize = 1024 * 1024;
 
@@ -259,7 +265,7 @@ impl<'data> DataCollector<'data, u8> for Vec<String> {
     }
 
     fn construct<'this>(
-        receiver: ReadResult<'this, 'data, u8>,
+        receiver: ReadResult<'this, 'data, Self::Unit>,
     ) -> TileDBResult<Self> {
         let mut results: Vec<String> = vec![];
 
@@ -378,7 +384,7 @@ mod tests {
 
         let unitdst = {
             let mut output =
-                <Vec<C> as DataCollector<C>>::prepare(Some(dst_unit_capacity));
+                <Vec<C> as DataCollector>::prepare(Some(dst_unit_capacity));
             let (unitdst, offsets) =
                 (output.data.as_mut(), output.cell_offsets.as_ref());
             assert!(offsets.is_none());
@@ -390,7 +396,7 @@ mod tests {
                     ncells,
                 )
             }
-            <Vec<C> as DataCollector<C>>::construct(ReadResult {
+            <Vec<C> as DataCollector>::construct(ReadResult {
                 buffers: &mut output,
                 records: ncells,
                 bytes: ncells * std::mem::size_of::<u64>(),

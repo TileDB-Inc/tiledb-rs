@@ -42,7 +42,7 @@ pub struct Builder<'ctx, Q> {
 
 impl<'ctx, Q> Builder<'ctx, Q>
 where
-    Q: ContextBound<'ctx> + QueryBuilder + Sized,
+    Q: QueryBuilder<'ctx> + Sized,
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
         let context = query.context();
