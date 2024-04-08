@@ -48,6 +48,8 @@ pub mod datatype;
 pub mod error;
 pub mod filesystem;
 pub mod filter;
+pub mod key;
+pub mod non_empty_domain;
 pub mod query;
 pub mod stats;
 pub mod string;

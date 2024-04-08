@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
-use crate::array::DimensionKey;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
+use crate::key::LookupKey;
 use crate::query::Builder as QueryBuilder;
 use crate::Result as TileDBResult;
 
@@ -60,7 +60,7 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
-    pub fn dimension_range_typed<Conv: CAPIConverter, K: Into<DimensionKey>>(
+    pub fn dimension_range_typed<Conv: CAPIConverter, K: Into<LookupKey>>(
         self,
         key: K,
         range: &[Conv; 2],
@@ -72,7 +72,7 @@ impl<'ctx> Builder<'ctx> {
         let c_end = &range[1] as *const Conv as *const std::ffi::c_void;
 
         match key.into() {
-            DimensionKey::Index(idx) => {
+            LookupKey::Index(idx) => {
                 let c_idx = idx.try_into().unwrap();
                 self.capi_return(unsafe {
                     ffi::tiledb_subarray_add_range(
@@ -85,7 +85,7 @@ impl<'ctx> Builder<'ctx> {
                     )
                 })
             }
-            DimensionKey::Name(name) => {
+            LookupKey::Name(name) => {
                 let c_name = cstring!(name);
                 self.capi_return(unsafe {
                     ffi::tiledb_subarray_add_range_by_name(

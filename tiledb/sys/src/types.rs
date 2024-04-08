@@ -77,6 +77,12 @@ pub struct tiledb_filter_list_t {
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
+pub struct tiledb_fragment_info_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
 pub struct tiledb_query_t {
     _unused: [u8; 0],
 }

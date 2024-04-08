@@ -29,6 +29,10 @@ pub struct TDBString {
 }
 
 impl TDBString {
+    pub(crate) fn from_raw(raw: RawTDBString) -> Self {
+        Self { raw }
+    }
+
     pub fn to_string(&self) -> TileDBResult<String> {
         let mut c_str: *const i8 = out_ptr!();
         let mut c_len: usize = 0;
