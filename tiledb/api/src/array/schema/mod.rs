@@ -10,11 +10,12 @@ use util::option::OptionSubset;
 
 use crate::array::attribute::{AttributeData, RawAttribute};
 use crate::array::dimension::Dimension;
-use crate::array::domain::{DimensionKey, DomainData, RawDomain};
+use crate::array::domain::{DomainData, RawDomain};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
+use crate::key::LookupKey;
 use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
 
@@ -308,7 +309,7 @@ impl<'ctx> Schema<'ctx> {
         Ok(c_nattrs as usize)
     }
 
-    pub fn attribute<K: Into<DimensionKey>>(
+    pub fn attribute<K: Into<LookupKey>>(
         &self,
         key: K,
     ) -> TileDBResult<Attribute> {
@@ -317,7 +318,7 @@ impl<'ctx> Schema<'ctx> {
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
 
         self.capi_return(match key.into() {
-            DimensionKey::Index(idx) => {
+            LookupKey::Index(idx) => {
                 let c_idx: u32 = idx.try_into().map_err(
                     |e: <usize as TryInto<u32>>::Error| {
                         Error::InvalidArgument(anyhow!(e))
@@ -332,7 +333,7 @@ impl<'ctx> Schema<'ctx> {
                     )
                 }
             }
-            DimensionKey::Name(name) => {
+            LookupKey::Name(name) => {
                 let c_name = cstring!(name);
                 unsafe {
                     ffi::tiledb_array_schema_get_attribute_from_name(
@@ -352,10 +353,10 @@ impl<'ctx> Schema<'ctx> {
     /// If the key is an index, then values `[0.. ndimensions]` will look
     /// up a dimension, and values outside that range will be adjusted by `ndimensions`
     /// to look up an attribute.
-    pub fn field<K: Into<DimensionKey>>(&self, key: K) -> TileDBResult<Field> {
+    pub fn field<K: Into<LookupKey>>(&self, key: K) -> TileDBResult<Field> {
         let domain = self.domain()?;
         match key.into() {
-            DimensionKey::Index(idx) => {
+            LookupKey::Index(idx) => {
                 let ndim = domain.ndim()?;
                 if idx < ndim {
                     Ok(Field::Dimension(domain.dimension(idx)?))
@@ -363,8 +364,8 @@ impl<'ctx> Schema<'ctx> {
                     Ok(Field::Attribute(self.attribute(idx - ndim)?))
                 }
             }
-            DimensionKey::Name(name) => {
-                if domain.has_dimension(name.as_ref())? {
+            LookupKey::Name(name) => {
+                if domain.has_dimension(&name)? {
                     Ok(Field::Dimension(domain.dimension(name)?))
                 } else {
                     Ok(Field::Attribute(self.attribute(name)?))

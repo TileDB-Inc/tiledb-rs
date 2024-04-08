@@ -10,6 +10,7 @@ use crate::array::{
     dimension::DimensionData, dimension::RawDimension, Dimension,
 };
 use crate::context::{CApiInterface, Context, ContextBound};
+use crate::key::LookupKey;
 use crate::{Factory, Result as TileDBResult};
 
 pub(crate) enum RawDomain {
@@ -31,37 +32,6 @@ impl Drop for RawDomain {
         unsafe { ffi::tiledb_domain_free(ffi) };
     }
 }
-
-pub enum DimensionKey {
-    Index(usize),
-    Name(String),
-}
-
-macro_rules! impl_dimension_key_for_int {
-    ($($t:ty),*) => {
-        $(
-            impl From<$t> for DimensionKey {
-                fn from(value: $t) -> Self {
-                    DimensionKey::Index(value as usize)
-                }
-            }
-        )*
-    };
-}
-impl_dimension_key_for_int!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
-
-macro_rules! impl_dimension_key_for_str {
-    ($($t:ty),*) => {
-        $(
-            impl From<$t> for DimensionKey {
-                fn from(value: $t) -> Self {
-                    DimensionKey::Name(String::from(value))
-                }
-            }
-        )*
-    }
-}
-impl_dimension_key_for_str!(&str, String);
 
 #[derive(ContextBound)]
 pub struct Domain<'ctx> {
@@ -93,13 +63,13 @@ impl<'ctx> Domain<'ctx> {
         Ok(ndim as usize)
     }
 
-    pub fn has_dimension<K: Into<DimensionKey>>(
+    pub fn has_dimension<K: Into<LookupKey>>(
         &self,
         key: K,
     ) -> TileDBResult<bool> {
         match key.into() {
-            DimensionKey::Index(idx) => Ok(idx < self.ndim()?),
-            DimensionKey::Name(name) => {
+            LookupKey::Index(idx) => Ok(idx < self.ndim()?),
+            LookupKey::Name(name) => {
                 let c_context = self.context.capi();
                 let c_domain = *self.raw;
                 let c_name = cstring!(name);
@@ -118,7 +88,7 @@ impl<'ctx> Domain<'ctx> {
         }
     }
 
-    pub fn dimension<K: Into<DimensionKey>>(
+    pub fn dimension<K: Into<LookupKey>>(
         &self,
         key: K,
     ) -> TileDBResult<Dimension<'ctx>> {
@@ -127,7 +97,7 @@ impl<'ctx> Domain<'ctx> {
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
 
         self.capi_return(match key.into() {
-            DimensionKey::Index(idx) => {
+            LookupKey::Index(idx) => {
                 let c_idx: u32 = idx.try_into().map_err(
                     |e: <usize as TryInto<u32>>::Error| {
                         crate::error::Error::InvalidArgument(anyhow!(e))
@@ -142,7 +112,7 @@ impl<'ctx> Domain<'ctx> {
                     )
                 }
             }
-            DimensionKey::Name(name) => {
+            LookupKey::Name(name) => {
                 let c_name = cstring!(name);
                 unsafe {
                     ffi::tiledb_domain_get_dimension_from_name(
