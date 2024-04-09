@@ -82,8 +82,17 @@ where
     C: CAPISameRepr,
 {
     fn as_tiledb_input(&self) -> InputData {
+        self.as_slice().as_tiledb_input()
+    }
+}
+
+impl<C> DataProvider for [C]
+where
+    C: CAPISameRepr,
+{
+    fn as_tiledb_input(&self) -> InputData {
         let ptr = self.as_ptr();
-        let byte_len = self.len() * std::mem::size_of::<C>();
+        let byte_len = std::mem::size_of_val(self);
         let raw_slice =
             unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
         InputData {
