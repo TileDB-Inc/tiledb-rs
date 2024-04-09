@@ -64,6 +64,16 @@ impl<'ctx> Query<'ctx> {
         })?;
         Ok(self)
     }
+
+    fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
+        let c_context = self.context().capi();
+        let c_query = *self.raw;
+        let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
+        self.capi_return(unsafe {
+            ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
+        })
+        .map(|_| c_status)
+    }
 }
 
 impl<'ctx> private::QueryCAPIInterface for Query<'ctx> {
