@@ -1,12 +1,16 @@
+use std::any::Any;
 use std::ops::Deref;
+use std::ptr::metadata;
 
 use crate::config::{Config, RawConfig};
 use crate::context::ObjectType;
 use crate::{Context, ContextBound};
 
 extern crate tiledb_sys as ffi;
+use crate::string::{RawTDBString, TDBString};
 use crate::Result as TileDBResult;
 pub type QueryType = crate::array::Mode;
+use crate::metadata::Metadata;
 
 pub struct GroupInfo {
     pub uri: String,
@@ -222,29 +226,15 @@ impl<'ctx> Group<'ctx> {
                 &mut tiledb_name as *mut *mut ffi::tiledb_string_t,
             )
         })?;
-        let mut data_uri: *const std::os::raw::c_uchar = std::ptr::null();
-        let mut length_uri: usize = 0;
-        context.capi_return(unsafe {
-            ffi::tiledb_string_view(
-                tiledb_uri,
-                &mut data_uri,
-                &mut length_uri as *mut usize,
-            )
-        })?;
-        let c_uri = unsafe { std::ffi::CStr::from_ptr(data_uri) };
-        let uri = c_uri.to_string_lossy().to_string();
+        let uri = TDBString {
+            raw: RawTDBString::Owned(tiledb_uri),
+        }
+        .to_string()?;
 
-        let mut data_name: *const std::os::raw::c_uchar = std::ptr::null();
-        let mut length_name: usize = 0;
-        context.capi_return(unsafe {
-            ffi::tiledb_string_view(
-                tiledb_name,
-                &mut data_name,
-                &mut length_name as *mut usize,
-            )
-        })?;
-        let c_name = unsafe { std::ffi::CStr::from_ptr(data_name) };
-        let name = c_name.to_string_lossy().to_string();
+        let name = TDBString {
+            raw: RawTDBString::Owned(tiledb_name),
+        }
+        .to_string()?;
 
         let object_type = ObjectType::try_from(tiledb_type)?;
         Ok(GroupInfo {
@@ -276,17 +266,11 @@ impl<'ctx> Group<'ctx> {
             )
         })?;
 
-        let mut data_uri: *const std::os::raw::c_uchar = std::ptr::null();
-        let mut length_uri: usize = 0;
-        context.capi_return(unsafe {
-            ffi::tiledb_string_view(
-                tiledb_uri,
-                &mut data_uri,
-                &mut length_uri as *mut usize,
-            )
-        })?;
-        let c_uri = unsafe { std::ffi::CStr::from_ptr(data_uri) };
-        let uri = c_uri.to_string_lossy().to_string();
+        let uri = TDBString {
+            raw: RawTDBString::Owned(tiledb_uri),
+        }
+        .to_string()?;
+
         let object_type = ObjectType::try_from(tiledb_type)?;
         Ok(GroupInfo {
             uri,
@@ -372,6 +356,18 @@ impl<'ctx> Group<'ctx> {
         Ok(Config {
             raw: RawConfig::Owned(c_cfg),
         })
+    }
+
+    pub fn put_metadata(&self, context: &'ctx Context, metadata : Metadata) -> TileDBResult<()> {
+        let ctx = context.capi();
+        let c_key = cstring!(metadata.key.as_ref());
+        let datatype_size = metadata.datatype.size();
+        // Convert value to pointer with value in it by casing on type/using fn_typed!
+        // Then run the C function
+        // Only supporting numeric types right now.
+        context.capi_return( unsafe {
+            ffi::tiledb_group_put_metadata(ctx, Self::capi(self), c_key.as_ptr(), metadata.value, datatype_size, value)
+        })?;
     }
 }
 

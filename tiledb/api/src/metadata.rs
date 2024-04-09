@@ -1,0 +1,55 @@
+use std::ffi::CString;
+
+use crate::datatype::Datatype;
+
+pub enum Value {
+    UInt8Value(u8),
+    UInt16Value(u16),
+    UInt32Value(u32),
+    UInt64Value(u64),
+    Int8Value(i8),
+    Int16Value(i16),
+    Int32Value(i32),
+    Int64Value(i64),
+    Float32Value(f32),
+    Float64Value(f64),
+    //StringAsciiValue(CString),
+    //StringUtf8Value(CString),
+    //StringUtf16Value(CString),
+    //StringUtf32Value(CString),
+    //StringUcs2Value(CString),
+    //StringUcs4Value(CString),
+    //AnyValue,
+    //DateTimeYearValue(i64),
+    //DateTimeMonthValue(i64),
+    //DateTimeWeekValue(i64),
+    //DateTimeDayValue(i64),
+    //DateTimeHourValue(i64),
+    //DateTimeMinuteValue(i64),
+    //DateTimeSecondValue(i64),
+    //DateTimeMillisecondValue(i64),
+    //DateTimeMicrosecondValue(i64),
+    //DateTimeNanosecondValue(i64),
+    //DateTimePicosecondValue(i64),
+    //DateTimeFemtosecondValue(i64),
+    //DateTimeAttosecondValue(i64),
+    //TimeHourValue(i64),
+    //TimeMinuteValue(i64),
+    //TimeSecondValue(i64),
+    //TimeMillisecondValue(i64),
+    //TimeMicrosecondValue(i64),
+    //TimeNanosecondValue(i64),
+    //TimePicosecondValue(i64),
+    //TimeFemtosecondValue(i64),
+    //TimeAttosecondValue(i64),
+    //BlobValue(Box<[u8]>),
+    //BooleanValue(bool),
+    //GeometryWkbValue(),
+    //GeometryWktValue(),
+}
+
+pub struct Metadata {
+    pub key : String,
+    pub datatype : Datatype,
+    pub value : Value
+}
