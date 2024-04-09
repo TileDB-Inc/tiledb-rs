@@ -50,6 +50,7 @@ pub mod filesystem;
 pub mod filter;
 pub mod group;
 pub mod key;
+pub mod metadata;
 pub mod non_empty_domain;
 pub mod query;
 pub mod stats;
