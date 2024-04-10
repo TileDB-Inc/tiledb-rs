@@ -101,13 +101,14 @@ pub fn write_array() -> TileDBResult<()> {
         tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
     let mut data: Vec<i32> = Vec::from_iter(0..12000 * 12000);
 
-    let query =
+    let result =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
             .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(ATTRIBUTE_NAME, data.as_mut_slice())?
-            .build();
+            .executor()
+            .set_data_buffer(ATTRIBUTE_NAME, data.as_mut_slice())?
+            .submit()?;
+    assert!(result.completed());
 
-    query.submit()?;
     Ok(())
 }
 
@@ -135,15 +136,16 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
             .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(ATTRIBUTE_NAME, results.as_mut_slice())?
             .add_subarray()?
             .dimension_range_typed::<i32, _>(0, &[1, 3000])?
             .add_subarray()?
             .dimension_range_typed::<i32, _>(1, &[1, 12000])?
-            .build();
+            .executor()
+            .set_data_buffer(ATTRIBUTE_NAME, results.as_mut_slice())?;
 
     tiledb::stats::enable()?;
-    query.submit()?;
+    let result = query.submit()?;
+    assert!(result.completed());
 
     if json {
         let stats = tiledb::stats::dump_json()?;

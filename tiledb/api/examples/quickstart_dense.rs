@@ -87,16 +87,15 @@ fn write_array() -> TileDBResult<()> {
 
     let mut data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-    let query =
+    let result =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
-            .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(
-                QUICKSTART_ATTRIBUTE_NAME,
-                data.as_mut_slice(),
-            )?
-            .build();
+            .executor()
+            .set_data_buffer(QUICKSTART_ATTRIBUTE_NAME, data.as_mut_slice())?
+            .submit()?;
 
-    query.submit().map(|_| ())
+    assert!(result.completed());
+
+    Ok(())
 }
 
 /// Query back a slice of our array and print the results to stdout.
@@ -118,20 +117,18 @@ fn read_array() -> TileDBResult<()> {
 
     let mut results = vec![0; 6];
 
-    let query =
+    let result =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
             .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(
-                QUICKSTART_ATTRIBUTE_NAME,
-                results.as_mut_slice(),
-            )?
             .add_subarray()?
             .dimension_range_typed::<i32, _>("rows", &[1, 2])?
             .add_subarray()?
             .dimension_range_typed::<i32, _>("columns", &[2, 4])?
-            .build();
+            .executor()
+            .set_data_buffer(QUICKSTART_ATTRIBUTE_NAME, results.as_mut_slice())?
+            .submit()?;
 
-    query.submit()?;
+    println!("Result: {:?}", result.status());
 
     for value in results {
         print!("{} ", value)
