@@ -68,8 +68,8 @@ impl<'data, T> Deref for Buffer<'data, T> {
     }
 }
 
-pub struct InputData<'data> {
-    pub data: Buffer<'data>,
+pub struct InputData<'data, T = u8> {
+    pub data: Buffer<'data, T>,
     pub cell_offsets: Option<Buffer<'data, u64>>,
 }
 
@@ -187,114 +187,196 @@ pub struct OutputLocation<'data, T = u8> {
     pub cell_offsets: Option<BufferMut<'data, u64>>,
 }
 
-pub struct ReadResult<'this, 'data, T = u8> {
-    pub buffers: &'this mut OutputLocation<'data, T>,
-    pub records: usize,
-    pub bytes: usize,
+impl<'data, T> OutputLocation<'data, T> {
+    pub fn borrow<'this>(&'this self) -> InputData<'data, T>
+    where
+        'this: 'data,
+    {
+        InputData {
+            data: Buffer::Borrowed(self.data.as_ref()),
+            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
+                Buffer::Borrowed(c.as_ref())
+            }),
+        }
+    }
 }
 
-pub trait DataCollector<'data>: Sized {
-    type Parameters: Default;
+pub struct ScratchSpace<C>(pub Box<[C]>, pub Option<Box<[u64]>>);
+
+pub trait ScratchAllocator<C> {
+    type Parameters: Default + Sized;
+
+    fn construct(params: Self::Parameters) -> Self;
+    fn scratch_space(&self) -> ScratchSpace<C>;
+    fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C>;
+}
+
+pub trait DataReceiver: Sized {
+    type ScratchAllocator: Default + ScratchAllocator<Self::Unit>;
     type Unit: CAPISameRepr;
 
-    /// Allocate memory for raw TileDB-format daata
-    fn prepare(
-        parameters: Self::Parameters,
-    ) -> OutputLocation<'data, Self::Unit>;
-
-    /// Create an instance of this type from the
-    fn construct<'this>(
-        receiver: ReadResult<'this, 'data, Self::Unit>,
-    ) -> TileDBResult<Self>;
+    fn receive<'data>(
+        &mut self,
+        records: usize,
+        bytes: usize,
+        input: InputData<'data, Self::Unit>,
+    ) -> TileDBResult<()>;
 }
 
-impl<'data, C> DataCollector<'data> for Vec<C>
+pub trait ReadResult: Sized {
+    type Receiver: DataReceiver + Into<Self>;
+
+    fn new_receiver() -> Self::Receiver;
+}
+
+pub struct NonVarSized {
+    capacity: usize,
+}
+
+impl Default for NonVarSized {
+    fn default() -> Self {
+        NonVarSized { capacity: 1024 }
+    }
+}
+
+impl<C> ScratchAllocator<C> for NonVarSized
 where
-    C: 'data + CAPISameRepr,
+    C: CAPISameRepr,
 {
     type Parameters = Option<usize>;
-    type Unit = C;
 
-    fn prepare(
-        parameters: Self::Parameters,
-    ) -> OutputLocation<'data, Self::Unit> {
-        const DEFAULT_CAPACITY: usize = 1024;
-
-        let capacity = if let Some(capacity) = parameters {
-            capacity
+    fn construct(params: Self::Parameters) -> Self {
+        if let Some(capacity) = params {
+            NonVarSized { capacity }
         } else {
-            DEFAULT_CAPACITY
-        };
-
-        let data = vec![C::default(); capacity].into_boxed_slice();
-
-        OutputLocation {
-            data: BufferMut::Owned(data),
-            cell_offsets: None,
+            Default::default()
         }
     }
 
-    fn construct<'this>(
-        receiver: ReadResult<'this, 'data, Self::Unit>,
-    ) -> TileDBResult<Self> {
-        let mut v = match std::mem::replace(
-            &mut receiver.buffers.data,
-            BufferMut::Empty,
-        ) {
-            BufferMut::Empty => unreachable!(),
-            BufferMut::Borrowed(_) => unreachable!(),
-            BufferMut::Owned(slice) => slice.into_vec(),
-        };
-        v.truncate(receiver.records);
-        Ok(v)
+    fn scratch_space(&self) -> ScratchSpace<C> {
+        ScratchSpace(vec![C::default(); self.capacity].into_boxed_slice(), None)
+    }
+
+    fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
+        let old_capacity = old.0.len();
+        let new_capacity = 2 * (old_capacity + 1);
+        ScratchSpace(vec![C::default(); new_capacity].into_boxed_slice(), None)
     }
 }
 
-impl<'data> DataCollector<'data> for Vec<String> {
-    type Parameters = (Option<usize>, Option<usize>);
-    type Unit = u8;
+pub struct VarSized {
+    byte_capacity: usize,
+    offset_capacity: usize,
+}
 
-    fn prepare(
-        parameters: Self::Parameters,
-    ) -> OutputLocation<'data, Self::Unit> {
-        const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
+impl Default for VarSized {
+    fn default() -> Self {
         const DEFAULT_BYTE_CAPACITY: usize = 1024 * 1024;
+        const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
 
-        let record_capacity = parameters.0.unwrap_or(DEFAULT_RECORD_CAPACITY);
-        let byte_capacity = parameters.1.unwrap_or(DEFAULT_BYTE_CAPACITY);
-
-        let data_buffer: Box<[u8]> = vec![0; byte_capacity].into_boxed_slice();
-        let offset_buffer: Box<[u64]> =
-            vec![0; record_capacity].into_boxed_slice();
-
-        OutputLocation {
-            data: BufferMut::Owned(data_buffer),
-            cell_offsets: Some(BufferMut::Owned(offset_buffer)),
+        VarSized {
+            byte_capacity: DEFAULT_BYTE_CAPACITY,
+            offset_capacity: DEFAULT_RECORD_CAPACITY,
         }
     }
+}
 
-    fn construct<'this>(
-        receiver: ReadResult<'this, 'data, Self::Unit>,
-    ) -> TileDBResult<Self> {
-        let mut results: Vec<String> = vec![];
+impl<C> ScratchAllocator<C> for VarSized
+where
+    C: CAPISameRepr,
+{
+    type Parameters = Option<VarSized>;
 
-        let offset_buffer = receiver.buffers.cell_offsets.as_mut().unwrap();
+    fn construct(params: Self::Parameters) -> Self {
+        params.unwrap_or(Default::default())
+    }
 
-        for s in 0..receiver.records {
+    fn scratch_space(&self) -> ScratchSpace<C> {
+        let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
+        let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
+        ScratchSpace(data, Some(offsets))
+    }
+
+    fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
+        let data = vec![C::default(); 2 * (old.0.len() + 1)].into_boxed_slice();
+        let offsets = old
+            .1
+            .map(|c| vec![0u64; 2 * (c.len() + 1)].into_boxed_slice());
+        ScratchSpace(data, offsets)
+    }
+}
+
+impl<C> DataReceiver for Vec<C>
+where
+    C: CAPISameRepr,
+{
+    type ScratchAllocator = NonVarSized;
+    type Unit = C;
+
+    fn receive<'data>(
+        &mut self,
+        records: usize,
+        _bytes: usize,
+        input: InputData<'data, C>,
+    ) -> TileDBResult<()> {
+        Ok(if let Buffer::Owned(data) = input.data {
+            if self.is_empty() {
+                *self = data.into_vec();
+                self.truncate(records)
+            } else {
+                self.extend_from_slice(&data[0..records])
+            }
+        } else {
+            self.extend_from_slice(&input.data.as_ref()[0..records])
+        })
+    }
+}
+
+impl<C> ReadResult for Vec<C>
+where
+    C: CAPISameRepr,
+{
+    type Receiver = Self;
+
+    fn new_receiver() -> Self::Receiver {
+        vec![]
+    }
+}
+
+impl DataReceiver for Vec<String> {
+    type ScratchAllocator = VarSized;
+    type Unit = u8;
+
+    fn receive<'data>(
+        &mut self,
+        records: usize,
+        bytes: usize,
+        input: InputData<'data, Self::Unit>,
+    ) -> TileDBResult<()> {
+        let data_buffer = input.data.as_ref();
+        let offset_buffer = input.cell_offsets.as_ref().unwrap();
+
+        for s in 0..records {
             let start = offset_buffer[s] as usize;
-            let slen = if s + 1 < receiver.records {
+            let slen = if s + 1 < records {
                 offset_buffer[s + 1] as usize - start
             } else {
-                receiver.bytes - start
+                bytes - start
             };
 
-            let s = String::from_utf8_lossy(
-                &receiver.buffers.data[start..start + slen],
-            );
-            results.push(s.to_string());
+            let s = String::from_utf8_lossy(&data_buffer[start..start + slen]);
+            self.push(s.to_string());
         }
 
-        Ok(results)
+        Ok(())
+    }
+}
+
+impl ReadResult for Vec<String> {
+    type Receiver = Self;
+
+    fn new_receiver() -> Self::Receiver {
+        vec![]
     }
 }
 
@@ -385,68 +467,87 @@ mod tests {
         }
     }
 
-    fn do_output_collector_repr<C>(dst_unit_capacity: usize, unitsrc: Vec<C>)
+    fn do_read_result_repr<C>(dst_unit_capacity: usize, unitsrc: Vec<C>)
     where
         C: CAPISameRepr + std::fmt::Debug + PartialEq,
     {
-        let ncells = std::cmp::min(dst_unit_capacity, unitsrc.len());
+        let alloc = <NonVarSized as ScratchAllocator<C>>::construct(Some(
+            dst_unit_capacity,
+        ));
 
-        let unitdst = {
-            let mut output =
-                <Vec<C> as DataCollector>::prepare(Some(dst_unit_capacity));
-            let (unitdst, offsets) =
-                (output.data.as_mut(), output.cell_offsets.as_ref());
-            assert!(offsets.is_none());
+        let mut scratch_space = alloc.scratch_space();
+
+        let mut unitdst = <Vec<C> as ReadResult>::new_receiver();
+
+        while unitdst.len() < unitsrc.len() {
+            let ncells = std::cmp::min(
+                scratch_space.0.len(),
+                unitsrc.len() - unitdst.len(),
+            );
+            if ncells == 0 {
+                scratch_space = alloc.realloc(scratch_space);
+                continue;
+            }
 
             unsafe {
                 std::ptr::copy_nonoverlapping::<C>(
-                    unitsrc.as_ptr(),
-                    unitdst.as_mut_ptr(),
+                    unitsrc[unitdst.len()..unitsrc.len()].as_ptr(),
+                    scratch_space.0.as_mut_ptr(),
                     ncells,
                 )
-            }
-            <Vec<C> as DataCollector>::construct(ReadResult {
-                buffers: &mut output,
-                records: ncells,
-                bytes: ncells * std::mem::size_of::<u64>(),
-            })
-        }
-        .unwrap();
+            };
 
-        assert_eq!(ncells, unitdst.len());
-        assert_eq!(dst_unit_capacity, unitdst.capacity());
-        assert_eq!(unitdst[0..ncells], unitsrc[0..ncells]);
+            let input_data = InputData {
+                data: Buffer::Borrowed(&*scratch_space.0),
+                cell_offsets: None,
+            };
+
+            let prev_len = unitdst.len();
+
+            <Vec<C> as DataReceiver>::receive(
+                &mut unitdst,
+                ncells,
+                ncells * std::mem::size_of::<u64>(),
+                input_data,
+            )
+            .expect("Error aggregating data into Vec");
+
+            assert_eq!(ncells, unitdst.len() - prev_len);
+            assert_eq!(unitsrc[0..unitdst.len()], unitdst);
+        }
+
+        assert_eq!(unitsrc, unitdst);
     }
 
     proptest! {
         #[test]
-        fn output_collector_u64(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
-            do_output_collector_repr::<u64>(dst_unit_capacity, unitsrc)
+        fn read_result_u64(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_read_result_repr::<u64>(dst_unit_capacity, unitsrc)
         }
 
         #[test]
-        fn output_collector_u32(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u32>(), MIN_RECORDS..=MAX_RECORDS)) {
-            do_output_collector_repr::<u32>(dst_unit_capacity, unitsrc)
+        fn read_result_u32(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u32>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_read_result_repr::<u32>(dst_unit_capacity, unitsrc)
         }
 
         #[test]
-        fn output_collector_u16(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u16>(), MIN_RECORDS..=MAX_RECORDS)) {
-            do_output_collector_repr::<u16>(dst_unit_capacity, unitsrc)
+        fn read_result_u16(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u16>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_read_result_repr::<u16>(dst_unit_capacity, unitsrc)
         }
 
         #[test]
-        fn output_collector_u8(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u8>(), MIN_RECORDS..=MAX_RECORDS)) {
-            do_output_collector_repr::<u8>(dst_unit_capacity, unitsrc)
+        fn read_result_u8(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<u8>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_read_result_repr::<u8>(dst_unit_capacity, unitsrc)
         }
 
         #[test]
-        fn output_collector_f64(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<f64>(), MIN_RECORDS..=MAX_RECORDS)) {
-            do_output_collector_repr::<f64>(dst_unit_capacity, unitsrc)
+        fn read_result_f64(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<f64>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_read_result_repr::<f64>(dst_unit_capacity, unitsrc)
         }
 
         #[test]
-        fn output_collector_f32(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<f32>(), MIN_RECORDS..=MAX_RECORDS)) {
-            do_output_collector_repr::<f32>(dst_unit_capacity, unitsrc)
+        fn read_result_f32(dst_unit_capacity in MIN_RECORDS..=MAX_RECORDS, unitsrc in vec(any::<f32>(), MIN_RECORDS..=MAX_RECORDS)) {
+            do_read_result_repr::<f32>(dst_unit_capacity, unitsrc)
         }
     }
 
@@ -488,110 +589,94 @@ mod tests {
         }
     }
 
-    fn do_output_collector_strings(
+    fn do_read_result_strings(
         record_capacity: usize,
         byte_capacity: usize,
         stringsrc: Vec<String>,
     ) {
-        let (stringdst, nrecords, nbytes) = {
-            let mut output = <Vec<String> as DataCollector>::prepare((
-                Some(record_capacity),
-                Some(byte_capacity),
-            ));
+        let alloc = VarSized {
+            byte_capacity,
+            offset_capacity: record_capacity,
+        };
 
-            let (u8dst, offsets) =
-                (output.data.as_mut(), output.cell_offsets.as_mut());
-            assert!(offsets.is_some());
-            let offsets = offsets.unwrap();
+        let mut scratch_space = alloc.scratch_space();
 
-            /* write the offsets first */
+        let mut stringdst: Vec<String> = vec![];
+
+        while stringdst.len() < stringsrc.len() {
+            /* copy from stringsrc to scratch data */
             let (nrecords, nbytes) = {
-                let mut i = 0;
-                let mut off = 0;
-                let mut src = stringsrc.iter();
-                loop {
-                    if i >= offsets.len() {
-                        break (i, off);
-                    }
-                    if let Some(src) = src.next() {
-                        if off + src.len() <= u8dst.len() {
-                            offsets[i] = off as u64;
-                            off += src.len();
+                /* write the offsets first */
+                let (nrecords, nbytes) = {
+                    let mut scratch_offsets = scratch_space.1.as_mut().unwrap();
+                    let mut i = 0;
+                    let mut off = 0;
+                    let mut src =
+                        stringsrc[stringdst.len()..stringsrc.len()].iter();
+                    loop {
+                        if i >= scratch_offsets.len() {
+                            break (i, off);
+                        }
+                        if let Some(src) = src.next() {
+                            if off + src.len() <= scratch_space.0.len() {
+                                scratch_offsets[i] = off as u64;
+                                off += src.len();
+                            } else {
+                                break (i, off);
+                            }
                         } else {
                             break (i, off);
                         }
-                    } else {
-                        break (i, off);
+                        i += 1;
                     }
-                    i += 1;
+                };
+
+                if nrecords == 0 {
+                    assert_eq!(0, nbytes);
+                    scratch_space = alloc.realloc(scratch_space);
+                    continue;
                 }
+
+                let scratch_offsets = scratch_space.1.as_ref().unwrap();
+
+                /* then transfer contents */
+                for i in 0..nrecords {
+                    let s = &stringsrc[stringdst.len() + i];
+                    let start = scratch_offsets[i] as usize;
+                    let end = if i + 1 < nrecords {
+                        scratch_offsets[i + 1] as usize
+                    } else {
+                        nbytes
+                    };
+                    scratch_space.0[start..end].copy_from_slice(s.as_bytes())
+                }
+
+                (nrecords, nbytes)
             };
 
-            /* then transfer contents */
-            for i in 0..nrecords {
-                let s = &stringsrc[i];
-                let start = offsets[i] as usize;
-                let end = if i + 1 < nrecords {
-                    offsets[i + 1] as usize
-                } else {
-                    nbytes
-                };
-                u8dst[start..end].copy_from_slice(s.as_bytes())
-            }
+            /* then copy from scratch data to stringdst */
+            let prev_len = stringdst.len();
+            let input = InputData {
+                data: Buffer::Borrowed(&scratch_space.0),
+                cell_offsets: scratch_space
+                    .1
+                    .as_ref()
+                    .map(|c| Buffer::Borrowed(c)),
+            };
+            stringdst
+                .receive(nrecords, nbytes, input)
+                .expect("Error aggregating Vec<String>");
 
-            (
-                <Vec<String> as DataCollector>::construct(ReadResult {
-                    buffers: &mut output,
-                    records: nrecords,
-                    bytes: nbytes,
-                })
-                .unwrap(),
-                nrecords,
-                nbytes,
-            )
-        };
-
-        let dstbytes: usize = stringdst.iter().map(|s| s.len()).sum();
-        let srcbytes: usize = stringsrc.iter().map(|s| s.len()).sum();
-
-        let srccopyable: usize = {
-            let mut acc = 0;
-            stringsrc
-                .iter()
-                .take_while(|s| {
-                    acc += s.len();
-                    acc <= byte_capacity
-                })
-                .map(|s| s.len())
-                .sum()
-        };
-
-        assert!(dstbytes <= srcbytes);
-        assert_eq!(nbytes, dstbytes);
-
-        assert!(stringdst.len() <= stringsrc.len());
-        assert_eq!(nrecords, stringdst.len());
-
-        if srcbytes < byte_capacity {
-            assert_eq!(
-                std::cmp::min(record_capacity, stringsrc.len()),
-                stringdst.len()
-            );
-        }
-        if stringsrc.len() < record_capacity {
-            assert_eq!(srccopyable, dstbytes);
-        }
-
-        for (src, dst) in stringsrc.iter().zip(stringdst.iter()) {
-            assert_eq!(src, dst);
+            assert_eq!(nrecords, stringdst.len() - prev_len);
+            assert_eq!(stringsrc[0..stringdst.len()], stringdst);
         }
     }
 
     proptest! {
         #[test]
-        fn output_collector_strings(record_capacity in MIN_RECORDS..=MAX_RECORDS, byte_capacity in MIN_BYTE_CAPACITY..=MAX_BYTE_CAPACITY, stringsrc in vec(any::<String>(), MIN_RECORDS..=MAX_RECORDS))
+        fn read_result_strings(record_capacity in MIN_RECORDS..=MAX_RECORDS, byte_capacity in MIN_BYTE_CAPACITY..=MAX_BYTE_CAPACITY, stringsrc in vec(any::<String>(), MIN_RECORDS..=MAX_RECORDS))
         {
-            do_output_collector_strings(record_capacity, byte_capacity, stringsrc)
+            do_read_result_strings(record_capacity, byte_capacity, stringsrc)
         }
     }
 }
