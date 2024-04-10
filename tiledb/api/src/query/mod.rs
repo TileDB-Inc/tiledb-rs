@@ -146,8 +146,6 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
             ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
         })?;
 
-        println!("Status: {:?}", c_status);
-
         let sizes = self.result_sizes();
 
         Ok(QueryResult {
@@ -205,7 +203,7 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
                 },
             )?);
 
-        println!("Setting data buffer with size: {}", *size);
+        let val = &mut *size;
 
         self.capi_return(unsafe {
             ffi::tiledb_query_set_data_buffer(
@@ -213,7 +211,7 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
                 self.query.capi(),
                 c_name.as_ptr(),
                 data.as_mut_ptr() as *mut std::ffi::c_void,
-                &mut *size,
+                val,
             )
         })?;
 
@@ -256,8 +254,6 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
                 },
             )?);
 
-        println!("Setting offsets buffer with size: {}", *size);
-
         self.capi_return(unsafe {
             ffi::tiledb_query_set_offsets_buffer(
                 self.query.context.capi(),
@@ -276,7 +272,7 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
             )
         };
 
-        self.data_buffers.insert(
+        self.offset_buffers.insert(
             name.to_owned(),
             Buffer {
                 _data: data,

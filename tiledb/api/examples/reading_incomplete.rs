@@ -36,7 +36,7 @@ fn read_array() -> TileDBResult<()> {
             .layout(tiledb::array::CellOrder::RowMajor)?
             .executor();
 
-    loop {
+    for i in 1.. {
         query = query
             .set_data_buffer("rows", row_data.as_mut_slice())?
             .set_data_buffer("cols", col_data.as_mut_slice())?
@@ -57,7 +57,7 @@ fn read_array() -> TileDBResult<()> {
         let status = result.status();
         let num_values = result.sizes().get("a1").unwrap().0;
 
-        println!("Loop Start: {:?} {}", status, num_values);
+        println!("Iteration {}: {:?} {}", i, status, num_values);
 
         // If the query status is incomplete and we have no elements returned,
         // it means that our buffers are not large enough to store a single
@@ -73,7 +73,7 @@ fn read_array() -> TileDBResult<()> {
             );
             continue;
         } else if num_values > 0 {
-            println!("Iteration results:");
+            println!("Values:");
             print_results(
                 &row_data,
                 &col_data,
@@ -214,8 +214,6 @@ fn print_results(
     a2_offsets: &[u64],
     sizes: &HashMap<String, (u64, Option<u64>)>,
 ) {
-    println!("Results:");
-
     let a2_info = sizes.get("a2").unwrap();
     let num_a2_offsets = a2_info.0 as usize;
 
@@ -225,7 +223,7 @@ fn print_results(
         let len = if i < num_a2_offsets - 1 {
             a2_offsets[i + 1] - a2_offsets[i]
         } else {
-            a2_info.0 - a2_offsets[i]
+            a2_info.1.unwrap() - a2_offsets[i]
         };
         let val =
             &a2_data[(a2_offsets[i] as usize)..(a2_offsets[i] + len) as usize];
