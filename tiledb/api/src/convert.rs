@@ -102,6 +102,31 @@ where
     }
 }
 
+impl DataProvider for Vec<&str> {
+    fn as_tiledb_input(&self) -> InputData {
+        let mut offset_accumulator = 0;
+        let offsets = self
+            .iter()
+            .map(|s| {
+                let my_offset = offset_accumulator;
+                offset_accumulator += s.len();
+                my_offset as u64
+            })
+            .collect::<Vec<u64>>()
+            .into_boxed_slice();
+
+        let mut data = Vec::with_capacity(offset_accumulator);
+        self.iter().for_each(|s| {
+            data.extend(s.as_bytes());
+        });
+
+        InputData {
+            data: Buffer::Owned(data.into_boxed_slice()),
+            cell_offsets: Some(Buffer::Owned(offsets)),
+        }
+    }
+}
+
 impl DataProvider for Vec<String> {
     fn as_tiledb_input(&self) -> InputData {
         let mut offset_accumulator = 0;
