@@ -433,9 +433,3 @@ impl<'ctx> Builder<'ctx> {
         }
     }
 }
-
-// impl<'ctx, 'data> From<Builder<'ctx, 'data>> for Query<'ctx> {
-//     fn from(builder: Builder<'ctx, 'data>) -> Query<'ctx> {
-//         builder.build()
-//     }
-// }

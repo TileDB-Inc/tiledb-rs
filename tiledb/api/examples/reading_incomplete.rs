@@ -237,14 +237,3 @@ fn print_results(
         );
     }
 }
-
-//
-// int main() {
-//   Context ctx;
-//   if (Object::object(ctx, array_name).type() != Object::Type::Array) {
-//     create_array();
-//     write_array();
-//   }
-//   read_array();
-//   return 0;
-// }
