@@ -235,7 +235,9 @@ pub struct NonVarSized {
 
 impl Default for NonVarSized {
     fn default() -> Self {
-        NonVarSized { capacity: 1024 }
+        NonVarSized {
+            capacity: 1024 * 1024,
+        }
     }
 }
 

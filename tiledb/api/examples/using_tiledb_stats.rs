@@ -130,9 +130,9 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
     let array =
         tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
 
-    let query = tiledb::query::ReadBuilder::new(&tdb, array)?
+    let mut query = tiledb::query::ReadBuilder::new(&tdb, array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .data_typed::<_, Vec<i32>>(ATTRIBUTE_NAME, Default::default())?
+        .add_result::<_, Vec<i32>>(ATTRIBUTE_NAME)?
         .add_subarray()?
         .dimension_range_typed::<i32, _>(0, &[1, 3000])?
         .add_subarray()?
@@ -140,7 +140,7 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
         .build();
 
     tiledb::stats::enable()?;
-    let ((_results, _), _query) = query.submit()?;
+    let (_results, _) = query.execute()?;
 
     if json {
         let stats = tiledb::stats::dump_json()?;

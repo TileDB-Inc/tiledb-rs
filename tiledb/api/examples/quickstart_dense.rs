@@ -113,19 +113,16 @@ fn read_array() -> TileDBResult<()> {
         tiledb::array::Mode::Read,
     )?;
 
-    let query = tiledb::query::ReadBuilder::new(&tdb, array)?
+    let mut query = tiledb::query::ReadBuilder::new(&tdb, array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .data_typed::<_, Vec<i32>>(
-            QUICKSTART_ATTRIBUTE_NAME,
-            Default::default(),
-        )?
+        .add_result::<_, Vec<i32>>(QUICKSTART_ATTRIBUTE_NAME)?
         .add_subarray()?
         .dimension_range_typed::<i32, _>("rows", &[1, 2])?
         .add_subarray()?
         .dimension_range_typed::<i32, _>("columns", &[2, 4])?
         .build();
 
-    let ((results, _), _) = query.submit()?;
+    let (results, _) = query.execute()?;
 
     for value in results {
         print!("{} ", value)
