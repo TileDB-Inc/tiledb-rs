@@ -53,16 +53,13 @@ pub struct Query<'ctx> {
 }
 
 impl<'ctx> Query<'ctx> {
-    // TODO: what should the return type be?
-    // if you can re-submit the query then Self makes sense.
-    // if not then Array makes more sense
-    fn do_submit(self) -> TileDBResult<Self> {
+    fn do_submit(&self) -> TileDBResult<()> {
         let c_context = self.context().capi();
         let c_query = *self.raw;
         self.capi_return(unsafe {
             ffi::tiledb_query_submit(c_context, c_query)
         })?;
-        Ok(self)
+        Ok(())
     }
 
     fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
@@ -85,8 +82,8 @@ impl<'ctx> private::QueryCAPIInterface for Query<'ctx> {
 impl<'ctx> ReadQuery for Query<'ctx> {
     type Output = ();
 
-    fn submit(self) -> TileDBResult<(Self::Output, Self)> {
-        Ok(((), self.do_submit()?))
+    fn submit(&mut self) -> TileDBResult<Self::Output> {
+        self.do_submit()
     }
 }
 

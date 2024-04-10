@@ -24,12 +24,8 @@ pub struct WriteQuery<'ctx, 'data> {
 }
 
 impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
-    pub fn submit(self) -> TileDBResult<Self> {
-        let base = self.base.do_submit()?;
-        Ok(WriteQuery {
-            base,
-            _inputs: self._inputs,
-        })
+    pub fn submit(&self) -> TileDBResult<()> {
+        self.base.do_submit()
     }
 }
 

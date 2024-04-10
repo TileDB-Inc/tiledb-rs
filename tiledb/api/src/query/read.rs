@@ -10,7 +10,7 @@ use crate::Result as TileDBResult;
 pub trait ReadQuery: Sized {
     type Output;
 
-    fn submit(self) -> TileDBResult<(Self::Output, Self)>;
+    fn submit(&mut self) -> TileDBResult<Self::Output>;
 }
 
 struct RawReadOutput<C> {
@@ -30,16 +30,15 @@ where
     base: Q,
 }
 
-impl<T, Q> CallbackReadQuery<T, Q>
+impl<T, Q> ReadQuery for CallbackReadQuery<T, Q>
 where
     T: DataReceiver,
     Q: ReadQuery,
 {
-    fn submit_impl(
-        mut self,
-    ) -> TileDBResult<(T, RawReadOutput<T::Unit>, <Self as ReadQuery>::Output, Q)>
-    {
-        let (base_result, base_query) = self.base.submit()?;
+    type Output = Q::Output;
+
+    fn submit(&mut self) -> TileDBResult<Self::Output> {
+        let base_result = self.base.submit()?;
 
         let records_written = match self.raw_read_output.offsets_size.as_ref() {
             Some(offsets_size) => {
@@ -65,30 +64,7 @@ where
         self.receiver
             .receive(records_written, bytes_written, input_data)?;
 
-        Ok((self.receiver, self.raw_read_output, base_result, base_query))
-    }
-}
-
-impl<T, Q> ReadQuery for CallbackReadQuery<T, Q>
-where
-    T: DataReceiver,
-    Q: ReadQuery,
-{
-    type Output = Q::Output;
-
-    fn submit(self) -> TileDBResult<(Self::Output, Self)> {
-        let (receiver, raw_read_output, result, query) = self.submit_impl()?;
-        Ok((
-            result,
-            CallbackReadQuery {
-                receiver,
-                scratch_alloc: T::ScratchAllocator::construct(
-                    Default::default(),
-                ),
-                raw_read_output,
-                base: query,
-            },
-        ))
+        Ok(base_result)
     }
 }
 
@@ -107,29 +83,16 @@ where
 {
     type Output = (T, Q::Output);
 
-    fn submit(self) -> TileDBResult<(Self::Output, Self)> {
-        let (receiver, raw_read_output, base_result, base_query) =
-            self.base.submit_impl()?;
+    fn submit(&mut self) -> TileDBResult<Self::Output> {
+        let base_result = self.base.submit()?;
 
         /* TODO: check status and if complete then do into self */
 
-        let my_result = receiver.into();
+        let my_result =
+            std::mem::replace(&mut self.base.receiver, T::new_receiver())
+                .into();
 
-        Ok((
-            (my_result, base_result),
-            TypedReadQuery {
-                _marker: std::marker::PhantomData,
-                base: CallbackReadQuery {
-                    receiver: T::new_receiver(),
-                    scratch_alloc:
-                        <<T as ReadResult>::Receiver as DataReceiver>::ScratchAllocator::construct(
-                            Default::default(),
-                        ),
-                    raw_read_output,
-                    base: base_query,
-                },
-            },
-        ))
+        Ok((my_result, base_result))
     }
 }
 
