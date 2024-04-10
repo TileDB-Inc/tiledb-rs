@@ -10,7 +10,20 @@ use crate::Result as TileDBResult;
 pub trait ReadQuery: Sized {
     type Output;
 
-    fn submit(&mut self) -> TileDBResult<Self::Output>;
+    /// Run the query to fill scratch space.
+    // TODO: how should this indicate "not enough space to write any data"?
+    fn step(&mut self) -> TileDBResult<Option<Self::Output>>;
+
+    /// Run the query to completion.
+    /// Operations may be interleaved between individual steps
+    /// of the query.
+    fn execute(&mut self) -> TileDBResult<Self::Output> {
+        Ok(loop {
+            if let Some(result) = self.step()? {
+                break result;
+            }
+        })
+    }
 }
 
 struct RawReadOutput<C> {
@@ -37,8 +50,10 @@ where
 {
     type Output = Q::Output;
 
-    fn submit(&mut self) -> TileDBResult<Self::Output> {
-        let base_result = self.base.submit()?;
+    /// Run the query until it fills the scratch space.
+    /// Invokes the callback on all data in the scratch space when the query returns.
+    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
+        let base_result = self.base.step()?;
 
         let records_written = match self.raw_read_output.offsets_size.as_ref() {
             Some(offsets_size) => {
@@ -83,16 +98,16 @@ where
 {
     type Output = (T, Q::Output);
 
-    fn submit(&mut self) -> TileDBResult<Self::Output> {
-        let base_result = self.base.submit()?;
+    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
+        if let Some(base_result) = self.base.step()? {
+            let my_result =
+                std::mem::replace(&mut self.base.receiver, T::new_receiver())
+                    .into();
 
-        /* TODO: check status and if complete then do into self */
-
-        let my_result =
-            std::mem::replace(&mut self.base.receiver, T::new_receiver())
-                .into();
-
-        Ok((my_result, base_result))
+            Ok(Some((my_result, base_result)))
+        } else {
+            Ok(None)
+        }
     }
 }
 

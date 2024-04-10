@@ -3,6 +3,7 @@ pub mod subarray;
 use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
+use crate::error::Error;
 use crate::{Array, Result as TileDBResult};
 
 pub mod read;
@@ -82,8 +83,23 @@ impl<'ctx> private::QueryCAPIInterface for Query<'ctx> {
 impl<'ctx> ReadQuery for Query<'ctx> {
     type Output = ();
 
-    fn submit(&mut self) -> TileDBResult<Self::Output> {
-        self.do_submit()
+    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
+        self.do_submit()?;
+
+        match self.capi_status()? {
+            ffi::tiledb_query_status_t_TILEDB_FAILED => {
+                Err(self.context().expect_last_error())
+            }
+            ffi::tiledb_query_status_t_TILEDB_COMPLETED => Ok(Some(())),
+            ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
+            ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => Ok(None),
+            ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => unreachable!(),
+            ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
+            unrecognized => Err(Error::Internal(format!(
+                "Unrecognized query status: {}",
+                unrecognized
+            ))),
+        }
     }
 }
 
