@@ -1,9 +1,11 @@
 use super::*;
 
+use std::cell::{RefCell, RefMut};
 use std::pin::Pin;
 
 use crate::convert::{
-    Buffer, DataReceiver, InputData, ReadResult, ScratchAllocator, ScratchSpace,
+    Buffer, DataReceiver, InputData, OutputLocation, ReadResult,
+    ScratchAllocator, ScratchSpace,
 };
 use crate::Result as TileDBResult;
 
@@ -26,24 +28,22 @@ pub trait ReadQuery: Sized {
     }
 }
 
-struct RawReadOutput<C> {
+struct RawReadOutput<'data, C> {
     data_size: Pin<Box<u64>>,
-    data: Box<[C]>,
     offsets_size: Option<Pin<Box<u64>>>,
-    cell_offsets: Option<Box<[u64]>>,
+    location: &'data RefCell<OutputLocation<'data, C>>,
 }
 
-pub struct CallbackReadQuery<T, Q>
+pub struct CallbackReadQuery<'data, T, Q>
 where
     T: DataReceiver,
 {
     receiver: T,
-    scratch_alloc: T::ScratchAllocator,
-    raw_read_output: RawReadOutput<T::Unit>,
+    raw_read_output: RawReadOutput<'data, T::Unit>,
     base: Q,
 }
 
-impl<T, Q> ReadQuery for CallbackReadQuery<T, Q>
+impl<'data, T, Q> ReadQuery for CallbackReadQuery<'data, T, Q>
 where
     T: DataReceiver,
     Q: ReadQuery,
@@ -53,7 +53,10 @@ where
     /// Run the query until it fills the scratch space.
     /// Invokes the callback on all data in the scratch space when the query returns.
     fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
-        let base_result = self.base.step()?;
+        let base_result = {
+            let _ = self.raw_read_output.location.borrow_mut();
+            self.base.step()?
+        };
 
         let records_written = match self.raw_read_output.offsets_size.as_ref() {
             Some(offsets_size) => {
@@ -66,11 +69,12 @@ where
         };
         let bytes_written = *self.raw_read_output.data_size as usize;
 
+        let location = self.raw_read_output.location.borrow();
+
         /* TODO: check status and invoke callback with either borrowed or owned buffer */
         let input_data = InputData {
-            data: Buffer::Borrowed(&*self.raw_read_output.data),
-            cell_offsets: self
-                .raw_read_output
+            data: Buffer::Borrowed(&*location.data),
+            cell_offsets: location
                 .cell_offsets
                 .as_ref()
                 .map(|c| Buffer::Borrowed(&*c)),
@@ -83,15 +87,15 @@ where
     }
 }
 
-pub struct TypedReadQuery<T, Q>
+pub struct TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
 {
     _marker: std::marker::PhantomData<T>,
-    base: CallbackReadQuery<<T as ReadResult>::Receiver, Q>,
+    base: CallbackReadQuery<'data, <T as ReadResult>::Receiver, Q>,
 }
 
-impl<T, Q> ReadQuery for TypedReadQuery<T, Q>
+impl<'data, T, Q> ReadQuery for TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
     Q: ReadQuery,
@@ -112,10 +116,13 @@ where
 }
 
 pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
-    fn add_callback<S, T>(
+    fn add_callback<'data, S, T>(
         self,
         field: S,
         callback: T,
+        scratch: &'data RefCell<
+            OutputLocation<'data, <T as DataReceiver>::Unit>,
+        >,
     ) -> TileDBResult<CallbackReadBuilder<T, Self>>
     where
         S: AsRef<str>,
@@ -125,9 +132,23 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let c_query = **self.raw();
         let c_name = cstring!(field.as_ref());
 
-        let scratch_alloc = T::ScratchAllocator::construct(Default::default());
-        let ScratchSpace(mut data, mut cell_offsets) =
-            scratch_alloc.scratch_space();
+        let (data, mut cell_offsets) = {
+            let mut scratch: RefMut<
+                OutputLocation<'data, <T as DataReceiver>::Unit>,
+            > = scratch.borrow_mut();
+
+            let data =
+                scratch.data.as_mut() as *mut [<T as DataReceiver>::Unit];
+            let data =
+                unsafe { &mut *data as &mut [<T as DataReceiver>::Unit] };
+
+            let cell_offsets = scratch.cell_offsets.as_mut().map(|c| {
+                let c = c.as_mut() as *mut [u64];
+                unsafe { &mut *c as &mut [u64] }
+            });
+
+            (data, cell_offsets)
+        };
 
         let (mut data_size, mut offsets_size) = {
             (
@@ -172,22 +193,26 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let raw_read_output = RawReadOutput {
             data_size,
             offsets_size,
-            data,
-            cell_offsets,
+            location: scratch,
         };
 
         Ok(CallbackReadBuilder {
             callback,
-            scratch_alloc,
             raw_read_output,
             base: self,
         })
     }
 
-    fn add_result<S, T>(
+    fn add_result<'data, S, T>(
         self,
         field: S,
-    ) -> TileDBResult<TypedReadBuilder<T, Self>>
+        scratch: &'data RefCell<
+            OutputLocation<
+                'data,
+                <<T as ReadResult>::Receiver as DataReceiver>::Unit,
+            >,
+        >,
+    ) -> TileDBResult<TypedReadBuilder<'data, T, Self>>
     where
         S: AsRef<str>,
         T: ReadResult,
@@ -195,22 +220,21 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let r = T::new_receiver();
         Ok(TypedReadBuilder {
             _marker: std::marker::PhantomData,
-            base: self.add_callback(field, r)?,
+            base: self.add_callback(field, r, scratch)?,
         })
     }
 }
 
-pub struct CallbackReadBuilder<T, B>
+pub struct CallbackReadBuilder<'data, T, B>
 where
     T: DataReceiver,
 {
     callback: T,
-    scratch_alloc: T::ScratchAllocator,
-    raw_read_output: RawReadOutput<<T as DataReceiver>::Unit>,
+    raw_read_output: RawReadOutput<'data, <T as DataReceiver>::Unit>,
     base: B,
 }
 
-impl<'ctx, T, B> ContextBound<'ctx> for CallbackReadBuilder<T, B>
+impl<'ctx, 'data, T, B> ContextBound<'ctx> for CallbackReadBuilder<'data, T, B>
 where
     T: DataReceiver,
     B: ContextBound<'ctx>,
@@ -220,8 +244,8 @@ where
     }
 }
 
-impl<T, B> crate::query::private::QueryCAPIInterface
-    for CallbackReadBuilder<T, B>
+impl<'data, T, B> crate::query::private::QueryCAPIInterface
+    for CallbackReadBuilder<'data, T, B>
 where
     T: DataReceiver,
     B: crate::query::private::QueryCAPIInterface,
@@ -231,12 +255,12 @@ where
     }
 }
 
-impl<'ctx, T, B> QueryBuilder<'ctx> for CallbackReadBuilder<T, B>
+impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for CallbackReadBuilder<'data, T, B>
 where
     T: DataReceiver,
     B: QueryBuilder<'ctx>,
 {
-    type Query = CallbackReadQuery<T, B::Query>;
+    type Query = CallbackReadQuery<'data, T, B::Query>;
 
     fn array(&self) -> &Array {
         self.base.array()
@@ -245,29 +269,29 @@ where
     fn build(self) -> Self::Query {
         CallbackReadQuery {
             receiver: self.callback,
-            scratch_alloc: self.scratch_alloc,
             raw_read_output: self.raw_read_output,
             base: self.base.build(),
         }
     }
 }
 
-impl<'ctx, T, B> ReadQueryBuilder<'ctx> for CallbackReadBuilder<T, B>
+impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx>
+    for CallbackReadBuilder<'data, T, B>
 where
     T: DataReceiver,
     B: ReadQueryBuilder<'ctx>,
 {
 }
 
-pub struct TypedReadBuilder<T, B>
+pub struct TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
 {
     _marker: std::marker::PhantomData<T>,
-    base: CallbackReadBuilder<<T as ReadResult>::Receiver, B>,
+    base: CallbackReadBuilder<'data, <T as ReadResult>::Receiver, B>,
 }
 
-impl<'ctx, T, B> ContextBound<'ctx> for TypedReadBuilder<T, B>
+impl<'ctx, 'data, T, B> ContextBound<'ctx> for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
     B: ContextBound<'ctx>,
@@ -277,7 +301,8 @@ where
     }
 }
 
-impl<T, B> crate::query::private::QueryCAPIInterface for TypedReadBuilder<T, B>
+impl<'data, T, B> crate::query::private::QueryCAPIInterface
+    for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
     B: crate::query::private::QueryCAPIInterface,
@@ -287,12 +312,12 @@ where
     }
 }
 
-impl<'ctx, T, B> QueryBuilder<'ctx> for TypedReadBuilder<T, B>
+impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
     B: QueryBuilder<'ctx>,
 {
-    type Query = TypedReadQuery<T, B::Query>;
+    type Query = TypedReadQuery<'data, T, B::Query>;
 
     fn array(&self) -> &Array {
         self.base.array()
@@ -306,7 +331,7 @@ where
     }
 }
 
-impl<'ctx, T, B> ReadQueryBuilder<'ctx> for TypedReadBuilder<T, B>
+impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx> for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
     B: ReadQueryBuilder<'ctx>,

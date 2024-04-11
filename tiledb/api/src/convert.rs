@@ -224,6 +224,18 @@ impl<'data, T> OutputLocation<'data, T> {
             }),
         }
     }
+
+    pub fn borrow_mut<'this>(&'this mut self) -> OutputLocation<'data, T>
+    where
+        'this: 'data,
+    {
+        OutputLocation {
+            data: BufferMut::Borrowed(self.data.as_mut()),
+            cell_offsets: Option::map(self.cell_offsets.as_mut(), |c| {
+                BufferMut::Borrowed(c.as_mut())
+            }),
+        }
+    }
 }
 
 pub struct ScratchSpace<C>(pub Box<[C]>, pub Option<Box<[u64]>>);
