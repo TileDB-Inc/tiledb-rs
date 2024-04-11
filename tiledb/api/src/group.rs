@@ -356,65 +356,116 @@ impl<'ctx> Group<'ctx> {
         })
     }
 
-    pub fn put_metadata(&self, context: &'ctx Context, metadata : Metadata) -> TileDBResult<()> {
+    pub fn put_metadata(
+        &self,
+        context: &'ctx Context,
+        metadata: Metadata,
+    ) -> TileDBResult<()> {
         let ctx = context.capi();
         let c_key = cstring!(metadata.key);
         let (vec_size, vec_ptr, datatype) = metadata.value.c_vec();
         // Convert value to pointer with value in it by casing on type/using fn_typed!
         // Then run the C function
         // Only supporting numeric types right now.
-        context.capi_return( unsafe {
-            ffi::tiledb_group_put_metadata(ctx, Self::capi(self), c_key.as_ptr(), datatype, vec_size.try_into().unwrap(), vec_ptr)
+        context.capi_return(unsafe {
+            ffi::tiledb_group_put_metadata(
+                ctx,
+                Self::capi(self),
+                c_key.as_ptr(),
+                datatype,
+                vec_size.try_into().unwrap(),
+                vec_ptr,
+            )
         })?;
         Ok(())
     }
 
-    pub fn delete_metadata<S>(&self, context: &'ctx Context, name : S) -> TileDBResult<()>
+    pub fn delete_metadata<S>(
+        &self,
+        context: &'ctx Context,
+        name: S,
+    ) -> TileDBResult<()>
     where
         S: AsRef<str>,
     {
         let ctx = context.capi();
         let c_name = cstring!(name.as_ref());
-        context.capi_return( unsafe {
-            ffi::tiledb_group_delete_metadata(ctx,Self::capi(self), c_name.as_ptr())
+        context.capi_return(unsafe {
+            ffi::tiledb_group_delete_metadata(
+                ctx,
+                Self::capi(self),
+                c_name.as_ptr(),
+            )
         })?;
         Ok(())
     }
 
-    pub fn get_metadata<S>(&self, context: &'ctx Context, name : S) -> TileDBResult<(Metadata)>
+    pub fn get_metadata<S>(
+        &self,
+        context: &'ctx Context,
+        name: S,
+    ) -> TileDBResult<Metadata>
     where
         S: AsRef<str>,
     {
         let ctx = context.capi();
         let c_name = cstring!(name.as_ref());
-        let mut vec_size : u32 = out_ptr!();
-        let mut c_datatype : ffi::tiledb_datatype_t = out_ptr!();
+        let mut vec_size: u32 = out_ptr!();
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let mut vec_ptr = std::ptr::null::<std::ffi::c_void>();
-        context.capi_return( unsafe {
-            ffi::tiledb_group_get_metadata(ctx, Self::capi(self), c_name.as_ptr(), &mut c_datatype, &mut vec_size, &mut vec_ptr)
+        context.capi_return(unsafe {
+            ffi::tiledb_group_get_metadata(
+                ctx,
+                Self::capi(self),
+                c_name.as_ptr(),
+                &mut c_datatype,
+                &mut vec_size,
+                &mut vec_ptr,
+            )
         })?;
         let datatype = Datatype::try_from(c_datatype)?;
-        Ok(Metadata::new(String::from(name.as_ref()), datatype, vec_ptr, vec_size))
+        Ok(Metadata::new(
+            String::from(name.as_ref()),
+            datatype,
+            vec_ptr,
+            vec_size,
+        ))
     }
 
-    pub fn get_metadata_num(&self, context: &'ctx Context) -> TileDBResult<u64> {
+    pub fn get_metadata_num(
+        &self,
+        context: &'ctx Context,
+    ) -> TileDBResult<u64> {
         let ctx = context.capi();
-        let mut num : u64 = out_ptr!();
-        context.capi_return( unsafe {
+        let mut num: u64 = out_ptr!();
+        context.capi_return(unsafe {
             ffi::tiledb_group_get_metadata_num(ctx, Self::capi(self), &mut num)
         })?;
         Ok(num)
     }
 
-    pub fn get_metadata_from_index(&self, context: &'ctx Context, index : u64) -> TileDBResult<Metadata> {
+    pub fn get_metadata_from_index(
+        &self,
+        context: &'ctx Context,
+        index: u64,
+    ) -> TileDBResult<Metadata> {
         let ctx = context.capi();
         let mut key_ptr = std::ptr::null::<std::ffi::c_char>();
-        let mut key_len : u32 = out_ptr!();
-        let mut c_datatype : ffi::tiledb_datatype_t = out_ptr!();
+        let mut key_len: u32 = out_ptr!();
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let mut vec_ptr = std::ptr::null::<std::ffi::c_void>();
-        let mut vec_size : u32 = out_ptr!();
-        context.capi_return( unsafe {
-            ffi::tiledb_group_get_metadata_from_index(ctx, Self::capi(self), index, &mut key_ptr, &mut key_len, &mut c_datatype, &mut vec_size, &mut vec_ptr)
+        let mut vec_size: u32 = out_ptr!();
+        context.capi_return(unsafe {
+            ffi::tiledb_group_get_metadata_from_index(
+                ctx,
+                Self::capi(self),
+                index,
+                &mut key_ptr,
+                &mut key_len,
+                &mut c_datatype,
+                &mut vec_size,
+                &mut vec_ptr,
+            )
         })?;
 
         let c_key = unsafe { std::ffi::CStr::from_ptr(key_ptr) };
@@ -423,49 +474,74 @@ impl<'ctx> Group<'ctx> {
         Ok(Metadata::new(key, datatype, vec_ptr, vec_size))
     }
 
-    pub fn has_metadata_key<S>(&self, context: &'ctx Context, name : S) -> TileDBResult<Option<Datatype>> 
+    pub fn has_metadata_key<S>(
+        &self,
+        context: &'ctx Context,
+        name: S,
+    ) -> TileDBResult<Option<Datatype>>
     where
         S: AsRef<str>,
     {
         let ctx = context.capi();
         let c_name = cstring!(name.as_ref());
-        let mut c_datatype : ffi::tiledb_datatype_t = out_ptr!();
-        let mut exists : i32 = out_ptr!();
-        context.capi_return( unsafe {
-            ffi::tiledb_group_has_metadata_key(ctx, Self::capi(self), c_name.as_ptr(), &mut c_datatype, &mut exists)
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
+        let mut exists: i32 = out_ptr!();
+        context.capi_return(unsafe {
+            ffi::tiledb_group_has_metadata_key(
+                ctx,
+                Self::capi(self),
+                c_name.as_ptr(),
+                &mut c_datatype,
+                &mut exists,
+            )
         })?;
         if exists == 0 {
-            return Ok(None)
+            return Ok(None);
         }
 
         let datatype = Datatype::try_from(c_datatype)?;
         Ok(Some(datatype))
     }
 
-    pub fn consolidate_metadata<S>(&self, context: &'ctx Context, config: &Config, group_uri : S) -> TileDBResult<()>
-    where S: AsRef<str>, 
+    pub fn consolidate_metadata<S>(
+        &self,
+        context: &'ctx Context,
+        config: &Config,
+        group_uri: S,
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
     {
         let ctx = context.capi();
         let c_group_uri = cstring!(group_uri.as_ref());
         let cfg = config.capi();
-        context.capi_return( unsafe {
-            ffi::tiledb_group_consolidate_metadata(ctx, c_group_uri.as_ptr(), cfg)
+        context.capi_return(unsafe {
+            ffi::tiledb_group_consolidate_metadata(
+                ctx,
+                c_group_uri.as_ptr(),
+                cfg,
+            )
         })?;
         Ok(())
     }
 
-    pub fn vacuum_metadata<S>(&self, context: &'ctx Context, config: &Config, group_uri : S) -> TileDBResult<()>
-    where S: AsRef<str>, 
+    pub fn vacuum_metadata<S>(
+        &self,
+        context: &'ctx Context,
+        config: &Config,
+        group_uri: S,
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
     {
         let ctx = context.capi();
         let c_group_uri = cstring!(group_uri.as_ref());
         let cfg = config.capi();
-        context.capi_return( unsafe {
+        context.capi_return(unsafe {
             ffi::tiledb_group_vacuum_metadata(ctx, c_group_uri.as_ptr(), cfg)
         })?;
         Ok(())
     }
-
 }
 
 impl Drop for Group<'_> {
