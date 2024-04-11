@@ -248,6 +248,10 @@ pub trait ScratchAllocator<C> {
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C>;
 }
 
+pub trait HasScratchSpaceStrategy<C> {
+    type Strategy: ScratchAllocator<C>;
+}
+
 pub trait DataReceiver: Sized {
     type ScratchAllocator: Default + ScratchAllocator<Self::Unit>;
     type Unit: CAPISameRepr;

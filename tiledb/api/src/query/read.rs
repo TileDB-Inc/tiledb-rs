@@ -4,8 +4,8 @@ use std::cell::{RefCell, RefMut};
 use std::pin::Pin;
 
 use crate::convert::{
-    Buffer, DataReceiver, InputData, OutputLocation, ReadResult,
-    ScratchAllocator, ScratchSpace,
+    Buffer, BufferMut, DataReceiver, HasScratchSpaceStrategy, InputData,
+    OutputLocation, ReadResult, ScratchAllocator,
 };
 use crate::Result as TileDBResult;
 
@@ -32,6 +32,25 @@ struct RawReadOutput<'data, C> {
     data_size: Pin<Box<u64>>,
     offsets_size: Option<Pin<Box<u64>>>,
     location: &'data RefCell<OutputLocation<'data, C>>,
+}
+
+pub struct ManagedReadQuery<'data, C, A, Q> {
+    alloc: A,
+    scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+    base: Q,
+}
+
+impl<'data, C, A, Q> ReadQuery for ManagedReadQuery<'data, C, A, Q>
+where
+    Q: ReadQuery,
+{
+    type Output = Q::Output;
+
+    /// Run the query until it fills the scratch space.
+    /// Invokes the callback on all data in the scratch space when the query returns.
+    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
+        self.base.step()
+    }
 }
 
 pub struct CallbackReadQuery<'data, T, Q>
@@ -116,7 +135,7 @@ where
 }
 
 pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
-    fn add_callback<'data, S, T>(
+    fn register_callback<'data, S, T>(
         self,
         field: S,
         callback: T,
@@ -203,6 +222,57 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         })
     }
 
+    fn register_callback_and_allocator<'data, S, T, C>(
+        self,
+        field: S,
+        callback: T,
+        params: <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<C>>::Parameters,
+    ) -> TileDBResult<
+        ManagedReadBuilder<
+            'data,
+            <T as DataReceiver>::Unit,
+            <T as HasScratchSpaceStrategy<C>>::Strategy,
+            CallbackReadBuilder<'data, T, Self>,
+        >,
+    >
+    where
+        S: AsRef<str>,
+        T: DataReceiver<Unit = C> + HasScratchSpaceStrategy<C>,
+    {
+        let a =
+            <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<
+                C,
+            >>::construct(params);
+        let scratch = a.scratch_space();
+
+        let scratch = OutputLocation {
+            data: BufferMut::Owned(scratch.0),
+            cell_offsets: scratch.1.map(|c| BufferMut::Owned(c)),
+        };
+
+        let scratch = Box::pin(RefCell::new(scratch));
+
+        let base = {
+            let scratch = scratch.as_ref().get_ref()
+                as *const RefCell<
+                    OutputLocation<'data, <T as DataReceiver>::Unit>,
+                >;
+            let scratch = unsafe {
+                &*scratch
+                    as &'data RefCell<
+                        OutputLocation<'data, <T as DataReceiver>::Unit>,
+                    >
+            };
+            self.register_callback(field, callback, scratch)
+        }?;
+
+        Ok(ManagedReadBuilder {
+            alloc: a,
+            scratch,
+            base,
+        })
+    }
+
     fn add_result<'data, S, T>(
         self,
         field: S,
@@ -220,8 +290,54 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let r = T::new_receiver();
         Ok(TypedReadBuilder {
             _marker: std::marker::PhantomData,
-            base: self.add_callback(field, r, scratch)?,
+            base: self.register_callback(field, r, scratch)?,
         })
+    }
+}
+
+pub struct ManagedReadBuilder<'data, C, A, B> {
+    alloc: A,
+    scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+    base: B,
+}
+
+impl<'ctx, 'data, C, A, B> ContextBound<'ctx>
+    for ManagedReadBuilder<'data, C, A, B>
+where
+    B: ContextBound<'ctx>,
+{
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
+}
+
+impl<'data, C, A, B> crate::query::private::QueryCAPIInterface
+    for ManagedReadBuilder<'data, C, A, B>
+where
+    B: crate::query::private::QueryCAPIInterface,
+{
+    fn raw(&self) -> &RawQuery {
+        self.base.raw()
+    }
+}
+
+impl<'ctx, 'data, C, A, B> QueryBuilder<'ctx>
+    for ManagedReadBuilder<'data, C, A, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+    type Query = ManagedReadQuery<'data, C, A, B::Query>;
+
+    fn array(&self) -> &Array {
+        self.base.array()
+    }
+
+    fn build(self) -> Self::Query {
+        ManagedReadQuery {
+            alloc: self.alloc,
+            scratch: self.scratch,
+            base: self.base.build(),
+        }
     }
 }
 
