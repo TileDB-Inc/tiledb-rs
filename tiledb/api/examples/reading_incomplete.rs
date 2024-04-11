@@ -134,34 +134,57 @@ fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
         .dimension_range_typed::<i32, _>(1, &[1, 4])
 }
 
+fn grow_buffer<T>(b: &mut BufferMut<T>)
+where
+    T: Copy + Default,
+{
+    let capacity = b.as_ref().len();
+    let new_capacity = 2 * capacity;
+    let _ = std::mem::replace(
+        b,
+        BufferMut::Owned(vec![T::default(); new_capacity].into_boxed_slice()),
+    );
+}
+
 /// Handles the incomplete results manually, similar to what might be done with the C API.
 /// Buffers are provided for the query to fill in. Each step fills in as much
 /// as it can, we print the results and then re-submit the query.
 fn read_array_step() -> TileDBResult<()> {
     println!("read_array_step");
 
-    let capacity = 1024 * 1024;
+    let init_capacity = 1;
 
     let tdb = tiledb::context::Context::new()?;
 
     let rows_output = RefCell::new(OutputLocation {
-        data: BufferMut::Owned(vec![0i32; capacity].into_boxed_slice()),
+        data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
     let cols_output = RefCell::new(OutputLocation {
-        data: BufferMut::Owned(vec![0i32; capacity].into_boxed_slice()),
+        data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
     let int32_output = RefCell::new(OutputLocation {
-        data: BufferMut::Owned(vec![0i32; capacity].into_boxed_slice()),
+        data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
     let char_output = RefCell::new(OutputLocation {
-        data: BufferMut::Owned(vec![0u8; capacity].into_boxed_slice()),
+        data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
         cell_offsets: Some(BufferMut::Owned(
-            vec![0u64; capacity].into_boxed_slice(),
+            vec![0u64; init_capacity].into_boxed_slice(),
         )),
     });
+
+    let grow_buffers = || {
+        /* TODO: this does not update the C API query state */
+        grow_buffer(&mut rows_output.borrow_mut().data);
+        grow_buffer(&mut cols_output.borrow_mut().data);
+        grow_buffer(&mut int32_output.borrow_mut().data);
+        grow_buffer(&mut char_output.borrow_mut().data);
+        grow_buffer(
+            &mut char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
+        );
+    };
 
     let mut qq = query_builder_start(&tdb)?
         .register_raw("rows", &rows_output)?
@@ -174,26 +197,32 @@ fn read_array_step() -> TileDBResult<()> {
         let res = qq.step()?;
         let final_result = res.is_final();
 
-        let (n_rows, _, (n_cols, _, (n_a1, _, (n_a2, b_a2, _)))) = res.unwrap();
-
-        let rows =
-            Ref::map(rows_output.borrow(), |o| &o.data.as_ref()[0..n_rows]);
-        let cols =
-            Ref::map(cols_output.borrow(), |o| &o.data.as_ref()[0..n_cols]);
-        let a1 = Ref::map(int32_output.borrow(), |o| &o.data.as_ref()[0..n_a1]);
-
-        let a2 = {
-            let char_output = char_output.borrow();
-            VarDataIterator::new(n_a2, b_a2, char_output.borrow())
-                .expect("Expected variable data offsets")
-                .map(|bytes| String::from_utf8_lossy(bytes).to_string())
-                .collect::<Vec<String>>()
-        };
-
-        for (((row, column), a1), a2) in
-            rows.iter().zip(cols.iter()).zip(a1.iter()).zip(a2)
+        if let Some((n_a2, b_a2, (n_a1, _, (n_cols, _, (n_rows, _, _))))) =
+            res.unwrap()
         {
-            println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+            let rows =
+                Ref::map(rows_output.borrow(), |o| &o.data.as_ref()[0..n_rows]);
+            let cols =
+                Ref::map(cols_output.borrow(), |o| &o.data.as_ref()[0..n_cols]);
+            let a1 =
+                Ref::map(int32_output.borrow(), |o| &o.data.as_ref()[0..n_a1]);
+
+            let a2 = {
+                let char_output = char_output.borrow();
+                VarDataIterator::new(n_a2, b_a2, char_output.borrow())
+                    .expect("Expected variable data offsets")
+                    .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                    .collect::<Vec<String>>()
+            };
+
+            for (((row, column), a1), a2) in
+                rows.iter().zip(cols.iter()).zip(a1.iter()).zip(a2)
+            {
+                println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+            }
+        } else {
+            println!("\tNot enough space, growing buffers...");
+            grow_buffers();
         }
 
         if final_result {
@@ -235,8 +264,8 @@ fn read_array_collect() -> TileDBResult<()> {
 fn main() -> TileDBResult<()> {
     if !array_exists() {
         create_array().expect("Failed to create array");
+        write_array().expect("Failed to write array");
     }
-    write_array().expect("Failed to write array");
     read_array_step().expect("Failed to step through array results");
     read_array_collect().expect("Failed to collect array results");
     Ok(())

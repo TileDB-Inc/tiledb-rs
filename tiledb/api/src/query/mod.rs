@@ -80,7 +80,7 @@ impl<'ctx> private::QueryCAPIInterface for Query<'ctx> {
     }
 }
 
-impl<'ctx> ReadQuery for Query<'ctx> {
+impl<'ctx> ReadQuery<'ctx> for Query<'ctx> {
     type Intermediate = ();
     type Final = ();
 
