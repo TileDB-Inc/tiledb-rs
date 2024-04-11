@@ -349,6 +349,13 @@ where
     }
 }
 
+impl<C> HasScratchSpaceStrategy<C> for Vec<C>
+where
+    C: CAPISameRepr,
+{
+    type Strategy = NonVarSized;
+}
+
 impl<C> DataReceiver for Vec<C>
 where
     C: CAPISameRepr,
@@ -384,6 +391,10 @@ where
     fn new_receiver() -> Self::Receiver {
         vec![]
     }
+}
+
+impl HasScratchSpaceStrategy<u8> for Vec<String> {
+    type Strategy = VarSized;
 }
 
 impl DataReceiver for Vec<String> {

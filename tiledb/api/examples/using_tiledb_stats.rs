@@ -132,7 +132,10 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(&tdb, array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .add_result::<_, Vec<i32>>(ATTRIBUTE_NAME)?
+        .add_result_managed::<_, Vec<i32>, _, _>(
+            ATTRIBUTE_NAME,
+            Default::default(),
+        )?
         .add_subarray()?
         .dimension_range_typed::<i32, _>(0, &[1, 3000])?
         .add_subarray()?

@@ -149,10 +149,16 @@ fn read_array_collect() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let mut qq = query_builder_start(&tdb)?
-        .add_result::<_, Vec<i32>>("rows")?
-        .add_result::<_, Vec<i32>>("columns")?
-        .add_result::<_, Vec<i32>>(INT32_ATTRIBUTE_NAME)?
-        .add_result::<_, Vec<String>>(CHAR_ATTRIBUTE_NAME)?
+        .add_result_managed::<_, Vec<i32>, _, _>("rows", Default::default())?
+        .add_result_managed::<_, Vec<i32>, _, _>("columns", Default::default())?
+        .add_result_managed::<_, Vec<i32>, _, _>(
+            INT32_ATTRIBUTE_NAME,
+            Default::default(),
+        )?
+        .add_result_managed::<_, Vec<String>, _, _>(
+            CHAR_ATTRIBUTE_NAME,
+            Default::default(),
+        )?
         .build();
 
     let (row, (column, (a1, (a2, _)))) = qq.execute()?;

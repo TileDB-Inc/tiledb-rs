@@ -222,7 +222,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         })
     }
 
-    fn register_callback_and_allocator<'data, S, T, C>(
+    fn register_callback_managed<'data, S, T, C>(
         self,
         field: S,
         callback: T,
@@ -230,7 +230,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     ) -> TileDBResult<
         ManagedReadBuilder<
             'data,
-            <T as DataReceiver>::Unit,
+            C,
             <T as HasScratchSpaceStrategy<C>>::Strategy,
             CallbackReadBuilder<'data, T, Self>,
         >,
@@ -293,6 +293,52 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
             base: self.register_callback(field, r, scratch)?,
         })
     }
+
+    fn add_result_managed<'data, S, T, R, C>(
+        self,
+        field: S,
+        params: <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<C>>::Parameters,
+    ) -> TileDBResult<
+        ManagedReadBuilder<
+            'data,
+            C,
+            <T as HasScratchSpaceStrategy<C>>::Strategy,
+            TypedReadBuilder<'data, T, Self>,
+        >,
+    >
+    where
+        S: AsRef<str>,
+        T: ReadResult<Receiver = R> + HasScratchSpaceStrategy<C>,
+        R: DataReceiver<Unit = C>,
+    {
+        let a =
+            <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<
+                C,
+            >>::construct(params);
+        let scratch = a.scratch_space();
+
+        let scratch = OutputLocation {
+            data: BufferMut::Owned(scratch.0),
+            cell_offsets: scratch.1.map(|c| BufferMut::Owned(c)),
+        };
+
+        let scratch = Box::pin(RefCell::new(scratch));
+
+        let base = {
+            let scratch = scratch.as_ref().get_ref()
+                as *const RefCell<OutputLocation<'data, C>>;
+            let scratch = unsafe {
+                &*scratch as &'data RefCell<OutputLocation<'data, C>>
+            };
+            self.add_result::<S, T>(field, scratch)
+        }?;
+
+        Ok(ManagedReadBuilder {
+            alloc: a,
+            scratch,
+            base,
+        })
+    }
 }
 
 pub struct ManagedReadBuilder<'data, C, A, B> {
@@ -339,6 +385,13 @@ where
             base: self.base.build(),
         }
     }
+}
+
+impl<'ctx, 'data, C, A, B> ReadQueryBuilder<'ctx>
+    for ManagedReadBuilder<'data, C, A, B>
+where
+    B: ReadQueryBuilder<'ctx>,
+{
 }
 
 pub struct CallbackReadBuilder<'data, T, B>
