@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::{Deref, DerefMut};
 
 use crate::Result as TileDBResult;
@@ -450,6 +451,22 @@ impl<'data, C> VarDataIterator<'data, C> {
                 location,
             })
         }
+    }
+}
+
+impl<'data, C> Debug for VarDataIterator<'data, C>
+where
+    C: Debug,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(
+            f,
+            "VarDataIterator {{ cursor: {}, offsets: {:?}, bytes: {:?} }}",
+            self.offset_cursor,
+            &self.location.cell_offsets.as_ref().unwrap().as_ref()
+                [0..self.nrecords],
+            &self.location.data.as_ref()[0..self.nbytes]
+        )
     }
 }
 
