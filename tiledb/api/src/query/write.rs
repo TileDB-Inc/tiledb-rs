@@ -35,6 +35,18 @@ impl<'ctx, 'data> private::QueryCAPIInterface for WriteQuery<'ctx, 'data> {
     }
 }
 
+impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
+    pub fn finalize(self) -> TileDBResult<Array<'ctx>> {
+        let c_context = self.context().capi();
+        let c_query = **self.raw();
+        self.capi_return(unsafe {
+            ffi::tiledb_query_finalize(c_context, c_query)
+        })?;
+
+        Ok(self.base.array)
+    }
+}
+
 pub struct WriteBuilder<'ctx, 'data> {
     base: BuilderBase<'ctx>,
     inputs: InputMap<'data>,

@@ -114,7 +114,8 @@ fn write_array() -> TileDBResult<()> {
         .data_typed(CHAR_ATTRIBUTE_NAME, &char_data)?
         .build();
 
-    query.submit()
+    query.submit().and_then(|_| query.finalize())?;
+    Ok(())
 }
 
 /// The goal of this is example is to demonstrate handling incomplete results
@@ -223,7 +224,7 @@ fn read_array_collect() -> TileDBResult<()> {
         )?
         .build();
 
-    let (row, (column, (a1, (a2, _)))) = qq.execute()?;
+    let (a2, (a1, (column, (row, _)))) = qq.execute()?;
     for (((row, column), a1), a2) in row.iter().zip(column).zip(a1).zip(a2) {
         println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
     }
