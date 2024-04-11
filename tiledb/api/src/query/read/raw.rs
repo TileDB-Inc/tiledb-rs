@@ -1,11 +1,24 @@
 use super::*;
 
+/// Encapsulates data for writing intermediate query results for a data field.
 pub(crate) struct RawReadOutput<'data, C> {
+    /// As input to the C API, the size of the data buffer.
+    /// As output from the C API, the size in bytes of an intermediate result.
     pub data_size: Pin<Box<u64>>,
+
+    /// As input to the C API, the size of the cell offsets buffer.
+    /// As output from the C API, the size in bytes of intermediate offset results.
     pub offsets_size: Option<Pin<Box<u64>>>,
+
+    /// Buffers for writing data and cell offsets.
+    /// These are re-registered with the query at each step.
+    /// The application which owns the query may own these buffers,
+    /// or defer their management to the reader.
+    // In the case of the former, the application can do whatever it wants with the
+    // buffers between steps of a query.
+    // RefCell is used so that the query can write to the buffers when it is executing
+    // but the application can do whatever with the buffers between steps.
     pub location: &'data RefCell<OutputLocation<'data, C>>,
-    pub raw_dataptr: *const C,
-    pub raw_offsetptr: Option<*const u64>,
 }
 
 impl<'data, C> RawReadOutput<'data, C> {
@@ -35,20 +48,10 @@ impl<'data, C> RawReadOutput<'data, C> {
             )
         };
 
-        let (raw_dataptr, raw_offsetptr) = {
-            let location = location.borrow();
-            (
-                location.data.as_ptr(),
-                location.cell_offsets.as_ref().map(|c| c.as_ptr()),
-            )
-        };
-
         RawReadOutput {
             data_size,
             offsets_size,
             location,
-            raw_dataptr,
-            raw_offsetptr,
         }
     }
 
@@ -111,6 +114,10 @@ impl<'data, C> RawReadOutput<'data, C> {
     }
 }
 
+/// Reads query results into a raw buffer.
+/// This is the most flexible way to read data but also the most cumbersome.
+/// Recommended usage is to run the query one step at a time, and borrow
+/// the buffers between each step to process intermediate results.
 pub struct RawReadQuery<'data, C, Q> {
     pub(crate) field: String,
     pub(crate) raw_read_output: RawReadOutput<'data, C>,

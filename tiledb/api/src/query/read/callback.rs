@@ -1,5 +1,7 @@
 use super::*;
 
+/// Query result handler which runs a callback on the results after each
+/// step of execution.
 pub struct CallbackReadQuery<'data, T, Q>
 where
     T: DataReceiver,

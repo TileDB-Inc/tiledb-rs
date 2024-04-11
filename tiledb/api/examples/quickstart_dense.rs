@@ -115,7 +115,7 @@ fn read_array() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(&tdb, array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .add_result_managed::<_, Vec<i32>, _, _>(
+        .register_constructor_managed::<_, Vec<i32>, _, _>(
             QUICKSTART_ATTRIBUTE_NAME,
             Default::default(),
         )?

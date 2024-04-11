@@ -20,9 +20,17 @@ pub use managed::*;
 pub use raw::*;
 pub use typed::*;
 
+/// Contains a return status and/or result from submitting a query.
 pub enum ReadStepOutput<I, F> {
+    /// There was not enough space to hold any results.
+    /// Allocate more space and try again.
     NotEnoughSpace,
+    /// There was enough space for some, but not all, results.
+    /// Contains the intermediate representation of those results.
+    /// Re-submitting the query will advance to the next portion of results.
     Intermediate(I),
+    /// Contains the final representation of the query results.
+    /// Re-submitting the query again will start over from the beginning.
     Final(F),
 }
 
@@ -46,21 +54,21 @@ impl<U> ReadStepOutput<U, U> {
     }
 }
 
+/// Trait for runnable read queries.
 pub trait ReadQuery<'ctx>:
     ContextBound<'ctx> + QueryCAPIInterface + Sized
 {
     type Intermediate;
     type Final;
 
-    /// Run the query to fill scratch space.
-    // TODO: how should this indicate "not enough space to write any data"?
+    /// Run the query until it has filled up its scratch space.
     fn step(
         &mut self,
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>>;
 
     /// Run the query to completion.
-    /// Operations may be interleaved between individual steps
-    /// of the query.
+    /// Query adapters may interleave their operations
+    /// between individual steps of the query.
     fn execute(&mut self) -> TileDBResult<Self::Final> {
         Ok(loop {
             if let ReadStepOutput::Final(result) = self.step()? {
@@ -70,7 +78,11 @@ pub trait ReadQuery<'ctx>:
     }
 }
 
+/// Trait for constructing a read query.
+/// Provides methods for flexibly adapting requested attributes into raw results,
+/// callbacks, or strongly-typed objects.
 pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
+    /// Register a raw memory location to write query results into.
     fn register_raw<'data, S, C>(
         self,
         field: S,
@@ -87,6 +99,8 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         })
     }
 
+    /// Register a callback to be run on query results
+    /// which are written into the provided scratch space.
     fn register_callback<'data, S, T>(
         self,
         field: S,
@@ -104,6 +118,8 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         Ok(CallbackReadBuilder { callback, base })
     }
 
+    /// Register a callback to be run on query results.
+    /// Scratch space for raw results is managed by the callback.
     fn register_callback_managed<'data, S, T, C>(
         self,
         field: S,
@@ -155,7 +171,9 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         })
     }
 
-    fn add_result<'data, S, T>(
+    /// Register a typed result to be constructed from the query results.
+    /// Intermediate raw results are written into the provided scratch space.
+    fn register_constructor<'data, S, T>(
         self,
         field: S,
         scratch: &'data RefCell<
@@ -176,7 +194,9 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         })
     }
 
-    fn add_result_managed<'data, S, T, R, C>(
+    /// Register a typed result to be constructed from the query results.
+    /// Scratch space for raw results is managed by the callback.
+    fn register_constructor_managed<'data, S, T, R, C>(
         self,
         field: S,
         params: <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<C>>::Parameters,
@@ -212,7 +232,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
             let scratch = unsafe {
                 &*scratch as &'data RefCell<OutputLocation<'data, C>>
             };
-            self.add_result::<S, T>(field, scratch)
+            self.register_constructor::<S, T>(field, scratch)
         }?;
 
         Ok(ManagedReadBuilder {
@@ -223,7 +243,9 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     }
 }
 
+#[derive(ContextBound)]
 pub struct ReadBuilder<'ctx> {
+    #[ContextBound]
     base: BuilderBase<'ctx>,
 }
 
@@ -235,12 +257,6 @@ impl<'ctx> ReadBuilder<'ctx> {
         Ok(ReadBuilder {
             base: BuilderBase::new(context, array, QueryType::Read)?,
         })
-    }
-}
-
-impl<'ctx> ContextBound<'ctx> for ReadBuilder<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
     }
 }
 

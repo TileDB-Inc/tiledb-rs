@@ -1,5 +1,6 @@
 use super::*;
 
+/// Query result handler which constructs an object from query results.
 pub struct TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,

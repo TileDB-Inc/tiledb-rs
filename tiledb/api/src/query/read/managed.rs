@@ -1,5 +1,6 @@
 use super::*;
 
+/// Adapter for a read result which allocates and manages scratch space opaquely.
 pub struct ManagedReadQuery<'data, C, A, Q> {
     pub(crate) alloc: A,
     pub(crate) scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
@@ -37,6 +38,7 @@ where
     fn step(
         &mut self,
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        /* TODO: this needs to check for empty result set and reallocate if necessary */
         self.base.step()
     }
 }

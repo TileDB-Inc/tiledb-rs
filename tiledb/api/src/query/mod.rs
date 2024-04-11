@@ -98,6 +98,17 @@ impl<'ctx> ReadQuery<'ctx> for Query<'ctx> {
             }
             ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
             ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => {
+                /*
+                 * Note: the returned status itself is not enough to distinguish between
+                 * "no results, allocate more space plz" and "there are more results after you consume these".
+                 * The API tiledb_query_get_status_details exists but is experimental,
+                 * so we will worry about it later.
+                 * For now: it's a fair assumption that the user requested data, and that is
+                 * where we will catch the difference. See RawReadQuery.
+                 * We also assume that the same number of records are filled in for all
+                 * queried data - if a result is empty for one attribute then it will be so
+                 * for all attributes.
+                 */
                 Ok(ReadStepOutput::Intermediate(()))
             }
             ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => unreachable!(),
