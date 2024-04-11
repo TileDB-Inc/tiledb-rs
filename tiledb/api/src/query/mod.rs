@@ -18,7 +18,7 @@ mod private {
 }
 
 pub use self::read::{
-    ReadBuilder, ReadQuery, ReadQueryBuilder, TypedReadBuilder,
+    ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };
 pub use self::write::WriteBuilder;
 pub use crate::query::subarray::{Builder as SubarrayBuilder, Subarray};
@@ -81,18 +81,25 @@ impl<'ctx> private::QueryCAPIInterface for Query<'ctx> {
 }
 
 impl<'ctx> ReadQuery for Query<'ctx> {
-    type Output = ();
+    type Intermediate = ();
+    type Final = ();
 
-    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         self.do_submit()?;
 
         match self.capi_status()? {
             ffi::tiledb_query_status_t_TILEDB_FAILED => {
                 Err(self.context().expect_last_error())
             }
-            ffi::tiledb_query_status_t_TILEDB_COMPLETED => Ok(Some(())),
+            ffi::tiledb_query_status_t_TILEDB_COMPLETED => {
+                Ok(ReadStepOutput::Final(()))
+            }
             ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
-            ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => Ok(None),
+            ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => {
+                Ok(ReadStepOutput::Intermediate(()))
+            }
             ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => unreachable!(),
             ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
             unrecognized => Err(Error::Internal(format!(

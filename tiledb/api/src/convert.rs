@@ -44,6 +44,22 @@ impl<'data, T> Buffer<'data, T> {
     pub fn size(&self) -> usize {
         std::mem::size_of_val(self.as_ref())
     }
+
+    pub fn borrow<'this>(&'this self) -> &'data [T]
+    where
+        'this: 'data,
+    {
+        match self {
+            Buffer::Empty => unsafe {
+                std::slice::from_raw_parts(
+                    std::ptr::NonNull::dangling().as_ptr(),
+                    0,
+                )
+            },
+            Buffer::Borrowed(data) => data,
+            Buffer::Owned(data) => &*data,
+        }
+    }
 }
 
 impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
@@ -71,6 +87,20 @@ impl<'data, T> Deref for Buffer<'data, T> {
 pub struct InputData<'data, T = u8> {
     pub data: Buffer<'data, T>,
     pub cell_offsets: Option<Buffer<'data, u64>>,
+}
+
+impl<'data, T> InputData<'data, T> {
+    pub fn borrow<'this>(&'this self) -> InputData<'data, T>
+    where
+        'this: 'data,
+    {
+        InputData {
+            data: Buffer::Borrowed(self.data.as_ref()),
+            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
+                Buffer::Borrowed(c.as_ref())
+            }),
+        }
+    }
 }
 
 pub trait DataProvider {
@@ -397,6 +427,65 @@ impl HasScratchSpaceStrategy<u8> for Vec<String> {
     type Strategy = VarSized;
 }
 
+pub struct VarDataIterator<'data, C> {
+    nrecords: usize,
+    nbytes: usize,
+    offset_cursor: usize,
+    location: InputData<'data, C>,
+}
+
+impl<'data, C> VarDataIterator<'data, C> {
+    pub fn new(
+        nrecords: usize,
+        nbytes: usize,
+        location: InputData<'data, C>,
+    ) -> TileDBResult<Self> {
+        if location.cell_offsets.is_none() {
+            Err(unimplemented!())
+        } else {
+            Ok(VarDataIterator {
+                nrecords,
+                nbytes,
+                offset_cursor: 0,
+                location,
+            })
+        }
+    }
+}
+
+impl<'data, C> Iterator for VarDataIterator<'data, C>
+where
+    Self: 'data,
+{
+    type Item = &'data [C] where Self: 'data;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let data_buffer: &'data [C] = unsafe {
+            // this is safe as long as the Iterator outlives 'data, which
+            // it should because of the trait bound.
+            // TODO: write a test that fails to build if 'location' outlives 'self'
+            &*(self.location.data.borrow() as *const [C]) as &'data [C]
+        };
+        let offset_buffer =
+            self.location.cell_offsets.as_ref().unwrap().borrow();
+
+        let s = self.offset_cursor;
+        self.offset_cursor += 1;
+
+        if s + 1 < self.nrecords {
+            let start = offset_buffer[s] as usize;
+            let slen = offset_buffer[s + 1] as usize - start;
+            Some(&data_buffer[start..start + slen])
+        } else if s < self.nrecords {
+            let start = offset_buffer[s] as usize;
+            let slen = self.nbytes - start;
+            Some(&data_buffer[start..start + slen])
+        } else {
+            None
+        }
+    }
+}
+
 impl DataReceiver for Vec<String> {
     type ScratchAllocator = VarSized;
     type Unit = u8;
@@ -407,18 +496,8 @@ impl DataReceiver for Vec<String> {
         bytes: usize,
         input: InputData<'data, Self::Unit>,
     ) -> TileDBResult<()> {
-        let data_buffer = input.data.as_ref();
-        let offset_buffer = input.cell_offsets.as_ref().unwrap();
-
-        for s in 0..records {
-            let start = offset_buffer[s] as usize;
-            let slen = if s + 1 < records {
-                offset_buffer[s + 1] as usize - start
-            } else {
-                bytes - start
-            };
-
-            let s = String::from_utf8_lossy(&data_buffer[start..start + slen]);
+        for s in VarDataIterator::new(records, bytes, input)? {
+            let s = String::from_utf8_lossy(s);
             self.push(s.to_string());
         }
 

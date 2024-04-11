@@ -4,24 +4,51 @@ use std::cell::{RefCell, RefMut};
 use std::pin::Pin;
 
 use crate::convert::{
-    Buffer, BufferMut, DataReceiver, HasScratchSpaceStrategy, InputData,
-    OutputLocation, ReadResult, ScratchAllocator,
+    Buffer, BufferMut, CAPISameRepr, DataReceiver, HasScratchSpaceStrategy,
+    InputData, OutputLocation, ReadResult, ScratchAllocator,
 };
 use crate::Result as TileDBResult;
 
+pub enum ReadStepOutput<I, F> {
+    Intermediate(I),
+    Final(F),
+}
+
+impl<I, F> ReadStepOutput<I, F> {
+    pub fn is_intermediate(&self) -> bool {
+        matches!(self, ReadStepOutput::Intermediate(_))
+    }
+
+    pub fn is_final(&self) -> bool {
+        matches!(self, ReadStepOutput::Final(_))
+    }
+}
+
+impl<U> ReadStepOutput<U, U> {
+    pub fn unwrap(self) -> U {
+        match self {
+            ReadStepOutput::Intermediate(i) => i,
+            ReadStepOutput::Final(f) => f,
+        }
+    }
+}
+
 pub trait ReadQuery: Sized {
-    type Output;
+    type Intermediate;
+    type Final;
 
     /// Run the query to fill scratch space.
     // TODO: how should this indicate "not enough space to write any data"?
-    fn step(&mut self) -> TileDBResult<Option<Self::Output>>;
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>>;
 
     /// Run the query to completion.
     /// Operations may be interleaved between individual steps
     /// of the query.
-    fn execute(&mut self) -> TileDBResult<Self::Output> {
+    fn execute(&mut self) -> TileDBResult<Self::Final> {
         Ok(loop {
-            if let Some(result) = self.step()? {
+            if let ReadStepOutput::Final(result) = self.step()? {
                 break result;
             }
         })
@@ -34,44 +61,21 @@ struct RawReadOutput<'data, C> {
     location: &'data RefCell<OutputLocation<'data, C>>,
 }
 
-pub struct ManagedReadQuery<'data, C, A, Q> {
-    alloc: A,
-    scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+pub struct RawReadQuery<'data, C, Q> {
+    raw_read_output: RawReadOutput<'data, C>,
     base: Q,
 }
 
-impl<'data, C, A, Q> ReadQuery for ManagedReadQuery<'data, C, A, Q>
+impl<'data, C, Q> ReadQuery for RawReadQuery<'data, C, Q>
 where
     Q: ReadQuery,
 {
-    type Output = Q::Output;
+    type Intermediate = (usize, usize, Q::Intermediate);
+    type Final = (usize, usize, Q::Final);
 
-    /// Run the query until it fills the scratch space.
-    /// Invokes the callback on all data in the scratch space when the query returns.
-    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
-        self.base.step()
-    }
-}
-
-pub struct CallbackReadQuery<'data, T, Q>
-where
-    T: DataReceiver,
-{
-    receiver: T,
-    raw_read_output: RawReadOutput<'data, T::Unit>,
-    base: Q,
-}
-
-impl<'data, T, Q> ReadQuery for CallbackReadQuery<'data, T, Q>
-where
-    T: DataReceiver,
-    Q: ReadQuery,
-{
-    type Output = Q::Output;
-
-    /// Run the query until it fills the scratch space.
-    /// Invokes the callback on all data in the scratch space when the query returns.
-    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         let base_result = {
             let _ = self.raw_read_output.location.borrow_mut();
             self.base.step()?
@@ -83,12 +87,86 @@ where
             }
             None => {
                 *self.raw_read_output.data_size as usize
-                    / std::mem::size_of::<<T as DataReceiver>::Unit>()
+                    / std::mem::size_of::<C>()
             }
         };
         let bytes_written = *self.raw_read_output.data_size as usize;
 
-        let location = self.raw_read_output.location.borrow();
+        Ok(match base_result {
+            ReadStepOutput::Intermediate(base_result) => {
+                ReadStepOutput::Intermediate((
+                    records_written,
+                    bytes_written,
+                    base_result,
+                ))
+            }
+            ReadStepOutput::Final(base_result) => ReadStepOutput::Final((
+                records_written,
+                bytes_written,
+                base_result,
+            )),
+        })
+    }
+}
+
+pub struct ManagedReadQuery<'data, C, A, Q> {
+    alloc: A,
+    scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+    base: Q,
+}
+
+impl<'data, C, A, Q> ReadQuery for ManagedReadQuery<'data, C, A, Q>
+where
+    Q: ReadQuery,
+{
+    type Intermediate = Q::Intermediate;
+    type Final = Q::Final;
+
+    /// Run the query until it fills the scratch space.
+    /// Invokes the callback on all data in the scratch space when the query returns.
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        self.base.step()
+    }
+}
+
+pub struct CallbackReadQuery<'data, T, Q>
+where
+    T: DataReceiver,
+{
+    receiver: T,
+    base: RawReadQuery<'data, T::Unit, Q>,
+}
+
+impl<'data, T, Q> ReadQuery for CallbackReadQuery<'data, T, Q>
+where
+    T: DataReceiver,
+    Q: ReadQuery,
+{
+    type Intermediate = Q::Intermediate;
+    type Final = Q::Final;
+
+    /// Run the query until it fills the scratch space.
+    /// Invokes the callback on all data in the scratch space when the query returns.
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        let base_result = self.base.step()?;
+
+        let records_written =
+            match self.base.raw_read_output.offsets_size.as_ref() {
+                Some(offsets_size) => {
+                    **offsets_size as usize / std::mem::size_of::<u64>()
+                }
+                None => {
+                    *self.base.raw_read_output.data_size as usize
+                        / std::mem::size_of::<<T as DataReceiver>::Unit>()
+                }
+            };
+        let bytes_written = *self.base.raw_read_output.data_size as usize;
+
+        let location = self.base.raw_read_output.location.borrow();
 
         /* TODO: check status and invoke callback with either borrowed or owned buffer */
         let input_data = InputData {
@@ -102,7 +180,14 @@ where
         self.receiver
             .receive(records_written, bytes_written, input_data)?;
 
-        Ok(base_result)
+        Ok(match base_result {
+            ReadStepOutput::Intermediate((_, _, base_result)) => {
+                ReadStepOutput::Intermediate(base_result)
+            }
+            ReadStepOutput::Final((_, _, base_result)) => {
+                ReadStepOutput::Final(base_result)
+            }
+        })
     }
 }
 
@@ -119,47 +204,47 @@ where
     T: ReadResult,
     Q: ReadQuery,
 {
-    type Output = (T, Q::Output);
+    type Intermediate = Q::Intermediate;
+    type Final = (T, Q::Final);
 
-    fn step(&mut self) -> TileDBResult<Option<Self::Output>> {
-        if let Some(base_result) = self.base.step()? {
-            let my_result =
-                std::mem::replace(&mut self.base.receiver, T::new_receiver())
-                    .into();
-
-            Ok(Some((my_result, base_result)))
-        } else {
-            Ok(None)
-        }
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        let base_result = self.base.step()?;
+        Ok(match base_result {
+            ReadStepOutput::Intermediate(i) => ReadStepOutput::Intermediate(i),
+            ReadStepOutput::Final(f) => {
+                let my_result = std::mem::replace(
+                    &mut self.base.receiver,
+                    T::new_receiver(),
+                )
+                .into();
+                ReadStepOutput::Final((my_result, f))
+            }
+        })
     }
 }
 
 pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
-    fn register_callback<'data, S, T>(
+    fn register_raw<'data, S, C>(
         self,
         field: S,
-        callback: T,
-        scratch: &'data RefCell<
-            OutputLocation<'data, <T as DataReceiver>::Unit>,
-        >,
-    ) -> TileDBResult<CallbackReadBuilder<T, Self>>
+        scratch: &'data RefCell<OutputLocation<'data, C>>,
+    ) -> TileDBResult<RawReadBuilder<C, Self>>
     where
         S: AsRef<str>,
-        T: DataReceiver,
+        C: CAPISameRepr,
     {
         let c_context = self.context().capi();
         let c_query = **self.raw();
         let c_name = cstring!(field.as_ref());
 
         let (data, mut cell_offsets) = {
-            let mut scratch: RefMut<
-                OutputLocation<'data, <T as DataReceiver>::Unit>,
-            > = scratch.borrow_mut();
+            let mut scratch: RefMut<OutputLocation<'data, C>> =
+                scratch.borrow_mut();
 
-            let data =
-                scratch.data.as_mut() as *mut [<T as DataReceiver>::Unit];
-            let data =
-                unsafe { &mut *data as &mut [<T as DataReceiver>::Unit] };
+            let data = scratch.data.as_mut() as *mut [C];
+            let data = unsafe { &mut *data as &mut [C] };
 
             let cell_offsets = scratch.cell_offsets.as_mut().map(|c| {
                 let c = c.as_mut() as *mut [u64];
@@ -215,11 +300,27 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
             location: scratch,
         };
 
-        Ok(CallbackReadBuilder {
-            callback,
+        Ok(RawReadBuilder {
             raw_read_output,
             base: self,
         })
+    }
+
+    fn register_callback<'data, S, T>(
+        self,
+        field: S,
+        callback: T,
+        scratch: &'data RefCell<
+            OutputLocation<'data, <T as DataReceiver>::Unit>,
+        >,
+    ) -> TileDBResult<CallbackReadBuilder<T, Self>>
+    where
+        S: AsRef<str>,
+        T: DataReceiver,
+    {
+        let base = self.register_raw(field, scratch)?;
+
+        Ok(CallbackReadBuilder { callback, base })
     }
 
     fn register_callback_managed<'data, S, T, C>(
@@ -341,6 +442,53 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     }
 }
 
+pub struct RawReadBuilder<'data, C, B> {
+    raw_read_output: RawReadOutput<'data, C>,
+    base: B,
+}
+
+impl<'ctx, 'data, C, B> ContextBound<'ctx> for RawReadBuilder<'data, C, B>
+where
+    B: ContextBound<'ctx>,
+{
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
+}
+
+impl<'data, C, B> crate::query::private::QueryCAPIInterface
+    for RawReadBuilder<'data, C, B>
+where
+    B: crate::query::private::QueryCAPIInterface,
+{
+    fn raw(&self) -> &RawQuery {
+        self.base.raw()
+    }
+}
+
+impl<'ctx, 'data, C, B> QueryBuilder<'ctx> for RawReadBuilder<'data, C, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+    type Query = RawReadQuery<'data, C, B::Query>;
+
+    fn array(&self) -> &Array {
+        self.base.array()
+    }
+
+    fn build(self) -> Self::Query {
+        RawReadQuery {
+            raw_read_output: self.raw_read_output,
+            base: self.base.build(),
+        }
+    }
+}
+
+impl<'ctx, 'data, C, B> ReadQueryBuilder<'ctx> for RawReadBuilder<'data, C, B> where
+    B: ReadQueryBuilder<'ctx>
+{
+}
+
 pub struct ManagedReadBuilder<'data, C, A, B> {
     alloc: A,
     scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
@@ -399,8 +547,7 @@ where
     T: DataReceiver,
 {
     callback: T,
-    raw_read_output: RawReadOutput<'data, <T as DataReceiver>::Unit>,
-    base: B,
+    base: RawReadBuilder<'data, <T as DataReceiver>::Unit, B>,
 }
 
 impl<'ctx, 'data, T, B> ContextBound<'ctx> for CallbackReadBuilder<'data, T, B>
@@ -438,7 +585,6 @@ where
     fn build(self) -> Self::Query {
         CallbackReadQuery {
             receiver: self.callback,
-            raw_read_output: self.raw_read_output,
             base: self.base.build(),
         }
     }

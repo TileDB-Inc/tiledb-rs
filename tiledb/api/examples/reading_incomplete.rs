@@ -1,6 +1,9 @@
 extern crate tiledb;
 
+use std::cell::{Ref, RefCell};
+
 use tiledb::array::{CellOrder, TileOrder};
+use tiledb::convert::{BufferMut, OutputLocation, VarDataIterator};
 use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
@@ -130,15 +133,74 @@ fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
         .dimension_range_typed::<i32, _>(1, &[1, 4])
 }
 
-/// Handles the incomplete results manually, as might be done with the C API.
+/// Handles the incomplete results manually, similar to what might be done with the C API.
 /// Buffers are provided for the query to fill in. Each step fills in as much
 /// as it can, we print the results and then re-submit the query.
 fn read_array_step() -> TileDBResult<()> {
+    println!("read_array_step");
+
+    let capacity = 1024 * 1024;
+
     let tdb = tiledb::context::Context::new()?;
 
-    query_builder_start(&tdb)?;
+    let rows_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0i32; capacity].into_boxed_slice()),
+        cell_offsets: None,
+    });
+    let cols_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0i32; capacity].into_boxed_slice()),
+        cell_offsets: None,
+    });
+    let int32_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0i32; capacity].into_boxed_slice()),
+        cell_offsets: None,
+    });
+    let char_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0u8; capacity].into_boxed_slice()),
+        cell_offsets: Some(BufferMut::Owned(
+            vec![0u64; capacity].into_boxed_slice(),
+        )),
+    });
 
-    unimplemented!()
+    let mut qq = query_builder_start(&tdb)?
+        .register_raw("rows", &rows_output)?
+        .register_raw("columns", &cols_output)?
+        .register_raw(INT32_ATTRIBUTE_NAME, &int32_output)?
+        .register_raw(CHAR_ATTRIBUTE_NAME, &char_output)?
+        .build();
+
+    loop {
+        let res = qq.step()?;
+        let final_result = res.is_final();
+
+        let (n_rows, _, (n_cols, _, (n_a1, _, (n_a2, b_a2, _)))) = res.unwrap();
+
+        let rows =
+            Ref::map(rows_output.borrow(), |o| &o.data.as_ref()[0..n_rows]);
+        let cols =
+            Ref::map(cols_output.borrow(), |o| &o.data.as_ref()[0..n_cols]);
+        let a1 = Ref::map(int32_output.borrow(), |o| &o.data.as_ref()[0..n_a1]);
+
+        let a2 = {
+            let char_output = char_output.borrow();
+            VarDataIterator::new(n_a2, b_a2, char_output.borrow())
+                .expect("Expected variable data offsets")
+                .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                .collect::<Vec<String>>()
+        };
+
+        for (((row, column), a1), a2) in
+            rows.iter().zip(cols.iter()).zip(a1.iter()).zip(a2)
+        {
+            println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+        }
+
+        if final_result {
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 /// Ignores the details of incomplete results by collecting them into a result set
@@ -174,6 +236,7 @@ fn main() -> TileDBResult<()> {
         create_array().expect("Failed to create array");
     }
     write_array().expect("Failed to write array");
+    read_array_step().expect("Failed to step through array results");
     read_array_collect().expect("Failed to collect array results");
     Ok(())
 }
