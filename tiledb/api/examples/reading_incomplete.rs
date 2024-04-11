@@ -56,7 +56,6 @@ fn read_array() -> TileDBResult<()> {
         // it means that our buffers are not large enough to store a single
         // cell. Thus we need to increase our buffer sizes.
         if status == tiledb::query::QueryStatus::Incomplete && num_values == 0 {
-            println!("No results, reallocating buffers.");
             resize_buffers(
                 &mut row_data,
                 &mut col_data,
@@ -64,7 +63,6 @@ fn read_array() -> TileDBResult<()> {
                 &mut a2_data,
                 &mut a2_offsets,
             );
-            continue;
         } else if num_values > 0 {
             println!("Values:");
             print_results(
@@ -227,7 +225,7 @@ fn print_results(
 
     for i in 0..num_a2_offsets {
         println!(
-            "Cell({}, {}, {}, {})",
+            "    Cell({}, {}, {}, {})",
             row_data[i], col_data[i], a1_data[i], a2_values[i]
         );
     }
