@@ -250,6 +250,7 @@ impl HasScratchSpaceStrategy<u8> for Vec<String> {
     type Strategy = VarSized;
 }
 
+/// Iterator which yields variable-sized records from a raw read result.
 pub struct VarDataIterator<'data, C> {
     nrecords: usize,
     nbytes: usize,
@@ -261,8 +262,10 @@ impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
         nrecords: usize,
         nbytes: usize,
-        location: InputData<'data, C>,
+        location: &'data InputData<'data, C>,
     ) -> TileDBResult<Self> {
+        let location = location.borrow();
+
         if location.cell_offsets.is_none() {
             Err(unimplemented!())
         } else {
@@ -292,17 +295,18 @@ where
     }
 }
 
-impl<'data, C> Iterator for VarDataIterator<'data, C>
-where
-    Self: 'data,
-{
-    type Item = &'data [C] where Self: 'data;
+impl<'data, C> Iterator for VarDataIterator<'data, C> {
+    type Item = &'data [C];
 
     fn next(&mut self) -> Option<Self::Item> {
         let data_buffer: &'data [C] = unsafe {
-            // this is safe as long as the Iterator outlives 'data, which
-            // it should because of the trait bound.
-            // TODO: write a test that fails to build if 'location' outlives 'self'
+            // `self.location.data.borrow()` borrows self, so even though the method
+            // nominally returns a 'data lifetime, it is shortened to 'this.
+            // And if `self.location.data` were a `Buffer::Owned`, then the returned
+            // item actually would be invalid due to dropping self.
+            // But the construction of the iterator via `new` removes the possibility
+            // of `Buffer::Owned`, so this transmutation to the longer 'data lifetime
+            // is safe.
             &*(self.location.data.borrow() as *const [C]) as &'data [C]
         };
         let offset_buffer =
@@ -335,7 +339,7 @@ impl DataReceiver for Vec<String> {
         bytes: usize,
         input: InputData<'data, Self::Unit>,
     ) -> TileDBResult<()> {
-        for s in VarDataIterator::new(records, bytes, input)? {
+        for s in VarDataIterator::new(records, bytes, &input)? {
             let s = String::from_utf8_lossy(s);
             self.push(s.to_string());
         }
