@@ -1,5 +1,5 @@
-use core::slice;
 use crate::datatype::Datatype;
+use core::slice;
 
 pub enum Value {
     UInt8Value(Vec<u8>),
@@ -48,7 +48,9 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn c_vec(&self) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) {
+    pub fn c_vec(
+        &self,
+    ) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) {
         match self {
             Value::Int8Value(vec) => {
                 let vec_size = vec.len();
@@ -115,61 +117,116 @@ impl Value {
 }
 
 pub struct Metadata {
-    pub key : String,
-    pub datatype : Datatype,
-    pub value : Value
+    pub key: String,
+    pub datatype: Datatype,
+    pub value: Value,
 }
 
 impl Metadata {
-    pub fn new(key : String, datatype : Datatype, vec_ptr : *const std::ffi::c_void, vec_size : u32) -> Self {
+    pub fn new(
+        key: String,
+        datatype: Datatype,
+        vec_ptr: *const std::ffi::c_void,
+        vec_size: u32,
+    ) -> Self {
         let value = match datatype {
             Datatype::Int8 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const i8, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const i8,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::Int8Value(vec_slice.to_vec())
-            },
+            }
             Datatype::Int16 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const i16, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const i16,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::Int16Value(vec_slice.to_vec())
-            },
+            }
             Datatype::Int32 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const i32, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const i32,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::Int32Value(vec_slice.to_vec())
-            },
+            }
             Datatype::Int64 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const i64, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const i64,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::Int64Value(vec_slice.to_vec())
-            },
+            }
             Datatype::UInt8 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const u8, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const u8,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::UInt8Value(vec_slice.to_vec())
-            },
+            }
             Datatype::UInt16 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const u16, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const u16,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::UInt16Value(vec_slice.to_vec())
-            },
+            }
             Datatype::UInt32 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const u32, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const u32,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::UInt32Value(vec_slice.to_vec())
-            },
+            }
             Datatype::UInt64 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const u64, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const u64,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::UInt64Value(vec_slice.to_vec())
-            },
+            }
             Datatype::Float32 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const f32, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const f32,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::Float32Value(vec_slice.to_vec())
             }
             Datatype::Float64 => {
-                let vec_slice = unsafe {slice::from_raw_parts(vec_ptr as *const f64, vec_size.try_into().unwrap())};
+                let vec_slice = unsafe {
+                    slice::from_raw_parts(
+                        vec_ptr as *const f64,
+                        vec_size.try_into().unwrap(),
+                    )
+                };
                 Value::Float64Value(vec_slice.to_vec())
             }
-            _ => unimplemented!()
+            _ => unimplemented!(),
         };
 
         Metadata {
-            key: key,
-            datatype : datatype,
-            value : value
+            key,
+            datatype,
+            value
         }
     }
 }
