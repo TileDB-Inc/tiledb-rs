@@ -3,8 +3,10 @@ use super::*;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::convert::{DataProvider, InputData};
 use crate::query::private::QueryCAPIInterface;
+use crate::query::write::input::{DataProvider, InputData};
+
+pub mod input;
 
 struct RawWriteInput<'data> {
     data_size: Pin<Box<u64>>,

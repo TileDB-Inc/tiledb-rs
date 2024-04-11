@@ -3,15 +3,17 @@ use super::*;
 use std::cell::{RefCell, RefMut};
 use std::pin::Pin;
 
-use crate::convert::{
-    Buffer, BufferMut, CAPISameRepr, DataReceiver, HasScratchSpaceStrategy,
-    InputData, OutputLocation, ReadResult, ScratchAllocator,
-};
+use crate::convert::CAPISameRepr;
 use crate::query::private::QueryCAPIInterface;
+use crate::query::read::output::{
+    BufferMut, DataReceiver, HasScratchSpaceStrategy, OutputLocation,
+    ReadResult, ScratchAllocator,
+};
 use crate::Result as TileDBResult;
 
 mod callback;
 mod managed;
+pub mod output;
 mod raw;
 mod typed;
 

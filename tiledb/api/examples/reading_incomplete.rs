@@ -3,7 +3,7 @@ extern crate tiledb;
 use std::cell::{Ref, RefCell};
 
 use tiledb::array::{CellOrder, TileOrder};
-use tiledb::convert::{BufferMut, OutputLocation, VarDataIterator};
+use tiledb::query::read::output::{BufferMut, OutputLocation, VarDataIterator};
 use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;

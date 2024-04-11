@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::query::write::input::{Buffer, InputData};
+
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
 pub struct CallbackReadQuery<'data, T, Q>
