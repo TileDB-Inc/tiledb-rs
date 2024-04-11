@@ -31,28 +31,21 @@ fn read_array() -> TileDBResult<()> {
     let mut a2_offsets = vec![0u64; 1];
 
     println!("Submitting read query");
-    let mut query =
+    let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
             .layout(tiledb::array::CellOrder::RowMajor)?
-            .executor();
+            .read_all()?
+            .build();
 
     for i in 1.. {
-        query = query
+        let result = query
+            .executor()
             .set_data_buffer("rows", row_data.as_mut_slice())?
             .set_data_buffer("cols", col_data.as_mut_slice())?
             .set_data_buffer("a1", a1_data.as_mut_slice())?
             .set_data_buffer("a2", a2_data.as_mut_slice())?
-            .set_offsets_buffer("a2", a2_offsets.as_mut_slice())?;
-
-        let result = query.submit()?;
-
-        // This releases our borrows of all the data buffers. This is required
-        // both for when we need to resize the buffers or when we want to
-        // print results. The resize is hopefully obvious, the printing is
-        // less so, but the issue is that we can't hand out a immutable
-        // reference while there are mutable references in the query which
-        // need to be mutable since we're writing to them.
-        query = query.reset();
+            .set_offsets_buffer("a2", a2_offsets.as_mut_slice())?
+            .submit()?;
 
         let status = result.status();
         let num_values = result.sizes().get("a1").unwrap().0;
@@ -172,18 +165,20 @@ fn write_array() -> TileDBResult<()> {
     let query =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
             .layout(tiledb::array::CellOrder::Global)?
-            .executor()
-            .set_data_buffer("rows", row_data.as_mut_slice())?
-            .set_data_buffer("cols", col_data.as_mut_slice())?
-            .set_data_buffer("a1", a1_data.as_mut_slice())?
-            .set_data_buffer("a2", a2_data.as_mut_slice())?
-            .set_offsets_buffer("a2", a2_offsets.as_mut_slice())?;
+            .build();
 
-    let result = query.submit()?;
+    let result = query
+        .executor()
+        .set_data_buffer("rows", row_data.as_mut_slice())?
+        .set_data_buffer("cols", col_data.as_mut_slice())?
+        .set_data_buffer("a1", a1_data.as_mut_slice())?
+        .set_data_buffer("a2", a2_data.as_mut_slice())?
+        .set_offsets_buffer("a2", a2_offsets.as_mut_slice())?
+        .submit()?;
 
     assert!(result.completed());
 
-    query.finalize()?;
+    query.executor().finalize()?;
 
     Ok(())
 }

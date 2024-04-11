@@ -89,6 +89,10 @@ impl<'ctx> Dimension<'ctx> {
         Ok(c_num as u32)
     }
 
+    pub fn is_var_sized(&self) -> TileDBResult<bool> {
+        Ok(self.cell_val_num()? == u32::MAX)
+    }
+
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
         let c_context = self.context.capi();
         let c_dimension = self.capi();

@@ -47,6 +47,12 @@ extern "C" {
         config: *mut *mut tiledb_config_t,
     ) -> i32;
 
+    pub fn tiledb_array_get_schema(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        array_schema: *mut *mut tiledb_array_schema_t,
+    ) -> i32;
+
     pub fn tiledb_array_close(
         ctx: *mut tiledb_ctx_t,
         array: *mut tiledb_array_t,

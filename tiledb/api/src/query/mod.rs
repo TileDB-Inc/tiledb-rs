@@ -84,6 +84,8 @@ pub struct Query<'ctx> {
     array: Array<'ctx>,
     subarrays: Vec<Subarray<'ctx>>,
     raw: RawQuery,
+    req_data_buffers: HashSet<String>,
+    req_offsets_buffers: HashSet<String>,
 }
 
 impl<'ctx> ContextBound<'ctx> for Query<'ctx> {
@@ -95,6 +97,15 @@ impl<'ctx> ContextBound<'ctx> for Query<'ctx> {
 impl<'ctx> Query<'ctx> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_query_t {
         *self.raw
+    }
+
+    pub fn executor<'data>(&'ctx self) -> Executor<'ctx, 'data> {
+        Executor {
+            query: self,
+            data_buffers: HashMap::new(),
+            offset_buffers: HashMap::new(),
+            rexec: false,
+        }
     }
 }
 
@@ -118,11 +129,9 @@ impl QueryResult {
 }
 
 pub struct Executor<'ctx, 'data> {
-    query: Query<'ctx>,
+    query: &'ctx Query<'ctx>,
     data_buffers: HashMap<String, Buffer<'data>>,
-    req_data_buffers: HashSet<String>,
     offset_buffers: HashMap<String, Buffer<'data>>,
-    req_offset_buffers: HashSet<String>,
     rexec: bool,
 }
 
@@ -134,7 +143,7 @@ impl<'ctx, 'data> ContextBound<'ctx> for Executor<'ctx, 'data> {
 
 impl<'ctx, 'data> Executor<'ctx, 'data> {
     pub fn submit(&self) -> TileDBResult<QueryResult> {
-        self.check_resubmission()?;
+        self.check_required_buffers()?;
         let c_context = self.query.context.capi();
         let c_query = self.query.capi();
         self.capi_return(unsafe {
@@ -165,25 +174,6 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
         Ok(())
     }
 
-    pub fn reset<'new_data>(self) -> Executor<'ctx, 'new_data> {
-        let mut req_data = HashSet::new();
-        let mut req_offsets = HashSet::new();
-        for (key, info) in self.result_sizes().iter() {
-            req_data.insert(key.clone());
-            if info.1.is_some() {
-                req_offsets.insert(key.clone());
-            }
-        }
-        Executor::<'ctx, 'new_data> {
-            query: self.query,
-            data_buffers: HashMap::new(),
-            req_data_buffers: req_data,
-            offset_buffers: HashMap::new(),
-            req_offset_buffers: req_offsets,
-            rexec: true,
-        }
-    }
-
     pub fn set_data_buffer<Conv: CAPIConverter>(
         mut self,
         name: &str,
@@ -192,7 +182,7 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
         self.check_buffer_name(
             name,
             &self.data_buffers,
-            &self.req_data_buffers,
+            &self.query.req_data_buffers,
         )?;
 
         let c_name = cstring!(name);
@@ -243,7 +233,7 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
         self.check_buffer_name(
             name,
             &self.offset_buffers,
-            &self.req_offset_buffers,
+            &self.query.req_offsets_buffers,
         )?;
 
         let c_name = cstring!(name);
@@ -331,14 +321,14 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
         Ok(())
     }
 
-    fn check_resubmission(&self) -> TileDBResult<()> {
+    fn check_required_buffers(&self) -> TileDBResult<()> {
         if !self.rexec {
             return Ok(());
         }
 
         let mut unset = Vec::new();
 
-        for name in self.req_data_buffers.iter() {
+        for name in self.query.req_data_buffers.iter() {
             if !self.data_buffers.contains_key(name) {
                 unset.push(name.clone());
             }
@@ -352,7 +342,7 @@ impl<'ctx, 'data> Executor<'ctx, 'data> {
             )));
         }
 
-        for name in self.req_offset_buffers.iter() {
+        for name in self.query.req_offsets_buffers.iter() {
             if !self.offset_buffers.contains_key(name) {
                 unset.push(name.clone());
             }
@@ -404,6 +394,8 @@ impl<'ctx> Builder<'ctx> {
                 array,
                 subarrays: vec![],
                 raw: RawQuery::Owned(c_query),
+                req_data_buffers: HashSet::new(),
+                req_offsets_buffers: HashSet::new(),
             },
         })
     }
@@ -422,14 +414,72 @@ impl<'ctx> Builder<'ctx> {
         SubarrayBuilder::for_query(self)
     }
 
-    pub fn executor<'data>(self) -> Executor<'ctx, 'data> {
-        Executor {
-            query: self.query,
-            data_buffers: HashMap::new(),
-            req_data_buffers: HashSet::new(),
-            offset_buffers: HashMap::new(),
-            req_offset_buffers: HashSet::new(),
-            rexec: false,
+    pub fn read_all(self) -> TileDBResult<Self> {
+        self.read_all_dimensions()?.read_all_attributes()
+    }
+
+    pub fn read_all_dimensions(mut self) -> TileDBResult<Self> {
+        let schema = self.query.array.schema()?;
+        let domain = schema.domain()?;
+        for i in 0..domain.ndim()? {
+            let dim = domain.dimension(i)?;
+            let name = dim.name()?;
+            self.query.req_data_buffers.insert(name.clone());
+            if dim.is_var_sized()? {
+                self.query.req_offsets_buffers.insert(name.clone());
+            }
         }
+
+        Ok(self)
+    }
+
+    pub fn read_all_attributes(mut self) -> TileDBResult<Self> {
+        let schema = self.query.array.schema()?;
+        for i in 0..schema.nattributes()? {
+            let attr = schema.attribute(i)?;
+            let name = attr.name()?;
+            self.query.req_data_buffers.insert(name.clone());
+            if attr.is_var_sized()? {
+                self.query.req_offsets_buffers.insert(name.clone());
+            }
+        }
+
+        Ok(self)
+    }
+
+    pub fn read_dimensions<T: AsRef<str>>(
+        mut self,
+        names: &[T],
+    ) -> TileDBResult<Self> {
+        let domain = self.query.array.schema()?.domain()?;
+        for name in names {
+            let dim = domain.dimension(name.as_ref())?;
+            self.query.req_data_buffers.insert(name.as_ref().into());
+            if dim.is_var_sized()? {
+                self.query.req_offsets_buffers.insert(name.as_ref().into());
+            }
+        }
+
+        Ok(self)
+    }
+
+    pub fn read_attributes<T: AsRef<str>>(
+        mut self,
+        names: &[T],
+    ) -> TileDBResult<Self> {
+        let schema = self.query.array.schema()?;
+        for name in names {
+            let attr = schema.attribute(name.as_ref())?;
+            self.query.req_data_buffers.insert(name.as_ref().into());
+            if attr.is_var_sized()? {
+                self.query.req_offsets_buffers.insert(name.as_ref().into());
+            }
+        }
+
+        Ok(self)
+    }
+
+    pub fn build(self) -> Query<'ctx> {
+        self.query
     }
 }

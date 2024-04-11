@@ -89,6 +89,7 @@ fn write_array() -> TileDBResult<()> {
 
     let result =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
+            .build()
             .executor()
             .set_data_buffer(QUICKSTART_ATTRIBUTE_NAME, data.as_mut_slice())?
             .submit()?;
@@ -124,6 +125,7 @@ fn read_array() -> TileDBResult<()> {
             .dimension_range_typed::<i32, _>("rows", &[1, 2])?
             .add_subarray()?
             .dimension_range_typed::<i32, _>("columns", &[2, 4])?
+            .build()
             .executor()
             .set_data_buffer(QUICKSTART_ATTRIBUTE_NAME, results.as_mut_slice())?
             .submit()?;

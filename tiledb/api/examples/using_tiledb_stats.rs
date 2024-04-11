@@ -104,6 +104,7 @@ pub fn write_array() -> TileDBResult<()> {
     let result =
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
             .layout(tiledb::query::QueryLayout::RowMajor)?
+            .build()
             .executor()
             .set_data_buffer(ATTRIBUTE_NAME, data.as_mut_slice())?
             .submit()?;
@@ -140,11 +141,13 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
             .dimension_range_typed::<i32, _>(0, &[1, 3000])?
             .add_subarray()?
             .dimension_range_typed::<i32, _>(1, &[1, 12000])?
-            .executor()
-            .set_data_buffer(ATTRIBUTE_NAME, results.as_mut_slice())?;
+            .build();
 
     tiledb::stats::enable()?;
-    let result = query.submit()?;
+    let result = query
+        .executor()
+        .set_data_buffer(ATTRIBUTE_NAME, results.as_mut_slice())?
+        .submit()?;
     assert!(result.completed());
 
     if json {

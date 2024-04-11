@@ -22,7 +22,9 @@ pub use domain::{Builder as DomainBuilder, DimensionKey, Domain, DomainData};
 pub use enumeration::{
     Builder as EnumerationBuilder, Enumeration, EnumerationData,
 };
-pub use schema::{ArrayType, Builder as SchemaBuilder, Schema, SchemaData};
+pub use schema::{
+    ArrayType, Builder as SchemaBuilder, RawSchema, Schema, SchemaData,
+};
 
 pub enum Mode {
     Read,
@@ -206,6 +208,20 @@ impl<'ctx> Array<'ctx> {
             context,
             raw: RawArray::new(array_raw),
         })
+    }
+
+    pub fn schema(&self) -> TileDBResult<Schema> {
+        let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
+        self.capi_return(unsafe {
+            ffi::tiledb_array_get_schema(
+                self.context.capi(),
+                self.capi(),
+                &mut c_schema,
+            )
+        })?;
+
+        let schema = RawSchema::Owned(c_schema);
+        Ok(Schema::new(self.context, schema))
     }
 }
 
