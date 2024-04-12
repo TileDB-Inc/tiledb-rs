@@ -245,9 +245,9 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     }
 }
 
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct ReadBuilder<'ctx> {
-    #[base(ContextBound)]
+    #[base(ContextBound, QueryCAPIInterface)]
     base: BuilderBase<'ctx>,
 }
 
@@ -259,12 +259,6 @@ impl<'ctx> ReadBuilder<'ctx> {
         Ok(ReadBuilder {
             base: BuilderBase::new(context, array, QueryType::Read)?,
         })
-    }
-}
-
-impl<'ctx> QueryCAPIInterface for ReadBuilder<'ctx> {
-    fn raw(&self) -> &RawQuery {
-        &self.base.raw()
     }
 }
 

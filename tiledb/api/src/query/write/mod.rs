@@ -16,9 +16,9 @@ struct RawWriteInput<'data> {
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct WriteQuery<'ctx, 'data> {
-    #[base(ContextBound)]
+    #[base(ContextBound, QueryCAPIInterface)]
     base: Query<'ctx>,
 
     /// Hold on to query inputs to ensure they live long enough
@@ -28,12 +28,6 @@ pub struct WriteQuery<'ctx, 'data> {
 impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     pub fn submit(&self) -> TileDBResult<()> {
         self.base.do_submit()
-    }
-}
-
-impl<'ctx, 'data> private::QueryCAPIInterface for WriteQuery<'ctx, 'data> {
-    fn raw(&self) -> &RawQuery {
-        self.base.raw()
     }
 }
 
@@ -49,19 +43,11 @@ impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     }
 }
 
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct WriteBuilder<'ctx, 'data> {
-    #[base(ContextBound)]
+    #[base(ContextBound, QueryCAPIInterface)]
     base: BuilderBase<'ctx>,
     inputs: InputMap<'data>,
-}
-
-impl<'ctx, 'data> crate::query::private::QueryCAPIInterface
-    for WriteBuilder<'ctx, 'data>
-{
-    fn raw(&self) -> &RawQuery {
-        self.base.raw()
-    }
 }
 
 impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {

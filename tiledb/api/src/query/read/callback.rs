@@ -4,24 +4,14 @@ use crate::query::write::input::{Buffer, InputData};
 
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct CallbackReadQuery<'data, T, Q>
 where
     T: DataReceiver,
 {
     pub(crate) receiver: T,
-    #[base(ContextBound)]
+    #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: RawReadQuery<'data, T::Unit, Q>,
-}
-
-impl<'data, T, Q> QueryCAPIInterface for CallbackReadQuery<'data, T, Q>
-where
-    Q: QueryCAPIInterface,
-    T: DataReceiver,
-{
-    fn raw(&self) -> &RawQuery {
-        self.base.raw()
-    }
 }
 
 impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for CallbackReadQuery<'data, T, Q>
@@ -77,32 +67,14 @@ where
     }
 }
 
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct CallbackReadBuilder<'data, T, B>
 where
     T: DataReceiver,
 {
     pub(crate) callback: T,
+    #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: RawReadBuilder<'data, <T as DataReceiver>::Unit, B>,
-}
-
-impl<'ctx, 'data, T, B> ContextBound<'ctx> for CallbackReadBuilder<'data, T, B>
-where
-    T: DataReceiver,
-    B: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
-}
-
-impl<'data, T, B> QueryCAPIInterface for CallbackReadBuilder<'data, T, B>
-where
-    T: DataReceiver,
-    B: QueryCAPIInterface,
-{
-    fn raw(&self) -> &RawQuery {
-        self.base.raw()
-    }
 }
 
 impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for CallbackReadBuilder<'data, T, B>

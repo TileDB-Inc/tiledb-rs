@@ -1,24 +1,14 @@
 use super::*;
 
 /// Query result handler which constructs an object from query results.
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound)]
+    #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: CallbackReadQuery<'data, <T as ReadResult>::Receiver, Q>,
-}
-
-impl<'data, T, Q> QueryCAPIInterface for TypedReadQuery<'data, T, Q>
-where
-    Q: QueryCAPIInterface,
-    T: ReadResult,
-{
-    fn raw(&self) -> &RawQuery {
-        self.base.raw()
-    }
 }
 
 impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for TypedReadQuery<'data, T, Q>
@@ -48,24 +38,14 @@ where
     }
 }
 
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound)]
+    #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: CallbackReadBuilder<'data, <T as ReadResult>::Receiver, B>,
-}
-
-impl<'data, T, B> QueryCAPIInterface for TypedReadBuilder<'data, T, B>
-where
-    T: ReadResult,
-    B: QueryCAPIInterface,
-{
-    fn raw(&self) -> &RawQuery {
-        self.base.raw()
-    }
 }
 
 impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for TypedReadBuilder<'data, T, B>

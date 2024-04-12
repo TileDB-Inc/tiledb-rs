@@ -17,11 +17,12 @@ mod private {
     }
 }
 
+use self::private::QueryCAPIInterface;
 pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };
+pub use self::subarray::{Builder as SubarrayBuilder, Subarray};
 pub use self::write::WriteBuilder;
-pub use crate::query::subarray::{Builder as SubarrayBuilder, Subarray};
 
 pub type QueryType = crate::array::Mode;
 pub type QueryLayout = crate::array::CellOrder;
@@ -46,10 +47,11 @@ impl Drop for RawQuery {
     }
 }
 
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 pub struct Query<'ctx> {
     #[base(ContextBound)]
     array: Array<'ctx>,
+    #[raw_query]
     raw: RawQuery,
 }
 
@@ -71,12 +73,6 @@ impl<'ctx> Query<'ctx> {
             ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
         })
         .map(|_| c_status)
-    }
-}
-
-impl<'ctx> private::QueryCAPIInterface for Query<'ctx> {
-    fn raw(&self) -> &RawQuery {
-        &self.raw
     }
 }
 
@@ -145,16 +141,10 @@ pub trait QueryBuilder<'ctx>:
     fn build(self) -> Self::Query;
 }
 
-#[derive(ContextBound)]
+#[derive(ContextBound, QueryCAPIInterface)]
 struct BuilderBase<'ctx> {
-    #[base(ContextBound)]
+    #[base(ContextBound, QueryCAPIInterface)]
     query: Query<'ctx>,
-}
-
-impl<'ctx> private::QueryCAPIInterface for BuilderBase<'ctx> {
-    fn raw(&self) -> &RawQuery {
-        &self.query.raw
-    }
 }
 
 impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
