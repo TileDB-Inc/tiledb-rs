@@ -173,7 +173,7 @@ impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
 
 #[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[ContextBound]
+    #[base(ContextBound)]
     dim: Dimension<'ctx>,
 }
 

@@ -198,7 +198,7 @@ impl<'c1, 'c2> PartialEq<Domain<'c2>> for Domain<'c1> {
 
 #[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[ContextBound]
+    #[base(ContextBound)]
     domain: Domain<'ctx>,
 }
 

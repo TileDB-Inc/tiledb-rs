@@ -311,7 +311,7 @@ type FnFilterListSet = unsafe extern "C" fn(
 
 #[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[ContextBound]
+    #[base(ContextBound)]
     schema: Schema<'ctx>,
 }
 

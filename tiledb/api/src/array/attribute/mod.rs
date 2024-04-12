@@ -272,7 +272,7 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
 
 #[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[ContextBound]
+    #[base(ContextBound)]
     attr: Attribute<'ctx>,
 }
 
