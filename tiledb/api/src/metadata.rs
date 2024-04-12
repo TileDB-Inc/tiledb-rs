@@ -1,4 +1,4 @@
-use crate::datatype::Datatype;
+use crate::{datatype::Datatype, fn_typed};
 use core::slice;
 
 pub enum Value {
@@ -13,106 +13,96 @@ pub enum Value {
     Float32Value(Vec<f32>),
     Float64Value(Vec<f64>),
     //StringAsciiValue(CString),
-    //StringUtf8Value(CString),
-    //StringUtf16Value(CString),
-    //StringUtf32Value(CString),
-    //StringUcs2Value(CString),
-    //StringUcs4Value(CString),
-    //AnyValue,
-    //DateTimeYearValue(i64),
-    //DateTimeMonthValue(i64),
-    //DateTimeWeekValue(i64),
-    //DateTimeDayValue(i64),
-    //DateTimeHourValue(i64),
-    //DateTimeMinuteValue(i64),
-    //DateTimeSecondValue(i64),
-    //DateTimeMillisecondValue(i64),
-    //DateTimeMicrosecondValue(i64),
-    //DateTimeNanosecondValue(i64),
-    //DateTimePicosecondValue(i64),
-    //DateTimeFemtosecondValue(i64),
-    //DateTimeAttosecondValue(i64),
-    //TimeHourValue(i64),
-    //TimeMinuteValue(i64),
-    //TimeSecondValue(i64),
-    //TimeMillisecondValue(i64),
-    //TimeMicrosecondValue(i64),
-    //TimeNanosecondValue(i64),
-    //TimePicosecondValue(i64),
-    //TimeFemtosecondValue(i64),
-    //TimeAttosecondValue(i64),
-    //BlobValue(Box<[u8]>),
     //BooleanValue(bool),
-    //GeometryWkbValue(),
-    //GeometryWktValue(),
+    // maybe blobs?
+}
+
+fn get_value_vec<T>(vec: &Vec<T>) -> (*const std::ffi::c_void, usize) {
+    let vec_size = vec.len();
+    let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
+    (vec_ptr, vec_size)
 }
 
 impl Value {
     pub fn c_vec(
         &self,
-    ) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) {
+    ) -> (*const std::ffi::c_void, usize) {
         match self {
-            Value::Int8Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_INT8;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::Int16Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_INT16;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::Int32Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_INT32;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::Int64Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_INT64;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::UInt8Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_UINT8;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::UInt16Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_UINT16;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::UInt32Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_UINT32;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::UInt64Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_UINT64;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::Float32Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_FLOAT32;
-                (vec_size, vec_ptr, datatype)
-            }
-            Value::Float64Value(vec) => {
-                let vec_size = vec.len();
-                let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-                let datatype = ffi::tiledb_datatype_t_TILEDB_FLOAT64;
-                (vec_size, vec_ptr, datatype)
-            }
+            Value::Int8Value(vec) => get_value_vec(vec),
+            Value::Int16Value(vec) => get_value_vec(vec),
+            Value::Int32Value(vec) => get_value_vec(vec),
+            Value::Int64Value(vec) => get_value_vec(vec),
+            Value::UInt8Value(vec) => get_value_vec(vec),
+            Value::UInt16Value(vec) => get_value_vec(vec),
+            Value::UInt32Value(vec) => get_value_vec(vec),
+            Value::UInt64Value(vec) => get_value_vec(vec),
+            Value::Float32Value(vec) => get_value_vec(vec),
+            Value::Float64Value(vec) => get_value_vec(vec),
         }
+    }
+}
+
+trait ValueType {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized;
+}
+
+impl ValueType for i8 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::Int8Value(vec)
+    }
+}
+
+impl ValueType for i16 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::Int16Value(vec)
+    }
+}
+
+impl ValueType for i32 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::Int32Value(vec)
+    }
+}
+
+impl ValueType for i64 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::Int64Value(vec)
+    }
+}
+
+impl ValueType for u8 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::UInt8Value(vec)
+    }
+}
+
+impl ValueType for u16 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::UInt16Value(vec)
+    }
+}
+
+impl ValueType for u32 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::UInt32Value(vec)
+    }
+}
+
+impl ValueType for u64 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::UInt64Value(vec)
+    }
+}
+
+impl ValueType for f32 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::Float32Value(vec)
+    }
+}
+
+impl ValueType for f64 {
+    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+        Value::Float64Value(vec)
     }
 }
 
@@ -129,104 +119,28 @@ impl Metadata {
         vec_ptr: *const std::ffi::c_void,
         vec_size: u32,
     ) -> Self {
-        let value = match datatype {
-            Datatype::Int8 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const i8,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::Int8Value(vec_slice.to_vec())
-            }
-            Datatype::Int16 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const i16,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::Int16Value(vec_slice.to_vec())
-            }
-            Datatype::Int32 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const i32,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::Int32Value(vec_slice.to_vec())
-            }
-            Datatype::Int64 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const i64,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::Int64Value(vec_slice.to_vec())
-            }
-            Datatype::UInt8 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const u8,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::UInt8Value(vec_slice.to_vec())
-            }
-            Datatype::UInt16 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const u16,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::UInt16Value(vec_slice.to_vec())
-            }
-            Datatype::UInt32 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const u32,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::UInt32Value(vec_slice.to_vec())
-            }
-            Datatype::UInt64 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const u64,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::UInt64Value(vec_slice.to_vec())
-            }
-            Datatype::Float32 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const f32,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::Float32Value(vec_slice.to_vec())
-            }
-            Datatype::Float64 => {
-                let vec_slice = unsafe {
-                    slice::from_raw_parts(
-                        vec_ptr as *const f64,
-                        vec_size.try_into().unwrap(),
-                    )
-                };
-                Value::Float64Value(vec_slice.to_vec())
-            }
-            _ => unimplemented!(),
-        };
+        let value = fn_typed!(datatype, DT, {
+            let vec_slice = unsafe {
+                slice::from_raw_parts(
+                    vec_ptr as *const DT,
+                    vec_size.try_into().unwrap(),
+                )
+            };
+            let vec_value : Vec<DT> = vec_slice.to_vec();
+            DT::get_value(vec_value)
+        });
 
         Metadata {
             key,
             datatype,
             value
         }
+    }
+
+    pub fn c_data(&self) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) 
+    {
+        let (vec_ptr, vec_size ) = self.value.c_vec();
+        let c_datatype = self.datatype.capi_enum();
+        (vec_size, vec_ptr, c_datatype)
     }
 }
