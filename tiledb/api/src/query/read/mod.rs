@@ -247,7 +247,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
 
 #[derive(ContextBound)]
 pub struct ReadBuilder<'ctx> {
-    #[ContextBound]
+    #[base(ContextBound)]
     base: BuilderBase<'ctx>,
 }
 

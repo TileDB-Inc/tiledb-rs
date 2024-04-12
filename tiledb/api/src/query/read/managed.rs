@@ -1,20 +1,12 @@
 use super::*;
 
 /// Adapter for a read result which allocates and manages scratch space opaquely.
+#[derive(ContextBound)]
 pub struct ManagedReadQuery<'data, C, A, Q> {
     pub(crate) alloc: A,
     pub(crate) scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+    #[base(ContextBound)]
     pub(crate) base: Q,
-}
-
-impl<'ctx, 'data, C, A, Q> ContextBound<'ctx>
-    for ManagedReadQuery<'data, C, A, Q>
-where
-    Q: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'data, C, A, Q> QueryCAPIInterface for ManagedReadQuery<'data, C, A, Q>
@@ -43,20 +35,12 @@ where
     }
 }
 
+#[derive(ContextBound)]
 pub struct ManagedReadBuilder<'data, C, A, B> {
     pub(crate) alloc: A,
     pub(crate) scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+    #[base(ContextBound)]
     pub(crate) base: B,
-}
-
-impl<'ctx, 'data, C, A, B> ContextBound<'ctx>
-    for ManagedReadBuilder<'data, C, A, B>
-where
-    B: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'data, C, A, B> QueryCAPIInterface for ManagedReadBuilder<'data, C, A, B>

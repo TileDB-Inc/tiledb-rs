@@ -1,22 +1,14 @@
 use super::*;
 
 /// Query result handler which constructs an object from query results.
+#[derive(ContextBound)]
 pub struct TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
+    #[base(ContextBound)]
     pub(crate) base: CallbackReadQuery<'data, <T as ReadResult>::Receiver, Q>,
-}
-
-impl<'ctx, 'data, T, Q> ContextBound<'ctx> for TypedReadQuery<'data, T, Q>
-where
-    Q: ContextBound<'ctx>,
-    T: ReadResult,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'data, T, Q> QueryCAPIInterface for TypedReadQuery<'data, T, Q>
@@ -56,22 +48,14 @@ where
     }
 }
 
+#[derive(ContextBound)]
 pub struct TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
+    #[base(ContextBound)]
     pub(crate) base: CallbackReadBuilder<'data, <T as ReadResult>::Receiver, B>,
-}
-
-impl<'ctx, 'data, T, B> ContextBound<'ctx> for TypedReadBuilder<'data, T, B>
-where
-    T: ReadResult,
-    B: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'data, T, B> QueryCAPIInterface for TypedReadBuilder<'data, T, B>

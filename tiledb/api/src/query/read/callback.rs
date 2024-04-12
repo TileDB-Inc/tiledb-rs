@@ -4,22 +4,14 @@ use crate::query::write::input::{Buffer, InputData};
 
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
+#[derive(ContextBound)]
 pub struct CallbackReadQuery<'data, T, Q>
 where
     T: DataReceiver,
 {
     pub(crate) receiver: T,
+    #[base(ContextBound)]
     pub(crate) base: RawReadQuery<'data, T::Unit, Q>,
-}
-
-impl<'ctx, 'data, T, Q> ContextBound<'ctx> for CallbackReadQuery<'data, T, Q>
-where
-    Q: ContextBound<'ctx>,
-    T: DataReceiver,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'data, T, Q> QueryCAPIInterface for CallbackReadQuery<'data, T, Q>

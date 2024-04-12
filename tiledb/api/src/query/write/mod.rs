@@ -49,15 +49,11 @@ impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     }
 }
 
+#[derive(ContextBound)]
 pub struct WriteBuilder<'ctx, 'data> {
+    #[base(ContextBound)]
     base: BuilderBase<'ctx>,
     inputs: InputMap<'data>,
-}
-
-impl<'ctx, 'data> ContextBound<'ctx> for WriteBuilder<'ctx, 'data> {
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'ctx, 'data> crate::query::private::QueryCAPIInterface

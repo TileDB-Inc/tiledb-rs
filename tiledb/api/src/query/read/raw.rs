@@ -118,19 +118,12 @@ impl<'data, C> RawReadOutput<'data, C> {
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
 /// the buffers between each step to process intermediate results.
+#[derive(ContextBound)]
 pub struct RawReadQuery<'data, C, Q> {
     pub(crate) field: String,
     pub(crate) raw_read_output: RawReadOutput<'data, C>,
+    #[base(ContextBound)]
     pub(crate) base: Q,
-}
-
-impl<'ctx, 'data, C, Q> ContextBound<'ctx> for RawReadQuery<'data, C, Q>
-where
-    Q: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'data, C, Q> QueryCAPIInterface for RawReadQuery<'data, C, Q>
@@ -204,19 +197,12 @@ where
     }
 }
 
+#[derive(ContextBound)]
 pub struct RawReadBuilder<'data, C, B> {
     pub(crate) field: String,
     pub(crate) raw_read_output: RawReadOutput<'data, C>,
+    #[base(ContextBound)]
     pub(crate) base: B,
-}
-
-impl<'ctx, 'data, C, B> ContextBound<'ctx> for RawReadBuilder<'data, C, B>
-where
-    B: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        self.base.context()
-    }
 }
 
 impl<'data, C, B> QueryCAPIInterface for RawReadBuilder<'data, C, B>
