@@ -1,9 +1,9 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
-use syn::parse::Parser;
+use syn::parse::{Parse, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::Path;
+use syn::{GenericParam, Lifetime, LifetimeParam, Path};
 
 pub fn expand(input: &syn::DeriveInput) -> TokenStream {
     context_bound_impl(input).into()
@@ -108,10 +108,72 @@ fn context_bound_impl_fields_named_base(
     f: &syn::Field,
 ) -> proc_macro2::TokenStream {
     let name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) =
-        input.generics.split_for_impl();
+
     let fname =
         Ident::new(&f.ident.as_ref().unwrap().to_string(), Span::call_site());
+
+    /*
+     * If the struct has a <'ctx> bound already then we can re-use
+     * the struct generics for the impl generics. Otherwise we have
+     * to add <'ctx> to the impl generics.
+     */
+    let impl_generics = {
+        let mut has_ctx_bound = false;
+        for generic in input.generics.params.iter() {
+            match generic {
+                GenericParam::Lifetime(ref l) => {
+                    if l.lifetime.ident.to_string() == "ctx" {
+                        has_ctx_bound = true;
+                        break;
+                    }
+                }
+                _ => continue,
+            }
+        }
+
+        if has_ctx_bound {
+            input.generics.clone()
+        } else {
+            let mut g = input.generics.clone();
+            g.params.insert(
+                0,
+                GenericParam::Lifetime(LifetimeParam::new(Lifetime::new(
+                    "'ctx",
+                    Span::call_site(),
+                ))),
+            );
+            g
+        }
+    };
+
+    let ty_generics = input.generics.clone();
+
+    /*
+     * It is perfectly fine to write the same trait bound multiple times,
+     * or write trait bounds on non-generic types. For simplicity, always
+     * add a ContextBound<'ctx> bound to the base field.
+     */
+    let where_clause = {
+        let bound = {
+            let field_type = &f.ty;
+            let parser = syn::WherePredicate::parse;
+            parser
+                .parse(quote!(#field_type: ContextBound<'ctx>).into())
+                .unwrap()
+        };
+
+        if input.generics.where_clause.is_some() {
+            let mut wc = input.generics.where_clause.clone().unwrap();
+            wc.predicates.push(bound);
+            Some(wc)
+        } else {
+            Some(syn::WhereClause {
+                where_token: Token![where](Span::call_site()),
+                predicates: vec![bound].into_iter().collect(),
+            })
+        }
+    };
+
     let expanded = quote! {
         impl #impl_generics ContextBound<'ctx> for #name #ty_generics #where_clause {
             fn context(&self) -> &'ctx Context {
@@ -119,5 +181,6 @@ fn context_bound_impl_fields_named_base(
             }
         }
     };
-    expanded
+
+    expanded.into()
 }
