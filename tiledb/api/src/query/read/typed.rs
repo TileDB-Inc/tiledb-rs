@@ -1,5 +1,9 @@
 use super::*;
 
+pub trait ReadResult: Sized {
+    type Constructor: ReadCallback<Intermediate = (), Final = Self>;
+}
+
 /// Query result handler which constructs an object from query results.
 #[derive(ContextBound, QueryCAPIInterface)]
 pub struct TypedReadQuery<'data, T, Q>
@@ -8,7 +12,8 @@ where
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
     #[base(ContextBound, QueryCAPIInterface)]
-    pub(crate) base: CallbackReadQuery<'data, <T as ReadResult>::Receiver, Q>,
+    pub(crate) base:
+        CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>,
 }
 
 impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for TypedReadQuery<'data, T, Q>
@@ -22,17 +27,13 @@ where
     fn step(
         &mut self,
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
-        let base_result = self.base.step()?;
-        Ok(match base_result {
+        Ok(match self.base.step()? {
             ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
-            ReadStepOutput::Intermediate(i) => ReadStepOutput::Intermediate(i),
-            ReadStepOutput::Final(f) => {
-                let my_result = std::mem::replace(
-                    &mut self.base.receiver,
-                    T::new_receiver(),
-                )
-                .into();
-                ReadStepOutput::Final((my_result, f))
+            ReadStepOutput::Intermediate((_, base_result)) => {
+                ReadStepOutput::Intermediate(base_result)
+            }
+            ReadStepOutput::Final((f, base_result)) => {
+                ReadStepOutput::Final((f, base_result))
             }
         })
     }
@@ -45,7 +46,8 @@ where
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
     #[base(ContextBound, QueryCAPIInterface)]
-    pub(crate) base: CallbackReadBuilder<'data, <T as ReadResult>::Receiver, B>,
+    pub(crate) base:
+        CallbackReadBuilder<'data, <T as ReadResult>::Constructor, B>,
 }
 
 impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for TypedReadBuilder<'data, T, B>
@@ -72,4 +74,19 @@ where
     T: ReadResult,
     B: ReadQueryBuilder<'ctx>,
 {
+}
+
+mod impls {
+    use super::*;
+
+    impl<C> ReadResult for Vec<C>
+    where
+        C: CAPISameRepr,
+    {
+        type Constructor = Self;
+    }
+
+    impl ReadResult for Vec<String> {
+        type Constructor = Self;
+    }
 }

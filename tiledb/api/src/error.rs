@@ -76,6 +76,9 @@ pub enum Error {
     /// Error deserializing data
     #[error("Deserialization error: {0}: {1}")]
     Deserialization(String, #[source] anyhow::Error),
+    /// Error occurred executing a query callback
+    #[error("Query callback error for attribute {0}: {1}")]
+    QueryCallback(String, #[source] anyhow::Error),
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),

@@ -132,7 +132,7 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(&tdb, array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .register_constructor_managed::<_, Vec<i32>, _, _>(
+        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
             ATTRIBUTE_NAME,
             Default::default(),
         )?

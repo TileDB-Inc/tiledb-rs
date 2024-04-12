@@ -6,8 +6,7 @@ use std::pin::Pin;
 use crate::convert::CAPISameRepr;
 use crate::query::private::QueryCAPIInterface;
 use crate::query::read::output::{
-    BufferMut, DataReceiver, HasScratchSpaceStrategy, OutputLocation,
-    ReadResult, ScratchAllocator,
+    BufferMut, HasScratchSpaceStrategy, OutputLocation, ScratchAllocator,
 };
 use crate::Result as TileDBResult;
 
@@ -108,12 +107,12 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         field: S,
         callback: T,
         scratch: &'data RefCell<
-            OutputLocation<'data, <T as DataReceiver>::Unit>,
+            OutputLocation<'data, <T as ReadCallback>::Unit>,
         >,
     ) -> TileDBResult<CallbackReadBuilder<T, Self>>
     where
         S: AsRef<str>,
-        T: DataReceiver,
+        T: ReadCallback,
     {
         let base = self.register_raw(field, scratch)?;
 
@@ -132,7 +131,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     >
     where
         S: AsRef<str>,
-        T: DataReceiver<Unit = C> + HasScratchSpaceStrategy<C, Strategy = A>,
+        T: ReadCallback<Unit = C> + HasScratchSpaceStrategy<C, Strategy = A>,
         A: ScratchAllocator<C>,
     {
         let scratch = scratch_allocator.alloc();
@@ -147,12 +146,12 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let base = {
             let scratch = scratch.as_ref().get_ref()
                 as *const RefCell<
-                    OutputLocation<'data, <T as DataReceiver>::Unit>,
+                    OutputLocation<'data, <T as ReadCallback>::Unit>,
                 >;
             let scratch = unsafe {
                 &*scratch
                     as &'data RefCell<
-                        OutputLocation<'data, <T as DataReceiver>::Unit>,
+                        OutputLocation<'data, <T as ReadCallback>::Unit>,
                     >
             };
             self.register_callback(field, callback, scratch)
@@ -173,7 +172,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         scratch: &'data RefCell<
             OutputLocation<
                 'data,
-                <<T as ReadResult>::Receiver as DataReceiver>::Unit,
+                <<T as ReadResult>::Constructor as ReadCallback>::Unit,
             >,
         >,
     ) -> TileDBResult<TypedReadBuilder<'data, T, Self>>
@@ -181,7 +180,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         S: AsRef<str>,
         T: ReadResult,
     {
-        let r = T::new_receiver();
+        let r = <T::Constructor as Default>::default();
         Ok(TypedReadBuilder {
             _marker: std::marker::PhantomData,
             base: self.register_callback(field, r, scratch)?,
@@ -199,8 +198,9 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     >
     where
         S: AsRef<str>,
-        T: ReadResult<Receiver = R> + HasScratchSpaceStrategy<C, Strategy = A>,
-        R: DataReceiver<Unit = C>,
+        T: ReadResult<Constructor = R>
+            + HasScratchSpaceStrategy<C, Strategy = A>,
+        R: ReadCallback<Unit = C>,
         A: ScratchAllocator<C>,
     {
         let scratch = scratch_allocator.alloc();
