@@ -72,7 +72,7 @@ macro_rules! value_typed {
 
 impl Value {
     pub fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
-        value_typed!(self, _DT, vec, get_value_vec(vec) )
+        value_typed!(self, _DT, vec, get_value_vec(vec))
     }
 }
 

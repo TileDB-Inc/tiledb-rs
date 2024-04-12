@@ -54,7 +54,7 @@ impl Mode {
 impl TryFrom<ffi::tiledb_query_type_t> for Mode {
     type Error = crate::error::Error;
 
-    fn try_from(value: ffi::tiledb_datatype_t) -> TileDBResult<Self> {
+    fn try_from(value: ffi::tiledb_query_type_t) -> TileDBResult<Self> {
         Ok(match value {
             ffi::tiledb_query_type_t_TILEDB_READ => Mode::Read,
             ffi::tiledb_query_type_t_TILEDB_WRITE => Mode::Write,
