@@ -122,28 +122,20 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
 
     /// Register a callback to be run on query results.
     /// Scratch space for raw results is managed by the callback.
-    fn register_callback_managed<'data, S, T, C>(
+    fn register_callback_managed<'data, S, T, C, A>(
         self,
         field: S,
         callback: T,
-        params: <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<C>>::Parameters,
+        scratch_allocator: A,
     ) -> TileDBResult<
-        ManagedReadBuilder<
-            'data,
-            C,
-            <T as HasScratchSpaceStrategy<C>>::Strategy,
-            CallbackReadBuilder<'data, T, Self>,
-        >,
+        ManagedReadBuilder<'data, C, A, CallbackReadBuilder<'data, T, Self>>,
     >
     where
         S: AsRef<str>,
-        T: DataReceiver<Unit = C> + HasScratchSpaceStrategy<C>,
+        T: DataReceiver<Unit = C> + HasScratchSpaceStrategy<C, Strategy = A>,
+        A: ScratchAllocator<C>,
     {
-        let a =
-            <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<
-                C,
-            >>::construct(params);
-        let scratch = a.scratch_space();
+        let scratch = scratch_allocator.alloc();
 
         let scratch = OutputLocation {
             data: BufferMut::Owned(scratch.0),
@@ -167,7 +159,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         }?;
 
         Ok(ManagedReadBuilder {
-            alloc: a,
+            alloc: scratch_allocator,
             scratch,
             base,
         })
@@ -198,28 +190,20 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
 
     /// Register a typed result to be constructed from the query results.
     /// Scratch space for raw results is managed by the callback.
-    fn register_constructor_managed<'data, S, T, R, C>(
+    fn register_constructor_managed<'data, S, T, R, C, A>(
         self,
         field: S,
-        params: <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<C>>::Parameters,
+        scratch_allocator: A,
     ) -> TileDBResult<
-        ManagedReadBuilder<
-            'data,
-            C,
-            <T as HasScratchSpaceStrategy<C>>::Strategy,
-            TypedReadBuilder<'data, T, Self>,
-        >,
+        ManagedReadBuilder<'data, C, A, TypedReadBuilder<'data, T, Self>>,
     >
     where
         S: AsRef<str>,
-        T: ReadResult<Receiver = R> + HasScratchSpaceStrategy<C>,
+        T: ReadResult<Receiver = R> + HasScratchSpaceStrategy<C, Strategy = A>,
         R: DataReceiver<Unit = C>,
+        A: ScratchAllocator<C>,
     {
-        let a =
-            <<T as HasScratchSpaceStrategy<C>>::Strategy as ScratchAllocator<
-                C,
-            >>::construct(params);
-        let scratch = a.scratch_space();
+        let scratch = scratch_allocator.alloc();
 
         let scratch = OutputLocation {
             data: BufferMut::Owned(scratch.0),
@@ -238,7 +222,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         }?;
 
         Ok(ManagedReadBuilder {
-            alloc: a,
+            alloc: scratch_allocator,
             scratch,
             base,
         })

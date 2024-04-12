@@ -3,7 +3,9 @@ extern crate tiledb;
 use std::cell::{Ref, RefCell};
 
 use tiledb::array::{CellOrder, TileOrder};
-use tiledb::query::read::output::{BufferMut, OutputLocation, VarDataIterator};
+use tiledb::query::read::output::{
+    BufferMut, NonVarSized, OutputLocation, VarDataIterator, VarSized,
+};
 use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
@@ -241,21 +243,24 @@ fn read_array_collect() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let mut qq = query_builder_start(&tdb)?
-        .register_constructor_managed::<_, Vec<i32>, _, _>(
+        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
             "rows",
-            Default::default(),
+            NonVarSized { capacity: 1 },
         )?
-        .register_constructor_managed::<_, Vec<i32>, _, _>(
+        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
             "columns",
-            Default::default(),
+            NonVarSized { capacity: 1 },
         )?
-        .register_constructor_managed::<_, Vec<i32>, _, _>(
+        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
             INT32_ATTRIBUTE_NAME,
-            Default::default(),
+            NonVarSized { capacity: 1 },
         )?
-        .register_constructor_managed::<_, Vec<String>, _, _>(
+        .register_constructor_managed::<_, Vec<String>, _, _, _>(
             CHAR_ATTRIBUTE_NAME,
-            Default::default(),
+            VarSized {
+                byte_capacity: 1,
+                offset_capacity: 1,
+            },
         )?
         .build();
 

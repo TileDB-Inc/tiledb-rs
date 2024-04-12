@@ -93,11 +93,41 @@ impl<'data, T> OutputLocation<'data, T> {
 
 pub struct ScratchSpace<C>(pub Box<[C]>, pub Option<Box<[u64]>>);
 
-pub trait ScratchAllocator<C> {
-    type Parameters: Default + Sized;
+impl<'data, C> TryFrom<OutputLocation<'data, C>> for ScratchSpace<C> {
+    type Error = crate::error::Error;
 
-    fn construct(params: Self::Parameters) -> Self;
-    fn scratch_space(&self) -> ScratchSpace<C>;
+    fn try_from(value: OutputLocation<'data, C>) -> TileDBResult<Self> {
+        let data = match value.data {
+            BufferMut::Empty => vec![].into_boxed_slice(),
+            BufferMut::Borrowed(_) => return Err(unimplemented!()),
+            BufferMut::Owned(d) => d,
+        };
+
+        let cell_offsets = if let Some(cell_offsets) = value.cell_offsets {
+            Some(match cell_offsets {
+                BufferMut::Empty => vec![].into_boxed_slice(),
+                BufferMut::Borrowed(_) => return Err(unimplemented!()),
+                BufferMut::Owned(d) => d,
+            })
+        } else {
+            None
+        };
+
+        Ok(ScratchSpace(data, cell_offsets))
+    }
+}
+
+impl<'data, C> From<ScratchSpace<C>> for OutputLocation<'data, C> {
+    fn from(value: ScratchSpace<C>) -> Self {
+        OutputLocation {
+            data: BufferMut::Owned(value.0),
+            cell_offsets: value.1.map(BufferMut::Owned),
+        }
+    }
+}
+
+pub trait ScratchAllocator<C>: Default {
+    fn alloc(&self) -> ScratchSpace<C>;
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C>;
 }
 
@@ -106,7 +136,6 @@ pub trait HasScratchSpaceStrategy<C> {
 }
 
 pub trait DataReceiver: Sized {
-    type ScratchAllocator: Default + ScratchAllocator<Self::Unit>;
     type Unit: CAPISameRepr;
 
     fn receive<'data>(
@@ -123,8 +152,9 @@ pub trait ReadResult: Sized {
     fn new_receiver() -> Self::Receiver;
 }
 
+#[derive(Clone, Debug)]
 pub struct NonVarSized {
-    capacity: usize,
+    pub capacity: usize,
 }
 
 impl Default for NonVarSized {
@@ -139,30 +169,30 @@ impl<C> ScratchAllocator<C> for NonVarSized
 where
     C: CAPISameRepr,
 {
-    type Parameters = Option<usize>;
-
-    fn construct(params: Self::Parameters) -> Self {
-        if let Some(capacity) = params {
-            NonVarSized { capacity }
-        } else {
-            Default::default()
-        }
-    }
-
-    fn scratch_space(&self) -> ScratchSpace<C> {
+    fn alloc(&self) -> ScratchSpace<C> {
         ScratchSpace(vec![C::default(); self.capacity].into_boxed_slice(), None)
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let old_capacity = old.0.len();
+        let ScratchSpace(old, _) = old;
+
+        let old_capacity = old.len();
         let new_capacity = 2 * (old_capacity + 1);
-        ScratchSpace(vec![C::default(); new_capacity].into_boxed_slice(), None)
+
+        let new_data = {
+            let mut v = old.to_vec();
+            v.resize(new_capacity, Default::default());
+            v.into_boxed_slice()
+        };
+
+        ScratchSpace(new_data, None)
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct VarSized {
-    byte_capacity: usize,
-    offset_capacity: usize,
+    pub byte_capacity: usize,
+    pub offset_capacity: usize,
 }
 
 impl Default for VarSized {
@@ -181,24 +211,28 @@ impl<C> ScratchAllocator<C> for VarSized
 where
     C: CAPISameRepr,
 {
-    type Parameters = Option<VarSized>;
-
-    fn construct(params: Self::Parameters) -> Self {
-        params.unwrap_or(Default::default())
-    }
-
-    fn scratch_space(&self) -> ScratchSpace<C> {
+    fn alloc(&self) -> ScratchSpace<C> {
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
         let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
         ScratchSpace(data, Some(offsets))
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let data = vec![C::default(); 2 * (old.0.len() + 1)].into_boxed_slice();
-        let offsets = old
-            .1
-            .map(|c| vec![0u64; 2 * (c.len() + 1)].into_boxed_slice());
-        ScratchSpace(data, offsets)
+        let ScratchSpace(old_data, old_offsets) = old;
+
+        let new_data = {
+            let mut v = old_data.to_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        };
+
+        let new_offsets = {
+            let mut v = old_offsets.unwrap().into_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        };
+
+        ScratchSpace(new_data, Some(new_offsets))
     }
 }
 
@@ -213,7 +247,6 @@ impl<C> DataReceiver for Vec<C>
 where
     C: CAPISameRepr,
 {
-    type ScratchAllocator = NonVarSized;
     type Unit = C;
 
     fn receive<'data>(
@@ -330,7 +363,6 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
 }
 
 impl DataReceiver for Vec<String> {
-    type ScratchAllocator = VarSized;
     type Unit = u8;
 
     fn receive<'data>(
