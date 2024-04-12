@@ -147,7 +147,7 @@ impl<'ctx> Group<'ctx> {
         context: &'ctx Context,
         uri: S,
         relative: bool,
-        name: T,
+        name: Option<T>,
     ) -> TileDBResult<()>
     where
         S: AsRef<str>,
@@ -155,7 +155,10 @@ impl<'ctx> Group<'ctx> {
     {
         let ctx = context.capi();
         let c_uri = cstring!(uri.as_ref());
-        let c_name = cstring!(name.as_ref());
+        let c_ptr = match name {
+            None => std::ptr::null::<std::ffi::c_char>(),
+            Some(s) => cstring!(s.as_ref()).as_ptr(),
+        };
         let c_relative: u8 = if relative { 1 } else { 0 };
         context.capi_return(unsafe {
             ffi::tiledb_group_add_member(
@@ -163,7 +166,7 @@ impl<'ctx> Group<'ctx> {
                 Self::capi(self),
                 c_uri.as_ptr(),
                 c_relative,
-                c_name.as_ptr(),
+                c_ptr,
             )
         })?;
         Ok(())
