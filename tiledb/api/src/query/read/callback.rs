@@ -4,26 +4,38 @@ use anyhow::anyhow;
 
 use crate::query::write::input::{Buffer, InputData};
 
-pub trait ReadCallback: Default + Sized {
-    type Unit: CAPISameRepr;
-    type Intermediate;
-    type Final;
-    type Error: Into<anyhow::Error>;
+macro_rules! trait_read_callback {
+    ($name:ident, $($U:ident),+) => {
+        pub trait $name: Default + Sized {
+            $(
+                type $U: CAPISameRepr;
+            )+
+            type Intermediate;
+            type Final;
+            type Error: Into<anyhow::Error>;
 
-    fn intermediate_result<'data>(
-        &mut self,
-        records: usize,
-        bytes: usize,
-        input: InputData<'data, Self::Unit>,
-    ) -> Result<Self::Intermediate, Self::Error>;
+            fn intermediate_result<'data>(
+                &mut self,
+                records: usize,
+                bytes: usize,
+                $(
+                    _: InputData<'data, Self::$U>
+                )+
+            ) -> Result<Self::Intermediate, Self::Error>;
 
-    fn final_result<'data>(
-        self,
-        records: usize,
-        bytes: usize,
-        input: InputData<'data, Self::Unit>,
-    ) -> Result<Self::Final, Self::Error>;
+            fn final_result<'data>(
+                self,
+                records: usize,
+                bytes: usize,
+                $(
+                    _: InputData<'data, Self::$U>
+                )+
+            ) -> Result<Self::Final, Self::Error>;
+        }
+    };
 }
+
+trait_read_callback!(ReadCallback, Unit);
 
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
