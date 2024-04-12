@@ -1,7 +1,10 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::{Deref, DerefMut};
 
+use anyhow::anyhow;
+
 use crate::convert::CAPISameRepr;
+use crate::error::{DatatypeErrorKind, Error};
 use crate::query::write::input::{Buffer, InputData};
 use crate::Result as TileDBResult;
 
@@ -99,14 +102,19 @@ impl<'data, C> TryFrom<OutputLocation<'data, C>> for ScratchSpace<C> {
     fn try_from(value: OutputLocation<'data, C>) -> TileDBResult<Self> {
         let data = match value.data {
             BufferMut::Empty => vec![].into_boxed_slice(),
-            BufferMut::Borrowed(_) => return Err(unimplemented!()),
+            BufferMut::Borrowed(_) => {
+                return Err(Error::InvalidArgument(anyhow!(
+                    "Cannot convert borrowed data into owned scratch space"
+                )))
+            }
             BufferMut::Owned(d) => d,
         };
 
         let cell_offsets = if let Some(cell_offsets) = value.cell_offsets {
             Some(match cell_offsets {
                 BufferMut::Empty => vec![].into_boxed_slice(),
-                BufferMut::Borrowed(_) => return Err(unimplemented!()),
+                BufferMut::Borrowed(_) => return Err(Error::InvalidArgument(
+                        anyhow!("Cannot convert borrowed offsets buffer into owned scratch space"))),
                 BufferMut::Owned(d) => d,
             })
         } else {
@@ -247,7 +255,9 @@ impl<'data, C> VarDataIterator<'data, C> {
         let location = location.borrow();
 
         if location.cell_offsets.is_none() {
-            Err(unimplemented!())
+            Err(Error::Datatype(DatatypeErrorKind::ExpectedVarSize(
+                None, None,
+            )))
         } else {
             Ok(VarDataIterator {
                 nrecords,

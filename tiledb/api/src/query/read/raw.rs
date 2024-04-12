@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::error::Error;
+
 /// Encapsulates data for writing intermediate query results for a data field.
 pub(crate) struct RawReadOutput<'data, C> {
     /// As input to the C API, the size of the data buffer.
@@ -168,9 +170,11 @@ where
             ReadStepOutput::Intermediate(base_result) => {
                 if records_written == 0 && bytes_written == 0 {
                     ReadStepOutput::NotEnoughSpace
-                } else if records_written == 0 || bytes_written == 0 {
-                    /* TODO: internal error */
-                    return Err(unimplemented!());
+                } else if records_written == 0 {
+                    return Err(Error::Internal(format!(
+                        "Invalid read: returned {} offsets but {} bytes",
+                        records_written, bytes_written
+                    )));
                 } else {
                     ReadStepOutput::Intermediate((
                         records_written,
