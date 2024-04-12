@@ -151,6 +151,8 @@ where
 /// Handles the incomplete results manually, similar to what might be done with the C API.
 /// Buffers are provided for the query to fill in. Each step fills in as much
 /// as it can, we print the results and then re-submit the query.
+/// The initial buffer sizes are deliberately small to force the NotEnoughSpace
+/// result, which is handled manually by swapping the buffer inside of the RefCell.
 fn read_array_step() -> TileDBResult<()> {
     println!("read_array_step");
 
@@ -236,7 +238,9 @@ fn read_array_step() -> TileDBResult<()> {
 }
 
 /// Ignores the details of incomplete results by collecting them into a result set
-/// and then printing the result set.
+/// and then printing the result set.  Capacities for each attribute are deliberately
+/// small in this example to force the NotEnoughSpace result, which is handled
+/// inside of `execute`.
 fn read_array_collect() -> TileDBResult<()> {
     println!("read_array_collect");
 
