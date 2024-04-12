@@ -32,15 +32,11 @@ impl Drop for RawVFS {
     }
 }
 
+#[derive(ContextBound)]
 pub struct VFS<'ctx> {
+    #[context]
     context: &'ctx Context,
     raw: RawVFS,
-}
-
-impl<'ctx> ContextBound<'ctx> for VFS<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 pub(crate) enum RawVFSHandle {
@@ -63,15 +59,11 @@ impl Drop for RawVFSHandle {
     }
 }
 
+#[derive(ContextBound)]
 pub struct VFSHandle<'ctx> {
+    #[context]
     context: &'ctx Context,
     raw: RawVFSHandle,
-}
-
-impl<'ctx> ContextBound<'ctx> for VFSHandle<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> VFS<'ctx> {

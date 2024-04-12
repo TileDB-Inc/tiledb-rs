@@ -32,15 +32,11 @@ impl Drop for RawEnumeration {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Enumeration<'ctx> {
+    #[context]
     context: &'ctx Context,
     raw: RawEnumeration,
-}
-
-impl<'ctx> ContextBound<'ctx> for Enumeration<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> Enumeration<'ctx> {
@@ -244,7 +240,9 @@ impl<'c1, 'c2> PartialEq<Enumeration<'c2>> for Enumeration<'c1> {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Builder<'ctx, 'data, 'offsets> {
+    #[context]
     context: &'ctx Context,
     name: String,
     dtype: Datatype,
@@ -252,14 +250,6 @@ pub struct Builder<'ctx, 'data, 'offsets> {
     ordered: bool,
     data: &'data [u8],
     offsets: Option<&'offsets [u64]>,
-}
-
-impl<'ctx, 'data, 'offsets> ContextBound<'ctx>
-    for Builder<'ctx, 'data, 'offsets>
-{
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 pub trait EnumerationBuilderData {}

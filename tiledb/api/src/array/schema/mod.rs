@@ -75,15 +75,11 @@ type FnFilterListGet = unsafe extern "C" fn(
     *mut *mut ffi::tiledb_filter_list_t,
 ) -> i32;
 
+#[derive(ContextBound)]
 pub struct Schema<'ctx> {
+    #[context]
     context: &'ctx Context,
     raw: RawSchema,
-}
-
-impl<'ctx> ContextBound<'ctx> for Schema<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> Schema<'ctx> {
@@ -313,14 +309,10 @@ type FnFilterListSet = unsafe extern "C" fn(
     *mut ffi::tiledb_filter_list_t,
 ) -> i32;
 
+#[derive(ContextBound)]
 pub struct Builder<'ctx> {
+    #[base(ContextBound)]
     schema: Schema<'ctx>,
-}
-
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.schema.context
-    }
 }
 
 impl<'ctx> Builder<'ctx> {

@@ -29,15 +29,11 @@ impl Drop for RawFilterList {
     }
 }
 
+#[derive(ContextBound)]
 pub struct FilterList<'ctx> {
+    #[context]
     pub(crate) context: &'ctx Context,
     pub(crate) raw: RawFilterList,
-}
-
-impl<'ctx> ContextBound<'ctx> for FilterList<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> FilterList<'ctx> {
@@ -135,14 +131,10 @@ impl<'c1, 'c2> PartialEq<FilterList<'c2>> for FilterList<'c1> {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Builder<'ctx> {
+    #[base(ContextBound)]
     filter_list: FilterList<'ctx>,
-}
-
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.filter_list.context()
-    }
 }
 
 impl<'ctx> Builder<'ctx> {

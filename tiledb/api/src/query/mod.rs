@@ -32,7 +32,9 @@ impl Drop for RawQuery {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Query<'ctx> {
+    #[context]
     context: &'ctx Context,
     array: Array<'ctx>,
     subarrays: Vec<Subarray<'ctx>>,
@@ -41,12 +43,6 @@ pub struct Query<'ctx> {
     // in order to pin the size to a fixed address
     result_buffers: HashMap<String, Box<u64>>,
     raw: RawQuery,
-}
-
-impl<'ctx> ContextBound<'ctx> for Query<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> Query<'ctx> {
@@ -63,14 +59,10 @@ impl<'ctx> Query<'ctx> {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Builder<'ctx> {
+    #[base(ContextBound)]
     query: Query<'ctx>,
-}
-
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.query.context()
-    }
 }
 
 impl<'ctx> Builder<'ctx> {

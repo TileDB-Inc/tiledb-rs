@@ -26,26 +26,18 @@ impl Drop for RawSubarray {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Subarray<'ctx> {
+    #[context]
     context: &'ctx Context,
     raw: RawSubarray,
 }
 
-impl<'ctx> ContextBound<'ctx> for Subarray<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
-}
-
+#[derive(ContextBound)]
 pub struct Builder<'ctx> {
     query: QueryBuilder<'ctx>,
+    #[base(ContextBound)]
     subarray: Subarray<'ctx>,
-}
-
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.subarray.context()
-    }
 }
 
 impl<'ctx> Builder<'ctx> {

@@ -11,5 +11,8 @@ proc-macro2 = "1"
 quote = "1"
 syn = "2"
 
+[dev-dependencies]
+tiledb = { workspace = true }
+
 [lib]
 proc-macro = true
