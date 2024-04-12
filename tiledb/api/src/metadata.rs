@@ -17,16 +17,14 @@ pub enum Value {
     // maybe blobs?
 }
 
-fn get_value_vec<T>(vec: &Vec<T>) -> (*const std::ffi::c_void, usize) {
+fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
     let vec_size = vec.len();
     let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
     (vec_ptr, vec_size)
 }
 
 impl Value {
-    pub fn c_vec(
-        &self,
-    ) -> (*const std::ffi::c_void, usize) {
+    pub fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
         match self {
             Value::Int8Value(vec) => get_value_vec(vec),
             Value::Int16Value(vec) => get_value_vec(vec),
@@ -43,65 +41,97 @@ impl Value {
 }
 
 trait ValueType {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized;
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized;
 }
 
 impl ValueType for i8 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::Int8Value(vec)
     }
 }
 
 impl ValueType for i16 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::Int16Value(vec)
     }
 }
 
 impl ValueType for i32 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::Int32Value(vec)
     }
 }
 
 impl ValueType for i64 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::Int64Value(vec)
     }
 }
 
 impl ValueType for u8 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::UInt8Value(vec)
     }
 }
 
 impl ValueType for u16 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::UInt16Value(vec)
     }
 }
 
 impl ValueType for u32 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::UInt32Value(vec)
     }
 }
 
 impl ValueType for u64 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::UInt64Value(vec)
     }
 }
 
 impl ValueType for f32 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::Float32Value(vec)
     }
 }
 
 impl ValueType for f64 {
-    fn get_value(vec : Vec<Self>) -> Value where Self: Sized {
+    fn get_value(vec: Vec<Self>) -> Value
+    where
+        Self: Sized,
+    {
         Value::Float64Value(vec)
     }
 }
@@ -126,20 +156,21 @@ impl Metadata {
                     vec_size.try_into().unwrap(),
                 )
             };
-            let vec_value : Vec<DT> = vec_slice.to_vec();
+            let vec_value: Vec<DT> = vec_slice.to_vec();
             DT::get_value(vec_value)
         });
 
         Metadata {
             key,
             datatype,
-            value
+            value,
         }
     }
 
-    pub fn c_data(&self) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) 
-    {
-        let (vec_ptr, vec_size ) = self.value.c_vec();
+    pub fn c_data(
+        &self,
+    ) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) {
+        let (vec_ptr, vec_size) = self.value.c_vec();
         let c_datatype = self.datatype.capi_enum();
         (vec_size, vec_ptr, c_datatype)
     }
