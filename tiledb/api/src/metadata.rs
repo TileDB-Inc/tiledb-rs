@@ -23,20 +23,56 @@ fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
     (vec_ptr, vec_size)
 }
 
+macro_rules! value_typed {
+    ($valuetype:expr, $typename:ident, $vec:ident, $then: expr) => {
+        match $valuetype {
+            Value::Int8Value($vec) => {
+                type $typename = i8;
+                $then
+            }
+            Value::Int16Value($vec) => {
+                type $typename = i16;
+                $then
+            }
+            Value::Int32Value($vec) => {
+                type $typename = i32;
+                $then
+            }
+            Value::Int64Value($vec) => {
+                type $typename = i64;
+                $then
+            }
+            Value::UInt8Value($vec) => {
+                type $typename = u8;
+                $then
+            }
+            Value::UInt16Value($vec) => {
+                type $typename = u16;
+                $then
+            }
+            Value::UInt32Value($vec) => {
+                type $typename = u32;
+                $then
+            }
+            Value::UInt64Value($vec) => {
+                type $typename = u64;
+                $then
+            }
+            Value::Float32Value($vec) => {
+                type $typename = f32;
+                $then
+            }
+            Value::Float64Value($vec) => {
+                type $typename = f64;
+                $then
+            }
+        }
+    };
+}
+
 impl Value {
     pub fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
-        match self {
-            Value::Int8Value(vec) => get_value_vec(vec),
-            Value::Int16Value(vec) => get_value_vec(vec),
-            Value::Int32Value(vec) => get_value_vec(vec),
-            Value::Int64Value(vec) => get_value_vec(vec),
-            Value::UInt8Value(vec) => get_value_vec(vec),
-            Value::UInt16Value(vec) => get_value_vec(vec),
-            Value::UInt32Value(vec) => get_value_vec(vec),
-            Value::UInt64Value(vec) => get_value_vec(vec),
-            Value::Float32Value(vec) => get_value_vec(vec),
-            Value::Float64Value(vec) => get_value_vec(vec),
-        }
+        value_typed!(self, _DT, vec, get_value_vec(vec) )
     }
 }
 
@@ -46,95 +82,26 @@ trait ValueType {
         Self: Sized;
 }
 
-impl ValueType for i8 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::Int8Value(vec)
-    }
+macro_rules! value_impl {
+    ($ty:ty, $constructor:expr) => {
+        impl ValueType for $ty {
+            fn get_value(vec: Vec<Self>) -> Value {
+                $constructor(vec)
+            }
+        }
+    };
 }
 
-impl ValueType for i16 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::Int16Value(vec)
-    }
-}
-
-impl ValueType for i32 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::Int32Value(vec)
-    }
-}
-
-impl ValueType for i64 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::Int64Value(vec)
-    }
-}
-
-impl ValueType for u8 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::UInt8Value(vec)
-    }
-}
-
-impl ValueType for u16 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::UInt16Value(vec)
-    }
-}
-
-impl ValueType for u32 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::UInt32Value(vec)
-    }
-}
-
-impl ValueType for u64 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::UInt64Value(vec)
-    }
-}
-
-impl ValueType for f32 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::Float32Value(vec)
-    }
-}
-
-impl ValueType for f64 {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized,
-    {
-        Value::Float64Value(vec)
-    }
-}
+value_impl!(i8, Value::Int8Value);
+value_impl!(i16, Value::Int16Value);
+value_impl!(i32, Value::Int32Value);
+value_impl!(i64, Value::Int64Value);
+value_impl!(u8, Value::UInt8Value);
+value_impl!(u16, Value::UInt16Value);
+value_impl!(u32, Value::UInt32Value);
+value_impl!(u64, Value::UInt64Value);
+value_impl!(f32, Value::Float32Value);
+value_impl!(f64, Value::Float64Value);
 
 pub struct Metadata {
     pub key: String,
