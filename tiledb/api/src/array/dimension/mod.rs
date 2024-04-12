@@ -32,15 +32,11 @@ impl Drop for RawDimension {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Dimension<'ctx> {
+    #[context]
     pub(crate) context: &'ctx Context,
     pub(crate) raw: RawDimension,
-}
-
-impl<'ctx> ContextBound<'ctx> for Dimension<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> Dimension<'ctx> {
@@ -175,14 +171,10 @@ impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Builder<'ctx> {
+    #[base(ContextBound)]
     dim: Dimension<'ctx>,
-}
-
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.dim.context
-    }
 }
 
 impl<'ctx> Builder<'ctx> {
