@@ -362,11 +362,8 @@ impl<'ctx> Group<'ctx> {
         metadata: Metadata,
     ) -> TileDBResult<()> {
         let ctx = context.capi();
+        let (vec_size, vec_ptr, datatype) = metadata.c_data();
         let c_key = cstring!(metadata.key);
-        let (vec_size, vec_ptr, datatype) = metadata.value.c_vec();
-        // Convert value to pointer with value in it by casing on type/using fn_typed!
-        // Then run the C function
-        // Only supporting numeric types right now.
         context.capi_return(unsafe {
             ffi::tiledb_group_put_metadata(
                 ctx,
@@ -408,6 +405,7 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
+        // TODO: figure out if you need to copy metadata in ::new
         let ctx = context.capi();
         let c_name = cstring!(name.as_ref());
         let mut vec_size: u32 = out_ptr!();
