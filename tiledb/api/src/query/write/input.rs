@@ -12,22 +12,6 @@ impl<'data, T> Buffer<'data, T> {
     pub fn size(&self) -> usize {
         std::mem::size_of_val(self.as_ref())
     }
-
-    pub fn borrow<'this>(&'this self) -> &'data [T]
-    where
-        'this: 'data,
-    {
-        match self {
-            Buffer::Empty => unsafe {
-                std::slice::from_raw_parts(
-                    std::ptr::NonNull::dangling().as_ptr(),
-                    0,
-                )
-            },
-            Buffer::Borrowed(data) => data,
-            Buffer::Owned(data) => &*data,
-        }
-    }
 }
 
 impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
@@ -40,7 +24,7 @@ impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
                 )
             },
             Buffer::Borrowed(data) => data,
-            Buffer::Owned(data) => &*data,
+            Buffer::Owned(data) => data,
         }
     }
 }
@@ -158,9 +142,6 @@ mod tests {
 
     const MIN_RECORDS: usize = 0;
     const MAX_RECORDS: usize = 1024;
-
-    const MIN_BYTE_CAPACITY: usize = 0;
-    const MAX_BYTE_CAPACITY: usize = 1024 * 1024;
 
     proptest! {
         #[test]

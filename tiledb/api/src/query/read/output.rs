@@ -30,7 +30,7 @@ impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
                 )
             },
             BufferMut::Borrowed(data) => data,
-            BufferMut::Owned(data) => &*data,
+            BufferMut::Owned(data) => data,
         }
     }
 }
@@ -297,10 +297,10 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
             // But the construction of the iterator via `new` removes the possibility
             // of `Buffer::Owned`, so this transmutation to the longer 'data lifetime
             // is safe.
-            &*(self.location.data.borrow() as *const [C]) as &'data [C]
+            &*(self.location.data.as_ref() as *const [C]) as &'data [C]
         };
         let offset_buffer =
-            self.location.cell_offsets.as_ref().unwrap().borrow();
+            self.location.cell_offsets.as_ref().unwrap().as_ref();
 
         let s = self.offset_cursor;
         self.offset_cursor += 1;

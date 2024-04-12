@@ -14,21 +14,21 @@ macro_rules! trait_read_callback {
             type Final;
             type Error: Into<anyhow::Error>;
 
-            fn intermediate_result<'data>(
+            fn intermediate_result(
                 &mut self,
                 records: usize,
                 bytes: usize,
                 $(
-                    _: InputData<'data, Self::$U>
+                    _: InputData<'_, Self::$U>
                 )+
             ) -> Result<Self::Intermediate, Self::Error>;
 
-            fn final_result<'data>(
+            fn final_result(
                 self,
                 records: usize,
                 bytes: usize,
                 $(
-                    _: InputData<'data, Self::$U>
+                    _: InputData<'_, Self::$U>
                 )+
             ) -> Result<Self::Final, Self::Error>;
         }
@@ -73,11 +73,11 @@ where
          * rather than borrowing it
          */
         let input_data = InputData {
-            data: Buffer::Borrowed(&*location.data),
+            data: Buffer::Borrowed(&location.data),
             cell_offsets: location
                 .cell_offsets
                 .as_ref()
-                .map(|c| Buffer::Borrowed(&*c)),
+                .map(|c| Buffer::Borrowed(c)),
         };
 
         Ok(match base_result {
@@ -96,7 +96,7 @@ where
             }
             ReadStepOutput::Final((nrecords, nbytes, base_result)) => {
                 let callback_final =
-                    std::mem::replace(&mut self.callback, Default::default());
+                    std::mem::take(&mut self.callback);
                 let fr = callback_final
                     .final_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
@@ -161,13 +161,13 @@ mod impls {
         type Final = Self;
         type Error = std::convert::Infallible;
 
-        fn intermediate_result<'data>(
+        fn intermediate_result(
             &mut self,
             records: usize,
             _bytes: usize,
-            input: InputData<'data, C>,
+            input: InputData<'_, C>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            Ok(if let Buffer::Owned(data) = input.data {
+            if let Buffer::Owned(data) = input.data {
                 if self.is_empty() {
                     *self = data.into_vec();
                     self.truncate(records)
@@ -176,14 +176,15 @@ mod impls {
                 }
             } else {
                 self.extend_from_slice(&input.data.as_ref()[0..records])
-            })
+            };
+            Ok(())
         }
 
-        fn final_result<'data>(
+        fn final_result(
             mut self,
             records: usize,
             bytes: usize,
-            input: InputData<'data, C>,
+            input: InputData<'_, C>,
         ) -> Result<Self::Final, Self::Error> {
             if self.is_empty() {
                 if let Buffer::Owned(data) = input.data {
@@ -206,11 +207,11 @@ mod impls {
         type Final = Self;
         type Error = std::convert::Infallible;
 
-        fn intermediate_result<'data>(
+        fn intermediate_result(
             &mut self,
             records: usize,
             bytes: usize,
-            input: InputData<'data, C>,
+            input: InputData<'_, C>,
         ) -> Result<Self::Intermediate, Self::Error> {
             for slice in VarDataIterator::new(records, bytes, &input).unwrap() {
                 self.push(slice.to_vec())
@@ -218,11 +219,11 @@ mod impls {
             Ok(())
         }
 
-        fn final_result<'data>(
+        fn final_result(
             mut self,
             records: usize,
             bytes: usize,
-            input: InputData<'data, C>,
+            input: InputData<'_, C>,
         ) -> Result<Self::Final, Self::Error> {
             self.intermediate_result(records, bytes, input)
                 .map(|_| self)
@@ -235,11 +236,11 @@ mod impls {
         type Final = Self;
         type Error = std::convert::Infallible;
 
-        fn intermediate_result<'data>(
+        fn intermediate_result(
             &mut self,
             records: usize,
             bytes: usize,
-            input: InputData<'data, u8>,
+            input: InputData<'_, u8>,
         ) -> Result<Self::Intermediate, Self::Error> {
             for slice in VarDataIterator::new(records, bytes, &input).unwrap() {
                 self.push(String::from_utf8_lossy(slice).to_string())
@@ -247,11 +248,11 @@ mod impls {
             Ok(())
         }
 
-        fn final_result<'data>(
+        fn final_result(
             mut self,
             records: usize,
             bytes: usize,
-            input: InputData<'data, u8>,
+            input: InputData<'_, u8>,
         ) -> Result<Self::Final, Self::Error> {
             self.intermediate_result(records, bytes, input)
                 .map(|_| self)
@@ -304,7 +305,7 @@ mod tests {
             };
 
             let input_data = InputData {
-                data: Buffer::Borrowed(&*scratch_space.0),
+                data: Buffer::Borrowed(&scratch_space.0),
                 cell_offsets: None,
             };
 

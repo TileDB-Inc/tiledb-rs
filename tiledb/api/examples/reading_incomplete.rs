@@ -186,7 +186,7 @@ fn read_array_step() -> TileDBResult<()> {
         grow_buffer(&mut int32_output.borrow_mut().data);
         grow_buffer(&mut char_output.borrow_mut().data);
         grow_buffer(
-            &mut char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
+            char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
         );
     };
 

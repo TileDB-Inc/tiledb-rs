@@ -44,7 +44,7 @@ impl<'data, C> RawReadOutput<'data, C> {
             (
                 Box::pin(std::mem::size_of_val(&*data) as u64),
                 cell_offsets.as_ref().map(|off| {
-                    let sz = std::mem::size_of_val::<[u64]>(&*off);
+                    let sz = std::mem::size_of_val::<[u64]>(*off);
                     Box::pin(sz as u64)
                 }),
             )
@@ -98,7 +98,7 @@ impl<'data, C> RawReadOutput<'data, C> {
             *offsets_size.as_mut() =
                 std::mem::size_of_val::<[u64]>(cell_offsets) as u64;
 
-            let c_offptr = cell_offsets.as_mut_ptr() as *mut u64;
+            let c_offptr = cell_offsets.as_mut_ptr();
             let c_sizeptr = offsets_size.as_mut().get_mut() as *mut u64;
 
             context.capi_return(unsafe {
