@@ -122,7 +122,7 @@ fn context_bound_impl_fields_named_base(
         for generic in input.generics.params.iter() {
             match generic {
                 GenericParam::Lifetime(ref l) => {
-                    if l.lifetime.ident.to_string() == "ctx" {
+                    if l.lifetime.ident == "ctx" {
                         has_ctx_bound = true;
                         break;
                     }
@@ -182,5 +182,5 @@ fn context_bound_impl_fields_named_base(
         }
     };
 
-    expanded.into()
+    expanded
 }
