@@ -209,7 +209,7 @@ fn read_array_step() -> TileDBResult<()> {
 
             let a2 = {
                 let char_output = char_output.borrow();
-                VarDataIterator::new(n_a2, b_a2, char_output.borrow())
+                VarDataIterator::new(n_a2, b_a2, &char_output.borrow())
                     .expect("Expected variable data offsets")
                     .map(|bytes| String::from_utf8_lossy(bytes).to_string())
                     .collect::<Vec<String>>()
