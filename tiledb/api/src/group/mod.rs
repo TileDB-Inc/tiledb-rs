@@ -78,7 +78,7 @@ impl<'ctx> Group<'ctx> {
         S: AsRef<str>,
     {
         let ctx = context.capi();
-        let mut group_raw: *mut ffi::tiledb_group_t = std::ptr::null_mut();
+        let mut group_raw: *mut ffi::tiledb_group_t = out_ptr!();
 
         let c_uri = cstring!(uri.as_ref());
 
@@ -95,7 +95,7 @@ impl<'ctx> Group<'ctx> {
 
     pub fn uri(&self, context: &'ctx Context) -> TileDBResult<String> {
         let c_context = self.context.capi();
-        let mut c_uri = std::ptr::null::<std::ffi::c_char>();
+        let mut c_uri: *const std::ffi::c_char = out_ptr!();
         context.capi_return(unsafe {
             ffi::tiledb_group_get_uri(c_context, Self::capi(self), &mut c_uri)
         })?;
@@ -156,7 +156,7 @@ impl<'ctx> Group<'ctx> {
         let ctx = context.capi();
         let c_uri = cstring!(uri.as_ref());
         let c_ptr = match name {
-            None => std::ptr::null::<std::ffi::c_char>(),
+            None => out_ptr!(),
             Some(s) => cstring!(s.as_ref()).as_ptr(),
         };
         let c_relative: u8 = if relative { 1 } else { 0 };
@@ -214,8 +214,8 @@ impl<'ctx> Group<'ctx> {
         index: u64,
     ) -> TileDBResult<GroupInfo> {
         let ctx = context.capi();
-        let mut tiledb_uri = std::ptr::null_mut::<ffi::tiledb_string_t>();
-        let mut tiledb_name = std::ptr::null_mut::<ffi::tiledb_string_t>();
+        let mut tiledb_uri: *mut ffi::tiledb_string_t = out_ptr!();
+        let mut tiledb_name: *mut ffi::tiledb_string_t = out_ptr!();
         let mut tiledb_type: ffi::tiledb_object_t = out_ptr!();
         context.capi_return(unsafe {
             ffi::tiledb_group_get_member_by_index_v2(
@@ -254,7 +254,7 @@ impl<'ctx> Group<'ctx> {
         S: AsRef<str>,
     {
         let ctx = context.capi();
-        let mut tiledb_uri = std::ptr::null_mut::<ffi::tiledb_string_t>();
+        let mut tiledb_uri: *mut ffi::tiledb_string_t = out_ptr!();
         let mut tiledb_type: ffi::tiledb_object_t = out_ptr!();
         let c_name = cstring!(name.as_ref());
         context.capi_return(unsafe {
@@ -317,7 +317,7 @@ impl<'ctx> Group<'ctx> {
         recursive: bool,
     ) -> TileDBResult<Option<String>> {
         let ctx = context.capi();
-        let mut c_str = std::ptr::null_mut::<std::ffi::c_char>();
+        let mut c_str: *mut std::ffi::c_char = out_ptr!();
         let c_recursive = if recursive { 1 } else { 0 };
         context.capi_return(unsafe {
             ffi::tiledb_group_dump_str(
@@ -413,7 +413,7 @@ impl<'ctx> Group<'ctx> {
         let c_name = cstring!(name.as_ref());
         let mut vec_size: u32 = out_ptr!();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
-        let mut vec_ptr = std::ptr::null::<std::ffi::c_void>();
+        let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
         context.capi_return(unsafe {
             ffi::tiledb_group_get_metadata(
                 ctx,
@@ -451,10 +451,10 @@ impl<'ctx> Group<'ctx> {
         index: u64,
     ) -> TileDBResult<Metadata> {
         let ctx = context.capi();
-        let mut key_ptr = std::ptr::null::<std::ffi::c_char>();
+        let mut key_ptr: *const std::ffi::c_char = out_ptr!();
         let mut key_len: u32 = out_ptr!();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
-        let mut vec_ptr = std::ptr::null::<std::ffi::c_void>();
+        let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
         let mut vec_size: u32 = out_ptr!();
         context.capi_return(unsafe {
             ffi::tiledb_group_get_metadata_from_index(

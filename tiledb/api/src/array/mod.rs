@@ -32,7 +32,7 @@ pub use schema::{
     ArrayType, Builder as SchemaBuilder, CellValNum, Schema, SchemaData,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Mode {
     Read,
     Write,
@@ -69,21 +69,9 @@ impl TryFrom<ffi::tiledb_query_type_t> for Mode {
     }
 }
 
-impl Debug for Mode {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        <Self as Display>::fmt(self, f)
-    }
-}
-
 impl Display for Mode {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mode_str = match *self {
-            Mode::Delete => String::from("Mode::Delete"),
-            Mode::Write => String::from("Mode::Write"),
-            Mode::Read => String::from("Mode::Read"),
-            Mode::Update => String::from("Mode::Update"),
-        };
-        write!(f, "{}", mode_str)
+        <Self as Debug>::fmt(self, f)
     }
 }
 
