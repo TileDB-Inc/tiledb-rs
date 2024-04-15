@@ -30,20 +30,21 @@ pub struct TDBString {
 
 impl TDBString {
     pub fn to_string(&self) -> TileDBResult<String> {
-        let mut c_str = std::ptr::null::<std::ffi::c_uchar>();
+        let mut c_str: *const i8 = out_ptr!();
         let mut c_len: usize = 0;
 
         let res = unsafe {
             ffi::tiledb_string_view(
                 *self.raw,
-                &mut c_str as *mut *const u8,
+                &mut c_str as *mut *const i8,
                 &mut c_len,
             )
         };
 
         if res == ffi::TILEDB_OK {
-            let raw_slice: &[u8] =
-                unsafe { std::slice::from_raw_parts(c_str, c_len) };
+            let raw_slice: &[u8] = unsafe {
+                std::slice::from_raw_parts(c_str as *const u8, c_len)
+            };
             let c_str = std::str::from_utf8(raw_slice).map_err(|e| {
                 Error::LibTileDB(format!(
                     "TileDB returned a string that is not UTF-8: {}",

@@ -1,0 +1,22 @@
+name: "Pull Request CI"
+on:
+  push:
+    branches:
+      - dev
+      - release-*
+      - refs/tags/*
+
+  pull_request:
+    branches:
+      - '*'  # Quotes required because * is reserved by YAML
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    uses: ./.github/workflows/pr-build-and-test.yml
+
+  check-api-coverage:
+    uses: ./.github/workflows/pr-api-coverage.yml

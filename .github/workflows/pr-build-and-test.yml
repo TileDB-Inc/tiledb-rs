@@ -1,20 +1,10 @@
+name: PR Build and Test
 on:
   workflow_call:
-  workflow_dispatch:
 
-  push:
-    branches:
-      - main
-      - refs/tags/*
-  pull_request:
-    branches:
-      - '*'  # must quote since "*" is a YAML reserved character; we want a string
-
-concurrency:
-  group: ${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
-
-name: PR Checks
+env:
+  # Print stack traces on test failure
+  RUST_BACKTRACE: full
 
 jobs:
   build_and_test:
