@@ -157,6 +157,11 @@ pub const tiledb_query_type_t_TILEDB_UPDATE: tiledb_query_type_t = 3;
 pub const tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE: tiledb_query_type_t = 4;
 pub type tiledb_query_type_t = ::std::os::raw::c_uint;
 
+pub const tiledb_vfs_mode_t_TILEDB_VFS_READ: tiledb_vfs_mode_t = 0;
+pub const tiledb_vfs_mode_t_TILEDB_VFS_WRITE: tiledb_vfs_mode_t = 1;
+pub const tiledb_vfs_mode_t_TILEDB_VFS_APPEND: tiledb_vfs_mode_t = 2;
+pub type tiledb_vfs_mode_t = ::std::os::raw::c_uint;
+
 pub const tiledb_walk_order_t_TILEDB_PREORDER: tiledb_walk_order_t = 0;
 pub const tiledb_walk_order_t_TILEDB_POSTORDER: tiledb_walk_order_t = 1;
 pub type tiledb_walk_order_t = ::std::os::raw::c_uint;

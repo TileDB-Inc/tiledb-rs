@@ -6,7 +6,7 @@
 
 // We use the tiledb_version function instead.
 pub const TILEDB_VERSION_MAJOR: u32 = 2;
-pub const TILEDB_VERSION_MINOR: u32 = 22;
+pub const TILEDB_VERSION_MINOR: u32 = 21;
 pub const TILEDB_VERSION_PATCH: u32 = 0;
 
 // This is a list of functions that we are currently planning on not wrapping.

@@ -1,3 +1,4 @@
+use crate::capi_enum::tiledb_filesystem_t;
 use crate::types::{
     capi_return_t, tiledb_config_t, tiledb_ctx_t, tiledb_error_t,
 };
@@ -27,7 +28,7 @@ extern "C" {
 
     pub fn tiledb_ctx_is_supported_fs(
         ctx: *mut tiledb_ctx_t,
-        fs: u32,
+        fs: tiledb_filesystem_t,
         is_supported: *mut i32,
     ) -> capi_return_t;
 

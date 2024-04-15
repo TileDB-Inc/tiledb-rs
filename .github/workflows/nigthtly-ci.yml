@@ -1,10 +1,9 @@
+name: Nightlies
 on:
   schedule:
     # runs every day at 1:45 UTC
     - cron: "45 01 * * *"
   workflow_dispatch:
-
-name: Nightlies
 
 jobs:
   update_build_and_test:

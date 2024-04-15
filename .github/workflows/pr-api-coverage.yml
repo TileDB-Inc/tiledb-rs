@@ -1,0 +1,20 @@
+name: PR API Coverage
+on:
+  workflow_call:
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v3
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+      - name: Build API Coverage Tool
+        run: cd tools/api-coverage && cargo build
+      - name: Calculate Coverage
+        run: ./target/debug/api-coverage 2>&1 >> $GITHUB_STEP_SUMMARY
