@@ -13,7 +13,13 @@
 //  pub fn old_tiledb_version(major: *mut i32, minor: *mut i32, rev: *mut i32);
 //  pub fn new_tiledb_version(major: *mut u32, minor: *mut u32, rev: *mut u32);
 
-// If/when we need to remap constants, those go outside the extern "C" block.
+// Remapped constants
+
+// For whatever reason, bindgen generate TILEDB_OK as u32, and the other
+// error values as i32. This fixes TILEDB_OK to be i32 so we can compare
+// status codes correctly.
+pub const old_TILEDB_OK: u32 = 0;
+pub const new_TILEDB_OK: i32 = 0;
 
 extern "C" {
 

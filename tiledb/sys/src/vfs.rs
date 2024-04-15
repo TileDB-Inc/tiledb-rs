@@ -1,3 +1,4 @@
+use crate::capi_enum::tiledb_vfs_mode_t;
 use crate::types::{
     capi_return_t, tiledb_config_t, tiledb_ctx_t, tiledb_vfs_fh_t, tiledb_vfs_t,
 };
@@ -26,16 +27,6 @@ pub type LSRecursiveCallback = ::std::option::Option<
 >;
 
 extern "C" {
-    pub fn tiledb_vfs_mode_to_str(
-        vfs_mode: VFSMode,
-        str_: *mut *const ::std::os::raw::c_char,
-    ) -> capi_return_t;
-
-    pub fn tiledb_vfs_mode_from_str(
-        str_: *const ::std::os::raw::c_char,
-        vfs_mode: *mut VFSMode,
-    ) -> capi_return_t;
-
     pub fn tiledb_vfs_alloc(
         ctx: *mut tiledb_ctx_t,
         config: *mut tiledb_config_t,
@@ -182,7 +173,7 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         vfs: *mut tiledb_vfs_t,
         uri: *const ::std::os::raw::c_char,
-        mode: VFSMode,
+        mode: tiledb_vfs_mode_t,
         fh: *mut *mut tiledb_vfs_fh_t,
     ) -> capi_return_t;
 

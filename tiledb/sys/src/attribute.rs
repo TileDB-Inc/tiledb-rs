@@ -20,7 +20,7 @@ extern "C" {
     pub fn tiledb_attribute_get_type(
         ctx: *mut tiledb_ctx_t,
         attr: *const tiledb_attribute_t,
-        type_: *mut u32,
+        type_: *mut tiledb_datatype_t,
     ) -> i32;
 
     pub fn tiledb_attribute_set_nullable(

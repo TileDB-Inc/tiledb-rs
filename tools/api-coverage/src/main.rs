@@ -191,36 +191,82 @@ impl Processor {
     }
 
     fn report(&self) -> bool {
-        let (mismatch_constants, declared_constants, generated_constants) =
-            self.report_constants();
-        let (mismatch_apis, called_apis, declared_apis, generated_apis) =
-            self.report_calls();
+        let (
+            mismatch_constants,
+            declared_constants,
+            generated_constants,
+            unwrapped_constants,
+        ) = self.report_constants();
+        let (
+            mismatch_apis,
+            called_apis,
+            declared_apis,
+            generated_apis,
+            unwrapped_apis,
+            uncalled_apis,
+        ) = self.report_calls();
+
+        println!("<table>");
+        println!("  <tr>");
+        println!("    <th></th>");
+        println!("    <th>Count</th>");
+        println!("    <th>Total</th>");
+        println!("    <th>Percent</th>");
+        println!("  </tr>");
 
         println!(
-            "Constants:     {} of {} ({:.2}%)",
+            "<tr><th>Constants</th><td>{}</td><td>{}</td><td>{:.2}%</td></tr>",
             declared_constants,
             generated_constants,
             declared_constants as f64 / generated_constants as f64 * 100.0f64
         );
 
         println!(
-            "Declared APIs: {} of {} ({:.2}%)",
+            "<tr><th>Declared APIs</th><td>{}</td><td>{}</td><td>{:.2}%</td></tr>",
             declared_apis,
             generated_apis,
             declared_apis as f64 / generated_apis as f64 * 100.0f64
         );
 
         println!(
-            "Called APIs:   {} of {} ({:.2}%)",
+            "<tr><th>Called APIs</th><td>{}</td><td>{}</td><td>{:.2}%</td></tr>",
             called_apis,
             generated_apis,
             called_apis as f64 / generated_apis as f64 * 100.0f64
         );
 
+        println!("</table>");
+        println!();
+
+        if !unwrapped_constants.is_empty() {
+            println!("## Unwrapped Constants");
+            println!();
+            for name in &unwrapped_constants[..] {
+                println!(" * `{}`", name);
+            }
+            println!();
+        }
+
+        if !unwrapped_apis.is_empty() {
+            println!("## Unwrapped APIs:");
+            for name in &unwrapped_apis[..] {
+                println!("  * `{}`", name);
+            }
+            println!();
+        }
+
+        if !uncalled_apis.is_empty() {
+            println!("## Uncalled APIs:");
+            for name in &uncalled_apis[..] {
+                println!("  * `{}`", name);
+            }
+            println!();
+        }
+
         mismatch_constants || mismatch_apis
     }
 
-    fn report_constants(&self) -> (bool, u64, u64) {
+    fn report_constants(&self) -> (bool, u64, u64, Vec<String>) {
         let mut unwrapped: Vec<String> = Vec::new();
         let mut declared = 0;
         let mut generated = 0;
@@ -244,14 +290,21 @@ impl Processor {
                 declared += 1;
             } else {
                 if !mismatch {
-                    println!("Mismatched Constants:");
+                    println!("## Mismatched Constants");
+                    println!();
                 }
                 mismatch = true;
-                println!("  Generated: {}", util::unparse_constant(&constant));
+                println!("<table>");
                 println!(
-                    "  sys crate: {}",
+                    "<tr><th>Generated</th><td><pre>{}</pre></td></tr>",
+                    util::unparse_constant(&constant)
+                );
+                println!(
+                    "<tr><th>Declared</th><td><pre>{}</pre></td></tr>",
                     util::unparse_constant(sys_def.unwrap())
                 );
+                println!("</table>");
+                println!()
             }
         }
 
@@ -259,18 +312,10 @@ impl Processor {
             println!();
         }
 
-        if !unwrapped.is_empty() {
-            println!("Unwrapped Constants:");
-            for name in &unwrapped[..] {
-                println!("  {}", name);
-            }
-            println!();
-        }
-
-        (mismatch, declared, generated)
+        (mismatch, declared, generated, unwrapped)
     }
 
-    fn report_calls(&self) -> (bool, u64, u64, u64) {
+    fn report_calls(&self) -> (bool, u64, u64, u64, Vec<String>, Vec<String>) {
         let mut uncalled: Vec<String> = Vec::new();
         let mut unwrapped: Vec<String> = Vec::new();
         let mut called = 0;
@@ -298,18 +343,20 @@ impl Processor {
                 declared += 1;
             } else {
                 if !mismatch {
-                    println!("Mismatched Function Signatures:")
-                } else {
+                    println!("## Mismatched Function Signatures");
                     println!();
                 }
                 mismatch = true;
-                println!("{}:", name);
+                println!("### {}", name);
                 println!();
-                println!("  Generated:");
-                println!("    {}", util::unparse_signature(&sig));
-                println!();
-                println!("  sys crate:");
-                println!("    {}", util::unparse_signature(sys_def.unwrap()));
+                println!("<table>");
+                println!("<tr><th>Generated</th><th>Declared</th></tr>");
+                println!(
+                    "<tr><td><pre>{}</pre></td><td><pre>{}</pre></td></tr>",
+                    util::unparse_signature(&sig),
+                    util::unparse_signature(sys_def.unwrap())
+                );
+                println!("</table>");
             }
 
             if wrapped {
@@ -326,23 +373,7 @@ impl Processor {
             println!();
         }
 
-        if !unwrapped.is_empty() {
-            println!("Unwrapped APIs:");
-            for name in &unwrapped[..] {
-                println!("  {}", name);
-            }
-            println!();
-        }
-
-        if !uncalled.is_empty() {
-            println!("Uncalled APIs:");
-            for name in &uncalled[..] {
-                println!("  {}", name);
-            }
-            println!();
-        }
-
-        (mismatch, called, declared, generated)
+        (mismatch, called, declared, generated, unwrapped, uncalled)
     }
 }
 
