@@ -36,6 +36,9 @@ fn query_capi_interface_fields_named(
     input: &syn::DeriveInput,
     fields: &syn::FieldsNamed,
 ) -> Option<proc_macro2::TokenStream> {
+    let mut array_field: Option<&syn::Field> = None;
+    let mut query_field: Option<&syn::Field> = None;
+
     for f in fields.named.iter() {
         for a in f.attrs.iter() {
             if let syn::AttrStyle::Outer = a.style {
@@ -46,12 +49,10 @@ fn query_capi_interface_fields_named(
                             .iter()
                             .map(|p| p.ident.to_string())
                             .collect::<Vec<String>>();
-                        if mpath == vec!["raw_query"] {
-                            return Some(
-                                query_capi_interface_impl_fields_named_direct(
-                                    input, f,
-                                ),
-                            );
+                        if mpath == vec!["raw_array"] {
+                            array_field = Some(f);
+                        } else if mpath == vec!["raw_query"] {
+                            query_field = Some(f);
                         }
                     }
                     syn::Meta::List(ref ll) => {
@@ -79,6 +80,14 @@ fn query_capi_interface_fields_named(
                     syn::Meta::NameValue(_) => unimplemented!(),
                 }
             }
+
+            if array_field.is_some() && query_field.is_some() {
+                return Some(query_capi_interface_impl_fields_named_direct(
+                    input,
+                    array_field.unwrap(),
+                    query_field.unwrap(),
+                ));
+            }
         }
     }
     None
@@ -86,17 +95,27 @@ fn query_capi_interface_fields_named(
 
 fn query_capi_interface_impl_fields_named_direct(
     input: &syn::DeriveInput,
-    f: &syn::Field,
+    array_field: &syn::Field,
+    query_field: &syn::Field,
 ) -> proc_macro2::TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) =
         input.generics.split_for_impl();
-    let fname =
-        Ident::new(&f.ident.as_ref().unwrap().to_string(), Span::call_site());
+    let array_fname = Ident::new(
+        &array_field.ident.as_ref().unwrap().to_string(),
+        Span::call_site(),
+    );
+    let query_fname = Ident::new(
+        &query_field.ident.as_ref().unwrap().to_string(),
+        Span::call_site(),
+    );
     let expanded = quote! {
         impl #impl_generics QueryCAPIInterface for #name #ty_generics #where_clause {
-            fn raw(&self) -> &RawQuery {
-                &self.#fname
+            fn carray(&self) -> &RawArray {
+                self.#array_fname.capi()
+            }
+            fn cquery(&self) -> &RawQuery {
+                &self.#query_fname
             }
         }
     };
@@ -142,8 +161,11 @@ fn query_capi_interface_impl_fields_named_base(
 
     let expanded = quote! {
         impl #impl_generics QueryCAPIInterface for #name #ty_generics #where_clause {
-            fn raw(&self) -> &RawQuery {
-                QueryCAPIInterface::raw(&self.#fname)
+            fn carray(&self) -> &RawArray {
+                QueryCAPIInterface::carray(&self.#fname)
+            }
+            fn cquery(&self) -> &RawQuery {
+                QueryCAPIInterface::cquery(&self.#fname)
             }
         }
     };

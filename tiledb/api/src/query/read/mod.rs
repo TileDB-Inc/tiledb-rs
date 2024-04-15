@@ -247,10 +247,6 @@ impl<'ctx> ReadBuilder<'ctx> {
 impl<'ctx> QueryBuilder<'ctx> for ReadBuilder<'ctx> {
     type Query = Query<'ctx>;
 
-    fn array(&self) -> &Array {
-        self.base.array()
-    }
-
     fn build(self) -> Self::Query {
         self.base.build()
     }

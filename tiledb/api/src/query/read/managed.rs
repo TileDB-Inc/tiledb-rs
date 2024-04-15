@@ -70,10 +70,6 @@ where
 {
     type Query = ManagedReadQuery<'data, C, A, B::Query>;
 
-    fn array(&self) -> &Array {
-        self.base.array()
-    }
-
     fn build(self) -> Self::Query {
         ManagedReadQuery {
             alloc: self.alloc,

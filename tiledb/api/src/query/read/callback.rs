@@ -131,10 +131,6 @@ where
 {
     type Query = CallbackReadQuery<'data, T, B::Query>;
 
-    fn array(&self) -> &Array {
-        self.base.array()
-    }
-
     fn build(self) -> Self::Query {
         CallbackReadQuery {
             callback: self.callback,

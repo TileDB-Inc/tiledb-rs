@@ -47,7 +47,7 @@ where
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
         let context = query.context();
         let c_context = context.capi();
-        let c_array = query.array().capi();
+        let c_array = **query.carray();
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
 
         context.capi_return(unsafe {
@@ -107,7 +107,7 @@ where
 
     fn build(self) -> TileDBResult<Q> {
         let c_context = self.subarray.context.capi();
-        let c_query = **self.query.raw();
+        let c_query = **self.query.cquery();
         let c_subarray = *self.subarray.raw;
 
         self.capi_return(unsafe {

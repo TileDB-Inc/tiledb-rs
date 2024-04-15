@@ -4,7 +4,7 @@ use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
-use crate::{Array, Result as TileDBResult};
+use crate::{array::RawArray, Array, Result as TileDBResult};
 
 pub mod read;
 pub mod write;
@@ -13,7 +13,8 @@ mod private {
     use super::*;
 
     pub trait QueryCAPIInterface {
-        fn raw(&self) -> &RawQuery;
+        fn carray(&self) -> &RawArray;
+        fn cquery(&self) -> &RawQuery;
     }
 }
 
@@ -50,6 +51,7 @@ impl Drop for RawQuery {
 #[derive(ContextBound, QueryCAPIInterface)]
 pub struct Query<'ctx> {
     #[base(ContextBound)]
+    #[raw_array]
     array: Array<'ctx>,
     #[raw_query]
     raw: RawQuery,
@@ -122,11 +124,9 @@ pub trait QueryBuilder<'ctx>:
 {
     type Query;
 
-    fn array(&self) -> &Array;
-
     fn layout(self, layout: QueryLayout) -> TileDBResult<Self> {
         let c_context = self.context().capi();
-        let c_query = **self.raw();
+        let c_query = **self.cquery();
         let c_layout = layout.capi_enum();
         self.capi_return(unsafe {
             ffi::tiledb_query_set_layout(c_context, c_query, c_layout)
@@ -150,10 +150,6 @@ struct BuilderBase<'ctx> {
 impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
     type Query = Query<'ctx>;
 
-    fn array(&self) -> &Array {
-        &self.query.array
-    }
-
     fn build(self) -> Self::Query {
         self.query
     }
@@ -166,7 +162,7 @@ impl<'ctx> BuilderBase<'ctx> {
         query_type: QueryType,
     ) -> TileDBResult<Self> {
         let c_context = context.capi();
-        let c_array = array.capi();
+        let c_array = **array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
         context.capi_return(unsafe {

@@ -141,7 +141,7 @@ where
         /* update the internal buffers */
         self.raw_read_output.attach_query(
             self.context(),
-            **self.raw(),
+            **self.cquery(),
             &self.field,
         )?;
 
@@ -205,10 +205,6 @@ where
     B: QueryBuilder<'ctx>,
 {
     type Query = RawReadQuery<'data, C, B::Query>;
-
-    fn array(&self) -> &Array {
-        self.base.array()
-    }
 
     fn build(self) -> Self::Query {
         RawReadQuery {

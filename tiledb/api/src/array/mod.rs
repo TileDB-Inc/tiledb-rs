@@ -117,7 +117,7 @@ impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
     }
 }
 
-pub(crate) struct RawArray {
+pub struct RawArray {
     ffi: *mut ffi::tiledb_array_t,
 }
 
@@ -148,8 +148,8 @@ pub struct Array<'ctx> {
 }
 
 impl<'ctx> Array<'ctx> {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_t {
-        *self.raw
+    pub(crate) fn capi(&self) -> &RawArray {
+        &self.raw
     }
 
     pub fn create<S>(

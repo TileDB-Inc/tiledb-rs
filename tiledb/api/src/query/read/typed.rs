@@ -57,10 +57,6 @@ where
 {
     type Query = TypedReadQuery<'data, T, B::Query>;
 
-    fn array(&self) -> &Array {
-        self.base.array()
-    }
-
     fn build(self) -> Self::Query {
         TypedReadQuery {
             _marker: self._marker,

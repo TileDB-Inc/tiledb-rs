@@ -34,7 +34,7 @@ impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
 impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     pub fn finalize(self) -> TileDBResult<Array<'ctx>> {
         let c_context = self.context().capi();
-        let c_query = **self.raw();
+        let c_query = **self.cquery();
         self.capi_return(unsafe {
             ffi::tiledb_query_finalize(c_context, c_query)
         })?;
@@ -52,10 +52,6 @@ pub struct WriteBuilder<'ctx, 'data> {
 
 impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
     type Query = WriteQuery<'ctx, 'data>;
-
-    fn array(&self) -> &Array {
-        self.base.array()
-    }
 
     fn build(self) -> Self::Query {
         WriteQuery {
@@ -97,7 +93,7 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
         };
 
         let c_context = self.context().capi();
-        let c_query = **self.raw();
+        let c_query = **self.cquery();
         let c_name = cstring!(field);
 
         self.capi_return(unsafe {
