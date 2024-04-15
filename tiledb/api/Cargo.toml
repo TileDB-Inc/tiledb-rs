@@ -12,7 +12,6 @@ anyhow = { workspace = true }
 arrow = { version = "50.0.0", features = ["prettyprint"], optional = true }
 arrow-schema = { version = "50.0.0", default-features = false, optional = true }
 num-traits = { version = "0.2", optional = true }
-paste = "1.0"
 proptest = { version = "1.0.0", optional = true }
 proptest-derive = { version = "0.4.0", optional = true }
 serde = { version = "1.0.136", features = ["derive"] }

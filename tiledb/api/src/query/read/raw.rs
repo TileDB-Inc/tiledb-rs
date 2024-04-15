@@ -1,7 +1,5 @@
 use super::*;
 
-use paste::paste;
-
 use crate::error::Error;
 
 /// Encapsulates data for writing intermediate query results for a data field.
@@ -118,157 +116,110 @@ impl<'data, C> RawReadOutput<'data, C> {
     }
 }
 
-macro_rules! replace_type {
-    ($_src:ident, $dst:ty) => {
-        $dst
-    };
+/// Reads query results into a raw buffer.
+/// This is the most flexible way to read data but also the most cumbersome.
+/// Recommended usage is to run the query one step at a time, and borrow
+/// the buffers between each step to process intermediate results.
+#[derive(ContextBound, QueryCAPIInterface)]
+pub struct RawReadQuery<'data, C, Q> {
+    pub(crate) field: String,
+    pub(crate) raw_read_output: RawReadOutput<'data, C>,
+    #[base(ContextBound, QueryCAPIInterface)]
+    pub(crate) base: Q,
 }
 
-macro_rules! raw_read_query {
-    ($query:ident, $builder:ident, $($C:ident),+) => {
-        paste! {
-            /// Reads query results into a raw buffer.
-            /// This is the most flexible way to read data but also the most cumbersome.
-            /// Recommended usage is to run the query one step at a time, and borrow
-            /// the buffers between each step to process intermediate results.
-            #[derive(ContextBound, QueryCAPIInterface)]
-            pub struct $query<'data, $($C),+, Q> {
-                $(
-                    pub(crate) [<f_ $C:snake>] : String,
-                    pub(crate) [<r_ $C:snake>] : RawReadOutput<'data, $C>,
-                )+
-                #[base(ContextBound, QueryCAPIInterface)]
-                pub(crate) base: Q,
+impl<'ctx, 'data, C, Q> ReadQuery<'ctx> for RawReadQuery<'data, C, Q>
+where
+    Q: ReadQuery<'ctx>,
+{
+    type Intermediate = (usize, usize, Q::Intermediate);
+    type Final = (usize, usize, Q::Final);
+
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        /* update the internal buffers */
+        self.raw_read_output.attach_query(
+            self.context(),
+            **self.raw(),
+            &self.field,
+        )?;
+
+        /* then execute */
+        let base_result = {
+            let _ = self.raw_read_output.location.borrow_mut();
+            self.base.step()?
+        };
+
+        let records_written = match self.raw_read_output.offsets_size.as_ref() {
+            Some(offsets_size) => {
+                **offsets_size as usize / std::mem::size_of::<u64>()
             }
-        }
-
-        impl<'ctx, 'data, $($C),+, Q> ReadQuery<'ctx> for $query<'data, $($C),+, Q>
-        where
-            Q: ReadQuery<'ctx>,
-        {
-            type Intermediate = ($(replace_type!($C, (usize, usize))),+, Q::Intermediate);
-            type Final = ($(replace_type!($C, (usize, usize))),+, Q::Final);
-
-            fn step(
-                &mut self,
-            ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
-                /* update the internal buffers */
-                paste! {
-                    $(
-                        self.[< r_ $C:snake >].attach_query(
-                            self.context(),
-                            **self.raw(),
-                            &self.[< f_ $C:snake >])?;
-                    )+
-                };
-
-                /* then execute */
-                let base_result = {
-                    paste! {
-                        $(
-                            let _ = self.[< r_ $C:snake >].location.borrow_mut();
-                        )+
-                    };
-                    self.base.step()?
-                };
-
-                paste! {
-                    $(
-                        let [< records_ $C:snake >] = match self.[< r_ $C:snake >].offsets_size.as_ref() {
-                            Some(offsets_size) => {
-                                **offsets_size as usize / std::mem::size_of::<u64>()
-                            }
-                            None => {
-                                *self.[< r_ $C:snake >].data_size as usize
-                                    / std::mem::size_of::<$C>()
-                            }
-                        };
-                        let [< bytes_ $C:snake >] = *self.[< r_ $C:snake >].data_size as usize;
-                    )+
-                };
-
-                Ok(match base_result {
-                    ReadStepOutput::NotEnoughSpace => {
-                        /* TODO: check that records/bytes are zero and produce an internal error if not */
-                        ReadStepOutput::NotEnoughSpace
-                    }
-                    ReadStepOutput::Intermediate(base_result) => {
-                        paste! {
-                            $(
-                                if [< records_ $C:snake >] == 0 {
-                                    if [< bytes_ $C:snake >] == 0 {
-                                        return Ok(ReadStepOutput::NotEnoughSpace)
-                                    } else {
-                                        return Err(Error::Internal(format!(
-                                                    "Invalid read: returned {} offsets but {} bytes",
-                                                    [<records_ $C:snake>], [<bytes_ $C:snake>])))
-                                    }
-                                }
-                            )+
-                        };
-
-                        paste! {
-                            ReadStepOutput::Intermediate((
-                                    $(
-                                        ([< records_ $C:snake >], [< bytes_ $C:snake >]),
-                                    )+
-                                    base_result,
-                            ))
-                        }
-                    }
-                    ReadStepOutput::Final(base_result) => paste! {
-                        ReadStepOutput::Final((
-                                $(
-                                    ([< records_ $C:snake >], [< bytes_ $C:snake >]),
-                                )+
-                                base_result,
-                        ))
-                    }
-                })
+            None => {
+                *self.raw_read_output.data_size as usize
+                    / std::mem::size_of::<C>()
             }
-        }
+        };
+        let bytes_written = *self.raw_read_output.data_size as usize;
 
-        paste! {
-            #[derive(ContextBound, QueryCAPIInterface)]
-            pub struct $builder <'data, $($C),+, B> {
-                $(
-                    pub(crate) [< f_ $C:snake >]: String,
-                    pub(crate) [< r_ $C:snake >]: RawReadOutput<'data, $C>,
-                )+
-                #[base(ContextBound, QueryCAPIInterface)]
-                pub(crate) base: B,
+        Ok(match base_result {
+            ReadStepOutput::NotEnoughSpace => {
+                /* TODO: check that records/bytes are zero and produce an internal error if not */
+                ReadStepOutput::NotEnoughSpace
             }
-        }
-        impl<'ctx, 'data, $($C),+, B> QueryBuilder<'ctx> for $builder <'data, $($C),+, B>
-            where
-                B: QueryBuilder<'ctx>,
-        {
-            type Query = $query<'data, $($C),+, B::Query>;
-
-            fn array(&self) -> &Array {
-                self.base.array()
-            }
-
-            fn build(self) -> Self::Query {
-                paste! {
-                    $query {
-                        $(
-                            [< f_ $C:snake >]: self.[< f_ $C:snake >],
-                            [< r_ $C:snake >]: self.[< r_ $C:snake >],
-                        )+
-                        base: self.base.build(),
-                    }
+            ReadStepOutput::Intermediate(base_result) => {
+                if records_written == 0 && bytes_written == 0 {
+                    ReadStepOutput::NotEnoughSpace
+                } else if records_written == 0 {
+                    return Err(Error::Internal(format!(
+                        "Invalid read: returned {} offsets but {} bytes",
+                        records_written, bytes_written
+                    )));
+                } else {
+                    ReadStepOutput::Intermediate((
+                        records_written,
+                        bytes_written,
+                        base_result,
+                    ))
                 }
             }
-        }
-
-        impl<'ctx, 'data, $($C),+, B> ReadQueryBuilder<'ctx> for $builder <'data, $($C),+, B> where
-            B: ReadQueryBuilder<'ctx>
-        {
-        }
-    };
+            ReadStepOutput::Final(base_result) => ReadStepOutput::Final((
+                records_written,
+                bytes_written,
+                base_result,
+            )),
+        })
+    }
 }
 
-raw_read_query!(RawReadQuery, RawReadBuilder, C);
-raw_read_query!(RawReadQuery2, RawReadBuilder2, C1, C2);
-raw_read_query!(RawReadQuery3, RawReadBuilder3, C1, C2, C3);
+#[derive(ContextBound, QueryCAPIInterface)]
+pub struct RawReadBuilder<'data, C, B> {
+    pub(crate) field: String,
+    pub(crate) raw_read_output: RawReadOutput<'data, C>,
+    #[base(ContextBound, QueryCAPIInterface)]
+    pub(crate) base: B,
+}
+
+impl<'ctx, 'data, C, B> QueryBuilder<'ctx> for RawReadBuilder<'data, C, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+    type Query = RawReadQuery<'data, C, B::Query>;
+
+    fn array(&self) -> &Array {
+        self.base.array()
+    }
+
+    fn build(self) -> Self::Query {
+        RawReadQuery {
+            field: self.field,
+            raw_read_output: self.raw_read_output,
+            base: self.base.build(),
+        }
+    }
+}
+
+impl<'ctx, 'data, C, B> ReadQueryBuilder<'ctx> for RawReadBuilder<'data, C, B> where
+    B: ReadQueryBuilder<'ctx>
+{
+}

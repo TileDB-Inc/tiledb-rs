@@ -64,7 +64,7 @@ where
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         let base_result = self.base.step()?;
 
-        let location = self.base.r_c.location.borrow();
+        let location = self.base.raw_read_output.location.borrow();
 
         /*
          * TODO:
@@ -82,25 +82,26 @@ where
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
-            ReadStepOutput::Intermediate(((nrecords, nbytes), base_result)) => {
+            ReadStepOutput::Intermediate((nrecords, nbytes, base_result)) => {
                 let ir = self
                     .callback
                     .intermediate_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
                         crate::error::Error::QueryCallback(
-                            self.base.f_c.clone(),
+                            self.base.field.clone(),
                             anyhow!(e),
                         )
                     })?;
                 ReadStepOutput::Intermediate((ir, base_result))
             }
-            ReadStepOutput::Final(((nrecords, nbytes), base_result)) => {
-                let callback_final = std::mem::take(&mut self.callback);
+            ReadStepOutput::Final((nrecords, nbytes, base_result)) => {
+                let callback_final =
+                    std::mem::take(&mut self.callback);
                 let fr = callback_final
                     .final_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
                         crate::error::Error::QueryCallback(
-                            self.base.f_c.clone(),
+                            self.base.field.clone(),
                             anyhow!(e),
                         )
                     })?;
