@@ -1,6 +1,7 @@
 use super::*;
 
 use anyhow::anyhow;
+use paste::paste;
 
 use crate::query::write::input::{Buffer, InputData};
 
@@ -14,28 +15,31 @@ macro_rules! trait_read_callback {
             type Final;
             type Error: Into<anyhow::Error>;
 
-            fn intermediate_result(
-                &mut self,
-                records: usize,
-                bytes: usize,
-                $(
-                    _: InputData<'_, Self::$U>
-                )+
-            ) -> Result<Self::Intermediate, Self::Error>;
+            paste! {
+                fn intermediate_result(
+                    &mut self,
+                    records: usize,
+                    bytes: usize,
+                    $(
+                        [< input_ $U:snake >]: InputData<'_, Self::$U>,
+                    )+
+                ) -> Result<Self::Intermediate, Self::Error>;
 
-            fn final_result(
-                self,
-                records: usize,
-                bytes: usize,
-                $(
-                    _: InputData<'_, Self::$U>
-                )+
-            ) -> Result<Self::Final, Self::Error>;
+                fn final_result(
+                    self,
+                    records: usize,
+                    bytes: usize,
+                    $(
+                        [< input_ $U:snake >]: InputData<'_, Self::$U>,
+                    )+
+                ) -> Result<Self::Final, Self::Error>;
+            }
         }
     };
 }
 
 trait_read_callback!(ReadCallback, Unit);
+trait_read_callback!(ReadCallback2, Unit1, Unit2);
 
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
