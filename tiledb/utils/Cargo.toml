@@ -5,6 +5,8 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+float_next_after = "1.0.0"
+num-traits = { version = "0.2" }
 serde_json = { workspace = true, optional = true }
 tiledb-proc-macro = { workspace = true }
 

@@ -5,6 +5,10 @@ use num_traits::{Bounded, Num};
 use proptest::prelude::*;
 use serde_json::json;
 
+use tiledb_utils::numbers::{
+    NextDirection, NextNumericValue, SmallestPositiveValue,
+};
+
 use crate::array::{ArrayType, DimensionData};
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
@@ -23,6 +27,8 @@ fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], T)>
 where
     T: Num
         + Bounded
+        + NextNumericValue
+        + SmallestPositiveValue
         + Clone
         + Copy
         + Debug
@@ -41,7 +47,7 @@ where
     let lower_limit = <T as Bounded>::min_value();
     let upper_limit = <T as Bounded>::max_value();
     std::ops::Range::<T> {
-        // Needs this much space for lower bound
+        // Needs this much space for lower bound and extent
         start: lower_limit + one + one + one,
         // The extent is at least one, so we cannot match the upper limit
         end: upper_limit - one,
@@ -50,37 +56,53 @@ where
         (
             std::ops::Range::<T> {
                 start: lower_limit + one,
-                // extent is at least one, cannot match upper bound
-                end: upper_bound - one,
+                // Correctly generating an extent means we need to have room
+                // for at least a range of one. This means that we need to
+                // leave room between the lower and upper bound. Normally this
+                // would mean `upper_bound - one`, however the resolution of
+                // large floating point values may be so large that
+                // `x - 1 == x`. This leaves us having to implement a "next
+                // value" trait to ensure there's a logical gap.
+                end: upper_bound.next_numeric_value(NextDirection::Down),
             },
             Just(upper_bound),
         )
     })
     .prop_flat_map(move |(lower_bound, upper_bound)| {
+        let extent_limit = {
+            let zero = <T as num_traits::Zero>::zero();
+            let extent_limit = if lower_bound >= zero {
+                upper_bound - lower_bound
+            } else if upper_bound >= zero {
+                if upper_limit + lower_bound > upper_bound {
+                    upper_bound - lower_bound
+                } else {
+                    upper_limit - upper_bound
+                }
+            } else {
+                upper_bound - lower_bound
+            };
+
+            if upper_limit - extent_limit < upper_bound {
+                upper_limit - upper_bound
+            } else {
+                extent_limit
+            }
+        };
+
+        // A Rust range is half open which means that we have guarantee the
+        // end value is strictly > than the lower limit.
+        let extent_limit = if extent_limit <= T::smallest_positive_value() {
+            extent_limit + T::smallest_positive_value()
+        } else {
+            extent_limit
+        };
+
         (
             Just([lower_bound, upper_bound]),
             std::ops::Range::<T> {
-                start: one,
-                end: {
-                    let zero = <T as num_traits::Zero>::zero();
-                    let extent_limit = if lower_bound >= zero {
-                        upper_bound - lower_bound
-                    } else if upper_bound >= zero {
-                        if upper_limit + lower_bound > upper_bound {
-                            upper_bound - lower_bound
-                        } else {
-                            upper_limit - upper_bound
-                        }
-                    } else {
-                        upper_bound - lower_bound
-                    };
-
-                    if upper_limit - extent_limit < upper_bound {
-                        upper_limit - upper_bound
-                    } else {
-                        extent_limit
-                    }
-                },
+                start: T::smallest_positive_value(),
+                end: extent_limit,
             },
         )
     })
