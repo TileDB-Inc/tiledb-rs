@@ -76,7 +76,7 @@ impl<'ctx> Query<'ctx> {
     }
 }
 
-impl<'ctx> ReadQuery<'ctx> for Query<'ctx> {
+impl<'ctx> ReadQuery for Query<'ctx> {
     type Intermediate = ();
     type Final = ();
 

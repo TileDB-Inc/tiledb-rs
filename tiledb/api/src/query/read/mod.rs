@@ -56,9 +56,7 @@ impl<U> ReadStepOutput<U, U> {
 }
 
 /// Trait for runnable read queries.
-pub trait ReadQuery<'ctx>:
-    ContextBound<'ctx> + QueryCAPIInterface + Sized
-{
+pub trait ReadQuery: Sized {
     type Intermediate;
     type Final;
 

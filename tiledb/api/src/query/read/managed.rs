@@ -29,9 +29,9 @@ where
     }
 }
 
-impl<'ctx, 'data, C, A, Q> ReadQuery<'ctx> for ManagedReadQuery<'data, C, A, Q>
+impl<'data, C, A, Q> ReadQuery for ManagedReadQuery<'data, C, A, Q>
 where
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery,
     A: ScratchAllocator<C>,
 {
     type Intermediate = Q::Intermediate;

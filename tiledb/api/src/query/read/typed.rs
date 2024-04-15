@@ -16,10 +16,10 @@ where
         CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>,
 }
 
-impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for TypedReadQuery<'data, T, Q>
+impl<'ctx, 'data, T, Q> ReadQuery for TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
 {
     type Intermediate = Q::Intermediate;
     type Final = (T, Q::Final);

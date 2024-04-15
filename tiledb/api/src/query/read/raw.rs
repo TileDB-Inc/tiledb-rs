@@ -128,9 +128,9 @@ pub struct RawReadQuery<'data, C, Q> {
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, C, Q> ReadQuery<'ctx> for RawReadQuery<'data, C, Q>
+impl<'ctx, 'data, C, Q> ReadQuery for RawReadQuery<'data, C, Q>
 where
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
 {
     type Intermediate = (usize, usize, Q::Intermediate);
     type Final = (usize, usize, Q::Final);

@@ -49,10 +49,10 @@ where
     pub(crate) base: RawReadQuery<'data, T::Unit, Q>,
 }
 
-impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for CallbackReadQuery<'data, T, Q>
+impl<'ctx, 'data, T, Q> ReadQuery for CallbackReadQuery<'data, T, Q>
 where
     T: ReadCallback,
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
 {
     type Intermediate = (T::Intermediate, Q::Intermediate);
     type Final = (T::Final, Q::Final);
@@ -95,8 +95,7 @@ where
                 ReadStepOutput::Intermediate((ir, base_result))
             }
             ReadStepOutput::Final((nrecords, nbytes, base_result)) => {
-                let callback_final =
-                    std::mem::take(&mut self.callback);
+                let callback_final = std::mem::take(&mut self.callback);
                 let fr = callback_final
                     .final_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
