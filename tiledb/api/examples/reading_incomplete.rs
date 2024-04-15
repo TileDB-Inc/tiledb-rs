@@ -185,9 +185,7 @@ fn read_array_step() -> TileDBResult<()> {
         grow_buffer(&mut cols_output.borrow_mut().data);
         grow_buffer(&mut int32_output.borrow_mut().data);
         grow_buffer(&mut char_output.borrow_mut().data);
-        grow_buffer(
-            char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
-        );
+        grow_buffer(char_output.borrow_mut().cell_offsets.as_mut().unwrap());
     };
 
     let mut qq = query_builder_start(&tdb)?
@@ -201,8 +199,10 @@ fn read_array_step() -> TileDBResult<()> {
         let res = qq.step()?;
         let final_result = res.is_final();
 
-        if let Some((n_a2, b_a2, (n_a1, _, (n_cols, _, (n_rows, _, _))))) =
-            res.unwrap()
+        if let Some((
+            (n_a2, b_a2),
+            ((n_a1, _), ((n_cols, _), ((n_rows, _), _))),
+        )) = res.unwrap()
         {
             let rows =
                 Ref::map(rows_output.borrow(), |o| &o.data.as_ref()[0..n_rows]);

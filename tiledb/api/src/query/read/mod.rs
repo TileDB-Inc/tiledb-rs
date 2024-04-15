@@ -94,8 +94,8 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         C: CAPISameRepr,
     {
         Ok(RawReadBuilder {
-            field: field.as_ref().to_string(),
-            raw_read_output: RawReadOutput::new(scratch),
+            f_c: field.as_ref().to_string(),
+            r_c: RawReadOutput::new(scratch),
             base: self,
         })
     }
