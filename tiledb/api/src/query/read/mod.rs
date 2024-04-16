@@ -10,14 +10,12 @@ use crate::query::private::QueryCAPIInterface;
 use crate::query::read::output::{
     BufferMut, HasScratchSpaceStrategy, OutputLocation, ScratchAllocator,
 };
-use crate::query::read::splitter::ReadSplitterBuilder;
 use crate::Result as TileDBResult;
 
 mod callback;
 mod managed;
 pub mod output;
 mod raw;
-mod splitter;
 mod typed;
 
 pub use callback::*;
@@ -146,23 +144,20 @@ macro_rules! fn_register_callback {
                     (&str, &'data RefCell<OutputLocation<'data, <T as $Callback>::$U>>),
                 )+
                 callback: T
-            ) -> TileDBResult<$Builder<'ctx, 'data, T, Self>>
+            ) -> TileDBResult<$Builder<'data, T, Self>>
             where
                 <Self as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
                 T: $Callback
             {
-                let split_base = ReadSplitterBuilder::new(&self);
-
-                let query_base = self;
+                let base = self;
                 $(
-                    let [< arg_ $U:snake >] = split_base.clone()
-                        .register_raw([< field_ $U:snake >], [< scratch_ $U:snake >])?;
+                    let [< arg_ $U:snake >] = RawReadHandle::new(
+                        [< field_ $U:snake >], [< scratch_ $U:snake >]);
                 )+
 
                 Ok($Builder {
                     callback,
-                    query_base,
-                    split_base,
+                    base,
                     $(
                         [< arg_ $U:snake >],
                     )+
@@ -187,8 +182,10 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         C: CAPISameRepr,
     {
         Ok(RawReadBuilder {
-            field: field.as_ref().to_string(),
-            raw_read_output: RawReadOutput::new(scratch),
+            raw_read_output: RawReadHandle::new(
+                field.as_ref().to_string(),
+                scratch,
+            ),
             base: self,
         })
     }

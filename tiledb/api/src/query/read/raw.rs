@@ -3,7 +3,10 @@ use super::*;
 use crate::error::Error;
 
 /// Encapsulates data for writing intermediate query results for a data field.
-pub(crate) struct RawReadOutput<'data, C> {
+pub(crate) struct RawReadHandle<'data, C> {
+    /// Name of the field which this handle receives data from
+    pub field: String,
+
     /// As input to the C API, the size of the data buffer.
     /// As output from the C API, the size in bytes of an intermediate result.
     pub data_size: Pin<Box<u64>>,
@@ -23,8 +26,14 @@ pub(crate) struct RawReadOutput<'data, C> {
     pub location: &'data RefCell<OutputLocation<'data, C>>,
 }
 
-impl<'data, C> RawReadOutput<'data, C> {
-    pub fn new(location: &'data RefCell<OutputLocation<'data, C>>) -> Self {
+impl<'data, C> RawReadHandle<'data, C> {
+    pub fn new<S>(
+        field: S,
+        location: &'data RefCell<OutputLocation<'data, C>>,
+    ) -> Self
+    where
+        S: AsRef<str>,
+    {
         let (data, cell_offsets) = {
             let mut scratch: RefMut<OutputLocation<'data, C>> =
                 location.borrow_mut();
@@ -50,24 +59,21 @@ impl<'data, C> RawReadOutput<'data, C> {
             )
         };
 
-        RawReadOutput {
+        RawReadHandle {
+            field: field.as_ref().to_string(),
             data_size,
             offsets_size,
             location,
         }
     }
 
-    pub(crate) fn attach_query<S>(
+    pub(crate) fn attach_query(
         &mut self,
         context: &Context,
         c_query: *mut ffi::tiledb_query_t,
-        field: &S,
-    ) -> TileDBResult<()>
-    where
-        S: AsRef<str>,
-    {
+    ) -> TileDBResult<()> {
         let c_context = context.capi();
-        let c_name = cstring!(field.as_ref());
+        let c_name = cstring!(&*self.field);
 
         let mut location = self.location.borrow_mut();
 
@@ -134,8 +140,7 @@ impl<'data, C> RawReadOutput<'data, C> {
 /// the buffers between each step to process intermediate results.
 #[derive(ContextBound, QueryCAPIInterface)]
 pub struct RawReadQuery<'data, C, Q> {
-    pub(crate) field: String,
-    pub(crate) raw_read_output: RawReadOutput<'data, C>,
+    pub(crate) raw_read_output: RawReadHandle<'data, C>,
     #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: Q,
 }
@@ -151,11 +156,8 @@ where
         &mut self,
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
-        self.raw_read_output.attach_query(
-            self.context(),
-            **self.cquery(),
-            &self.field,
-        )?;
+        self.raw_read_output
+            .attach_query(self.context(), **self.cquery())?;
 
         /* then execute */
         let base_result = {
@@ -198,8 +200,7 @@ where
 
 #[derive(ContextBound, QueryCAPIInterface)]
 pub struct RawReadBuilder<'data, C, B> {
-    pub(crate) field: String,
-    pub(crate) raw_read_output: RawReadOutput<'data, C>,
+    pub(crate) raw_read_output: RawReadHandle<'data, C>,
     #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: B,
 }
@@ -212,7 +213,6 @@ where
 
     fn build(self) -> Self::Query {
         RawReadQuery {
-            field: self.field,
             raw_read_output: self.raw_read_output,
             base: self.base.build(),
         }
