@@ -438,6 +438,13 @@ macro_rules! query_read_callback {
                 /*
                  * Assumption: each of the arguments and split will produce
                  * the same ReadStepOutput enum variant
+                 *
+                 * TODO: this is wrong because the `step` does the submit,
+                 * which updates the buffer sizes, but then stepping
+                 * with the raw read sets the sizes to the capacities.
+                 * One fix would be to decouple attaching the buffer from
+                 * stepping but then why bother having the RawRead at all?
+                 * All it does is compute nrecords/nbytes
                  */
 
                 paste! {
