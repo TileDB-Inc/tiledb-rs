@@ -183,10 +183,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         C: CAPISameRepr,
     {
         Ok(RawReadBuilder {
-            raw_read_output: RawReadHandle::new(
-                field.as_ref().to_string(),
-                scratch,
-            ),
+            raw_read_output: RawReadHandle::new(field.as_ref(), scratch),
             base: self,
         })
     }
