@@ -16,7 +16,10 @@ use crate::{Factory, Result as TileDBResult};
 #[derive(
     Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
 )]
-#[cfg_attr(feature = "proptest-strategies", derive(proptest_derive::Arbitrary))]
+#[cfg_attr(
+    any(test, feature = "proptest-strategies"),
+    derive(proptest_derive::Arbitrary)
+)]
 pub enum ArrayType {
     Dense,
     Sparse,
@@ -546,7 +549,10 @@ impl<'ctx> Factory<'ctx> for SchemaData {
     }
 }
 
-#[cfg(feature = "proptest-strategies")]
+#[cfg(feature = "arrow")]
+pub mod arrow;
+
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
 #[cfg(test)]

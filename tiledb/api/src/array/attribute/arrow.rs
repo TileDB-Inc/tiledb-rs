@@ -3,12 +3,13 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tiledb::context::Context as TileDBContext;
-use tiledb::filter::FilterListBuilder;
-use tiledb::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 
-use crate::datatype::{arrow_type_physical, tiledb_type_physical};
-use crate::filter::FilterMetadata;
+use crate::array::{Attribute, AttributeBuilder};
+use crate::datatype::arrow::*;
+use crate::error::Error;
+use crate::filter::arrow::FilterMetadata;
+use crate::filter::FilterListBuilder;
+use crate::{fn_typed, Context, Result as TileDBResult};
 
 /// Encapsulates TileDB Attribute fill value data for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
@@ -26,7 +27,7 @@ pub struct AttributeMetadata {
 }
 
 impl AttributeMetadata {
-    pub fn new(attr: &tiledb::array::Attribute) -> TileDBResult<Self> {
+    pub fn new(attr: &Attribute) -> TileDBResult<Self> {
         Ok(AttributeMetadata {
             cell_val_num: attr.cell_val_num()?,
             fill_value: fn_typed!(
@@ -47,8 +48,8 @@ impl AttributeMetadata {
     /// Updates an AttributeBuilder with the contents of this object
     pub fn apply<'ctx>(
         &self,
-        builder: tiledb::array::AttributeBuilder<'ctx>,
-    ) -> TileDBResult<tiledb::array::AttributeBuilder<'ctx>> {
+        builder: AttributeBuilder<'ctx>,
+    ) -> TileDBResult<AttributeBuilder<'ctx>> {
         /* TODO: fill value */
         let fl = self
             .filters
@@ -58,7 +59,7 @@ impl AttributeMetadata {
             let fill_value =
                 serde_json::from_value::<AT>(self.fill_value.data.clone())
                     .map_err(|e| {
-                        TileDBError::Deserialization(
+                        Error::Deserialization(
                             String::from("attribute fill value"),
                             anyhow!(e),
                         )
@@ -75,14 +76,14 @@ impl AttributeMetadata {
 /// Details about the Attribute are stored under the key "tiledb"
 /// in the Field's metadata.
 pub fn arrow_field(
-    attr: &tiledb::array::Attribute,
+    attr: &Attribute,
 ) -> TileDBResult<Option<arrow_schema::Field>> {
     if let Some(arrow_dt) = arrow_type_physical(&attr.datatype()?) {
         let name = attr.name()?;
         let metadata =
             serde_json::ser::to_string(&AttributeMetadata::new(attr)?)
                 .map_err(|e| {
-                    TileDBError::Serialization(
+                    Error::Serialization(
                         format!("attribute {} metadata", name),
                         anyhow!(e),
                     )
@@ -103,23 +104,19 @@ pub fn arrow_field(
 /// Details about the Attribute are stored under the key "tiledb"
 /// in the Field's metadata, if it is present.
 pub fn tiledb_attribute<'ctx>(
-    context: &'ctx TileDBContext,
+    context: &'ctx Context,
     field: &arrow_schema::Field,
-) -> TileDBResult<Option<tiledb::array::AttributeBuilder<'ctx>>> {
+) -> TileDBResult<Option<AttributeBuilder<'ctx>>> {
     if let Some(tiledb_dt) = tiledb_type_physical(field.data_type()) {
-        let attr = tiledb::array::AttributeBuilder::new(
-            context,
-            field.name(),
-            tiledb_dt,
-        )?
-        .nullability(field.is_nullable())?;
+        let attr = AttributeBuilder::new(context, field.name(), tiledb_dt)?
+            .nullability(field.is_nullable())?;
 
         if let Some(tiledb_metadata) = field.metadata().get("tiledb") {
             match serde_json::from_str::<AttributeMetadata>(
                 tiledb_metadata.as_ref(),
             ) {
                 Ok(attr_metadata) => Ok(Some(attr_metadata.apply(attr)?)),
-                Err(e) => Err(TileDBError::Deserialization(
+                Err(e) => Err(Error::Deserialization(
                     format!("attribute {} metadata", field.name()),
                     anyhow!(e),
                 )),
@@ -132,14 +129,14 @@ pub fn tiledb_attribute<'ctx>(
     }
 }
 
-#[cfg(any(feature = "proptest-strategies", test))]
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy {
     use proptest::prelude::*;
 
     pub fn prop_arrow_field() -> impl Strategy<Value = arrow_schema::Field> {
         (
-            tiledb::array::attribute::strategy::prop_attribute_name(),
-            crate::datatype::strategy::prop_arrow_implemented(),
+            crate::array::attribute::strategy::prop_attribute_name(),
+            crate::datatype::arrow::strategy::prop_arrow_implemented(),
             proptest::prelude::any::<bool>(),
         )
             .prop_map(|(name, data_type, nullable)| {
@@ -157,15 +154,15 @@ pub mod strategy {
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::Factory;
     use proptest::prelude::*;
-    use tiledb::Factory;
 
     #[test]
     fn test_tiledb_arrow_tiledb() -> TileDBResult<()> {
-        let c: TileDBContext = TileDBContext::new()?;
+        let c: Context = Context::new()?;
 
         /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in tiledb::array::attribute::strategy::prop_attribute(Default::default()))| {
+        proptest!(|(tdb_in in crate::array::attribute::strategy::prop_attribute(Default::default()))| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb attribute");
             if let Some(arrow_field) = arrow_field(&tdb_in)
@@ -182,7 +179,7 @@ pub mod tests {
 
     #[test]
     fn test_arrow_tiledb_arrow() -> TileDBResult<()> {
-        let c: TileDBContext = TileDBContext::new()?;
+        let c: Context = Context::new()?;
         /* arrow => tiledb => arrow */
         proptest!(|(arrow_in in strategy::prop_arrow_field())| {
             let tdb = tiledb_attribute(&c, &arrow_in);

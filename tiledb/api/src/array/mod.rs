@@ -85,7 +85,10 @@ impl Display for Mode {
 #[derive(
     Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
 )]
-#[cfg_attr(feature = "proptest-strategies", derive(proptest_derive::Arbitrary))]
+#[cfg_attr(
+    any(test, feature = "proptest-strategies"),
+    derive(proptest_derive::Arbitrary)
+)]
 pub enum TileOrder {
     RowMajor,
     ColumnMajor,
@@ -256,7 +259,7 @@ impl Drop for Array<'_> {
     }
 }
 
-#[cfg(feature = "proptest-strategies")]
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
 #[cfg(test)]
