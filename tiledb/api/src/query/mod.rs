@@ -17,6 +17,70 @@ mod private {
     pub trait QueryCAPIInterface {
         fn carray(&self) -> &RawArray;
         fn cquery(&self) -> &RawQuery;
+
+        fn do_submit<'ctx>(&self) -> TileDBResult<()>
+        where
+            Self: ContextBound<'ctx> + CApiInterface,
+        {
+            let c_context = self.context().capi();
+            let c_query = **self.cquery();
+            self.capi_return(unsafe {
+                ffi::tiledb_query_submit(c_context, c_query)
+            })?;
+            Ok(())
+        }
+
+        fn do_submit_read<'ctx>(&self) -> TileDBResult<ReadStepOutput<(), ()>>
+        where
+            Self: ContextBound<'ctx> + CApiInterface,
+        {
+            self.do_submit()?;
+
+            match self.capi_status()? {
+                ffi::tiledb_query_status_t_TILEDB_FAILED => {
+                    Err(self.context().expect_last_error())
+                }
+                ffi::tiledb_query_status_t_TILEDB_COMPLETED => {
+                    Ok(ReadStepOutput::Final(()))
+                }
+                ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
+                ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => {
+                    /*
+                     * Note: the returned status itself is not enough to distinguish between
+                     * "no results, allocate more space plz" and "there are more results after you consume these".
+                     * The API tiledb_query_get_status_details exists but is experimental,
+                     * so we will worry about it later.
+                     * For now: it's a fair assumption that the user requested data, and that is
+                     * where we will catch the difference. See RawReadQuery.
+                     * We also assume that the same number of records are filled in for all
+                     * queried data - if a result is empty for one attribute then it will be so
+                     * for all attributes.
+                     */
+                    Ok(ReadStepOutput::Intermediate(()))
+                }
+                ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => {
+                    unreachable!()
+                }
+                ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
+                unrecognized => Err(Error::Internal(format!(
+                    "Unrecognized query status: {}",
+                    unrecognized
+                ))),
+            }
+        }
+
+        fn capi_status<'ctx>(&self) -> TileDBResult<ffi::tiledb_query_status_t>
+        where
+            Self: ContextBound<'ctx> + CApiInterface,
+        {
+            let c_context = self.context().capi();
+            let c_query = **self.cquery();
+            let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
+            self.capi_return(unsafe {
+                ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
+            })
+            .map(|_| c_status)
+        }
     }
 
     impl<T> QueryCAPIInterface for Arc<T>
@@ -58,6 +122,13 @@ pub type QueryLayout = crate::array::CellOrder;
 
 pub enum RawQuery {
     Owned(*mut ffi::tiledb_query_t),
+    Borrowed(*mut ffi::tiledb_query_t),
+}
+
+impl RawQuery {
+    pub fn borrow(&self) -> RawQuery {
+        RawQuery::Borrowed(**self)
+    }
 }
 
 impl Deref for RawQuery {
@@ -65,78 +136,33 @@ impl Deref for RawQuery {
     fn deref(&self) -> &Self::Target {
         match *self {
             RawQuery::Owned(ref ffi) => ffi,
+            RawQuery::Borrowed(ref ffi) => ffi,
         }
     }
 }
 
 impl Drop for RawQuery {
     fn drop(&mut self) {
-        let RawQuery::Owned(ref mut ffi) = *self;
-        unsafe { ffi::tiledb_query_free(ffi) };
+        if let RawQuery::Owned(ref mut ffi) = *self {
+            unsafe { ffi::tiledb_query_free(ffi) }
+        }
     }
 }
 
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound)]
 pub struct Query<'ctx> {
     #[base(ContextBound)]
-    #[raw_array]
     array: Array<'ctx>,
-    #[raw_query]
     raw: RawQuery,
 }
 
-impl<'ctx> Query<'ctx> {
-    fn do_submit(&self) -> TileDBResult<()> {
-        let c_context = self.context().capi();
-        let c_query = *self.raw;
-        self.capi_return(unsafe {
-            ffi::tiledb_query_submit(c_context, c_query)
-        })?;
-        Ok(())
+impl<'ctx> QueryCAPIInterface for Query<'ctx> {
+    fn carray(&self) -> &RawArray {
+        self.array.capi()
     }
 
-    fn do_submit_read(&self) -> TileDBResult<ReadStepOutput<(), ()>> {
-        self.do_submit()?;
-
-        match self.capi_status()? {
-            ffi::tiledb_query_status_t_TILEDB_FAILED => {
-                Err(self.context().expect_last_error())
-            }
-            ffi::tiledb_query_status_t_TILEDB_COMPLETED => {
-                Ok(ReadStepOutput::Final(()))
-            }
-            ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
-            ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => {
-                /*
-                 * Note: the returned status itself is not enough to distinguish between
-                 * "no results, allocate more space plz" and "there are more results after you consume these".
-                 * The API tiledb_query_get_status_details exists but is experimental,
-                 * so we will worry about it later.
-                 * For now: it's a fair assumption that the user requested data, and that is
-                 * where we will catch the difference. See RawReadQuery.
-                 * We also assume that the same number of records are filled in for all
-                 * queried data - if a result is empty for one attribute then it will be so
-                 * for all attributes.
-                 */
-                Ok(ReadStepOutput::Intermediate(()))
-            }
-            ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => unreachable!(),
-            ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
-            unrecognized => Err(Error::Internal(format!(
-                "Unrecognized query status: {}",
-                unrecognized
-            ))),
-        }
-    }
-
-    fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
-        let c_context = self.context().capi();
-        let c_query = *self.raw;
-        let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
-        })
-        .map(|_| c_status)
+    fn cquery(&self) -> &RawQuery {
+        &self.raw
     }
 }
 

@@ -56,7 +56,7 @@ where
     }
 }
 
-pub(crate) trait CApiInterface {
+pub trait CApiInterface {
     fn capi_return(&self, c_ret: i32) -> TileDBResult<()>;
 }
 

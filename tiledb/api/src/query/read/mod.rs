@@ -3,11 +3,14 @@ use super::*;
 use std::cell::{RefCell, RefMut};
 use std::pin::Pin;
 
+use paste::paste;
+
 use crate::convert::CAPISameRepr;
 use crate::query::private::QueryCAPIInterface;
 use crate::query::read::output::{
     BufferMut, HasScratchSpaceStrategy, OutputLocation, ScratchAllocator,
 };
+use crate::query::read::splitter::ReadSplitterBuilder;
 use crate::Result as TileDBResult;
 
 mod callback;
@@ -133,6 +136,42 @@ pub trait ReadQuery: Sized {
     }
 }
 
+macro_rules! fn_register_callback {
+    ($fn:ident, $Callback:ty, $Builder:ident, $($U:ident),+) => {
+        paste! {
+            fn $fn<'data, T>(self,
+                $(
+                    ([< field_ $U:snake >],
+                     [< scratch_ $U:snake >]):
+                    (&str, &'data RefCell<OutputLocation<'data, <T as $Callback>::$U>>),
+                )+
+                callback: T
+            ) -> TileDBResult<$Builder<'ctx, 'data, T, Self>>
+            where
+                <Self as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
+                T: $Callback
+            {
+                let split_base = ReadSplitterBuilder::new(&self);
+
+                let query_base = self;
+                $(
+                    let [< arg_ $U:snake >] = split_base.clone()
+                        .register_raw([< field_ $U:snake >], [< scratch_ $U:snake >])?;
+                )+
+
+                Ok($Builder {
+                    callback,
+                    query_base,
+                    split_base,
+                    $(
+                        [< arg_ $U:snake >],
+                    )+
+                })
+            }
+        }
+    }
+}
+
 /// Trait for constructing a read query.
 /// Provides methods for flexibly adapting requested attributes into raw results,
 /// callbacks, or strongly-typed objects.
@@ -172,6 +211,14 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
 
         Ok(CallbackReadBuilder { callback, base })
     }
+
+    fn_register_callback!(
+        register_callback2,
+        ReadCallback2Arg,
+        Callback2ArgReadBuilder,
+        Unit1,
+        Unit2
+    );
 
     /// Register a callback to be run on query results.
     /// Scratch space for raw results is managed by the callback.

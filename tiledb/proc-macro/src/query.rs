@@ -112,7 +112,7 @@ fn query_capi_interface_impl_fields_named_direct(
     let expanded = quote! {
         impl #impl_generics QueryCAPIInterface for #name #ty_generics #where_clause {
             fn carray(&self) -> &RawArray {
-                self.#array_fname.capi()
+                &self.#array_fname
             }
             fn cquery(&self) -> &RawQuery {
                 &self.#query_fname
