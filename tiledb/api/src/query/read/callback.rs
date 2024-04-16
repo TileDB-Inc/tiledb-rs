@@ -315,13 +315,15 @@ macro_rules! query_read_callback {
                     $(
                         let ([< nrecords_ $U:snake >], [< nbytes_ $U:snake >]) = {
                             let (nrecords, nbytes) = self.[< arg_ $U:snake >].last_read_size();
-                            if nrecords == 0 && nbytes == 0 {
-                                return Ok(ReadStepOutput::NotEnoughSpace)
-                            } else if nrecords == 0 {
-                                return Err(Error::Internal(format!(
-                                            "Invalid read: returned {} offsets but {} bytes",
-                                            nrecords, nbytes
-                                )));
+                            if !base_result.is_final() {
+                                if nrecords == 0 && nbytes == 0 {
+                                    return Ok(ReadStepOutput::NotEnoughSpace)
+                                } else if nrecords == 0 {
+                                    return Err(Error::Internal(format!(
+                                                "Invalid read: returned {} offsets but {} bytes",
+                                                nrecords, nbytes
+                                    )));
+                                }
                             }
                             (nrecords, nbytes)
                         };
