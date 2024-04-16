@@ -23,6 +23,7 @@ pub use raw::*;
 pub use typed::*;
 
 /// Contains a return status and/or result from submitting a query.
+#[derive(Clone)]
 pub enum ReadStepOutput<I, F> {
     /// There was not enough space to hold any results.
     /// Allocate more space and try again.
@@ -106,22 +107,6 @@ impl<U> ReadStepOutput<U, U> {
             ReadStepOutput::NotEnoughSpace => None,
             ReadStepOutput::Intermediate(i) => Some(i),
             ReadStepOutput::Final(f) => Some(f),
-        }
-    }
-}
-
-impl<I, F> Clone for ReadStepOutput<I, F>
-where
-    I: Clone,
-    F: Clone,
-{
-    fn clone(&self) -> Self {
-        match self {
-            ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
-            ReadStepOutput::Intermediate(i) => {
-                ReadStepOutput::Intermediate(i.clone())
-            }
-            ReadStepOutput::Final(f) => ReadStepOutput::Final(f.clone()),
         }
     }
 }
@@ -248,6 +233,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     where
         S: AsRef<str>,
         T: ReadResult,
+        <T as ReadResult>::Constructor: Default,
     {
         let r = <T::Constructor as Default>::default();
         Ok(TypedReadBuilder {
@@ -269,7 +255,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         S: AsRef<str>,
         T: ReadResult<Constructor = R>
             + HasScratchSpaceStrategy<C, Strategy = A>,
-        R: ReadCallback<Unit = C>,
+        R: Default + ReadCallback<Unit = C>,
         A: ScratchAllocator<C>,
     {
         let scratch = scratch_allocator.alloc();

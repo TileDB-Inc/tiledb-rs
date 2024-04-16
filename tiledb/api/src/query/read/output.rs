@@ -238,6 +238,37 @@ impl HasScratchSpaceStrategy<u8> for Vec<String> {
     type Strategy = VarSized;
 }
 
+pub struct FixedDataIterator<'data, C> {
+    fixed: std::slice::Iter<'data, C>,
+}
+
+impl<'data, C> Iterator for FixedDataIterator<'data, C>
+where
+    C: Copy,
+{
+    type Item = C;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.fixed.next().copied()
+    }
+}
+
+impl<'data, C> TryFrom<(usize, usize, &'data InputData<'data, C>)>
+    for FixedDataIterator<'data, C>
+{
+    type Error = crate::error::Error;
+    fn try_from(
+        value: (usize, usize, &'data InputData<'data, C>),
+    ) -> TileDBResult<Self> {
+        if value.2.cell_offsets.is_some() {
+            Err(Error::Datatype(DatatypeErrorKind::ExpectedFixedSize(None)))
+        } else {
+            Ok(FixedDataIterator {
+                fixed: value.2.data.as_ref()[0..value.0].iter(),
+            })
+        }
+    }
+}
+
 /// Iterator which yields variable-sized records from a raw read result.
 pub struct VarDataIterator<'data, C> {
     nrecords: usize,
@@ -317,4 +348,65 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
             None
         }
     }
+}
+
+impl<'data, C> TryFrom<(usize, usize, &'data InputData<'data, C>)>
+    for VarDataIterator<'data, C>
+{
+    type Error = crate::error::Error;
+    fn try_from(
+        value: (usize, usize, &'data InputData<'data, C>),
+    ) -> TileDBResult<Self> {
+        Self::new(value.0, value.1, value.2)
+    }
+}
+
+pub struct Utf8LossyIterator<'data> {
+    var: VarDataIterator<'data, u8>,
+}
+
+impl<'data> TryFrom<(usize, usize, &'data InputData<'data, u8>)>
+    for Utf8LossyIterator<'data>
+{
+    type Error = crate::error::Error;
+    fn try_from(
+        value: (usize, usize, &'data InputData<'data, u8>),
+    ) -> TileDBResult<Self> {
+        Ok(Utf8LossyIterator {
+            var: VarDataIterator::try_from(value)?,
+        })
+    }
+}
+
+impl<'data> Iterator for Utf8LossyIterator<'data> {
+    type Item = String;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.var
+            .next()
+            .map(|s| String::from_utf8_lossy(s).to_string())
+    }
+}
+
+pub trait FromQueryOutput: Sized {
+    type Unit;
+    type Iterator<'data>: Iterator<Item = Self>
+        + TryFrom<
+            (usize, usize, &'data InputData<'data, Self::Unit>),
+            Error = crate::error::Error,
+        >
+    where
+        Self::Unit: 'data;
+}
+
+impl<C> FromQueryOutput for C
+where
+    C: CAPISameRepr,
+{
+    type Unit = C;
+    type Iterator<'data> = FixedDataIterator<'data, Self::Unit> where C: 'data;
+}
+
+impl FromQueryOutput for String {
+    type Unit = u8;
+    type Iterator<'data> = Utf8LossyIterator<'data>;
 }

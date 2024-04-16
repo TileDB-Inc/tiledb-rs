@@ -11,6 +11,7 @@ path = "src/lib.rs"
 anyhow = { workspace = true }
 arrow = { version = "50.0.0", features = ["prettyprint"], optional = true }
 arrow-schema = { version = "50.0.0", default-features = false, optional = true }
+itertools = "0"
 num-traits = { version = "0.2", optional = true }
 paste = "1.0"
 proptest = { version = "1.0.0", optional = true }
@@ -27,7 +28,6 @@ num-traits = { version = "0.2" }
 proptest = { version = "1.0.0" }
 proptest-derive = { version = "0.4.0" }
 tempfile = "3"
-proptest = { version = "1.0.0", optional = false }
 
 [features]
 default = []

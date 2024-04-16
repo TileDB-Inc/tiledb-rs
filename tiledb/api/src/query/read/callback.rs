@@ -1,14 +1,16 @@
 use super::*;
 
 use anyhow::anyhow;
+use itertools::izip;
 use paste::paste;
 
+use crate::query::read::output::FromQueryOutput;
 use crate::query::read::splitter::{ReadSplitterBuilder, ReadSplitterQuery};
 use crate::query::write::input::{Buffer, InputData};
 
 macro_rules! trait_read_callback {
     ($name:ident, $($U:ident),+) => {
-        pub trait $name: Default + Sized {
+        pub trait $name: Sized {
             $(
                 type $U: CAPISameRepr;
             )+
@@ -35,12 +37,159 @@ macro_rules! trait_read_callback {
                     )+
                 ) -> Result<Self::Final, Self::Error>;
             }
+
+            /// Optionally produce a blank instance of this callback to be run
+            /// if the query is restarted from the beginning. This is called
+            /// before `final_result` to prepare the query for re-submission
+            /// if necessary.
+            fn cleared(&self) -> Option<Self> {
+                None
+            }
         }
     };
 }
 
 trait_read_callback!(ReadCallback, Unit);
 trait_read_callback!(ReadCallback2Arg, Unit1, Unit2);
+trait_read_callback!(ReadCallback3Arg, Unit1, Unit2, Unit3);
+
+#[derive(Clone)]
+pub struct FnMutAdapter<A, F> {
+    arg: std::marker::PhantomData<A>,
+    func: F,
+}
+
+impl<A, F> ReadCallback for FnMutAdapter<A, F>
+where
+    A: FromQueryOutput,
+    <A as FromQueryOutput>::Unit: CAPISameRepr,
+    F: Clone + FnMut(A),
+{
+    type Unit = <A as FromQueryOutput>::Unit;
+    type Intermediate = ();
+    type Final = ();
+    type Error = crate::error::Error;
+
+    fn intermediate_result(
+        &mut self,
+        records: usize,
+        bytes: usize,
+        input: InputData<Self::Unit>,
+    ) -> Result<Self::Intermediate, Self::Error> {
+        let iter = <A as FromQueryOutput>::Iterator::try_from((
+            records, bytes, &input,
+        ))?;
+
+        for record in iter {
+            (self.func)(record)
+        }
+
+        Ok(())
+    }
+
+    fn final_result(
+        mut self,
+        records: usize,
+        bytes: usize,
+        input: InputData<Self::Unit>,
+    ) -> Result<Self::Intermediate, Self::Error> {
+        let iter = <A as FromQueryOutput>::Iterator::try_from((
+            records, bytes, &input,
+        ))?;
+
+        for record in iter {
+            (self.func)(record)
+        }
+
+        Ok(())
+    }
+
+    fn cleared(&self) -> Option<Self> {
+        Some(FnMutAdapter {
+            arg: self.arg,
+            func: self.func.clone(),
+        })
+    }
+}
+
+macro_rules! fn_mut_adapter_tuple {
+    ($callback:ident, $($A:ident: $U:ident),+) => {
+        impl<$($A),+, F> $callback for FnMutAdapter<($($A),+), F>
+        where $(
+                $A: FromQueryOutput,
+                <$A as FromQueryOutput>::Unit: CAPISameRepr
+            ),+,
+            F: Clone + FnMut($($A),+)
+        {
+            $(
+                type $U = <$A as FromQueryOutput>::Unit;
+            )+
+            type Intermediate = ();
+            type Final = ();
+            type Error = crate::error::Error;
+
+            paste! {
+                fn intermediate_result(
+                    &mut self,
+                    $(
+                        [< nrecords_ $A:snake >]: usize,
+                        [< nbytes_ $A:snake >]: usize,
+                        [< input_ $A:snake >]: InputData<Self::$U>,
+                    )+
+                ) -> Result<Self::Intermediate, Self::Error>
+                {
+                    $(
+                        let [< iter_ $A:snake >] = <$A as FromQueryOutput>::Iterator::try_from((
+                            [< nrecords_ $A:snake >],
+                            [< nbytes_ $A:snake >],
+                            &[< input_ $A:snake >],
+                        ))?;
+                    )+
+
+                    for ($([< r_ $A:snake >]),+) in izip!($([< iter_ $A:snake >]),+) {
+                        (self.func)($([< r_ $A:snake >]),+)
+                    }
+
+                    Ok(())
+                }
+
+                fn final_result(
+                    mut self,
+                    $(
+                        [< nrecords_ $A:snake >]: usize,
+                        [< nbytes_ $A:snake >]: usize,
+                        [< input_ $A:snake >]: InputData<Self::$U>,
+                    )+
+                ) -> Result<Self::Final, Self::Error>
+                {
+                    $(
+                        let [< iter_ $A:snake >] = <$A as FromQueryOutput>::Iterator::try_from((
+                            [< nrecords_ $A:snake >],
+                            [< nbytes_ $A:snake >],
+                            &[< input_ $A:snake >],
+                        ))?;
+                    )+
+
+                    for ($([< r_ $A:snake >]),+) in izip!($([< iter_ $A:snake >]),+) {
+                        (self.func)($([< r_ $A:snake >]),+)
+                    }
+
+                    Ok(())
+                }
+            }
+
+            fn cleared(&self) -> Option<Self> {
+                Some(FnMutAdapter {
+                    arg: self.arg,
+                    func: self.func.clone(),
+                })
+            }
+        }
+    };
+}
+
+fn_mut_adapter_tuple!(ReadCallback2Arg, A1: Unit1, A2: Unit2);
+fn_mut_adapter_tuple!(ReadCallback3Arg, A1: Unit1, A2: Unit2, A3: Unit3);
 
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
@@ -49,7 +198,7 @@ pub struct CallbackReadQuery<'data, T, Q>
 where
     T: ReadCallback,
 {
-    pub(crate) callback: T,
+    pub(crate) callback: Option<T>,
     #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: RawReadQuery<'data, T::Unit, Q>,
 }
@@ -88,8 +237,11 @@ where
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
             ReadStepOutput::Intermediate((nrecords, nbytes, base_result)) => {
-                let ir = self
-                    .callback
+                let callback = match self.callback.as_mut() {
+                    None => unimplemented!(),
+                    Some(c) => c,
+                };
+                let ir = callback
                     .intermediate_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
                         crate::error::Error::QueryCallback(
@@ -100,7 +252,13 @@ where
                 ReadStepOutput::Intermediate((ir, base_result))
             }
             ReadStepOutput::Final((nrecords, nbytes, base_result)) => {
-                let callback_final = std::mem::take(&mut self.callback);
+                let callback_final = match self.callback.take() {
+                    None => unimplemented!(),
+                    Some(c) => {
+                        self.callback = c.cleared();
+                        c
+                    }
+                };
                 let fr = callback_final
                     .final_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
@@ -134,7 +292,7 @@ where
 
     fn build(self) -> Self::Query {
         CallbackReadQuery {
-            callback: self.callback,
+            callback: Some(self.callback),
             base: self.base.build(),
         }
     }
@@ -228,6 +386,10 @@ mod impls {
             self.intermediate_result(records, bytes, input)
                 .map(|_| self)
         }
+
+        fn cleared(&self) -> Option<Self> {
+            Some(vec![])
+        }
     }
 
     impl ReadCallback for Vec<String> {
@@ -257,6 +419,10 @@ mod impls {
             self.intermediate_result(records, bytes, input)
                 .map(|_| self)
         }
+
+        fn cleared(&self) -> Option<Self> {
+            Some(vec![])
+        }
     }
 }
 
@@ -271,7 +437,7 @@ macro_rules! query_read_callback {
                 T: $callback,
                 Q: ReadQuery
             {
-                pub(crate) callback: T,
+                pub(crate) callback: Option<T>,
                 #[base(ContextBound, QueryCAPIInterface)]
                 pub(crate) query_base: Q,
                 pub(crate) split_base: ReadSplitterQuery<'ctx>,
@@ -321,8 +487,12 @@ macro_rules! query_read_callback {
                 match base_result {
                     ReadStepOutput::NotEnoughSpace => unreachable!(),
                     ReadStepOutput::Intermediate(base_result) => {
+                        let callback = match self.callback.as_mut() {
+                            None => unimplemented!(),
+                            Some(c) => c
+                        };
                         let ir = paste! {
-                            self.callback.intermediate_result(
+                            callback.intermediate_result(
                                 $(
                                     [< nrecords_ $U:snake >],
                                     [< nbytes_ $U:snake >],
@@ -341,7 +511,13 @@ macro_rules! query_read_callback {
                         Ok(ReadStepOutput::Intermediate((ir, base_result)))
                     },
                     ReadStepOutput::Final(base_result) => {
-                        let callback_final = std::mem::take(&mut self.callback);
+                        let callback_final = match self.callback.take() {
+                            None => unimplemented!(),
+                            Some(c) => {
+                                self.callback = c.cleared();
+                                c
+                            }
+                        };
                         let fr = paste! {
                             callback_final.final_result(
                                 $(
@@ -391,7 +567,7 @@ macro_rules! query_read_callback {
 
                 fn build(self) -> Self::Query {
                     $query {
-                        callback: self.callback,
+                        callback: Some(self.callback),
                         query_base: self.query_base.build(),
                         split_base: self.split_base.build(),
                         $(
@@ -410,6 +586,15 @@ query_read_callback!(
     Callback2ArgReadBuilder,
     Unit1,
     Unit2
+);
+
+query_read_callback!(
+    Callback3ArgReadQuery,
+    ReadCallback3Arg,
+    Callback3ArgReadBuilder,
+    Unit1,
+    Unit2,
+    Unit3
 );
 
 #[cfg(test)]

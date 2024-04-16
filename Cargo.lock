@@ -1267,6 +1267,7 @@ dependencies = [
  "anyhow",
  "arrow",
  "arrow-schema",
+ "itertools",
  "num-traits",
  "paste",
  "proptest",
