@@ -212,10 +212,10 @@ fn read_array_step() -> TileDBResult<()> {
             for (((row, column), a1), a2) in
                 rows.iter().zip(cols.iter()).zip(a1.iter()).zip(a2)
             {
-                println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+                println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
             }
         } else {
-            println!("\tNot enough space, growing buffers...");
+            println!("\t\tNot enough space, growing buffers...");
             grow_buffer(&mut rows_output.borrow_mut().data);
             grow_buffer(&mut cols_output.borrow_mut().data);
             grow_buffer(&mut int32_output.borrow_mut().data);
@@ -266,7 +266,7 @@ fn read_array_collect() -> TileDBResult<()> {
 
     let (a2, (a1, (column, (row, _)))) = qq.execute()?;
     for (((row, column), a1), a2) in row.iter().zip(column).zip(a1).zip(a2) {
-        println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+        println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
     }
 
     Ok(())
@@ -278,7 +278,7 @@ fn read_array_collect() -> TileDBResult<()> {
 /// which is handled inside of `execute`.
 fn read_array_callback() -> TileDBResult<()> {
     fn callback(row: i32, column: i32, a1: i32, a2: String) {
-        println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+        println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
     }
 
     println!("read_array_callback");
@@ -320,7 +320,7 @@ fn read_array_callback() -> TileDBResult<()> {
 
         match res {
             ReadStepOutput::NotEnoughSpace => {
-                println!("\tNot enough space, growing buffers...");
+                println!("\t\tNot enough space, growing buffers...");
                 grow_buffer(&mut rows_output.borrow_mut().data);
                 grow_buffer(&mut cols_output.borrow_mut().data);
                 grow_buffer(&mut int32_output.borrow_mut().data);
