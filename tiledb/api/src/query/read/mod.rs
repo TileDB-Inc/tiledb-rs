@@ -137,6 +137,8 @@ pub trait ReadQuery: Sized {
 macro_rules! fn_register_callback {
     ($fn:ident, $Callback:ty, $Builder:ident, $($U:ident),+) => {
         paste! {
+            /// Register a callback to be run on query results
+            /// which are written into the provided scratch space.
             fn $fn<'data, T>(self,
                 $(
                     ([< field_ $U:snake >],
@@ -146,7 +148,6 @@ macro_rules! fn_register_callback {
                 callback: T
             ) -> TileDBResult<$Builder<'data, T, Self>>
             where
-                <Self as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
                 T: $Callback
             {
                 let base = self;
@@ -190,24 +191,12 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         })
     }
 
-    /// Register a callback to be run on query results
-    /// which are written into the provided scratch space.
-    fn register_callback<'data, S, T>(
-        self,
-        field: S,
-        callback: T,
-        scratch: &'data RefCell<
-            OutputLocation<'data, <T as ReadCallback>::Unit>,
-        >,
-    ) -> TileDBResult<CallbackReadBuilder<T, Self>>
-    where
-        S: AsRef<str>,
-        T: ReadCallback,
-    {
-        let base = self.register_raw(field, scratch)?;
-
-        Ok(CallbackReadBuilder { callback, base })
-    }
+    fn_register_callback!(
+        register_callback,
+        ReadCallback,
+        CallbackReadBuilder,
+        Unit
+    );
 
     fn_register_callback!(
         register_callback2,
@@ -271,7 +260,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
                         OutputLocation<'data, <T as ReadCallback>::Unit>,
                     >
             };
-            self.register_callback(field, callback, scratch)
+            self.register_callback((field.as_ref(), scratch), callback)
         }?;
 
         Ok(ManagedReadBuilder {
@@ -301,7 +290,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let r = <T::Constructor as Default>::default();
         Ok(TypedReadBuilder {
             _marker: std::marker::PhantomData,
-            base: self.register_callback(field, r, scratch)?,
+            base: self.register_callback((field.as_ref(), scratch), r)?,
         })
     }
 

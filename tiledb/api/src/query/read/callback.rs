@@ -180,121 +180,6 @@ fn_mut_adapter_tuple!(ReadCallback2Arg, A1: Unit1, A2: Unit2);
 fn_mut_adapter_tuple!(ReadCallback3Arg, A1: Unit1, A2: Unit2, A3: Unit3);
 fn_mut_adapter_tuple!(ReadCallback4Arg, A1: Unit1, A2: Unit2, A3: Unit3, A4: Unit4);
 
-/// Query result handler which runs a callback on the results after each
-/// step of execution.
-#[derive(ContextBound, QueryCAPIInterface)]
-pub struct CallbackReadQuery<'data, T, Q>
-where
-    T: ReadCallback,
-{
-    pub(crate) callback: Option<T>,
-    #[base(ContextBound, QueryCAPIInterface)]
-    pub(crate) base: RawReadQuery<'data, T::Unit, Q>,
-}
-
-impl<'ctx, 'data, T, Q> ReadQuery for CallbackReadQuery<'data, T, Q>
-where
-    T: ReadCallback,
-    Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
-{
-    type Intermediate = (T::Intermediate, Q::Intermediate);
-    type Final = (T::Final, Q::Final);
-
-    /// Run the query until it fills the scratch space.
-    /// Invokes the callback on all data in the scratch space when the query returns.
-    fn step(
-        &mut self,
-    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
-        let base_result = self.base.step()?;
-
-        let location = self.base.raw_read_output.location.borrow();
-
-        /*
-         * TODO:
-         * If the buffer is managed and this is the final result then
-         * there's a chance the callback will benefit from owning the buffer
-         * rather than borrowing it
-         */
-        let input = location.borrow();
-
-        Ok(match base_result {
-            ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
-            ReadStepOutput::Intermediate((nrecords, nbytes, base_result)) => {
-                let arg = RawReadOutput {
-                    nrecords,
-                    nbytes,
-                    input: &input,
-                };
-                let callback = match self.callback.as_mut() {
-                    None => unimplemented!(),
-                    Some(c) => c,
-                };
-                let ir = callback.intermediate_result(arg).map_err(|e| {
-                    crate::error::Error::QueryCallback(
-                        vec![self.base.raw_read_output.field.clone()],
-                        anyhow!(e),
-                    )
-                })?;
-                ReadStepOutput::Intermediate((ir, base_result))
-            }
-            ReadStepOutput::Final((nrecords, nbytes, base_result)) => {
-                let arg = RawReadOutput {
-                    nrecords,
-                    nbytes,
-                    input: &input,
-                };
-                let callback_final = match self.callback.take() {
-                    None => unimplemented!(),
-                    Some(c) => {
-                        self.callback = c.cleared();
-                        c
-                    }
-                };
-                let fr = callback_final.final_result(arg).map_err(|e| {
-                    crate::error::Error::QueryCallback(
-                        vec![self.base.raw_read_output.field.clone()],
-                        anyhow!(e),
-                    )
-                })?;
-                ReadStepOutput::Final((fr, base_result))
-            }
-        })
-    }
-}
-
-#[derive(ContextBound, QueryCAPIInterface)]
-pub struct CallbackReadBuilder<'data, T, B>
-where
-    T: ReadCallback,
-{
-    pub(crate) callback: T,
-    #[base(ContextBound, QueryCAPIInterface)]
-    pub(crate) base: RawReadBuilder<'data, <T as ReadCallback>::Unit, B>,
-}
-
-impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for CallbackReadBuilder<'data, T, B>
-where
-    T: ReadCallback,
-    B: QueryBuilder<'ctx>,
-{
-    type Query = CallbackReadQuery<'data, T, B::Query>;
-
-    fn build(self) -> Self::Query {
-        CallbackReadQuery {
-            callback: Some(self.callback),
-            base: self.base.build(),
-        }
-    }
-}
-
-impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx>
-    for CallbackReadBuilder<'data, T, B>
-where
-    T: ReadCallback,
-    B: ReadQueryBuilder<'ctx>,
-{
-}
-
 mod impls {
     use super::*;
     use crate::query::read::output::VarDataIterator;
@@ -395,7 +280,6 @@ macro_rules! query_read_callback {
             pub struct $query<'data, T, Q>
             where
                 T: $callback,
-                Q: ReadQuery
             {
                 pub(crate) callback: Option<T>,
                 #[base(ContextBound, QueryCAPIInterface)]
@@ -523,7 +407,6 @@ macro_rules! query_read_callback {
             where
                 T: $callback,
                   B: QueryBuilder<'ctx>,
-                  <B as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface
             {
                 type Query = $query<'data, T, B::Query>;
 
@@ -540,6 +423,13 @@ macro_rules! query_read_callback {
         }
     }
 }
+
+query_read_callback!(
+    CallbackReadQuery,
+    ReadCallback,
+    CallbackReadBuilder,
+    Unit
+);
 
 query_read_callback!(
     Callback2ArgReadQuery,
