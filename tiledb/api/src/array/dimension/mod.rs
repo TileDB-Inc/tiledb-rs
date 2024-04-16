@@ -359,7 +359,10 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     }
 }
 
-#[cfg(feature = "proptest-strategies")]
+#[cfg(feature = "arrow")]
+pub mod arrow;
+
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
 #[cfg(test)]

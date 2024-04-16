@@ -1259,6 +1259,8 @@ name = "tiledb"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arrow",
+ "arrow-schema",
  "num-traits",
  "proptest",
  "proptest-derive",
@@ -1269,19 +1271,6 @@ dependencies = [
  "tiledb-proc-macro",
  "tiledb-sys",
  "tiledb-utils",
-]
-
-[[package]]
-name = "tiledb-arrow"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "arrow",
- "arrow-schema",
- "proptest",
- "serde",
- "serde_json",
- "tiledb",
 ]
 
 [[package]]

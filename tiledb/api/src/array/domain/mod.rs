@@ -281,7 +281,7 @@ impl<'ctx> Factory<'ctx> for DomainData {
     }
 }
 
-#[cfg(feature = "proptest-strategies")]
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
 #[cfg(test)]

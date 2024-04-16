@@ -9,6 +9,8 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
+arrow = { version = "50.0.0", features = ["prettyprint"], optional = true }
+arrow-schema = { version = "50.0.0", default-features = false, optional = true }
 num-traits = { version = "0.2", optional = true }
 proptest = { version = "1.0.0", optional = true }
 proptest-derive = { version = "0.4.0", optional = true }
@@ -20,8 +22,12 @@ tiledb-sys = { workspace = true }
 tiledb-utils = { workspace = true, features = ["serde_json"] }
 
 [dev-dependencies]
+num-traits = { version = "0.2" }
+proptest = { version = "1.0.0" }
+proptest-derive = { version = "0.4.0" }
 tempfile = "3"
 
 [features]
 default = []
 proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:proptest-derive"]
+arrow = ["dep:arrow", "dep:arrow-schema"]

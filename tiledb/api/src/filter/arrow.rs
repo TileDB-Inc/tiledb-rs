@@ -1,6 +1,6 @@
+use crate::filter::{FilterData, FilterList, FilterListBuilder};
+use crate::{context::Context as TileDBContext, Result as TileDBResult};
 use serde::{Deserialize, Serialize};
-use tiledb::filter::{FilterData, FilterList, FilterListBuilder};
-use tiledb::{context::Context as TileDBContext, Result as TileDBResult};
 
 /// Encapsulates TileDB filter data for storage in Arrow Field metadata
 #[derive(Deserialize, Serialize)]
@@ -10,7 +10,7 @@ pub struct FilterMetadata {
 
 impl FilterMetadata {
     pub fn new(
-        filters: &tiledb::filter::list::FilterList,
+        filters: &crate::filter::list::FilterList,
     ) -> TileDBResult<Self> {
         Ok(FilterMetadata {
             filters: filters
@@ -43,15 +43,14 @@ impl FilterMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Context, Factory};
     use proptest::prelude::*;
-    use tiledb::context::Context as TileDBContext;
-    use tiledb::Factory;
 
     #[test]
     fn test_serialize_invertibility() {
-        let c: TileDBContext = TileDBContext::new().unwrap();
+        let c: TileDBContext = Context::new().unwrap();
 
-        proptest!(|(filters_in in any::<tiledb::filter::list::FilterListData>())| {
+        proptest!(|(filters_in in any::<crate::filter::list::FilterListData>())| {
             let filters_in = filters_in.create(&c)
                 .expect("Error constructing arbitrary filter list");
             let metadata = FilterMetadata::new(&filters_in)
