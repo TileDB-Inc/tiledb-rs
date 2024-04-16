@@ -220,6 +220,25 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         Unit2
     );
 
+    fn_register_callback!(
+        register_callback3,
+        ReadCallback3Arg,
+        Callback3ArgReadBuilder,
+        Unit1,
+        Unit2,
+        Unit3
+    );
+
+    fn_register_callback!(
+        register_callback4,
+        ReadCallback4Arg,
+        Callback4ArgReadBuilder,
+        Unit1,
+        Unit2,
+        Unit3,
+        Unit4
+    );
+
     /// Register a callback to be run on query results.
     /// Scratch space for raw results is managed by the callback.
     fn register_callback_managed<'data, S, T, C, A>(

@@ -52,11 +52,21 @@ macro_rules! trait_read_callback {
 trait_read_callback!(ReadCallback, Unit);
 trait_read_callback!(ReadCallback2Arg, Unit1, Unit2);
 trait_read_callback!(ReadCallback3Arg, Unit1, Unit2, Unit3);
+trait_read_callback!(ReadCallback4Arg, Unit1, Unit2, Unit3, Unit4);
 
 #[derive(Clone)]
 pub struct FnMutAdapter<A, F> {
     arg: std::marker::PhantomData<A>,
     func: F,
+}
+
+impl<A, F> FnMutAdapter<A, F> {
+    pub fn new(func: F) -> Self {
+        FnMutAdapter {
+            arg: std::marker::PhantomData,
+            func,
+        }
+    }
 }
 
 impl<A, F> ReadCallback for FnMutAdapter<A, F>
@@ -190,6 +200,7 @@ macro_rules! fn_mut_adapter_tuple {
 
 fn_mut_adapter_tuple!(ReadCallback2Arg, A1: Unit1, A2: Unit2);
 fn_mut_adapter_tuple!(ReadCallback3Arg, A1: Unit1, A2: Unit2, A3: Unit3);
+fn_mut_adapter_tuple!(ReadCallback4Arg, A1: Unit1, A2: Unit2, A3: Unit3, A4: Unit4);
 
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
@@ -455,6 +466,18 @@ macro_rules! query_read_callback {
             type Final = (T::Final, Q::Final);
 
             fn step(&mut self) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+                /*
+                 * First we must attach all the buffers
+                 */
+                paste! {
+                    $(
+                        self.[< arg_ $U:snake >].raw_read_output.attach_query(
+                            self.context(),
+                            **self.cquery(),
+                            &self.[< arg_ $U:snake >].field)?;
+                    )+
+                }
+
                 let base_result = self.query_base.step()?;
 
                 {
@@ -546,7 +569,7 @@ macro_rules! query_read_callback {
             pub struct $Builder<'ctx, 'data, T, B>
             where T: $callback,
                   B: QueryBuilder<'ctx>,
-                  <B as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface + 'static
+                  <B as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface
             {
                 pub(crate) callback: T,
                 #[base(ContextBound, QueryCAPIInterface)]
@@ -561,7 +584,7 @@ macro_rules! query_read_callback {
             where
                 T: $callback,
                   B: QueryBuilder<'ctx>,
-                  <B as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface + 'static
+                  <B as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface
             {
                 type Query = $query<'ctx, 'data, T, B::Query>;
 
@@ -595,6 +618,16 @@ query_read_callback!(
     Unit1,
     Unit2,
     Unit3
+);
+
+query_read_callback!(
+    Callback4ArgReadQuery,
+    ReadCallback4Arg,
+    Callback4ArgReadBuilder,
+    Unit1,
+    Unit2,
+    Unit3,
+    Unit4
 );
 
 #[cfg(test)]

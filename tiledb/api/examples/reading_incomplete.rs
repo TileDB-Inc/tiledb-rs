@@ -6,6 +6,7 @@ use tiledb::array::{CellOrder, TileOrder};
 use tiledb::query::read::output::{
     BufferMut, NonVarSized, OutputLocation, VarDataIterator, VarSized,
 };
+use tiledb::query::read::{FnMutAdapter, ReadStepOutput};
 use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
@@ -179,17 +180,6 @@ fn read_array_step() -> TileDBResult<()> {
         )),
     });
 
-    let grow_buffers = || {
-        /* TODO: this does not update the C API query state */
-        grow_buffer(&mut rows_output.borrow_mut().data);
-        grow_buffer(&mut cols_output.borrow_mut().data);
-        grow_buffer(&mut int32_output.borrow_mut().data);
-        grow_buffer(&mut char_output.borrow_mut().data);
-        grow_buffer(
-            char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
-        );
-    };
-
     let mut qq = query_builder_start(&tdb)?
         .register_raw("rows", &rows_output)?
         .register_raw("columns", &cols_output)?
@@ -226,7 +216,13 @@ fn read_array_step() -> TileDBResult<()> {
             }
         } else {
             println!("\tNot enough space, growing buffers...");
-            grow_buffers();
+            grow_buffer(&mut rows_output.borrow_mut().data);
+            grow_buffer(&mut cols_output.borrow_mut().data);
+            grow_buffer(&mut int32_output.borrow_mut().data);
+            grow_buffer(&mut char_output.borrow_mut().data);
+            grow_buffer(
+                char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
+            );
         }
 
         if final_result {
@@ -276,6 +272,70 @@ fn read_array_collect() -> TileDBResult<()> {
     Ok(())
 }
 
+/// Ignores the details of incomplete results by register a callback to run
+/// on each record which prints the result set.  Capacities for each attribute
+/// are deliberately small in this example to force the NotEnoughSpace result,
+/// which is handled inside of `execute`.
+fn read_array_callback() -> TileDBResult<()> {
+    fn callback(row: i32, column: i32, a1: i32, a2: String) {
+        println!("Cell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+    }
+
+    println!("read_array_callback");
+
+    let init_capacity = 1;
+
+    let tdb = tiledb::context::Context::new()?;
+
+    let rows_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
+        cell_offsets: None,
+    });
+    let cols_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
+        cell_offsets: None,
+    });
+    let int32_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
+        cell_offsets: None,
+    });
+    let char_output = RefCell::new(OutputLocation {
+        data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
+        cell_offsets: Some(BufferMut::Owned(
+            vec![0u64; init_capacity].into_boxed_slice(),
+        )),
+    });
+    let mut qq = query_builder_start(&tdb)?
+        .register_callback4::<FnMutAdapter<(i32, i32, i32, String), _>>(
+            ("rows", &rows_output),
+            ("columns", &cols_output),
+            (INT32_ATTRIBUTE_NAME, &int32_output),
+            (CHAR_ATTRIBUTE_NAME, &char_output),
+            FnMutAdapter::new(callback),
+        )?
+        .build();
+
+    loop {
+        let res = qq.step()?;
+
+        match res {
+            ReadStepOutput::NotEnoughSpace => {
+                println!("\tNot enough space, growing buffers...");
+                grow_buffer(&mut rows_output.borrow_mut().data);
+                grow_buffer(&mut cols_output.borrow_mut().data);
+                grow_buffer(&mut int32_output.borrow_mut().data);
+                grow_buffer(&mut char_output.borrow_mut().data);
+                grow_buffer(
+                    char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
+                );
+            }
+            ReadStepOutput::Intermediate(_) => {}
+            ReadStepOutput::Final(_) => break,
+        }
+    }
+    Ok(())
+}
+
 fn main() -> TileDBResult<()> {
     if !array_exists() {
         create_array().expect("Failed to create array");
@@ -283,5 +343,6 @@ fn main() -> TileDBResult<()> {
     }
     read_array_step().expect("Failed to step through array results");
     read_array_collect().expect("Failed to collect array results");
+    read_array_callback().expect("Failed to apply callback to array results");
     Ok(())
 }

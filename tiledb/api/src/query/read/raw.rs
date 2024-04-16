@@ -57,7 +57,7 @@ impl<'data, C> RawReadOutput<'data, C> {
         }
     }
 
-    fn attach_query<S>(
+    pub(crate) fn attach_query<S>(
         &mut self,
         context: &Context,
         c_query: *mut ffi::tiledb_query_t,
