@@ -106,8 +106,9 @@ pub enum Error {
     #[error("Deserialization error: {0}: {1}")]
     Deserialization(String, #[source] anyhow::Error),
     /// Error occurred executing a query callback
-    #[error("Query callback error for attribute {0}: {1}")]
-    QueryCallback(String, #[source] anyhow::Error),
+    #[error("Query callback error for attribute [{}]: {1}",
+        .0.iter().map(|s| s.as_ref()).collect::<Vec<&str>>().join(","))]
+    QueryCallback(Vec<String>, #[source] anyhow::Error),
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),

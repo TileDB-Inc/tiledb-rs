@@ -95,24 +95,7 @@ impl<'ctx> Query<'ctx> {
         Ok(())
     }
 
-    fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
-        let c_context = self.context().capi();
-        let c_query = *self.raw;
-        let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
-        })
-        .map(|_| c_status)
-    }
-}
-
-impl<'ctx> ReadQuery for Query<'ctx> {
-    type Intermediate = ();
-    type Final = ();
-
-    fn step(
-        &mut self,
-    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+    fn do_submit_read(&self) -> TileDBResult<ReadStepOutput<(), ()>> {
         self.do_submit()?;
 
         match self.capi_status()? {
@@ -144,6 +127,27 @@ impl<'ctx> ReadQuery for Query<'ctx> {
                 unrecognized
             ))),
         }
+    }
+
+    fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
+        let c_context = self.context().capi();
+        let c_query = *self.raw;
+        let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
+        self.capi_return(unsafe {
+            ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
+        })
+        .map(|_| c_status)
+    }
+}
+
+impl<'ctx> ReadQuery for Query<'ctx> {
+    type Intermediate = ();
+    type Final = ();
+
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        self.do_submit_read()
     }
 }
 

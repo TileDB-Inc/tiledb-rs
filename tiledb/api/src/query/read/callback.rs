@@ -3,6 +3,7 @@ use super::*;
 use anyhow::anyhow;
 use paste::paste;
 
+use crate::query::read::splitter::{ReadSplitterBuilder, ReadSplitterQuery};
 use crate::query::write::input::{Buffer, InputData};
 
 macro_rules! trait_read_callback {
@@ -18,18 +19,18 @@ macro_rules! trait_read_callback {
             paste! {
                 fn intermediate_result(
                     &mut self,
-                    records: usize,
-                    bytes: usize,
                     $(
+                        [< records_ $U:snake >]: usize,
+                        [< bytes_ $U:snake >]: usize,
                         [< input_ $U:snake >]: InputData<'_, Self::$U>,
                     )+
                 ) -> Result<Self::Intermediate, Self::Error>;
 
                 fn final_result(
                     self,
-                    records: usize,
-                    bytes: usize,
                     $(
+                        [< records_ $U:snake >]: usize,
+                        [< bytes_ $U:snake >]: usize,
                         [< input_ $U:snake >]: InputData<'_, Self::$U>,
                     )+
                 ) -> Result<Self::Final, Self::Error>;
@@ -39,7 +40,7 @@ macro_rules! trait_read_callback {
 }
 
 trait_read_callback!(ReadCallback, Unit);
-trait_read_callback!(ReadCallback2, Unit1, Unit2);
+trait_read_callback!(ReadCallback2Arg, Unit1, Unit2);
 
 /// Query result handler which runs a callback on the results after each
 /// step of execution.
@@ -92,7 +93,7 @@ where
                     .intermediate_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
                         crate::error::Error::QueryCallback(
-                            self.base.field.clone(),
+                            vec![self.base.field.clone()],
                             anyhow!(e),
                         )
                     })?;
@@ -104,7 +105,7 @@ where
                     .final_result(nrecords, nbytes, input_data)
                     .map_err(|e| {
                         crate::error::Error::QueryCallback(
-                            self.base.field.clone(),
+                            vec![self.base.field.clone()],
                             anyhow!(e),
                         )
                     })?;
@@ -258,6 +259,158 @@ mod impls {
         }
     }
 }
+
+macro_rules! query_read_callback {
+    ($query:ident, $callback:ident, $Builder:ident, $($U:ident),+) => {
+        paste! {
+            /// Query result handler which runs a callback on the results after each
+            /// step of execution.
+            #[derive(ContextBound, QueryCAPIInterface)]
+            pub struct $query<'ctx, 'data, T, Q>
+            where
+                T: $callback,
+                Q: ReadQuery
+            {
+                pub(crate) callback: T,
+                #[base(ContextBound, QueryCAPIInterface)]
+                pub(crate) query_base: Q,
+                pub(crate) split_base: ReadSplitterQuery<'ctx>,
+                $(
+                    pub(crate) [< arg_ $U:snake >]: RawReadQuery<'data, T::$U, ReadSplitterQuery<'ctx>>
+                ),+
+            }
+        }
+
+        impl<'ctx, 'data, T, Q> ReadQuery for $query <'ctx, 'data, T, Q>
+            where T: $callback,
+                  Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface
+        {
+            type Intermediate = (T::Intermediate, Q::Intermediate);
+            type Final = (T::Final, Q::Final);
+
+            fn step(&mut self) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+                let base_result = self.query_base.step()?;
+
+                {
+                    let mut previous_step = self.split_base.previous_step.borrow_mut();
+                    *previous_step = Some(base_result.as_ref().map_i(|_| ()).map_f(|_| ()));
+                }
+
+                /*
+                 * Assumption: each of the arguments and split will produce
+                 * the same ReadStepOutput enum variant
+                 */
+
+                paste! {
+                    $(
+                        let ([< nrecords_ $U:snake >], [< nbytes_ $U:snake >]) =
+                            match self.[< arg_ $U:snake >].step()?.unwrap()
+                        {
+                            None => return Ok(ReadStepOutput::NotEnoughSpace),
+                            Some((nrecords, nbytes, ())) => (nrecords, nbytes)
+                        };
+
+                        let [< l_ $U:snake >] = self.[< arg_ $U:snake >].raw_read_output.location.borrow();
+                        let [< input_ $U:snake >] = InputData {
+                            data: Buffer::Borrowed(&[< l_ $U:snake >].data),
+                            cell_offsets: [< l_ $U:snake >].cell_offsets.as_ref().map(|c| Buffer::Borrowed(c))
+                        };
+                    )+
+                }
+
+                match base_result {
+                    ReadStepOutput::NotEnoughSpace => unreachable!(),
+                    ReadStepOutput::Intermediate(base_result) => {
+                        let ir = paste! {
+                            self.callback.intermediate_result(
+                                $(
+                                    [< nrecords_ $U:snake >],
+                                    [< nbytes_ $U:snake >],
+                                    [< input_ $U:snake >],
+                                )+
+                            )
+                                .map_err(|e| {
+                                    let fields = paste! {
+                                        vec![$(
+                                            self.[< arg_ $U:snake >].field.clone()
+                                        ),+]
+                                    };
+                                    crate::error::Error::QueryCallback(fields, anyhow!(e))
+                                })?
+                        };
+                        Ok(ReadStepOutput::Intermediate((ir, base_result)))
+                    },
+                    ReadStepOutput::Final(base_result) => {
+                        let callback_final = std::mem::take(&mut self.callback);
+                        let fr = paste! {
+                            callback_final.final_result(
+                                $(
+                                    [< nrecords_ $U:snake >],
+                                    [< nbytes_ $U:snake >],
+                                    [< input_ $U:snake >],
+                                )+
+                            )
+                                .map_err(|e| {
+                                    let fields = paste! {
+                                        vec![$(
+                                            self.[< arg_ $U:snake >].field.clone()
+                                        ),+]
+                                    };
+                                    crate::error::Error::QueryCallback(fields, anyhow!(e))
+                                })?
+                        };
+                        Ok(ReadStepOutput::Final((fr, base_result)))
+                    }
+                }
+            }
+        }
+
+        paste! {
+            #[derive(ContextBound, QueryCAPIInterface)]
+            pub struct $Builder<'ctx, 'data, T, B>
+            where T: $callback,
+                  B: QueryBuilder<'ctx>,
+                  <B as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface + 'static
+            {
+                pub(crate) callback: T,
+                #[base(ContextBound, QueryCAPIInterface)]
+                pub(crate) query_base: B,
+                pub(crate) split_base: ReadSplitterBuilder<'ctx>,
+                $(
+                    pub(crate) [< arg_ $U:snake >]: RawReadBuilder<'data, T::$U, ReadSplitterBuilder<'ctx>>
+                ),+
+            }
+
+            impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for $Builder <'ctx, 'data, T, B>
+            where
+                T: $callback,
+                  B: QueryBuilder<'ctx>,
+                  <B as QueryBuilder<'ctx>>::Query: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface + 'static
+            {
+                type Query = $query<'ctx, 'data, T, B::Query>;
+
+                fn build(self) -> Self::Query {
+                    $query {
+                        callback: self.callback,
+                        query_base: self.query_base.build(),
+                        split_base: self.split_base.build(),
+                        $(
+                            [< arg_ $U:snake >]: self.[< arg_ $U:snake >].build()
+                        ),+
+                    }
+                }
+            }
+        }
+    }
+}
+
+query_read_callback!(
+    Callback2ArgReadQuery,
+    ReadCallback2Arg,
+    Callback2ArgReadBuilder,
+    Unit1,
+    Unit2
+);
 
 #[cfg(test)]
 mod tests {

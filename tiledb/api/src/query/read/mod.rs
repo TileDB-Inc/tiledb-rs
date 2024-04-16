@@ -14,6 +14,7 @@ mod callback;
 mod managed;
 pub mod output;
 mod raw;
+mod splitter;
 mod typed;
 
 pub use callback::*;
@@ -43,6 +44,60 @@ impl<I, F> ReadStepOutput<I, F> {
     pub fn is_final(&self) -> bool {
         matches!(self, ReadStepOutput::Final(_))
     }
+
+    pub fn as_ref(&self) -> ReadStepOutput<&I, &F> {
+        match self {
+            ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
+            ReadStepOutput::Intermediate(ref i) => {
+                ReadStepOutput::Intermediate(i)
+            }
+            ReadStepOutput::Final(ref f) => ReadStepOutput::Final(f),
+        }
+    }
+
+    pub fn map_i<U, FN>(self, f: FN) -> ReadStepOutput<U, F>
+    where
+        FN: FnOnce(I) -> U,
+    {
+        match self {
+            ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
+            ReadStepOutput::Intermediate(i) => {
+                ReadStepOutput::Intermediate(f(i))
+            }
+            ReadStepOutput::Final(f) => ReadStepOutput::Final(f),
+        }
+    }
+
+    pub fn map_f<U, FN>(self, f: FN) -> ReadStepOutput<I, U>
+    where
+        FN: FnOnce(F) -> U,
+    {
+        match self {
+            ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
+            ReadStepOutput::Intermediate(i) => ReadStepOutput::Intermediate(i),
+            ReadStepOutput::Final(fr) => ReadStepOutput::Final(f(fr)),
+        }
+    }
+
+    pub fn unwrap_intermediate(self) -> I {
+        match self {
+            ReadStepOutput::Intermediate(i) => i,
+            ReadStepOutput::NotEnoughSpace => panic!("Called `ReadStepOutput::unwrap_intermediate` on `NotEnoughSpace`"),
+            ReadStepOutput::Final(_) => panic!("Called `ReadStepOutput::unwrap_intermediate` on `Final`"),
+        }
+    }
+
+    pub fn unwrap_final(self) -> F {
+        match self {
+            ReadStepOutput::Final(f) => f,
+            ReadStepOutput::Intermediate(_) => panic!(
+                "Called `ReadStepOutput::unwrap_final` on `Intermediate`"
+            ),
+            ReadStepOutput::NotEnoughSpace => panic!(
+                "Called `ReadStepOutput::unwrap_final` on `NotEnoughSpace`"
+            ),
+        }
+    }
 }
 
 impl<U> ReadStepOutput<U, U> {
@@ -51,6 +106,22 @@ impl<U> ReadStepOutput<U, U> {
             ReadStepOutput::NotEnoughSpace => None,
             ReadStepOutput::Intermediate(i) => Some(i),
             ReadStepOutput::Final(f) => Some(f),
+        }
+    }
+}
+
+impl<I, F> Clone for ReadStepOutput<I, F>
+where
+    I: Clone,
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
+            ReadStepOutput::Intermediate(i) => {
+                ReadStepOutput::Intermediate(i.clone())
+            }
+            ReadStepOutput::Final(f) => ReadStepOutput::Final(f.clone()),
         }
     }
 }
