@@ -11,10 +11,38 @@ pub mod write;
 
 mod private {
     use super::*;
+    use std::rc::Rc;
+    use std::sync::Arc;
 
     pub trait QueryCAPIInterface {
         fn carray(&self) -> &RawArray;
         fn cquery(&self) -> &RawQuery;
+    }
+
+    impl<T> QueryCAPIInterface for Arc<T>
+    where
+        T: QueryCAPIInterface,
+    {
+        fn carray(&self) -> &RawArray {
+            (**self).carray()
+        }
+
+        fn cquery(&self) -> &RawQuery {
+            (**self).cquery()
+        }
+    }
+
+    impl<T> QueryCAPIInterface for Rc<T>
+    where
+        T: QueryCAPIInterface,
+    {
+        fn carray(&self) -> &RawArray {
+            (**self).carray()
+        }
+
+        fn cquery(&self) -> &RawQuery {
+            (**self).cquery()
+        }
     }
 }
 
