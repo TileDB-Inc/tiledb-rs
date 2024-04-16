@@ -81,11 +81,13 @@ fn query_capi_interface_fields_named(
                 }
             }
 
-            if array_field.is_some() && query_field.is_some() {
+            if let (Some(array_field), Some(query_field)) =
+                (array_field.as_ref(), query_field.as_ref())
+            {
                 return Some(query_capi_interface_impl_fields_named_direct(
                     input,
-                    array_field.unwrap(),
-                    query_field.unwrap(),
+                    array_field,
+                    query_field,
                 ));
             }
         }

@@ -4,9 +4,8 @@ use anyhow::anyhow;
 use itertools::izip;
 use paste::paste;
 
-use crate::query::read::output::FromQueryOutput;
+use crate::query::read::output::{FromQueryOutput, RawReadOutput};
 use crate::query::read::splitter::{ReadSplitterBuilder, ReadSplitterQuery};
-use crate::query::write::input::{Buffer, InputData};
 
 macro_rules! trait_read_callback {
     ($name:ident, $($U:ident),+) => {
@@ -22,19 +21,15 @@ macro_rules! trait_read_callback {
                 fn intermediate_result(
                     &mut self,
                     $(
-                        [< records_ $U:snake >]: usize,
-                        [< bytes_ $U:snake >]: usize,
-                        [< input_ $U:snake >]: InputData<'_, Self::$U>,
-                    )+
+                        [< arg_ $U:snake >]: RawReadOutput<Self::$U>
+                    ),+
                 ) -> Result<Self::Intermediate, Self::Error>;
 
                 fn final_result(
                     self,
                     $(
-                        [< records_ $U:snake >]: usize,
-                        [< bytes_ $U:snake >]: usize,
-                        [< input_ $U:snake >]: InputData<'_, Self::$U>,
-                    )+
+                        [< arg_ $U:snake >]: RawReadOutput<Self::$U>
+                    ),+
                 ) -> Result<Self::Final, Self::Error>;
             }
 
@@ -82,13 +77,9 @@ where
 
     fn intermediate_result(
         &mut self,
-        records: usize,
-        bytes: usize,
-        input: InputData<Self::Unit>,
+        arg: RawReadOutput<Self::Unit>,
     ) -> Result<Self::Intermediate, Self::Error> {
-        let iter = <A as FromQueryOutput>::Iterator::try_from((
-            records, bytes, &input,
-        ))?;
+        let iter = <A as FromQueryOutput>::Iterator::try_from(arg)?;
 
         for record in iter {
             (self.func)(record)
@@ -99,13 +90,9 @@ where
 
     fn final_result(
         mut self,
-        records: usize,
-        bytes: usize,
-        input: InputData<Self::Unit>,
+        arg: RawReadOutput<Self::Unit>,
     ) -> Result<Self::Intermediate, Self::Error> {
-        let iter = <A as FromQueryOutput>::Iterator::try_from((
-            records, bytes, &input,
-        ))?;
+        let iter = <A as FromQueryOutput>::Iterator::try_from(arg)?;
 
         for record in iter {
             (self.func)(record)
@@ -142,18 +129,14 @@ macro_rules! fn_mut_adapter_tuple {
                 fn intermediate_result(
                     &mut self,
                     $(
-                        [< nrecords_ $A:snake >]: usize,
-                        [< nbytes_ $A:snake >]: usize,
-                        [< input_ $A:snake >]: InputData<Self::$U>,
-                    )+
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
                 ) -> Result<Self::Intermediate, Self::Error>
                 {
                     $(
-                        let [< iter_ $A:snake >] = <$A as FromQueryOutput>::Iterator::try_from((
-                            [< nrecords_ $A:snake >],
-                            [< nbytes_ $A:snake >],
-                            &[< input_ $A:snake >],
-                        ))?;
+                        let [< iter_ $A:snake >] = <$A as FromQueryOutput>::Iterator::try_from(
+                            [< $A:snake >],
+                        )?;
                     )+
 
                     for ($([< r_ $A:snake >]),+) in izip!($([< iter_ $A:snake >]),+) {
@@ -166,18 +149,14 @@ macro_rules! fn_mut_adapter_tuple {
                 fn final_result(
                     mut self,
                     $(
-                        [< nrecords_ $A:snake >]: usize,
-                        [< nbytes_ $A:snake >]: usize,
-                        [< input_ $A:snake >]: InputData<Self::$U>,
-                    )+
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
                 ) -> Result<Self::Final, Self::Error>
                 {
                     $(
-                        let [< iter_ $A:snake >] = <$A as FromQueryOutput>::Iterator::try_from((
-                            [< nrecords_ $A:snake >],
-                            [< nbytes_ $A:snake >],
-                            &[< input_ $A:snake >],
-                        ))?;
+                        let [< iter_ $A:snake >] = <$A as FromQueryOutput>::Iterator::try_from(
+                            [< $A:snake >],
+                        )?;
                     )+
 
                     for ($([< r_ $A:snake >]),+) in izip!($([< iter_ $A:snake >]),+) {
@@ -237,32 +216,34 @@ where
          * there's a chance the callback will benefit from owning the buffer
          * rather than borrowing it
          */
-        let input_data = InputData {
-            data: Buffer::Borrowed(&location.data),
-            cell_offsets: location
-                .cell_offsets
-                .as_ref()
-                .map(|c| Buffer::Borrowed(c)),
-        };
+        let input = location.borrow();
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
             ReadStepOutput::Intermediate((nrecords, nbytes, base_result)) => {
+                let arg = RawReadOutput {
+                    nrecords,
+                    nbytes,
+                    input: &input,
+                };
                 let callback = match self.callback.as_mut() {
                     None => unimplemented!(),
                     Some(c) => c,
                 };
-                let ir = callback
-                    .intermediate_result(nrecords, nbytes, input_data)
-                    .map_err(|e| {
-                        crate::error::Error::QueryCallback(
-                            vec![self.base.field.clone()],
-                            anyhow!(e),
-                        )
-                    })?;
+                let ir = callback.intermediate_result(arg).map_err(|e| {
+                    crate::error::Error::QueryCallback(
+                        vec![self.base.field.clone()],
+                        anyhow!(e),
+                    )
+                })?;
                 ReadStepOutput::Intermediate((ir, base_result))
             }
             ReadStepOutput::Final((nrecords, nbytes, base_result)) => {
+                let arg = RawReadOutput {
+                    nrecords,
+                    nbytes,
+                    input: &input,
+                };
                 let callback_final = match self.callback.take() {
                     None => unimplemented!(),
                     Some(c) => {
@@ -270,14 +251,12 @@ where
                         c
                     }
                 };
-                let fr = callback_final
-                    .final_result(nrecords, nbytes, input_data)
-                    .map_err(|e| {
-                        crate::error::Error::QueryCallback(
-                            vec![self.base.field.clone()],
-                            anyhow!(e),
-                        )
-                    })?;
+                let fr = callback_final.final_result(arg).map_err(|e| {
+                    crate::error::Error::QueryCallback(
+                        vec![self.base.field.clone()],
+                        anyhow!(e),
+                    )
+                })?;
                 ReadStepOutput::Final((fr, base_result))
             }
         })
@@ -332,38 +311,17 @@ mod impls {
 
         fn intermediate_result(
             &mut self,
-            records: usize,
-            _bytes: usize,
-            input: InputData<'_, C>,
+            arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            if let Buffer::Owned(data) = input.data {
-                if self.is_empty() {
-                    *self = data.into_vec();
-                    self.truncate(records)
-                } else {
-                    self.extend_from_slice(&data[0..records])
-                }
-            } else {
-                self.extend_from_slice(&input.data.as_ref()[0..records])
-            };
+            self.extend_from_slice(&arg.input.data.as_ref()[0..arg.nrecords]);
             Ok(())
         }
 
         fn final_result(
             mut self,
-            records: usize,
-            bytes: usize,
-            input: InputData<'_, C>,
+            arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Final, Self::Error> {
-            if self.is_empty() {
-                if let Buffer::Owned(data) = input.data {
-                    let mut v = data.into_vec();
-                    v.truncate(records);
-                    return Ok(v);
-                }
-            }
-            self.intermediate_result(records, bytes, input)
-                .map(|_| self)
+            self.intermediate_result(arg).map(|_| self)
         }
     }
 
@@ -378,11 +336,10 @@ mod impls {
 
         fn intermediate_result(
             &mut self,
-            records: usize,
-            bytes: usize,
-            input: InputData<'_, C>,
+            arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            for slice in VarDataIterator::new(records, bytes, &input).unwrap() {
+            /* TODO: this `unwrap` is not a sure thing since it depends on user input */
+            for slice in VarDataIterator::try_from(arg).unwrap() {
                 self.push(slice.to_vec())
             }
             Ok(())
@@ -390,12 +347,9 @@ mod impls {
 
         fn final_result(
             mut self,
-            records: usize,
-            bytes: usize,
-            input: InputData<'_, C>,
+            arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Final, Self::Error> {
-            self.intermediate_result(records, bytes, input)
-                .map(|_| self)
+            self.intermediate_result(arg).map(|_| self)
         }
 
         fn cleared(&self) -> Option<Self> {
@@ -411,11 +365,10 @@ mod impls {
 
         fn intermediate_result(
             &mut self,
-            records: usize,
-            bytes: usize,
-            input: InputData<'_, u8>,
+            arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            for slice in VarDataIterator::new(records, bytes, &input).unwrap() {
+            /* TODO: this `unwrap` is not a sure thing since it depends on user input */
+            for slice in VarDataIterator::try_from(arg).unwrap() {
                 self.push(String::from_utf8_lossy(slice).to_string())
             }
             Ok(())
@@ -423,12 +376,9 @@ mod impls {
 
         fn final_result(
             mut self,
-            records: usize,
-            bytes: usize,
-            input: InputData<'_, u8>,
+            arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Final, Self::Error> {
-            self.intermediate_result(records, bytes, input)
-                .map(|_| self)
+            self.intermediate_result(arg).map(|_| self)
         }
 
         fn cleared(&self) -> Option<Self> {
@@ -500,9 +450,17 @@ macro_rules! query_read_callback {
                         };
 
                         let [< l_ $U:snake >] = self.[< arg_ $U:snake >].raw_read_output.location.borrow();
-                        let [< input_ $U:snake >] = InputData {
+                        let [< input_ $U:snake >] = [< l_ $U:snake >].borrow();
+                        /*InputData {
                             data: Buffer::Borrowed(&[< l_ $U:snake >].data),
                             cell_offsets: [< l_ $U:snake >].cell_offsets.as_ref().map(|c| Buffer::Borrowed(c))
+                        };
+                        */
+
+                        let [< arg_ $U:snake >] = RawReadOutput {
+                            nrecords: [< nrecords_ $U:snake >],
+                            nbytes: [< nbytes_ $U:snake >],
+                            input: &[< input_ $U:snake >]
                         };
                     )+
                 }
@@ -517,9 +475,7 @@ macro_rules! query_read_callback {
                         let ir = paste! {
                             callback.intermediate_result(
                                 $(
-                                    [< nrecords_ $U:snake >],
-                                    [< nbytes_ $U:snake >],
-                                    [< input_ $U:snake >],
+                                    [< arg_ $U:snake >],
                                 )+
                             )
                                 .map_err(|e| {
@@ -544,9 +500,7 @@ macro_rules! query_read_callback {
                         let fr = paste! {
                             callback_final.final_result(
                                 $(
-                                    [< nrecords_ $U:snake >],
-                                    [< nbytes_ $U:snake >],
-                                    [< input_ $U:snake >],
+                                    [< arg_ $U:snake >],
                                 )+
                             )
                                 .map_err(|e| {
@@ -637,6 +591,7 @@ mod tests {
     use proptest::prelude::*;
 
     use crate::query::read::output::{NonVarSized, VarSized};
+    use crate::query::write::input::{Buffer, InputData};
 
     const MIN_RECORDS: usize = 0;
     const MAX_RECORDS: usize = 1024;
@@ -679,15 +634,16 @@ mod tests {
                 cell_offsets: None,
             };
 
+            let arg = RawReadOutput {
+                nrecords: ncells,
+                nbytes: ncells * std::mem::size_of::<u64>(),
+                input: &input_data,
+            };
+
             let prev_len = unitdst.len();
 
-            <Vec<C> as ReadCallback>::intermediate_result(
-                &mut unitdst,
-                ncells,
-                ncells * std::mem::size_of::<u64>(),
-                input_data,
-            )
-            .expect("Error aggregating data into Vec");
+            <Vec<C> as ReadCallback>::intermediate_result(&mut unitdst, arg)
+                .expect("Error aggregating data into Vec");
 
             assert_eq!(ncells, unitdst.len() - prev_len);
             assert_eq!(unitsrc[0..unitdst.len()], unitdst);
@@ -802,8 +758,13 @@ mod tests {
                     .as_ref()
                     .map(|c| Buffer::Borrowed(c)),
             };
+            let arg = RawReadOutput {
+                nrecords,
+                nbytes,
+                input: &input,
+            };
             stringdst
-                .intermediate_result(nrecords, nbytes, input)
+                .intermediate_result(arg)
                 .expect("Error aggregating Vec<String>");
 
             assert_eq!(nrecords, stringdst.len() - prev_len);

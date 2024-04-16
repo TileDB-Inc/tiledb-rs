@@ -94,6 +94,12 @@ impl<'data, T> OutputLocation<'data, T> {
     }
 }
 
+pub struct RawReadOutput<'data, C> {
+    pub nrecords: usize,
+    pub nbytes: usize,
+    pub input: &'data InputData<'data, C>,
+}
+
 pub struct ScratchSpace<C>(pub Box<[C]>, pub Option<Box<[u64]>>);
 
 impl<'data, C> TryFrom<OutputLocation<'data, C>> for ScratchSpace<C> {
@@ -252,18 +258,16 @@ where
     }
 }
 
-impl<'data, C> TryFrom<(usize, usize, &'data InputData<'data, C>)>
+impl<'data, C> TryFrom<RawReadOutput<'data, C>>
     for FixedDataIterator<'data, C>
 {
     type Error = crate::error::Error;
-    fn try_from(
-        value: (usize, usize, &'data InputData<'data, C>),
-    ) -> TileDBResult<Self> {
-        if value.2.cell_offsets.is_some() {
+    fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
+        if value.input.cell_offsets.is_some() {
             Err(Error::Datatype(DatatypeErrorKind::ExpectedFixedSize(None)))
         } else {
             Ok(FixedDataIterator {
-                fixed: value.2.data.as_ref()[0..value.0].iter(),
+                fixed: value.input.data.as_ref()[0..value.nrecords].iter(),
             })
         }
     }
@@ -350,14 +354,10 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
     }
 }
 
-impl<'data, C> TryFrom<(usize, usize, &'data InputData<'data, C>)>
-    for VarDataIterator<'data, C>
-{
+impl<'data, C> TryFrom<RawReadOutput<'data, C>> for VarDataIterator<'data, C> {
     type Error = crate::error::Error;
-    fn try_from(
-        value: (usize, usize, &'data InputData<'data, C>),
-    ) -> TileDBResult<Self> {
-        Self::new(value.0, value.1, value.2)
+    fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
+        Self::new(value.nrecords, value.nbytes, value.input)
     }
 }
 
@@ -365,13 +365,9 @@ pub struct Utf8LossyIterator<'data> {
     var: VarDataIterator<'data, u8>,
 }
 
-impl<'data> TryFrom<(usize, usize, &'data InputData<'data, u8>)>
-    for Utf8LossyIterator<'data>
-{
+impl<'data> TryFrom<RawReadOutput<'data, u8>> for Utf8LossyIterator<'data> {
     type Error = crate::error::Error;
-    fn try_from(
-        value: (usize, usize, &'data InputData<'data, u8>),
-    ) -> TileDBResult<Self> {
+    fn try_from(value: RawReadOutput<'data, u8>) -> TileDBResult<Self> {
         Ok(Utf8LossyIterator {
             var: VarDataIterator::try_from(value)?,
         })
@@ -390,10 +386,7 @@ impl<'data> Iterator for Utf8LossyIterator<'data> {
 pub trait FromQueryOutput: Sized {
     type Unit;
     type Iterator<'data>: Iterator<Item = Self>
-        + TryFrom<
-            (usize, usize, &'data InputData<'data, Self::Unit>),
-            Error = crate::error::Error,
-        >
+        + TryFrom<RawReadOutput<'data, Self::Unit>, Error = crate::error::Error>
     where
         Self::Unit: 'data;
 }
