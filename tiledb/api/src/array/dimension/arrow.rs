@@ -3,12 +3,13 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tiledb::context::Context as TileDBContext;
-use tiledb::filter::FilterListBuilder;
-use tiledb::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 
-use crate::datatype::{arrow_type_physical, tiledb_type_physical};
-use crate::filter::FilterMetadata;
+use crate::array::{Dimension, DimensionBuilder};
+use crate::context::Context as TileDBContext;
+use crate::datatype::arrow::{arrow_type_physical, tiledb_type_physical};
+use crate::filter::arrow::FilterMetadata;
+use crate::filter::FilterListBuilder;
+use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 
 /// Encapsulates fields of a TileDB dimension which are not part of an Arrow
 /// field
@@ -21,7 +22,7 @@ pub struct DimensionMetadata {
 }
 
 impl DimensionMetadata {
-    pub fn new(dim: &tiledb::array::Dimension) -> TileDBResult<Self> {
+    pub fn new(dim: &Dimension) -> TileDBResult<Self> {
         fn_typed!(dim.datatype()?, DT, {
             let domain = dim.domain::<DT>()?;
             let extent = dim.extent::<DT>()?;
@@ -40,7 +41,7 @@ impl DimensionMetadata {
 /// Details about the Dimension are stored under the key "tiledb"
 /// in the Field's metadata.
 pub fn arrow_field(
-    dim: &tiledb::array::Dimension,
+    dim: &Dimension,
 ) -> TileDBResult<Option<arrow_schema::Field>> {
     if let Some(arrow_dt) = arrow_type_physical(&dim.datatype()?) {
         let name = dim.name()?;
@@ -69,7 +70,7 @@ pub fn arrow_field(
 pub fn tiledb_dimension<'ctx>(
     context: &'ctx TileDBContext,
     field: &arrow_schema::Field,
-) -> TileDBResult<Option<tiledb::array::DimensionBuilder<'ctx>>> {
+) -> TileDBResult<Option<DimensionBuilder<'ctx>>> {
     let tiledb_datatype = match tiledb_type_physical(field.data_type()) {
         Some(dt) => dt,
         None => return Ok(None),
@@ -98,7 +99,7 @@ pub fn tiledb_dimension<'ctx>(
         let domain = [deser(&metadata.domain[0])?, deser(&metadata.domain[1])?];
         let extent = deser(&metadata.extent)?;
 
-        tiledb::array::DimensionBuilder::new::<DT>(
+        DimensionBuilder::new::<DT>(
             context,
             field.name(),
             tiledb_datatype,
@@ -118,14 +119,14 @@ pub fn tiledb_dimension<'ctx>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Factory;
     use proptest::prelude::*;
-    use tiledb::Factory;
 
     #[test]
     fn test_tiledb_arrow_tiledb() {
         let c: TileDBContext = TileDBContext::new().unwrap();
 
-        proptest!(|(tdb_in in tiledb::array::dimension::strategy::prop_dimension())| {
+        proptest!(|(tdb_in in crate::array::dimension::strategy::prop_dimension())| {
             let tdb_in = tdb_in.create(&c)
                 .expect("Error constructing arbitrary tiledb dimension");
             if let Some(arrow_dimension) = arrow_field(&tdb_in)

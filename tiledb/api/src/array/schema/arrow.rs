@@ -1,24 +1,23 @@
 use anyhow::anyhow;
 use arrow_schema::Schema as ArrowSchema;
 use serde::{Deserialize, Serialize};
-use tiledb::array::{DomainBuilder, Schema, SchemaBuilder};
-use tiledb::{
-    context::Context as TileDBContext, error::Error as TileDBError,
-    Result as TileDBResult,
-};
 
-use crate::filter::FilterMetadata;
+use crate::array::{
+    ArrayType, CellOrder, DomainBuilder, Schema, SchemaBuilder, TileOrder,
+};
+use crate::filter::arrow::FilterMetadata;
+use crate::{error::Error, Context, Result as TileDBResult};
 
 /// Represents required metadata to convert from an arrow schema
 /// to a TileDB schema.
 #[derive(Deserialize, Serialize)]
 pub struct SchemaMetadata {
-    array_type: tiledb::array::ArrayType,
+    array_type: ArrayType,
     version: i64,
     capacity: u64,
     allows_duplicates: bool,
-    cell_order: tiledb::array::CellOrder,
-    tile_order: tiledb::array::TileOrder,
+    cell_order: CellOrder,
+    tile_order: TileOrder,
     coordinate_filters: FilterMetadata,
     offsets_filters: FilterMetadata,
     nullity_filters: FilterMetadata,
@@ -55,7 +54,8 @@ pub fn arrow_schema<'ctx>(
 
     for d in 0..tiledb.domain()?.ndim()? {
         let dim = tiledb.domain()?.dimension(d)?;
-        if let Some(field) = crate::dimension::arrow_field(&dim)? {
+        if let Some(field) = crate::array::dimension::arrow::arrow_field(&dim)?
+        {
             builder.push(field)
         } else {
             return Ok(None);
@@ -64,7 +64,8 @@ pub fn arrow_schema<'ctx>(
 
     for a in 0..tiledb.nattributes()? {
         let attr = tiledb.attribute(a)?;
-        if let Some(field) = crate::attribute::arrow_field(&attr)? {
+        if let Some(field) = crate::array::attribute::arrow::arrow_field(&attr)?
+        {
             builder.push(field)
         } else {
             return Ok(None);
@@ -73,10 +74,7 @@ pub fn arrow_schema<'ctx>(
 
     let metadata = serde_json::ser::to_string(&SchemaMetadata::new(tiledb)?)
         .map_err(|e| {
-            TileDBError::Serialization(
-                String::from("schema metadata"),
-                anyhow!(e),
-            )
+            Error::Serialization(String::from("schema metadata"), anyhow!(e))
         })?;
     builder
         .metadata_mut()
@@ -90,13 +88,13 @@ pub fn arrow_schema<'ctx>(
 /// These are expected to be in the schema `metadata` beneath the key `tiledb`.
 /// This metadata is expected to be a JSON object with the following fields:
 pub fn tiledb_schema<'ctx>(
-    context: &'ctx TileDBContext,
+    context: &'ctx Context,
     schema: &ArrowSchema,
 ) -> TileDBResult<Option<SchemaBuilder<'ctx>>> {
     let metadata = match schema.metadata().get("tiledb") {
         Some(metadata) => serde_json::from_str::<SchemaMetadata>(metadata)
             .map_err(|e| {
-                TileDBError::Deserialization(
+                Error::Deserialization(
                     String::from("schema metadata"),
                     anyhow!(e),
                 )
@@ -105,7 +103,7 @@ pub fn tiledb_schema<'ctx>(
     };
 
     if schema.fields.len() < metadata.ndim {
-        return Err(TileDBError::InvalidArgument(anyhow!(format!(
+        return Err(Error::InvalidArgument(anyhow!(format!(
             "Expected at least {} dimension fields but only found {}",
             metadata.ndim,
             schema.fields.len()
@@ -119,7 +117,7 @@ pub fn tiledb_schema<'ctx>(
         let mut b = DomainBuilder::new(context)?;
         for f in dimensions {
             if let Some(dimension) =
-                crate::dimension::tiledb_dimension(context, f)?
+                crate::array::dimension::arrow::tiledb_dimension(context, f)?
             {
                 b = b.add_dimension(dimension.build())?;
             } else {
@@ -139,7 +137,9 @@ pub fn tiledb_schema<'ctx>(
         .nullity_filters(&metadata.nullity_filters.create(context)?)?;
 
     for f in attributes {
-        if let Some(attr) = crate::attribute::tiledb_attribute(context, f)? {
+        if let Some(attr) =
+            crate::array::attribute::arrow::tiledb_attribute(context, f)?
+        {
             b = b.add_attribute(attr.build())?;
         } else {
             return Ok(None);
@@ -152,13 +152,13 @@ pub fn tiledb_schema<'ctx>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array::schema::SchemaData;
+    use crate::Factory;
     use proptest::prelude::*;
-    use tiledb::array::schema::SchemaData;
-    use tiledb::Factory;
 
     #[test]
     fn test_tiledb_arrow_tiledb() -> TileDBResult<()> {
-        let c: TileDBContext = TileDBContext::new()?;
+        let c: Context = Context::new()?;
 
         /* tiledb => arrow => tiledb */
         proptest!(|(tdb_in in any::<SchemaData>())| {

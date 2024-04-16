@@ -8,7 +8,7 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::string::{RawTDBString, TDBString};
 use crate::{Datatype, Factory, Result as TileDBResult};
 
-#[cfg(feature = "proptest-strategies")]
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
 pub(crate) enum RawEnumeration {
