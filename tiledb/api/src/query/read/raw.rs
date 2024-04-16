@@ -114,6 +114,18 @@ impl<'data, C> RawReadOutput<'data, C> {
 
         Ok(())
     }
+
+    pub fn last_read_size(&self) -> (usize, usize) {
+        let records_written = match self.offsets_size.as_ref() {
+            Some(offsets_size) => {
+                **offsets_size as usize / std::mem::size_of::<u64>()
+            }
+            None => *self.data_size as usize / std::mem::size_of::<C>(),
+        };
+        let bytes_written = *self.data_size as usize;
+
+        (records_written, bytes_written)
+    }
 }
 
 /// Reads query results into a raw buffer.
@@ -151,16 +163,8 @@ where
             self.base.step()?
         };
 
-        let records_written = match self.raw_read_output.offsets_size.as_ref() {
-            Some(offsets_size) => {
-                **offsets_size as usize / std::mem::size_of::<u64>()
-            }
-            None => {
-                *self.raw_read_output.data_size as usize
-                    / std::mem::size_of::<C>()
-            }
-        };
-        let bytes_written = *self.raw_read_output.data_size as usize;
+        let (records_written, bytes_written) =
+            self.raw_read_output.last_read_size();
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
