@@ -2,7 +2,7 @@ name: "Pull Request CI"
 on:
   push:
     branches:
-      - dev
+      - main
       - release-*
       - refs/tags/*
 
