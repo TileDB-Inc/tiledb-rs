@@ -64,7 +64,7 @@ impl<'ctx> Builder<'ctx> {
         self,
         key: K,
         range: &[Conv; 2],
-    ) -> TileDBResult<QueryBuilder<'ctx>> {
+    ) -> TileDBResult<Self> {
         let c_context = self.subarray.context.capi();
         let c_subarray = *self.subarray.raw;
 
@@ -99,10 +99,11 @@ impl<'ctx> Builder<'ctx> {
                 })
             }
         }?;
-        self.build()
+        Ok(self)
     }
 
-    fn build(mut self) -> TileDBResult<QueryBuilder<'ctx>> {
+    /// Apply the subarray to the query, returning the query builder.
+    pub fn finish_subarray(self) -> TileDBResult<QueryBuilder<'ctx>> {
         let c_context = self.subarray.context.capi();
         let c_query = *self.query.query.raw;
         let c_subarray = *self.subarray.raw;
@@ -110,7 +111,6 @@ impl<'ctx> Builder<'ctx> {
         self.capi_return(unsafe {
             ffi::tiledb_query_set_subarray_t(c_context, c_query, c_subarray)
         })?;
-        self.query.query.subarrays.push(self.subarray);
         Ok(self.query)
     }
 }
