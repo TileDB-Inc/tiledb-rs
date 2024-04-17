@@ -192,7 +192,7 @@ pub trait QueryBuilder<'ctx>:
         Ok(self)
     }
 
-    fn add_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>> {
+    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>> {
         SubarrayBuilder::for_query(self)
     }
 

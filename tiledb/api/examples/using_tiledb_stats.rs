@@ -136,10 +136,10 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
             ATTRIBUTE_NAME,
             Default::default(),
         )?
-        .add_subarray()?
+        .start_subarray()?
         .dimension_range_typed::<i32, _>(0, &[1, 3000])?
-        .add_subarray()?
         .dimension_range_typed::<i32, _>(1, &[1, 12000])?
+        .finish_subarray()?
         .build();
 
     tiledb::stats::enable()?;

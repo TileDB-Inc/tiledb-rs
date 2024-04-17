@@ -3,7 +3,9 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use serde_json::json;
 
-use crate::array::{attribute::FillData, ArrayType, AttributeData, DomainData};
+use crate::array::{
+    attribute::FillData, ArrayType, AttributeData, CellValNum, DomainData,
+};
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
 use crate::{fn_typed, Datatype};
@@ -31,7 +33,7 @@ pub fn prop_attribute_name() -> impl Strategy<Value = String> {
         )
 }
 
-fn prop_cell_val_num() -> impl Strategy<Value = Option<u32>> {
+fn prop_cell_val_num() -> impl Strategy<Value = Option<CellValNum>> {
     Just(None)
 }
 

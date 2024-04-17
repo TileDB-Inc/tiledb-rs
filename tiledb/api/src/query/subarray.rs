@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
-use crate::array::DimensionKey;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
+use crate::key::LookupKey;
 use crate::query::QueryBuilder;
 use crate::Result as TileDBResult;
 
@@ -63,11 +63,11 @@ where
         })
     }
 
-    pub fn dimension_range_typed<Conv: CAPIConverter, K: Into<DimensionKey>>(
+    pub fn dimension_range_typed<Conv: CAPIConverter, K: Into<LookupKey>>(
         self,
         key: K,
         range: &[Conv; 2],
-    ) -> TileDBResult<Q> {
+    ) -> TileDBResult<Self> {
         let c_context = self.subarray.context.capi();
         let c_subarray = *self.subarray.raw;
 
@@ -75,7 +75,7 @@ where
         let c_end = &range[1] as *const Conv as *const std::ffi::c_void;
 
         match key.into() {
-            DimensionKey::Index(idx) => {
+            LookupKey::Index(idx) => {
                 let c_idx = idx.try_into().unwrap();
                 self.capi_return(unsafe {
                     ffi::tiledb_subarray_add_range(
@@ -88,7 +88,7 @@ where
                     )
                 })
             }
-            DimensionKey::Name(name) => {
+            LookupKey::Name(name) => {
                 let c_name = cstring!(name);
                 self.capi_return(unsafe {
                     ffi::tiledb_subarray_add_range_by_name(
@@ -102,10 +102,11 @@ where
                 })
             }
         }?;
-        self.build()
+        Ok(self)
     }
 
-    fn build(self) -> TileDBResult<Q> {
+    /// Apply the subarray to the query, returning the query builder.
+    pub fn finish_subarray(self) -> TileDBResult<Q> {
         let c_context = self.subarray.context.capi();
         let c_query = **self.query.cquery();
         let c_subarray = *self.subarray.raw;

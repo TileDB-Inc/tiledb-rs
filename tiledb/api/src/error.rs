@@ -96,6 +96,9 @@ pub enum Error {
     /// Error when a function has an invalid argument
     #[error("Invalid argument: {0}")]
     InvalidArgument(#[source] anyhow::Error),
+    /// Error when an invalid index is provided as an arguemnt.
+    #[error("Invalid index: {0}")]
+    InvalidIndex(usize),
     /// Error with datatype handling
     #[error("Datatype error: {0}")]
     Datatype(DatatypeErrorKind),

@@ -131,10 +131,10 @@ fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
 
     tiledb::query::ReadBuilder::new(tdb, array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .add_subarray()?
+        .start_subarray()?
         .dimension_range_typed::<i32, _>(0, &[1, 4])?
-        .add_subarray()?
-        .dimension_range_typed::<i32, _>(1, &[1, 4])
+        .dimension_range_typed::<i32, _>(1, &[1, 4])?
+        .finish_subarray()
 }
 
 fn grow_buffer<T>(b: &mut BufferMut<T>)

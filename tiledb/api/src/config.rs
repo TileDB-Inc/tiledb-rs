@@ -72,6 +72,10 @@ impl Config {
         }
     }
 
+    pub(crate) fn from_raw(raw: RawConfig) -> Self {
+        Self { raw }
+    }
+
     pub fn set(&mut self, key: &str, val: &str) -> TileDBResult<()> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");

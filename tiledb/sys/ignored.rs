@@ -52,12 +52,97 @@ extern "C" {
         out: *mut FILE,
     ) -> capi_return_t;
 
+    pub fn tiledb_fragment_info_dump(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *const tiledb_fragment_info_t,
+        out: *mut FILE,
+    ) -> i32;
+
     pub fn tiledb_stats_dump(out: *mut FILE) -> i32;
     pub fn tiledb_stats_raw_dump(out: *mut FILE) -> i32;
 
     // This is an exact duplicate of tiledb_stats_dump_str
     pub fn tiledb_stats_raw_dump_str(
         out: *mut *mut ::std::os::raw::c_char,
+    ) -> i32;
+
+    // For whatever reason, the fragment info APIs expose both an `is_dense`
+    // and `is_sparse` API. We just use `is_dense` to return a fragment type
+    // so the `is_sparse` variant is unused.
+
+    pub fn tiledb_fragment_info_get_sparse(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        sparse: *mut i32,
+    ) -> i32;
+
+    // We don't use any of the `from_name` APIs for fragment infos because
+    // the wrapper API uses the `from_index` variant and returns all dimensions
+    // at once for the non-empty domain and minimum bounding rectangles.
+
+    pub fn tiledb_fragment_info_get_non_empty_domain_from_name(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        dim_name: *const ::std::os::raw::c_char,
+        domain: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_fragment_info_get_non_empty_domain_var_size_from_name(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        dim_name: *const ::std::os::raw::c_char,
+        start_size: *mut u64,
+        end_size: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_fragment_info_get_non_empty_domain_var_from_name(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        dim_name: *const ::std::os::raw::c_char,
+        start: *mut ::std::os::raw::c_void,
+        end: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_fragment_info_get_mbr_from_name(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        mid: u32,
+        dim_name: *const ::std::os::raw::c_char,
+        mbr: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_fragment_info_get_mbr_var_size_from_name(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        mid: u32,
+        dim_name: *const ::std::os::raw::c_char,
+        start_size: *mut u64,
+        end_size: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_fragment_info_get_mbr_var_from_name(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        mid: u32,
+        dim_name: *const ::std::os::raw::c_char,
+        start: *mut ::std::os::raw::c_void,
+        end: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
+    // We use get_fragment_name_v2
+
+    pub fn tiledb_fragment_info_get_fragment_name(
+        ctx: *mut tiledb_ctx_t,
+        fragment_info: *mut tiledb_fragment_info_t,
+        fid: u32,
+        name: *mut *const ::std::os::raw::c_char,
     ) -> i32;
 
     // The tiledb_handle_* functions are for internal use. They should probably be
