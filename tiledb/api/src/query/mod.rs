@@ -102,7 +102,7 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn subarray(self) -> TileDBResult<SubarrayBuilder<'ctx>> {
+    pub fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx>> {
         SubarrayBuilder::for_query(self)
     }
 

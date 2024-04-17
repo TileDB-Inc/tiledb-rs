@@ -3,7 +3,7 @@ use std::ops::Deref;
 use crate::array::DimensionKey;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
-use crate::query::{Builder as QueryBuilder, Query};
+use crate::query::Builder as QueryBuilder;
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawSubarray {
@@ -103,7 +103,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     /// Apply the subarray to the query, returning the query builder.
-    pub fn to_query(self) -> TileDBResult<QueryBuilder<'ctx>> {
+    pub fn finish_subarray(self) -> TileDBResult<QueryBuilder<'ctx>> {
         let c_context = self.subarray.context.capi();
         let c_query = *self.query.query.raw;
         let c_subarray = *self.subarray.raw;
@@ -112,10 +112,5 @@ impl<'ctx> Builder<'ctx> {
             ffi::tiledb_query_set_subarray_t(c_context, c_query, c_subarray)
         })?;
         Ok(self.query)
-    }
-
-    /// Apply the subarray to the query and finish constructing the query.
-    pub fn build(self) -> TileDBResult<Query<'ctx>> {
-        Ok(self.to_query()?.build())
     }
 }

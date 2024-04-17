@@ -136,10 +136,11 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
         tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Read)?
             .layout(tiledb::query::QueryLayout::RowMajor)?
             .dimension_buffer_typed(ATTRIBUTE_NAME, results.as_mut_slice())?
-            .subarray()?
+            .start_subarray()?
             .dimension_range_typed::<i32, _>(0, &[1, 3000])?
             .dimension_range_typed::<i32, _>(1, &[1, 12000])?
-            .build()?;
+            .finish_subarray()?
+            .build();
 
     tiledb::stats::enable()?;
     query.submit()?;
