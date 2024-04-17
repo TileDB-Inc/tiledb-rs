@@ -37,7 +37,6 @@ pub struct Query<'ctx> {
     #[context]
     context: &'ctx Context,
     array: Array<'ctx>,
-    subarrays: Vec<Subarray<'ctx>>,
     // This is a bit gross but the buffer sizes must out-live the query.
     // That's very C-like, Rust wants to use slices or something, so we do this
     // in order to pin the size to a fixed address
@@ -87,7 +86,6 @@ impl<'ctx> Builder<'ctx> {
             query: Query {
                 context,
                 array,
-                subarrays: vec![],
                 result_buffers: HashMap::new(),
                 raw: RawQuery::Owned(c_query),
             },
@@ -104,7 +102,7 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn add_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx>> {
+    pub fn subarray(self) -> TileDBResult<SubarrayBuilder<'ctx>> {
         SubarrayBuilder::for_query(self)
     }
 
