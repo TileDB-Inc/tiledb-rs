@@ -2,12 +2,14 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use util::option::OptionSubset;
 
 use crate::array::attribute::{AttributeData, RawAttribute};
-use crate::array::domain::{DomainData, RawDomain};
+use crate::array::dimension::Dimension;
+use crate::array::domain::{DimensionKey, DomainData, RawDomain};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
@@ -225,18 +227,41 @@ impl<'ctx> Schema<'ctx> {
         Ok(c_nattrs as usize)
     }
 
-    pub fn attribute(&self, index: usize) -> TileDBResult<Attribute> {
+    pub fn attribute<K: Into<DimensionKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<Attribute> {
         let c_context = self.context.capi();
         let c_schema = *self.raw;
-        let c_index = index as u32;
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_get_attribute_from_index(
-                c_context,
-                c_schema,
-                c_index,
-                &mut c_attr,
-            )
+
+        self.capi_return(match key.into() {
+            DimensionKey::Index(idx) => {
+                let c_idx: u32 = idx.try_into().map_err(
+                    |e: <usize as TryInto<u32>>::Error| {
+                        crate::error::Error::InvalidArgument(anyhow!(e))
+                    },
+                )?;
+                unsafe {
+                    ffi::tiledb_array_schema_get_attribute_from_index(
+                        c_context,
+                        c_schema,
+                        c_idx,
+                        &mut c_attr,
+                    )
+                }
+            }
+            DimensionKey::Name(name) => {
+                let c_name = cstring!(name);
+                unsafe {
+                    ffi::tiledb_array_schema_get_attribute_from_name(
+                        c_context,
+                        c_schema,
+                        c_name.as_ptr(),
+                        &mut c_attr,
+                    )
+                }
+            }
         })?;
 
         Ok(Attribute::new(self.context, RawAttribute::Owned(c_attr)))
