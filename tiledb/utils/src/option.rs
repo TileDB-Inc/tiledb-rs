@@ -1,3 +1,5 @@
+use std::num::*;
+
 /// Trait for comparing types which can express optional data.
 /// The `option_subset` method should return true if it finds that all required data
 /// of two objects are equal, and the non-required data are either equal or not set
@@ -148,9 +150,25 @@ mod serde_json {
     }
 }
 
-option_subset_partialeq!(u8, u16, u32, u64, usize);
-option_subset_partialeq!(i8, i16, i32, i64, isize);
+option_subset_partialeq!(u8, u16, u32, u64, u128, usize);
+option_subset_partialeq!(i8, i16, i32, i64, i128, isize);
 option_subset_partialeq!(bool, f32, f64, String);
+option_subset_partialeq!(
+    NonZeroI8,
+    NonZeroI16,
+    NonZeroI32,
+    NonZeroI64,
+    NonZeroI128,
+    NonZeroIsize
+);
+option_subset_partialeq!(
+    NonZeroU8,
+    NonZeroU16,
+    NonZeroU32,
+    NonZeroU64,
+    NonZeroU128,
+    NonZeroUsize
+);
 
 #[cfg(test)]
 mod tests {

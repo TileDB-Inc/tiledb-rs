@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::array::{Attribute, AttributeBuilder};
+use crate::array::{Attribute, AttributeBuilder, CellValNum};
 use crate::datatype::arrow::*;
 use crate::error::Error;
 use crate::filter::arrow::FilterMetadata;
@@ -21,7 +21,7 @@ pub struct FillValueMetadata {
 /// Encapsulates details of a TileDB attribute for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
 pub struct AttributeMetadata {
-    pub cell_val_num: u32,
+    pub cell_val_num: CellValNum,
     pub fill_value: FillValueMetadata,
     pub filters: FilterMetadata,
 }
