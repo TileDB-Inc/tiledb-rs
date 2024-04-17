@@ -22,7 +22,9 @@ pub use domain::{Builder as DomainBuilder, DimensionKey, Domain, DomainData};
 pub use enumeration::{
     Builder as EnumerationBuilder, Enumeration, EnumerationData,
 };
-pub use schema::{ArrayType, Builder as SchemaBuilder, Schema, SchemaData};
+pub use schema::{
+    ArrayType, Builder as SchemaBuilder, CellValNum, Schema, SchemaData,
+};
 
 pub enum Mode {
     Read,

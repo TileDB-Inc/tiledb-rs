@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::num::NonZeroU32;
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -12,6 +13,7 @@ use crate::array::dimension::Dimension;
 use crate::array::domain::{DimensionKey, DomainData, RawDomain};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
+use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
@@ -47,6 +49,51 @@ impl TryFrom<ffi::tiledb_array_type_t> for ArrayType {
                 "Invalid array type: {}",
                 value
             ))),
+        }
+    }
+}
+
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
+pub enum CellValNum {
+    Fixed(std::num::NonZeroU32),
+    Var,
+}
+
+impl CellValNum {
+    pub(crate) fn capi(&self) -> u32 {
+        match self {
+            CellValNum::Fixed(c) => c.get(),
+            CellValNum::Var => std::u32::MAX,
+        }
+    }
+}
+
+impl Default for CellValNum {
+    fn default() -> Self {
+        CellValNum::Fixed(NonZeroU32::new(1).unwrap())
+    }
+}
+
+impl TryFrom<u32> for CellValNum {
+    type Error = crate::error::Error;
+    fn try_from(value: u32) -> TileDBResult<Self> {
+        match value {
+            0 => Err(Error::InvalidArgument(anyhow!(
+                "Cell val num cannot be zero"
+            ))),
+            std::u32::MAX => Ok(CellValNum::Var),
+            v => Ok(CellValNum::Fixed(NonZeroU32::new(v).unwrap())),
+        }
+    }
+}
+
+impl From<CellValNum> for u32 {
+    fn from(value: CellValNum) -> Self {
+        match value {
+            CellValNum::Fixed(nz) => nz.get(),
+            CellValNum::Var => std::u32::MAX,
         }
     }
 }
@@ -94,6 +141,13 @@ impl<'ctx> Field<'ctx> {
         match self {
             Field::Dimension(ref d) => d.datatype(),
             Field::Attribute(ref a) => a.datatype(),
+        }
+    }
+
+    pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
+        match self {
+            Field::Dimension(ref d) => d.cell_val_num(),
+            Field::Attribute(ref a) => a.cell_val_num(),
         }
     }
 }
@@ -263,7 +317,7 @@ impl<'ctx> Schema<'ctx> {
             DimensionKey::Index(idx) => {
                 let c_idx: u32 = idx.try_into().map_err(
                     |e: <usize as TryInto<u32>>::Error| {
-                        crate::error::Error::InvalidArgument(anyhow!(e))
+                        Error::InvalidArgument(anyhow!(e))
                     },
                 )?;
                 unsafe {
@@ -893,10 +947,7 @@ mod tests {
             let e =
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c))?.build();
             assert!(e.is_err());
-            assert!(matches!(
-                e.unwrap_err(),
-                crate::error::Error::LibTileDB(_)
-            ));
+            assert!(matches!(e.unwrap_err(), Error::LibTileDB(_)));
         }
         {
             let s: Schema = {

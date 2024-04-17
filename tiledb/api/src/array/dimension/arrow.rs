@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::array::{Dimension, DimensionBuilder};
+use crate::array::{CellValNum, Dimension, DimensionBuilder};
 use crate::context::Context as TileDBContext;
 use crate::datatype::arrow::{arrow_type_physical, tiledb_type_physical};
 use crate::filter::arrow::FilterMetadata;
@@ -15,7 +15,7 @@ use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 /// field
 #[derive(Deserialize, Serialize)]
 pub struct DimensionMetadata {
-    pub cell_val_num: u32,
+    pub cell_val_num: CellValNum,
     pub domain: [serde_json::value::Value; 2],
     pub extent: serde_json::value::Value,
     pub filters: FilterMetadata,

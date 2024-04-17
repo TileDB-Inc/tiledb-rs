@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use util::option::OptionSubset;
 
+use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
 use crate::error::Error;
@@ -74,7 +75,7 @@ impl<'ctx> Dimension<'ctx> {
         Datatype::try_from(c_datatype)
     }
 
-    pub fn cell_val_num(&self) -> TileDBResult<u32> {
+    pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
         let c_context = self.context.capi();
         let mut c_num: std::ffi::c_uint = 0;
         self.capi_return(unsafe {
@@ -82,7 +83,7 @@ impl<'ctx> Dimension<'ctx> {
                 c_context, *self.raw, &mut c_num,
             )
         })?;
-        Ok(c_num as u32)
+        CellValNum::try_from(c_num)
     }
 
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
@@ -226,9 +227,9 @@ impl<'ctx> Builder<'ctx> {
         self.dim.name()
     }
 
-    pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
+    pub fn cell_val_num(self, num: CellValNum) -> TileDBResult<Self> {
         let c_context = self.dim.context.capi();
-        let c_num = num as std::ffi::c_uint;
+        let c_num = num.capi() as std::ffi::c_uint;
         self.capi_return(unsafe {
             ffi::tiledb_dimension_set_cell_val_num(
                 c_context,
@@ -268,7 +269,7 @@ pub struct DimensionData {
     pub datatype: Datatype,
     pub domain: [serde_json::value::Value; 2],
     pub extent: serde_json::value::Value,
-    pub cell_val_num: Option<u32>,
+    pub cell_val_num: Option<CellValNum>,
 
     /// Optional filters to apply to the dimension. If None or Some(empty),
     /// then filters will be inherited from the schema's `coordinate_filters`
@@ -457,7 +458,7 @@ mod tests {
 
         // only 1 is currently supported
         {
-            let cell_val_num = 1;
+            let cell_val_num = CellValNum::try_from(1).unwrap();
             let dimension = {
                 let domain_in: [i32; 2] = [1, 4];
                 let extent: i32 = 4;
@@ -478,7 +479,7 @@ mod tests {
         }
 
         // anything else should error
-        for cell_val_num in vec![0, 2, 4].into_iter() {
+        for cell_val_num in vec![2, 4, 8].into_iter() {
             let domain_in: [i32; 2] = [1, 4];
             let extent: i32 = 4;
             let b = Builder::new::<i32>(
@@ -489,7 +490,7 @@ mod tests {
                 &extent,
             )
             .unwrap()
-            .cell_val_num(cell_val_num);
+            .cell_val_num(CellValNum::try_from(cell_val_num).unwrap());
             assert!(b.is_err());
         }
     }
