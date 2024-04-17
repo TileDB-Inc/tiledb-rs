@@ -484,6 +484,14 @@ impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {
     }
 }
 
+impl<'ctx> TryFrom<Attribute<'ctx>> for AttributeData {
+    type Error = crate::error::Error;
+
+    fn try_from(attr: Attribute<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&attr)
+    }
+}
+
 impl<'ctx> Factory<'ctx> for AttributeData {
     type Item = Attribute<'ctx>;
 

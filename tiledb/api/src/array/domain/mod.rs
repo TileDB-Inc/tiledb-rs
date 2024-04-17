@@ -267,6 +267,14 @@ impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {
     }
 }
 
+impl<'ctx> TryFrom<Domain<'ctx>> for DomainData {
+    type Error = crate::error::Error;
+
+    fn try_from(domain: Domain<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&domain)
+    }
+}
+
 impl<'ctx> Factory<'ctx> for DomainData {
     type Item = Domain<'ctx>;
 

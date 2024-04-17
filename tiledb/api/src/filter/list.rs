@@ -219,6 +219,14 @@ impl<'ctx> TryFrom<&FilterList<'ctx>> for FilterListData {
     }
 }
 
+impl<'ctx> TryFrom<FilterList<'ctx>> for FilterListData {
+    type Error = crate::error::Error;
+
+    fn try_from(filters: FilterList<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&filters)
+    }
+}
+
 impl<'ctx> crate::Factory<'ctx> for FilterListData {
     type Item = FilterList<'ctx>;
 
