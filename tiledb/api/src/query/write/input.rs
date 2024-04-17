@@ -2,15 +2,21 @@ use crate::convert::CAPISameRepr;
 use crate::query::buffer::{Buffer, QueryBuffers, QueryBuffersMut};
 
 pub trait DataProvider {
-    fn as_tiledb_input(&self) -> QueryBuffers;
+    type Unit: CAPISameRepr;
+    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit>;
 }
 
-impl<'data, T> DataProvider for QueryBuffers<'data, T> {
-    fn as_tiledb_input(&self) -> QueryBuffers {
+impl<'data, C> DataProvider for QueryBuffers<'data, C>
+where
+    C: CAPISameRepr,
+{
+    type Unit = C;
+
+    fn as_tiledb_input(&self) -> QueryBuffers<C> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice =
-            unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+            unsafe { std::slice::from_raw_parts(ptr as *const C, byte_len) };
         QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
@@ -23,12 +29,17 @@ impl<'data, T> DataProvider for QueryBuffers<'data, T> {
     }
 }
 
-impl<'data, T> DataProvider for QueryBuffersMut<'data, T> {
-    fn as_tiledb_input(&self) -> QueryBuffers {
+impl<'data, C> DataProvider for QueryBuffersMut<'data, C>
+where
+    C: CAPISameRepr,
+{
+    type Unit = C;
+
+    fn as_tiledb_input(&self) -> QueryBuffers<C> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice =
-            unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+            unsafe { std::slice::from_raw_parts(ptr as *const C, byte_len) };
         QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
@@ -45,7 +56,9 @@ impl<C> DataProvider for Vec<C>
 where
     C: CAPISameRepr,
 {
-    fn as_tiledb_input(&self) -> QueryBuffers {
+    type Unit = C;
+
+    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
         self.as_slice().as_tiledb_input()
     }
 }
@@ -54,13 +67,11 @@ impl<C> DataProvider for [C]
 where
     C: CAPISameRepr,
 {
-    fn as_tiledb_input(&self) -> QueryBuffers {
-        let ptr = self.as_ptr();
-        let byte_len = std::mem::size_of_val(self);
-        let raw_slice =
-            unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+    type Unit = C;
+
+    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
         QueryBuffers {
-            data: Buffer::Borrowed(raw_slice),
+            data: Buffer::Borrowed(self.as_ref()),
             cell_offsets: None,
             validity: None,
         }
@@ -68,7 +79,9 @@ where
 }
 
 impl DataProvider for Vec<&str> {
-    fn as_tiledb_input(&self) -> QueryBuffers {
+    type Unit = u8;
+
+    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -94,7 +107,9 @@ impl DataProvider for Vec<&str> {
 }
 
 impl DataProvider for Vec<String> {
-    fn as_tiledb_input(&self) -> QueryBuffers {
+    type Unit = u8;
+
+    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -132,15 +147,15 @@ mod tests {
         #[test]
         fn input_provider_u64(u64vec in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
             let input = u64vec.as_tiledb_input();
-            let (bytes, offsets) = (input.data.as_ref(), input.cell_offsets);
+            let (u64in, offsets) = (input.data.as_ref(), input.cell_offsets);
             assert!(offsets.is_none());
 
             let u64out = if u64vec.is_empty() {
-                assert!(bytes.is_empty());
+                assert!(u64in.is_empty());
                 vec![]
             } else {
                 unsafe {
-                    std::slice::from_raw_parts(&bytes[0] as *const u8 as *const u64, bytes.len() / std::mem::size_of::<u64>())
+                    std::slice::from_raw_parts(&u64in[0] as *const u64, u64in.len())
                 }.to_vec()
             };
 

@@ -34,14 +34,14 @@ impl<'data, T> Deref for Buffer<'data, T> {
     }
 }
 
-pub struct QueryBuffers<'data, T = u8> {
-    pub data: Buffer<'data, T>,
+pub struct QueryBuffers<'data, C> {
+    pub data: Buffer<'data, C>,
     pub cell_offsets: Option<Buffer<'data, u64>>,
     pub validity: Option<Buffer<'data, u8>>,
 }
 
-impl<'data, T> QueryBuffers<'data, T> {
-    pub fn borrow<'this>(&'this self) -> QueryBuffers<'data, T>
+impl<'data, C> QueryBuffers<'data, C> {
+    pub fn borrow<'this>(&'this self) -> QueryBuffers<'data, C>
     where
         'this: 'data,
     {
@@ -57,10 +57,10 @@ impl<'data, T> QueryBuffers<'data, T> {
     }
 }
 
-pub enum BufferMut<'data, T = u8> {
+pub enum BufferMut<'data, C> {
     Empty,
-    Borrowed(&'data mut [T]),
-    Owned(Box<[T]>),
+    Borrowed(&'data mut [C]),
+    Owned(Box<[C]>),
 }
 
 impl<'data, T> BufferMut<'data, T> {
