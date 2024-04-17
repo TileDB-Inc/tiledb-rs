@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use util::option::OptionSubset;
 
+use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::{BitsEq, CAPIConverter};
 use crate::error::{DatatypeErrorKind, Error};
@@ -102,11 +103,7 @@ impl<'ctx> Attribute<'ctx> {
         })
     }
 
-    pub fn is_var_sized(&self) -> TileDBResult<bool> {
-        self.cell_val_num().map(|num| num == u32::MAX)
-    }
-
-    pub fn cell_val_num(&self) -> TileDBResult<u32> {
+    pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
         let c_context = self.context.capi();
         let mut c_num: std::ffi::c_uint = 0;
         self.capi_return(unsafe {
@@ -114,7 +111,11 @@ impl<'ctx> Attribute<'ctx> {
                 c_context, *self.raw, &mut c_num,
             )
         })?;
-        Ok(c_num as u32)
+        CellValNum::try_from(c_num)
+    }
+
+    pub fn is_var_sized(&self) -> TileDBResult<bool> {
+        Ok(self.cell_val_num()? == CellValNum::Var)
     }
 
     pub fn cell_size(&self) -> TileDBResult<u64> {
@@ -309,9 +310,9 @@ impl<'ctx> Builder<'ctx> {
         self.attr.datatype()
     }
 
-    pub fn cell_val_num(self, num: u32) -> TileDBResult<Self> {
+    pub fn cell_val_num(self, num: CellValNum) -> TileDBResult<Self> {
         let c_context = self.attr.context.capi();
-        let c_num = num as std::ffi::c_uint;
+        let c_num = num.capi() as std::ffi::c_uint;
         self.capi_return(unsafe {
             ffi::tiledb_attribute_set_cell_val_num(
                 c_context,
@@ -323,7 +324,7 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn var_sized(self) -> TileDBResult<Self> {
-        self.cell_val_num(u32::MAX)
+        self.cell_val_num(CellValNum::Var)
     }
 
     pub fn is_nullable(&self) -> bool {
@@ -448,7 +449,7 @@ pub struct AttributeData {
     pub name: String,
     pub datatype: Datatype,
     pub nullability: Option<bool>,
-    pub cell_val_num: Option<u32>,
+    pub cell_val_num: Option<CellValNum>,
     pub fill: Option<FillData>,
     pub filters: FilterListData,
 }
@@ -638,7 +639,7 @@ mod test {
                 .build();
 
             let num = attr.cell_val_num().expect("Error getting cell val num.");
-            assert_eq!(num, 1);
+            assert_eq!(num, Default::default());
             let size = attr
                 .cell_size()
                 .expect("Error getting attribute cell size.");
@@ -647,11 +648,11 @@ mod test {
         {
             let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
                 .expect("Error creating attribute instance.")
-                .cell_val_num(3)
+                .cell_val_num(CellValNum::try_from(3).unwrap())
                 .expect("Error setting cell val num.")
                 .build();
             let num = attr.cell_val_num().expect("Error getting cell val num.");
-            assert_eq!(num, 3);
+            assert_eq!(u32::from(num), 3);
             let size = attr
                 .cell_size()
                 .expect("Error getting attribute cell size.");
@@ -660,7 +661,7 @@ mod test {
         {
             let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
                 .expect("Error creating attribute instance.")
-                .cell_val_num(u32::MAX)
+                .cell_val_num(CellValNum::Var)
                 .expect("Error setting cell val size.")
                 .build();
             let is_var = attr
@@ -671,11 +672,11 @@ mod test {
         {
             let attr = Builder::new(&ctx, "foo", Datatype::UInt16)
                 .expect("Error creating attribute instance.")
-                .cell_val_num(42)
+                .cell_val_num(CellValNum::try_from(42).unwrap())
                 .expect("Error setting cell val num.")
                 .build();
             let num = attr.cell_val_num().expect("Error getting cell val num.");
-            assert_eq!(num, 42);
+            assert_eq!(num, CellValNum::try_from(42).unwrap());
             let size = attr.cell_size().expect("Error getting cell val size.");
             assert_eq!(size, 84);
         }
@@ -686,7 +687,7 @@ mod test {
                 .expect("Error setting var sized.")
                 .build();
             let num = attr.cell_val_num().expect("Error getting cell val num.");
-            assert_eq!(num, u32::MAX);
+            assert_eq!(num, CellValNum::Var);
             let size = attr.cell_size().expect("Error getting cell val size.");
             assert_eq!(size, u64::MAX);
         }
@@ -845,7 +846,11 @@ mod test {
         // change cellval
         {
             let other = start_attr(default_name, default_dt, default_nullable)
-                .cell_val_num((base.cell_val_num().unwrap() + 1) * 2)
+                .cell_val_num(
+                    ((u32::from(base.cell_val_num().unwrap()) + 1) * 2)
+                        .try_into()
+                        .unwrap(),
+                )
                 .expect("Error setting cell val num")
                 .build();
             assert_ne!(base, other);

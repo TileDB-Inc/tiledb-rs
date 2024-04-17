@@ -1,16 +1,21 @@
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::num::NonZeroU32;
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use util::option::OptionSubset;
 
 use crate::array::attribute::{AttributeData, RawAttribute};
-use crate::array::domain::{DomainData, RawDomain};
+use crate::array::dimension::Dimension;
+use crate::array::domain::{DimensionKey, DomainData, RawDomain};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
+use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
+use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
 
 #[derive(
@@ -48,6 +53,51 @@ impl TryFrom<ffi::tiledb_array_type_t> for ArrayType {
     }
 }
 
+#[derive(
+    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+)]
+pub enum CellValNum {
+    Fixed(std::num::NonZeroU32),
+    Var,
+}
+
+impl CellValNum {
+    pub(crate) fn capi(&self) -> u32 {
+        match self {
+            CellValNum::Fixed(c) => c.get(),
+            CellValNum::Var => std::u32::MAX,
+        }
+    }
+}
+
+impl Default for CellValNum {
+    fn default() -> Self {
+        CellValNum::Fixed(NonZeroU32::new(1).unwrap())
+    }
+}
+
+impl TryFrom<u32> for CellValNum {
+    type Error = crate::error::Error;
+    fn try_from(value: u32) -> TileDBResult<Self> {
+        match value {
+            0 => Err(Error::InvalidArgument(anyhow!(
+                "Cell val num cannot be zero"
+            ))),
+            std::u32::MAX => Ok(CellValNum::Var),
+            v => Ok(CellValNum::Fixed(NonZeroU32::new(v).unwrap())),
+        }
+    }
+}
+
+impl From<CellValNum> for u32 {
+    fn from(value: CellValNum) -> Self {
+        match value {
+            CellValNum::Fixed(nz) => nz.get(),
+            CellValNum::Var => std::u32::MAX,
+        }
+    }
+}
+
 /// Wrapper for the CAPI handle.
 /// Ensures that the CAPI structure is freed.
 pub(crate) enum RawSchema {
@@ -68,6 +118,36 @@ impl Drop for RawSchema {
         unsafe {
             let RawSchema::Owned(ref mut ffi) = *self;
             ffi::tiledb_array_schema_free(ffi)
+        }
+    }
+}
+
+/// Holds a field of the schema, which may be either a dimension or an attribute.
+#[derive(ContextBound)]
+pub enum Field<'ctx> {
+    Dimension(Dimension<'ctx>),
+    Attribute(Attribute<'ctx>),
+}
+
+impl<'ctx> Field<'ctx> {
+    pub fn name(&self) -> TileDBResult<String> {
+        match self {
+            Field::Dimension(ref d) => d.name(),
+            Field::Attribute(ref a) => a.name(),
+        }
+    }
+
+    pub fn datatype(&self) -> TileDBResult<Datatype> {
+        match self {
+            Field::Dimension(ref d) => d.datatype(),
+            Field::Attribute(ref a) => a.datatype(),
+        }
+    }
+
+    pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
+        match self {
+            Field::Dimension(ref d) => d.cell_val_num(),
+            Field::Attribute(ref a) => a.cell_val_num(),
         }
     }
 }
@@ -228,21 +308,69 @@ impl<'ctx> Schema<'ctx> {
         Ok(c_nattrs as usize)
     }
 
-    pub fn attribute(&self, index: usize) -> TileDBResult<Attribute> {
+    pub fn attribute<K: Into<DimensionKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<Attribute> {
         let c_context = self.context.capi();
         let c_schema = *self.raw;
-        let c_index = index as u32;
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_get_attribute_from_index(
-                c_context,
-                c_schema,
-                c_index,
-                &mut c_attr,
-            )
+
+        self.capi_return(match key.into() {
+            DimensionKey::Index(idx) => {
+                let c_idx: u32 = idx.try_into().map_err(
+                    |e: <usize as TryInto<u32>>::Error| {
+                        Error::InvalidArgument(anyhow!(e))
+                    },
+                )?;
+                unsafe {
+                    ffi::tiledb_array_schema_get_attribute_from_index(
+                        c_context,
+                        c_schema,
+                        c_idx,
+                        &mut c_attr,
+                    )
+                }
+            }
+            DimensionKey::Name(name) => {
+                let c_name = cstring!(name);
+                unsafe {
+                    ffi::tiledb_array_schema_get_attribute_from_name(
+                        c_context,
+                        c_schema,
+                        c_name.as_ptr(),
+                        &mut c_attr,
+                    )
+                }
+            }
         })?;
 
         Ok(Attribute::new(self.context, RawAttribute::Owned(c_attr)))
+    }
+
+    /// Returns a reference to a field (dimension or attribute) in this schema.
+    /// If the key is an index, then values `[0.. ndimensions]` will look
+    /// up a dimension, and values outside that range will be adjusted by `ndimensions`
+    /// to look up an attribute.
+    pub fn field<K: Into<DimensionKey>>(&self, key: K) -> TileDBResult<Field> {
+        let domain = self.domain()?;
+        match key.into() {
+            DimensionKey::Index(idx) => {
+                let ndim = domain.ndim()?;
+                if idx < ndim {
+                    Ok(Field::Dimension(domain.dimension(idx)?))
+                } else {
+                    Ok(Field::Attribute(self.attribute(idx - ndim)?))
+                }
+            }
+            DimensionKey::Name(name) => {
+                if domain.has_dimension(name.as_ref())? {
+                    Ok(Field::Dimension(domain.dimension(name)?))
+                } else {
+                    Ok(Field::Attribute(self.attribute(name)?))
+                }
+            }
+        }
     }
 
     fn filter_list(
@@ -571,11 +699,12 @@ mod tests {
     use std::io;
     use tempfile::TempDir;
 
-    use crate::array::schema::*;
-    use crate::array::tests::*;
+    use super::*;
+    use crate::array::tests::create_quickstart_dense;
     use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
-    use crate::filter::*;
-    use crate::Datatype;
+    use crate::filter::{
+        CompressionData, CompressionType, FilterData, FilterListBuilder,
+    };
 
     fn sample_attribute(c: &Context) -> Attribute {
         AttributeBuilder::new(c, "a1", Datatype::Int32)
@@ -829,10 +958,7 @@ mod tests {
             let e =
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c))?.build();
             assert!(e.is_err());
-            assert!(matches!(
-                e.unwrap_err(),
-                crate::error::Error::LibTileDB(_)
-            ));
+            assert!(matches!(e.unwrap_err(), Error::LibTileDB(_)));
         }
         {
             let s: Schema = {
@@ -876,6 +1002,60 @@ mod tests {
 
             let a3 = s.attribute(2);
             assert!(a3.is_err());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fields() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        let s: Schema = {
+            let a1 = AttributeBuilder::new(&c, "a1", Datatype::Int64)?.build();
+            let a2 =
+                AttributeBuilder::new(&c, "a2", Datatype::Float64)?.build();
+            Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
+                .add_attribute(a1)?
+                .add_attribute(a2)?
+                .build()
+                .unwrap()
+        };
+
+        // index
+        {
+            let d = s.field(0)?;
+            assert!(matches!(d, Field::Dimension(_)));
+            assert_eq!("test", d.name()?);
+            assert_eq!(Datatype::Int32, d.datatype()?);
+
+            let a1 = s.field(1)?;
+            assert!(matches!(a1, Field::Attribute(_)));
+            assert_eq!("a1", a1.name()?);
+            assert_eq!(Datatype::Int64, a1.datatype()?);
+
+            let a2 = s.field(2)?;
+            assert!(matches!(a2, Field::Attribute(_)));
+            assert_eq!("a2", a2.name()?);
+            assert_eq!(Datatype::Float64, a2.datatype()?);
+        }
+
+        // name
+        {
+            let d = s.field("test")?;
+            assert!(matches!(d, Field::Dimension(_)));
+            assert_eq!("test", d.name()?);
+            assert_eq!(Datatype::Int32, d.datatype()?);
+
+            let a1 = s.field("a1")?;
+            assert!(matches!(a1, Field::Attribute(_)));
+            assert_eq!("a1", a1.name()?);
+            assert_eq!(Datatype::Int64, a1.datatype()?);
+
+            let a2 = s.field("a2")?;
+            assert!(matches!(a2, Field::Attribute(_)));
+            assert_eq!("a2", a2.name()?);
+            assert_eq!(Datatype::Float64, a2.datatype()?);
         }
 
         Ok(())
