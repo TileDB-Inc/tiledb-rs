@@ -13,6 +13,7 @@ use crate::array::domain::{DimensionKey, DomainData, RawDomain};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
+use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
 
 #[derive(
@@ -70,6 +71,29 @@ impl Drop for RawSchema {
         unsafe {
             let RawSchema::Owned(ref mut ffi) = *self;
             ffi::tiledb_array_schema_free(ffi)
+        }
+    }
+}
+
+/// Holds a field of the schema, which may be either a dimension or an attribute.
+#[derive(ContextBound)]
+pub enum Field<'ctx> {
+    Dimension(Dimension<'ctx>),
+    Attribute(Attribute<'ctx>),
+}
+
+impl<'ctx> Field<'ctx> {
+    pub fn name(&self) -> TileDBResult<String> {
+        match self {
+            Field::Dimension(ref d) => d.name(),
+            Field::Attribute(ref a) => a.name(),
+        }
+    }
+
+    pub fn datatype(&self) -> TileDBResult<Datatype> {
+        match self {
+            Field::Dimension(ref d) => d.datatype(),
+            Field::Attribute(ref a) => a.datatype(),
         }
     }
 }
@@ -265,6 +289,31 @@ impl<'ctx> Schema<'ctx> {
         })?;
 
         Ok(Attribute::new(self.context, RawAttribute::Owned(c_attr)))
+    }
+
+    /// Returns a reference to a field (dimension or attribute) in this schema.
+    /// If the key is an index, then values `[0.. ndimensions]` will look
+    /// up a dimension, and values outside that range will be adjusted by `ndimensions`
+    /// to look up an attribute.
+    pub fn field<K: Into<DimensionKey>>(&self, key: K) -> TileDBResult<Field> {
+        let domain = self.domain()?;
+        match key.into() {
+            DimensionKey::Index(idx) => {
+                let ndim = domain.ndim()?;
+                if idx < ndim {
+                    Ok(Field::Dimension(domain.dimension(idx)?))
+                } else {
+                    Ok(Field::Attribute(self.attribute(idx - ndim)?))
+                }
+            }
+            DimensionKey::Name(name) => {
+                if domain.has_dimension(name.as_ref())? {
+                    Ok(Field::Dimension(domain.dimension(name)?))
+                } else {
+                    Ok(Field::Attribute(self.attribute(name)?))
+                }
+            }
+        }
     }
 
     fn filter_list(
@@ -585,11 +634,12 @@ mod tests {
     use std::io;
     use tempfile::TempDir;
 
-    use crate::array::schema::*;
-    use crate::array::tests::*;
+    use super::*;
+    use crate::array::tests::create_quickstart_dense;
     use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
-    use crate::filter::*;
-    use crate::Datatype;
+    use crate::filter::{
+        CompressionData, CompressionType, FilterData, FilterListBuilder,
+    };
 
     fn sample_attribute(c: &Context) -> Attribute {
         AttributeBuilder::new(c, "a1", Datatype::Int32)
@@ -890,6 +940,60 @@ mod tests {
 
             let a3 = s.attribute(2);
             assert!(a3.is_err());
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_fields() -> TileDBResult<()> {
+        let c: Context = Context::new()?;
+
+        let s: Schema = {
+            let a1 = AttributeBuilder::new(&c, "a1", Datatype::Int64)?.build();
+            let a2 =
+                AttributeBuilder::new(&c, "a2", Datatype::Float64)?.build();
+            Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
+                .add_attribute(a1)?
+                .add_attribute(a2)?
+                .build()
+                .unwrap()
+        };
+
+        // index
+        {
+            let d = s.field(0)?;
+            assert!(matches!(d, Field::Dimension(_)));
+            assert_eq!("test", d.name()?);
+            assert_eq!(Datatype::Int32, d.datatype()?);
+
+            let a1 = s.field(1)?;
+            assert!(matches!(a1, Field::Attribute(_)));
+            assert_eq!("a1", a1.name()?);
+            assert_eq!(Datatype::Int64, a1.datatype()?);
+
+            let a2 = s.field(2)?;
+            assert!(matches!(a2, Field::Attribute(_)));
+            assert_eq!("a2", a2.name()?);
+            assert_eq!(Datatype::Float64, a2.datatype()?);
+        }
+
+        // name
+        {
+            let d = s.field("test")?;
+            assert!(matches!(d, Field::Dimension(_)));
+            assert_eq!("test", d.name()?);
+            assert_eq!(Datatype::Int32, d.datatype()?);
+
+            let a1 = s.field("a1")?;
+            assert!(matches!(a1, Field::Attribute(_)));
+            assert_eq!("a1", a1.name()?);
+            assert_eq!(Datatype::Int64, a1.datatype()?);
+
+            let a2 = s.field("a2")?;
+            assert!(matches!(a2, Field::Attribute(_)));
+            assert_eq!("a2", a2.name()?);
+            assert_eq!(Datatype::Float64, a2.datatype()?);
         }
 
         Ok(())

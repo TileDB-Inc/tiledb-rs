@@ -25,7 +25,7 @@ fn context_bound_impl(input: &syn::DeriveInput) -> proc_macro2::TokenStream {
             }
             syn::Fields::Unit => unimplemented!("syn::Fields::Unit"),
         },
-        syn::Data::Enum(_) => unimplemented!("syn::Data::Enum"),
+        syn::Data::Enum(ref edata) => context_bound_impl_enum(input, edata),
         syn::Data::Union(_) => unimplemented!("syn::Data::Union"),
     }
 }
@@ -183,4 +183,45 @@ fn context_bound_impl_fields_named_base(
     };
 
     expanded
+}
+
+fn context_bound_impl_enum(
+    input: &syn::DeriveInput,
+    edata: &syn::DataEnum,
+) -> proc_macro2::TokenStream {
+    let name = &input.ident;
+    let variants = edata.variants.iter().map(|v| {
+        let vname = &v.ident;
+        match v.fields {
+            syn::Fields::Named(_) => {
+                unimplemented!("syn::DataEnum => syn::Fields::Named")
+            }
+            syn::Fields::Unnamed(ref fields) => {
+                if fields.unnamed.len() == 1 {
+                    quote! {
+                        #name::#vname(ref base) => base.context()
+                    }
+                } else {
+                    unimplemented!("syn::DataEnum => syn::Fields::Unnamed")
+                }
+            }
+            syn::Fields::Unit => quote_spanned! {
+                v.fields.span() => compile_error!(
+                    "Cannot derive ContextBound from an enum variant with no data",
+                ),
+            },
+        }
+    });
+
+    let (impl_generics, ty_generics, where_clause) =
+        input.generics.split_for_impl();
+    quote! {
+        impl #impl_generics ContextBound<'ctx> for #name #ty_generics #where_clause {
+            fn context(&self) -> &'ctx Context {
+                match self {
+                    #(#variants,)*
+                }
+            }
+        }
+    }
 }
