@@ -3,7 +3,7 @@ on:
   workflow_call:
 
 jobs:
-  coverage:
+  api_coverage:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tiledb-rs
@@ -12,6 +12,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Setup Rustc Cache
         uses: Swatinem/rust-cache@v2
+      - name: Install Cargo Expand
+        run: cargo install cargo-expand
       - name: Install TileDB
         uses: ./.github/actions/install-tiledb
       - name: Build API Coverage Tool

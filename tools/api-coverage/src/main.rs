@@ -17,8 +17,8 @@ use sys::SysDefs;
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
 struct Args {
-    /// Path to the API crate
-    #[arg(short, long, default_value_t = String::from("tiledb/api/src"))]
+    /// The name of the API crate
+    #[arg(short, long, default_value_t = String::from("tiledb"))]
     api: String,
 
     /// Path to the bindgen generated APIs

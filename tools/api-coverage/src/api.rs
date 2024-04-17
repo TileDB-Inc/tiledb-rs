@@ -1,9 +1,8 @@
 use std::collections::HashSet;
+use std::process::{Command, Stdio};
 
 use anyhow::Result;
 use syn::visit::{self, Visit};
-
-use crate::util;
 
 /// Used by APIVisitor to get the function name being called.
 #[derive(Default)]
@@ -37,15 +36,28 @@ impl<'ast> Visit<'ast> for APIVisitor {
     }
 }
 
-pub fn process(path: &String) -> Result<HashSet<String>> {
-    let mut api = APIVisitor::default();
+pub fn process(name: &String) -> Result<HashSet<String>> {
+    let output = Command::new("cargo")
+        .arg("expand")
+        .arg("-p")
+        .arg(name)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap_or_else(|_| panic!("Failed to run `cargo expand {}`", name));
 
-    util::walk_rust_sources(path, |src| {
-        let ast = util::parse_file(&src).unwrap_or_else(|e| {
-            panic!("Error parsing {} - {:?}", src, e);
-        });
-        api.visit_file(&ast);
-    });
+    if !output.status.success() {
+        panic!(
+            "Failed to run `cargo exapnd -p {}`\n\n\
+            *NOTE* You may need to run: `cargo install cargo-expand`\n",
+            name
+        );
+    }
+
+    let source = String::from_utf8(output.stdout).unwrap();
+    let ast = syn::parse_file(&source)?;
+    let mut api = APIVisitor::default();
+    api.visit_file(&ast);
 
     Ok(api.calls)
 }
