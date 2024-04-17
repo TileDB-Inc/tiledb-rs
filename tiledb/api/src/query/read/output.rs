@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::iter::FusedIterator;
 use std::ops::{Deref, DerefMut};
 
 use anyhow::anyhow;
@@ -258,6 +259,8 @@ where
     }
 }
 
+impl<'data, C> FusedIterator for FixedDataIterator<'data, C> where C: Copy {}
+
 impl<'data, C> TryFrom<RawReadOutput<'data, C>>
     for FixedDataIterator<'data, C>
 {
@@ -354,6 +357,8 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
     }
 }
 
+impl<'data, C> FusedIterator for VarDataIterator<'data, C> {}
+
 impl<'data, C> TryFrom<RawReadOutput<'data, C>> for VarDataIterator<'data, C> {
     type Error = crate::error::Error;
     fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
@@ -382,6 +387,8 @@ impl<'data> Iterator for Utf8LossyIterator<'data> {
             .map(|s| String::from_utf8_lossy(s).to_string())
     }
 }
+
+impl<'data> FusedIterator for Utf8LossyIterator<'data> {}
 
 pub trait FromQueryOutput: Sized {
     type Unit;
