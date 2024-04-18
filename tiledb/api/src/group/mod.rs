@@ -364,9 +364,11 @@ impl<'ctx> Group<'ctx> {
         context: &'ctx Context,
         metadata: Metadata,
     ) -> TileDBResult<()> {
+        println!("{:?}", metadata);
         let ctx = context.capi();
         let (vec_size, vec_ptr, datatype) = metadata.c_data();
-        let c_key = cstring!(metadata.key);
+        println!("{:?}", metadata);
+        let c_key = cstring!(metadata.key.clone()); // we're partially moving metadata
         context.capi_return(unsafe {
             ffi::tiledb_group_put_metadata(
                 ctx,
@@ -377,6 +379,7 @@ impl<'ctx> Group<'ctx> {
                 vec_ptr,
             )
         })?;
+        println!("{:?}", metadata);
         Ok(())
     }
 
@@ -547,10 +550,86 @@ impl<'ctx> Group<'ctx> {
 
 impl Drop for Group<'_> {
     fn drop(&mut self) {
-        let c_context = self.context.capi();
-        let c_group = Self::capi(self);
-        self.context
-            .capi_return(unsafe { ffi::tiledb_group_close(c_context, c_group) })
-            .expect("TileDB internal error when closing group");
+
+
+            let c_context = self.context.capi();
+            let c_group = Self::capi(self);
+
+            let mut c_open: i32 = out_ptr!();
+        self.context.capi_return(unsafe {
+            ffi::tiledb_group_is_open(c_context, c_group, &mut c_open)
+        }).expect("TileDB internal error when checking for open group.");
+         if c_open > 0 {
+            self.context
+                .capi_return(unsafe { ffi::tiledb_group_close(c_context, c_group) })
+                .expect("TileDB internal error when closing group");
+         }
+
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{config::Config, context::Context, datatype::Datatype, group::{Group, QueryType}, metadata::{self, Metadata}, vfs::VFS};
+    use crate::Result as TileDBResult;
+    #[test]
+    fn test_group() -> TileDBResult<()> {
+        let tdb = Context::new()?;
+        let config: Config = Config::new()?;
+        let vfs: VFS = VFS::new(&tdb, &config)?;
+        let temp_dir = String::from("abcdef");
+        let is_dir = vfs.is_dir(temp_dir.as_str())?;
+        if is_dir {
+            vfs.remove_dir(temp_dir.as_str())?;
+        }
+        let group1_uri = temp_dir + "group1";
+        Group::create(&tdb, group1_uri.to_owned())?;
+        
+        let group1_err = Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let res = group1_err.put_metadata(&tdb, Metadata::create("key".to_owned(), Datatype::Int32, vec!(5)));
+        assert!(res.is_err());
+
+        std::mem::drop(group1_err);
+        let group1_write = Group::open(&tdb, group1_uri.to_owned(), QueryType::Write)?;
+        let res1 = group1_write.put_metadata(&tdb, Metadata::create("key".to_owned(), Datatype::Any, vec!(5)));
+        assert!(res1.is_err());
+
+        group1_write.put_metadata(&tdb,  Metadata::create("key".to_owned(), Datatype::Int32, vec!(5)))?;
+        group1_write.put_metadata(&tdb, Metadata::create("aaa".to_owned(), Datatype::Int32, vec!(5)))?;
+        group1_write.put_metadata(&tdb, Metadata::create("bb".to_owned(), Datatype::Float32, vec!(1.1f32, 2.2f32)))?;
+
+        std::mem::drop(group1_write);
+
+        let group1_read = Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let metadata_aaa = group1_read.get_metadata(&tdb, "aaa".to_owned())?;
+        assert_eq!(metadata_aaa.datatype, Datatype::Int32);
+        assert_eq!(metadata_aaa.value, metadata::Value::Int32Value(vec!(5)));
+        assert_eq!(metadata_aaa.key, "aaa");
+
+        let metadata_num = group1_read.get_metadata_num(&tdb)?;
+        assert_eq!(metadata_num, 3);
+
+        let metadata_bb = group1_read.get_metadata_from_index(&tdb, 1)?;
+        assert_eq!(metadata_bb.datatype, Datatype::Float32);
+        assert_eq!(metadata_bb.key, "bb");
+        assert_eq!(metadata_bb.value, metadata::Value::Float32Value(vec!(1.1f32, 2.2f32)));
+
+        let has_aaa = group1_read.has_metadata_key(&tdb, "aaa")?;
+        assert_eq!(has_aaa, Some(Datatype::Int32));
+        std::mem::drop(group1_read);
+
+        let group1_write = Group::open(&tdb, group1_uri.to_owned(), QueryType::Write)?;
+        group1_write.delete_metadata(&tdb, "aaa")?;
+        std::mem::drop(group1_write);
+        
+        let group1_read = Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let has_aaa = group1_read.has_metadata_key(&tdb, "aaa")?;
+        assert_eq!(has_aaa, None);
+        std::mem::drop(group1_read);
+
+        // Cleanup
+        let group1_write = Group::open(&tdb, group1_uri.to_owned(), QueryType::ModifyExclusive)?;
+        group1_write.delete_group(&tdb, group1_uri, true)?;
+        Ok(())
     }
 }

@@ -1,6 +1,9 @@
 use crate::{datatype::Datatype, fn_typed};
+use std::any::TypeId;
 use core::slice;
+use crate::Result as TileDBResult;
 
+#[derive(Debug, PartialEq)]
 pub enum Value {
     UInt8Value(Vec<u8>),
     UInt16Value(Vec<u16>),
@@ -26,43 +29,43 @@ fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
 macro_rules! value_typed {
     ($valuetype:expr, $typename:ident, $vec:ident, $then: expr) => {
         match $valuetype {
-            Value::Int8Value($vec) => {
+            Value::Int8Value(ref $vec) => {
                 type $typename = i8;
                 $then
             }
-            Value::Int16Value($vec) => {
+            Value::Int16Value(ref $vec) => {
                 type $typename = i16;
                 $then
             }
-            Value::Int32Value($vec) => {
+            Value::Int32Value(ref $vec) => {
                 type $typename = i32;
                 $then
             }
-            Value::Int64Value($vec) => {
+            Value::Int64Value(ref $vec) => {
                 type $typename = i64;
                 $then
             }
-            Value::UInt8Value($vec) => {
+            Value::UInt8Value(ref $vec) => {
                 type $typename = u8;
                 $then
             }
-            Value::UInt16Value($vec) => {
+            Value::UInt16Value(ref $vec) => {
                 type $typename = u16;
                 $then
             }
-            Value::UInt32Value($vec) => {
+            Value::UInt32Value(ref $vec) => {
                 type $typename = u32;
                 $then
             }
-            Value::UInt64Value($vec) => {
+            Value::UInt64Value(ref $vec) => {
                 type $typename = u64;
                 $then
             }
-            Value::Float32Value($vec) => {
+            Value::Float32Value(ref $vec) => {
                 type $typename = f32;
                 $then
             }
-            Value::Float64Value($vec) => {
+            Value::Float64Value(ref $vec) => {
                 type $typename = f64;
                 $then
             }
@@ -76,7 +79,7 @@ impl Value {
     }
 }
 
-trait ValueType {
+pub trait ValueType {
     fn get_value(vec: Vec<Self>) -> Value
     where
         Self: Sized;
@@ -103,6 +106,7 @@ value_impl!(u64, Value::UInt64Value);
 value_impl!(f32, Value::Float32Value);
 value_impl!(f64, Value::Float64Value);
 
+#[derive(Debug)]
 pub struct Metadata {
     pub key: String,
     pub datatype: Datatype,
@@ -110,6 +114,18 @@ pub struct Metadata {
 }
 
 impl Metadata {
+    pub fn create<T>(
+        key : String,
+        datatype : Datatype,
+        vec : Vec<T>) -> Self 
+        where T : ValueType {
+            return Metadata {
+                key,
+                datatype,
+                value : T::get_value(vec)
+            }
+        }
+
     pub fn new(
         key: String,
         datatype: Datatype,
