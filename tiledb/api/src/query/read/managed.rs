@@ -84,9 +84,38 @@ where
     }
 }
 
-impl<'ctx, 'data, C, A, B> ReadQueryBuilder<'ctx>
+impl<'ctx, 'data, C, A, B> ReadQueryBuilder<'ctx, 'data>
     for ManagedReadBuilder<'data, C, A, B>
 where
-    B: ReadQueryBuilder<'ctx>,
+    B: ReadQueryBuilder<'ctx, 'data>,
 {
+    type IntoRaw = RawReadBuilder<'data, Self>;
+    type IntoVarRaw = VarRawReadBuilder<'data, Self>;
+
+    /// Register a raw memory location to write query results into.
+    fn register_raw<S, C2>(
+        self,
+        field: S,
+        scratch: &'data RefCell<QueryBuffersMut<'data, C2>>,
+    ) -> TileDBResult<Self::IntoRaw>
+    where
+        Self: Sized,
+        S: AsRef<str>,
+        RawReadHandle<'data, C2>: Into<TypedReadHandle<'data>>,
+    {
+        Ok(RawReadBuilder {
+            raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
+            base: self,
+        })
+    }
+
+    fn register_var_raw<I>(self, fields: I) -> TileDBResult<Self::IntoVarRaw>
+    where
+        I: IntoIterator<Item = TypedReadHandle<'data>>,
+    {
+        Ok(VarRawReadBuilder {
+            raw_read_output: fields.into_iter().collect(),
+            base: self,
+        })
+    }
 }

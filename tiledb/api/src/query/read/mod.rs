@@ -194,7 +194,7 @@ macro_rules! fn_register_callback {
         paste! {
             /// Register a callback to be run on query results
             /// which are written into the provided scratch space.
-            fn $fn<'data, T>(self,
+            fn $fn<T>(self,
                 $(
                     ([< field_ $U:snake >],
                      [< scratch_ $U:snake >]):
@@ -227,23 +227,24 @@ macro_rules! fn_register_callback {
 /// Trait for constructing a read query.
 /// Provides methods for flexibly adapting requested attributes into raw results,
 /// callbacks, or strongly-typed objects.
-pub trait ReadQueryBuilder<'ctx>: QueryBuilder<'ctx> {
+pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
+    type IntoRaw: ReadQueryBuilder<'ctx, 'data>;
+    type IntoVarRaw: ReadQueryBuilder<'ctx, 'data>;
+
     /// Register a raw memory location to write query results into.
-    fn register_raw<'data, S, C>(
+    fn register_raw<S, C>(
         self,
         field: S,
         scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
-    ) -> TileDBResult<RawReadBuilder<'data, Self>>
+    ) -> TileDBResult<Self::IntoRaw>
     where
         Self: Sized,
         S: AsRef<str>,
-        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
-    {
-        Ok(RawReadBuilder {
-            raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
-            base: self,
-        })
-    }
+        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>;
+
+    fn register_var_raw<I>(self, fields: I) -> TileDBResult<Self::IntoVarRaw>
+    where
+        I: IntoIterator<Item = TypedReadHandle<'data>>;
 
     fn_register_callback!(
         register_callback,
@@ -281,7 +282,7 @@ pub trait ReadQueryBuilder<'ctx>: QueryBuilder<'ctx> {
 
     /// Register a callback to be run on query results.
     /// Scratch space for raw results is managed by the callback.
-    fn register_callback_managed<'data, S, T, C, A>(
+    fn register_callback_managed<S, T, C, A>(
         self,
         field: S,
         callback: T,
@@ -328,7 +329,7 @@ pub trait ReadQueryBuilder<'ctx>: QueryBuilder<'ctx> {
 
     /// Register a typed result to be constructed from the query results.
     /// Intermediate raw results are written into the provided scratch space.
-    fn register_constructor<'data, S, T>(
+    fn register_constructor<S, T>(
         self,
         field: S,
         scratch: &'data RefCell<
@@ -353,7 +354,7 @@ pub trait ReadQueryBuilder<'ctx>: QueryBuilder<'ctx> {
 
     /// Register a typed result to be constructed from the query results.
     /// Scratch space for raw results is managed by the callback.
-    fn register_constructor_managed<'data, S, T, R, C, A>(
+    fn register_constructor_managed<S, T, R, C, A>(
         self,
         field: S,
         scratch_allocator: A,
@@ -421,4 +422,34 @@ impl<'ctx> QueryBuilder<'ctx> for ReadBuilder<'ctx> {
     }
 }
 
-impl<'ctx> ReadQueryBuilder<'ctx> for ReadBuilder<'ctx> {}
+impl<'ctx, 'data> ReadQueryBuilder<'ctx, 'data> for ReadBuilder<'ctx> {
+    type IntoRaw = RawReadBuilder<'data, Self>;
+    type IntoVarRaw = VarRawReadBuilder<'data, Self>;
+
+    /// Register a raw memory location to write query results into.
+    fn register_raw<S, C>(
+        self,
+        field: S,
+        scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
+    ) -> TileDBResult<Self::IntoRaw>
+    where
+        Self: Sized,
+        S: AsRef<str>,
+        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
+    {
+        Ok(RawReadBuilder {
+            raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
+            base: self,
+        })
+    }
+
+    fn register_var_raw<I>(self, fields: I) -> TileDBResult<Self::IntoVarRaw>
+    where
+        I: IntoIterator<Item = TypedReadHandle<'data>>,
+    {
+        Ok(VarRawReadBuilder {
+            raw_read_output: fields.into_iter().collect(),
+            base: self,
+        })
+    }
+}

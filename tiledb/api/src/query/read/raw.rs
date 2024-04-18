@@ -358,6 +358,46 @@ where
     }
 }
 
+impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data> for RawReadBuilder<'data, B>
+where
+    B: ReadQueryBuilder<'ctx, 'data>,
+{
+    type IntoRaw = VarRawReadBuilder<'data, B>;
+    type IntoVarRaw = VarRawReadBuilder<'data, B>;
+
+    /// Register a raw memory location to write query results into.
+    fn register_raw<S, C>(
+        self,
+        field: S,
+        scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
+    ) -> TileDBResult<Self::IntoRaw>
+    where
+        Self: Sized,
+        S: AsRef<str>,
+        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
+    {
+        Ok(VarRawReadBuilder {
+            raw_read_output: vec![
+                self.raw_read_output,
+                RawReadHandle::new(field.as_ref(), scratch).into(),
+            ],
+            base: self.base,
+        })
+    }
+
+    fn register_var_raw<I>(self, fields: I) -> TileDBResult<Self::IntoVarRaw>
+    where
+        I: IntoIterator<Item = TypedReadHandle<'data>>,
+    {
+        Ok(VarRawReadBuilder {
+            raw_read_output: std::iter::once(self.raw_read_output)
+                .chain(fields.into_iter())
+                .collect(),
+            base: self.base,
+        })
+    }
+}
+
 /// Reads query results into raw buffers.
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
@@ -451,5 +491,41 @@ where
             raw_read_output: self.raw_read_output,
             base: self.base.build(),
         }
+    }
+}
+
+impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data>
+    for VarRawReadBuilder<'data, B>
+where
+    B: ReadQueryBuilder<'ctx, 'data>,
+{
+    type IntoRaw = Self;
+    type IntoVarRaw = Self;
+
+    /// Register a raw memory location to write query results into.
+    fn register_raw<S, C>(
+        mut self,
+        field: S,
+        scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
+    ) -> TileDBResult<Self::IntoRaw>
+    where
+        Self: Sized,
+        S: AsRef<str>,
+        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
+    {
+        self.raw_read_output
+            .push(RawReadHandle::new(field.as_ref(), scratch).into());
+        Ok(self)
+    }
+
+    fn register_var_raw<I>(
+        mut self,
+        fields: I,
+    ) -> TileDBResult<Self::IntoVarRaw>
+    where
+        I: IntoIterator<Item = TypedReadHandle<'data>>,
+    {
+        self.raw_read_output.extend(fields);
+        Ok(self)
     }
 }
