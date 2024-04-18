@@ -220,13 +220,13 @@ where
 
         let new_data = {
             let mut v = old_data.to_vec();
-            v.resize(2 * v.len(), Default::default());
+            v.resize(2 * v.len() + 1, Default::default());
             v.into_boxed_slice()
         };
 
         let new_offsets = {
             let mut v = old_offsets.unwrap().into_vec();
-            v.resize(2 * v.len(), Default::default());
+            v.resize(2 * v.len() + 1, Default::default());
             v.into_boxed_slice()
         };
 
