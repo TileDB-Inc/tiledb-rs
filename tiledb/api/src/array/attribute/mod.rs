@@ -115,7 +115,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn is_var_sized(&self) -> TileDBResult<bool> {
-        Ok(self.cell_val_num()? == CellValNum::Var)
+        Ok(self.cell_val_num()?.is_var_sized())
     }
 
     pub fn cell_size(&self) -> TileDBResult<u64> {
@@ -639,7 +639,7 @@ mod test {
                 .build();
 
             let num = attr.cell_val_num().expect("Error getting cell val num.");
-            assert_eq!(num, Default::default());
+            assert_eq!(num, <CellValNum as Default>::default());
             let size = attr
                 .cell_size()
                 .expect("Error getting attribute cell size.");

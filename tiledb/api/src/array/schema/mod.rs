@@ -69,11 +69,24 @@ impl CellValNum {
             CellValNum::Var => u32::MAX,
         }
     }
+
+    pub fn is_var_sized(&self) -> bool {
+        matches!(self, CellValNum::Var)
+    }
 }
 
 impl Default for CellValNum {
     fn default() -> Self {
         CellValNum::Fixed(NonZeroU32::new(1).unwrap())
+    }
+}
+
+impl PartialEq<u32> for CellValNum {
+    fn eq(&self, other: &u32) -> bool {
+        match self {
+            CellValNum::Fixed(val) => val.get() == *other,
+            CellValNum::Var => *other == std::u32::MAX,
+        }
     }
 }
 
