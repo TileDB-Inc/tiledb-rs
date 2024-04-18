@@ -397,12 +397,9 @@ pub struct ReadBuilder<'ctx> {
 }
 
 impl<'ctx> ReadBuilder<'ctx> {
-    pub fn new(
-        context: &'ctx Context,
-        array: Array<'ctx>,
-    ) -> TileDBResult<Self> {
+    pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
         Ok(ReadBuilder {
-            base: BuilderBase::new(context, array, QueryType::Read)?,
+            base: BuilderBase::new(array, QueryType::Read)?,
         })
     }
 }

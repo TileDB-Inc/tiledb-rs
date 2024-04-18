@@ -109,7 +109,7 @@ fn write_array() -> TileDBResult<()> {
     let int32_data = vec![1, 2, 3];
     let char_data = vec!["a", "bb", "ccc"];
 
-    let query = tiledb::query::WriteBuilder::new(&tdb, array)?
+    let query = tiledb::query::WriteBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::Global)?
         .data_typed("rows", &coords_rows)?
         .data_typed("columns", &coords_cols)?
@@ -129,7 +129,7 @@ fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
     let array =
         tiledb::Array::open(tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
 
-    tiledb::query::ReadBuilder::new(tdb, array)?
+    tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .start_subarray()?
         .dimension_range_typed::<i32, _>(0, &[1, 4])?

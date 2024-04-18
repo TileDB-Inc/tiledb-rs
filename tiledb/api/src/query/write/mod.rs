@@ -67,12 +67,9 @@ impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
 }
 
 impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
-    pub fn new(
-        context: &'ctx Context,
-        array: Array<'ctx>,
-    ) -> TileDBResult<Self> {
+    pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
         Ok(WriteBuilder {
-            base: BuilderBase::new(context, array, QueryType::Write)?,
+            base: BuilderBase::new(array, QueryType::Write)?,
             inputs: HashMap::new(),
         })
     }

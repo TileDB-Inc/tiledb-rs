@@ -175,16 +175,12 @@ impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
 }
 
 impl<'ctx> BuilderBase<'ctx> {
-    fn new(
-        context: &'ctx Context,
-        array: Array<'ctx>,
-        query_type: QueryType,
-    ) -> TileDBResult<Self> {
-        let c_context = context.capi();
+    fn new(array: Array<'ctx>, query_type: QueryType) -> TileDBResult<Self> {
+        let c_context = array.context().capi();
         let c_array = **array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
-        context.capi_return(unsafe {
+        array.capi_return(unsafe {
             ffi::tiledb_query_alloc(
                 c_context,
                 c_array,

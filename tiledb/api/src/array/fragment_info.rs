@@ -967,9 +967,8 @@ pub mod tests {
     fn write_dense_array(ctx: &Context, array_uri: &str) -> TileDBResult<()> {
         let data = vec![1u64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let array = Array::open(ctx, array_uri, Mode::Write)?;
-        let query = WriteBuilder::new(ctx, array)?
-            .data_typed("attr", &data)?
-            .build();
+        let query =
+            WriteBuilder::new(array)?.data_typed("attr", &data)?.build();
         query.submit()?;
         Ok(())
     }
@@ -1014,7 +1013,7 @@ pub mod tests {
         let id_data = vec![1u32, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let attr_data = vec![1u64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let array = Array::open(ctx, array_uri, Mode::Write)?;
-        let query = WriteBuilder::new(ctx, array)?
+        let query = WriteBuilder::new(array)?
             .data_typed("id", &id_data)?
             .data_typed("attr", &attr_data)?
             .build();
