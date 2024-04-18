@@ -38,6 +38,7 @@ pub enum Mode {
     Write,
     Delete,
     Update,
+    ModifyExclusive,
 }
 
 impl Mode {
@@ -47,6 +48,7 @@ impl Mode {
             Mode::Write => ffi::tiledb_query_type_t_TILEDB_WRITE,
             Mode::Delete => ffi::tiledb_query_type_t_TILEDB_DELETE,
             Mode::Update => ffi::tiledb_query_type_t_TILEDB_UPDATE,
+            Mode::ModifyExclusive => ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE,
         }
     }
 }
@@ -60,6 +62,7 @@ impl TryFrom<ffi::tiledb_query_type_t> for Mode {
             ffi::tiledb_query_type_t_TILEDB_WRITE => Mode::Write,
             ffi::tiledb_query_type_t_TILEDB_DELETE => Mode::Delete,
             ffi::tiledb_query_type_t_TILEDB_UPDATE => Mode::Update,
+            ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE => Mode::ModifyExclusive,
             _ => {
                 return Err(crate::error::Error::ModeType(
                     ModeErrorKind::InvalidDiscriminant(value as u64),
