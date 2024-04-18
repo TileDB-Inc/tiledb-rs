@@ -84,7 +84,7 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(&self) -> InputData<Self::Unit> {
+    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -101,7 +101,7 @@ where
             data.extend(s);
         });
 
-        InputData {
+        QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
             cell_offsets: Some(Buffer::Owned(offsets)),
         }

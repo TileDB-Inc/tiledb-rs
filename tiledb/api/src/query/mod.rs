@@ -130,7 +130,10 @@ pub trait QueryBuilder<'ctx>: Sized {
 
     fn base(&self) -> &BuilderBase<'ctx>;
 
-    fn layout(self, layout: QueryLayout) -> TileDBResult<Self> {
+    fn layout(self, layout: QueryLayout) -> TileDBResult<Self>
+    where
+        Self: Sized,
+    {
         let c_context = self.base().context().capi();
         let c_query = **self.base().cquery();
         let c_layout = layout.capi_enum();
@@ -140,7 +143,10 @@ pub trait QueryBuilder<'ctx>: Sized {
         Ok(self)
     }
 
-    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>> {
+    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>>
+    where
+        Self: Sized,
+    {
         SubarrayBuilder::for_query(self)
     }
 

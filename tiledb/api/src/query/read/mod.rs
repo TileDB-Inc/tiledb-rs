@@ -168,7 +168,7 @@ impl<U> ReadStepOutput<U, U> {
 }
 
 /// Trait for runnable read queries.
-pub trait ReadQuery<'ctx>: Query<'ctx> + Sized {
+pub trait ReadQuery<'ctx>: Query<'ctx> {
     type Intermediate;
     type Final;
 
@@ -203,6 +203,7 @@ macro_rules! fn_register_callback {
                 callback: T
             ) -> TileDBResult<$Builder<'data, T, Self>>
             where
+                Self: Sized,
                 T: $Callback
             {
                 let base = self;
@@ -226,7 +227,7 @@ macro_rules! fn_register_callback {
 /// Trait for constructing a read query.
 /// Provides methods for flexibly adapting requested attributes into raw results,
 /// callbacks, or strongly-typed objects.
-pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
+pub trait ReadQueryBuilder<'ctx>: QueryBuilder<'ctx> {
     /// Register a raw memory location to write query results into.
     fn register_raw<'data, S, C>(
         self,
@@ -234,6 +235,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
     ) -> TileDBResult<RawReadBuilder<C, Self>>
     where
+        Self: Sized,
         S: AsRef<str>,
         C: CAPISameRepr,
     {
@@ -288,6 +290,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         ManagedReadBuilder<'data, C, A, CallbackReadBuilder<'data, T, Self>>,
     >
     where
+        Self: Sized,
         S: AsRef<str>,
         T: ReadCallback<Unit = C> + HasScratchSpaceStrategy<C, Strategy = A>,
         A: ScratchAllocator<C>,
@@ -336,6 +339,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         >,
     ) -> TileDBResult<TypedReadBuilder<'data, T, Self>>
     where
+        Self: Sized,
         S: AsRef<str>,
         T: ReadResult,
         <T as ReadResult>::Constructor: Default,
@@ -357,6 +361,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         ManagedReadBuilder<'data, C, A, TypedReadBuilder<'data, T, Self>>,
     >
     where
+        Self: Sized,
         S: AsRef<str>,
         T: ReadResult<Constructor = R>
             + HasScratchSpaceStrategy<C, Strategy = A>,
