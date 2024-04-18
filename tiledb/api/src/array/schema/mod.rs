@@ -9,7 +9,7 @@ use serde_json::json;
 use util::option::OptionSubset;
 
 use crate::array::attribute::{AttributeData, RawAttribute};
-use crate::array::dimension::Dimension;
+use crate::array::dimension::{Dimension, DimensionData};
 use crate::array::domain::{DomainData, RawDomain};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
@@ -163,6 +163,59 @@ impl<'ctx> Field<'ctx> {
             Field::Dimension(ref d) => d.cell_val_num(),
             Field::Attribute(ref a) => a.cell_val_num(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
+pub struct FieldData {
+    pub name: String,
+    pub datatype: Datatype,
+    pub cell_val_num: Option<CellValNum>,
+}
+
+impl Display for FieldData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
+}
+
+impl From<&AttributeData> for FieldData {
+    fn from(attr: &AttributeData) -> Self {
+        FieldData {
+            name: attr.name.clone(),
+            cell_val_num: attr.cell_val_num,
+            datatype: attr.datatype,
+        }
+    }
+}
+
+impl From<&DimensionData> for FieldData {
+    fn from(dim: &DimensionData) -> Self {
+        FieldData {
+            name: dim.name.clone(),
+            cell_val_num: dim.cell_val_num,
+            datatype: dim.datatype,
+        }
+    }
+}
+
+impl<'ctx> TryFrom<&Field<'ctx>> for FieldData {
+    type Error = crate::error::Error;
+
+    fn try_from(field: &Field<'ctx>) -> TileDBResult<Self> {
+        Ok(FieldData {
+            name: field.name()?,
+            cell_val_num: Some(field.cell_val_num()?),
+            datatype: field.datatype()?,
+        })
+    }
+}
+
+impl<'ctx> TryFrom<Field<'ctx>> for FieldData {
+    type Error = crate::error::Error;
+
+    fn try_from(field: Field<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&field)
     }
 }
 
@@ -627,6 +680,16 @@ pub struct SchemaData {
     pub coordinate_filters: FilterListData,
     pub offsets_filters: FilterListData,
     pub nullity_filters: FilterListData,
+}
+
+impl SchemaData {
+    pub fn field(&self, idx: usize) -> FieldData {
+        if idx < self.domain.dimension.len() {
+            FieldData::from(&self.domain.dimension[idx])
+        } else {
+            FieldData::from(&self.attributes[idx - self.domain.dimension.len()])
+        }
+    }
 }
 
 impl Display for SchemaData {
