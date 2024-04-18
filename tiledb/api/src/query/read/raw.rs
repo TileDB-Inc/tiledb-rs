@@ -1,10 +1,12 @@
 use super::*;
 
+use std::cell::RefMut;
+
 use crate::error::Error;
 use crate::query::buffer::QueryBuffersMut;
 
 /// Encapsulates data for writing intermediate query results for a data field.
-pub(crate) struct RawReadHandle<'data, C> {
+pub struct RawReadHandle<'data, C> {
     /// Name of the field which this handle receives data from
     pub field: String,
 
@@ -171,18 +173,121 @@ impl<'data, C> RawReadHandle<'data, C> {
     }
 }
 
+pub enum TypedReadHandle<'data> {
+    UInt8(RawReadHandle<'data, u8>),
+    UInt16(RawReadHandle<'data, u16>),
+    UInt32(RawReadHandle<'data, u32>),
+    UInt64(RawReadHandle<'data, u64>),
+    Int8(RawReadHandle<'data, i8>),
+    Int16(RawReadHandle<'data, i16>),
+    Int32(RawReadHandle<'data, i32>),
+    Int64(RawReadHandle<'data, i64>),
+    Float32(RawReadHandle<'data, f32>),
+    Float64(RawReadHandle<'data, f64>),
+}
+macro_rules! typed_read_handle_inner {
+    ($expr:expr, $DT:ident, $inner:ident, $then:expr) => {
+        match $expr {
+            TypedReadHandle::UInt8($inner) => {
+                type $DT = u8;
+                $then
+            }
+            TypedReadHandle::UInt16($inner) => {
+                type $DT = u16;
+                $then
+            }
+            TypedReadHandle::UInt32($inner) => {
+                type $DT = u32;
+                $then
+            }
+            TypedReadHandle::UInt64($inner) => {
+                type $DT = u64;
+                $then
+            }
+            TypedReadHandle::Int8($inner) => {
+                type $DT = i8;
+                $then
+            }
+            TypedReadHandle::Int16($inner) => {
+                type $DT = i16;
+                $then
+            }
+            TypedReadHandle::Int32($inner) => {
+                type $DT = i32;
+                $then
+            }
+            TypedReadHandle::Int64($inner) => {
+                type $DT = i64;
+                $then
+            }
+            TypedReadHandle::Float32($inner) => {
+                type $DT = f32;
+                $then
+            }
+            TypedReadHandle::Float64($inner) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    };
+}
+
+impl<'data> TypedReadHandle<'data> {
+    pub fn attach_query(
+        &mut self,
+        context: &Context,
+        query: *mut ffi::tiledb_query_t,
+    ) -> TileDBResult<()> {
+        typed_read_handle_inner!(
+            self,
+            _DT,
+            handle,
+            handle.attach_query(context, query)
+        )
+    }
+
+    pub fn last_read_size(&self) -> (usize, usize) {
+        typed_read_handle_inner!(self, _DT, handle, handle.last_read_size())
+    }
+
+    pub fn borrow_mut(&mut self) -> RefMut<Option<BufferMut<'data, u64>>> {
+        typed_read_handle_inner!(
+            self,
+            _DT,
+            handle,
+            RefMut::map(handle.location.borrow_mut(), |o| &mut o.cell_offsets)
+        )
+    }
+}
+
+macro_rules! typed_read_handle {
+    ($($V:ident : $U:ty),+) => {
+        $(
+            impl<'data> From<RawReadHandle<'data, $U>> for TypedReadHandle<'data> {
+                fn from(value: RawReadHandle<'data, $U>) -> Self {
+                    TypedReadHandle::$V(value)
+                }
+            }
+        )+
+    }
+}
+
+typed_read_handle!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+typed_read_handle!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+typed_read_handle!(Float32: f32, Float64: f64);
+
 /// Reads query results into a raw buffer.
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
 /// the buffers between each step to process intermediate results.
 #[derive(ContextBound, Query)]
-pub struct RawReadQuery<'data, C, Q> {
-    pub(crate) raw_read_output: RawReadHandle<'data, C>,
+pub struct RawReadQuery<'data, Q> {
+    pub(crate) raw_read_output: TypedReadHandle<'data>,
     #[base(ContextBound, Query)]
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, C, Q> ReadQuery<'ctx> for RawReadQuery<'data, C, Q>
+impl<'ctx, 'data, Q> ReadQuery<'ctx> for RawReadQuery<'data, Q>
 where
     Q: ReadQuery<'ctx>,
 {
@@ -198,7 +303,7 @@ where
 
         /* then execute */
         let base_result = {
-            let _ = self.raw_read_output.location.borrow_mut();
+            let _ = self.raw_read_output.borrow_mut();
             self.base.step()?
         };
 
@@ -229,17 +334,17 @@ where
 }
 
 #[derive(ContextBound)]
-pub struct RawReadBuilder<'data, C, B> {
-    pub(crate) raw_read_output: RawReadHandle<'data, C>,
+pub struct RawReadBuilder<'data, B> {
+    pub(crate) raw_read_output: TypedReadHandle<'data>,
     #[base(ContextBound)]
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, C, B> QueryBuilder<'ctx> for RawReadBuilder<'data, C, B>
+impl<'ctx, 'data, B> QueryBuilder<'ctx> for RawReadBuilder<'data, B>
 where
     B: QueryBuilder<'ctx>,
 {
-    type Query = RawReadQuery<'data, C, B::Query>;
+    type Query = RawReadQuery<'data, B::Query>;
 
     fn base(&self) -> &BuilderBase<'ctx> {
         self.base.base()
@@ -253,7 +358,98 @@ where
     }
 }
 
-impl<'ctx, 'data, C, B> ReadQueryBuilder<'ctx> for RawReadBuilder<'data, C, B> where
-    B: ReadQueryBuilder<'ctx>
+/// Reads query results into raw buffers.
+/// This is the most flexible way to read data but also the most cumbersome.
+/// Recommended usage is to run the query one step at a time, and borrow
+/// the buffers between each step to process intermediate results.
+#[derive(ContextBound, Query)]
+pub struct VarRawReadQuery<'data, Q> {
+    pub(crate) raw_read_output: Vec<TypedReadHandle<'data>>,
+    #[base(ContextBound, Query)]
+    pub(crate) base: Q,
+}
+
+impl<'ctx, 'data, Q> ReadQuery<'ctx> for VarRawReadQuery<'data, Q>
+where
+    Q: ReadQuery<'ctx>,
 {
+    type Intermediate = (Vec<(usize, usize)>, Q::Intermediate);
+    type Final = (Vec<(usize, usize)>, Q::Final);
+
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        /* update the internal buffers */
+        {
+            let context = self.base().context();
+            let cquery = **self.base().cquery();
+            for handle in self.raw_read_output.iter_mut() {
+                handle.attach_query(context, cquery)?;
+            }
+        }
+
+        /* then execute */
+        let base_result = {
+            let _ = self
+                .raw_read_output
+                .iter_mut()
+                .map(|r| r.borrow_mut())
+                .collect::<Vec<RefMut<_>>>();
+            self.base.step()?
+        };
+
+        let read_sizes = self
+            .raw_read_output
+            .iter()
+            .map(|r| r.last_read_size())
+            .collect::<Vec<(usize, usize)>>();
+
+        Ok(match base_result {
+            ReadStepOutput::NotEnoughSpace => {
+                /* TODO: check that records/bytes are zero and produce an internal error if not */
+                ReadStepOutput::NotEnoughSpace
+            }
+            ReadStepOutput::Intermediate(base_result) => {
+                for (records_written, bytes_written) in read_sizes.iter() {
+                    if *records_written == 0 && *bytes_written == 0 {
+                        return Ok(ReadStepOutput::NotEnoughSpace);
+                    } else if *records_written == 0 {
+                        return Err(Error::Internal(format!(
+                            "Invalid read: returned {} offsets but {} bytes",
+                            records_written, bytes_written
+                        )));
+                    }
+                }
+                ReadStepOutput::Intermediate((read_sizes, base_result))
+            }
+            ReadStepOutput::Final(base_result) => {
+                ReadStepOutput::Final((read_sizes, base_result))
+            }
+        })
+    }
+}
+
+#[derive(ContextBound)]
+pub struct VarRawReadBuilder<'data, B> {
+    pub(crate) raw_read_output: Vec<TypedReadHandle<'data>>,
+    #[base(ContextBound)]
+    pub(crate) base: B,
+}
+
+impl<'ctx, 'data, B> QueryBuilder<'ctx> for VarRawReadBuilder<'data, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+    type Query = VarRawReadQuery<'data, B::Query>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        self.base.base()
+    }
+
+    fn build(self) -> Self::Query {
+        VarRawReadQuery {
+            raw_read_output: self.raw_read_output,
+            base: self.base.build(),
+        }
+    }
 }

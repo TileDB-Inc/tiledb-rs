@@ -1,6 +1,6 @@
 use super::*;
 
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::pin::Pin;
 
 use paste::paste;
@@ -233,14 +233,14 @@ pub trait ReadQueryBuilder<'ctx>: QueryBuilder<'ctx> {
         self,
         field: S,
         scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
-    ) -> TileDBResult<RawReadBuilder<C, Self>>
+    ) -> TileDBResult<RawReadBuilder<'data, Self>>
     where
         Self: Sized,
         S: AsRef<str>,
-        C: CAPISameRepr,
+        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
     {
         Ok(RawReadBuilder {
-            raw_read_output: RawReadHandle::new(field.as_ref(), scratch),
+            raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
             base: self,
         })
     }
