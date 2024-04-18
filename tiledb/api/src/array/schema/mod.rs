@@ -66,7 +66,7 @@ impl CellValNum {
     pub(crate) fn capi(&self) -> u32 {
         match self {
             CellValNum::Fixed(c) => c.get(),
-            CellValNum::Var => std::u32::MAX,
+            CellValNum::Var => u32::MAX,
         }
     }
 }
@@ -84,7 +84,7 @@ impl TryFrom<u32> for CellValNum {
             0 => Err(Error::InvalidArgument(anyhow!(
                 "Cell val num cannot be zero"
             ))),
-            std::u32::MAX => Ok(CellValNum::Var),
+            u32::MAX => Ok(CellValNum::Var),
             v => Ok(CellValNum::Fixed(NonZeroU32::new(v).unwrap())),
         }
     }
@@ -94,7 +94,7 @@ impl From<CellValNum> for u32 {
     fn from(value: CellValNum) -> Self {
         match value {
             CellValNum::Fixed(nz) => nz.get(),
-            CellValNum::Var => std::u32::MAX,
+            CellValNum::Var => u32::MAX,
         }
     }
 }
