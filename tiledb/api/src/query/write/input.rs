@@ -78,6 +78,36 @@ where
     }
 }
 
+impl<C> DataProvider for Vec<Vec<C>>
+where
+    C: CAPISameRepr,
+{
+    type Unit = C;
+
+    fn as_tiledb_input(&self) -> InputData<Self::Unit> {
+        let mut offset_accumulator = 0;
+        let offsets = self
+            .iter()
+            .map(|s| {
+                let my_offset = offset_accumulator;
+                offset_accumulator += s.len();
+                my_offset as u64
+            })
+            .collect::<Vec<u64>>()
+            .into_boxed_slice();
+
+        let mut data = Vec::with_capacity(offset_accumulator);
+        self.iter().for_each(|s| {
+            data.extend(s);
+        });
+
+        InputData {
+            data: Buffer::Owned(data.into_boxed_slice()),
+            cell_offsets: Some(Buffer::Owned(offsets)),
+        }
+    }
+}
+
 impl DataProvider for Vec<&str> {
     type Unit = u8;
 
