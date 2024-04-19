@@ -115,7 +115,7 @@ pub struct QueryBuffersMut<'data, T = u8> {
 
 impl<'data, T> QueryBuffersMut<'data, T> {
     /// Borrows this QueryBuffersMut to use as input data.
-    pub fn as_input<'this>(&'this self) -> QueryBuffers<'data, T>
+    pub fn as_shared<'this>(&'this self) -> QueryBuffers<'data, T>
     where
         'this: 'data,
     {
