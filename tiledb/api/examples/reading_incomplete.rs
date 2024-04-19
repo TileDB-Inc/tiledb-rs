@@ -4,11 +4,9 @@ use std::cell::{Ref, RefCell};
 
 use itertools::izip;
 use tiledb::array::{CellOrder, TileOrder};
-use tiledb::query::read::output::{
-    BufferMut, NonVarSized, OutputLocation, VarDataIterator, VarSized,
-};
+use tiledb::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
+use tiledb::query::read::output::{NonVarSized, VarDataIterator, VarSized};
 use tiledb::query::read::{FnMutAdapter, ReadStepOutput};
-use tiledb::query::write::input::InputData;
 use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
@@ -163,19 +161,19 @@ fn read_array_step() -> TileDBResult<()> {
 
     let tdb = tiledb::context::Context::new()?;
 
-    let rows_output = RefCell::new(OutputLocation {
+    let rows_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
-    let cols_output = RefCell::new(OutputLocation {
+    let cols_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
-    let int32_output = RefCell::new(OutputLocation {
+    let int32_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
-    let char_output = RefCell::new(OutputLocation {
+    let char_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
         cell_offsets: Some(BufferMut::Owned(
             vec![0u64; init_capacity].into_boxed_slice(),
@@ -203,8 +201,8 @@ fn read_array_step() -> TileDBResult<()> {
             let a1 =
                 Ref::map(int32_output.borrow(), |o| &o.data.as_ref()[0..n_a1]);
 
-            let char_output: Ref<OutputLocation<u8>> = char_output.borrow();
-            let char_output: InputData<u8> = char_output.as_input();
+            let char_output: Ref<QueryBuffersMut<u8>> = char_output.borrow();
+            let char_output: QueryBuffers<u8> = char_output.as_input();
             let a2 = VarDataIterator::new(n_a2, b_a2, &char_output)
                 .expect("Expected variable data offsets")
                 .map(|bytes| String::from_utf8_lossy(bytes).to_string());
@@ -288,19 +286,19 @@ fn read_array_callback() -> TileDBResult<()> {
 
     let tdb = tiledb::context::Context::new()?;
 
-    let rows_output = RefCell::new(OutputLocation {
+    let rows_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
-    let cols_output = RefCell::new(OutputLocation {
+    let cols_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
-    let int32_output = RefCell::new(OutputLocation {
+    let int32_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
     });
-    let char_output = RefCell::new(OutputLocation {
+    let char_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
         cell_offsets: Some(BufferMut::Owned(
             vec![0u64; init_capacity].into_boxed_slice(),

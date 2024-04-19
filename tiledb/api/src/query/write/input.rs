@@ -1,69 +1,15 @@
-use std::ops::Deref;
-
 use crate::convert::CAPISameRepr;
-
-pub enum Buffer<'data, T = u8> {
-    Empty,
-    Borrowed(&'data [T]),
-    Owned(Box<[T]>),
-}
-
-impl<'data, T> Buffer<'data, T> {
-    pub fn size(&self) -> usize {
-        std::mem::size_of_val(self.as_ref())
-    }
-}
-
-impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
-    fn as_ref(&self) -> &[T] {
-        match self {
-            Buffer::Empty => unsafe {
-                std::slice::from_raw_parts(
-                    std::ptr::NonNull::dangling().as_ptr(),
-                    0,
-                )
-            },
-            Buffer::Borrowed(data) => data,
-            Buffer::Owned(data) => data,
-        }
-    }
-}
-
-impl<'data, T> Deref for Buffer<'data, T> {
-    type Target = [T];
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
-}
-
-pub struct InputData<'data, T = u8> {
-    pub data: Buffer<'data, T>,
-    pub cell_offsets: Option<Buffer<'data, u64>>,
-}
-
-impl<'data, T> InputData<'data, T> {
-    pub fn borrow<'this>(&'this self) -> InputData<'data, T>
-    where
-        'this: 'data,
-    {
-        InputData {
-            data: Buffer::Borrowed(self.data.as_ref()),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
-        }
-    }
-}
+use crate::query::buffer::{Buffer, QueryBuffers};
 
 pub trait DataProvider {
-    fn as_tiledb_input(&self) -> InputData;
+    fn as_tiledb_input(&self) -> QueryBuffers;
 }
 
 impl<C> DataProvider for Vec<C>
 where
     C: CAPISameRepr,
 {
-    fn as_tiledb_input(&self) -> InputData {
+    fn as_tiledb_input(&self) -> QueryBuffers {
         self.as_slice().as_tiledb_input()
     }
 }
@@ -72,12 +18,12 @@ impl<C> DataProvider for [C]
 where
     C: CAPISameRepr,
 {
-    fn as_tiledb_input(&self) -> InputData {
+    fn as_tiledb_input(&self) -> QueryBuffers {
         let ptr = self.as_ptr();
         let byte_len = std::mem::size_of_val(self);
         let raw_slice =
             unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
-        InputData {
+        QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_offsets: None,
         }
@@ -85,7 +31,7 @@ where
 }
 
 impl DataProvider for Vec<&str> {
-    fn as_tiledb_input(&self) -> InputData {
+    fn as_tiledb_input(&self) -> QueryBuffers {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -102,7 +48,7 @@ impl DataProvider for Vec<&str> {
             data.extend(s.as_bytes());
         });
 
-        InputData {
+        QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
             cell_offsets: Some(Buffer::Owned(offsets)),
         }
@@ -110,7 +56,7 @@ impl DataProvider for Vec<&str> {
 }
 
 impl DataProvider for Vec<String> {
-    fn as_tiledb_input(&self) -> InputData {
+    fn as_tiledb_input(&self) -> QueryBuffers {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -127,7 +73,7 @@ impl DataProvider for Vec<String> {
             data.extend(s.as_bytes());
         });
 
-        InputData {
+        QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
             cell_offsets: Some(Buffer::Owned(offsets)),
         }

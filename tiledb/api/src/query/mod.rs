@@ -6,6 +6,7 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::{array::RawArray, Array, Result as TileDBResult};
 
+pub mod buffer;
 pub mod read;
 pub mod write;
 

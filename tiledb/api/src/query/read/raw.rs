@@ -1,6 +1,7 @@
 use super::*;
 
 use crate::error::Error;
+use crate::query::buffer::QueryBuffersMut;
 
 /// Encapsulates data for writing intermediate query results for a data field.
 pub(crate) struct RawReadHandle<'data, C> {
@@ -23,19 +24,19 @@ pub(crate) struct RawReadHandle<'data, C> {
     // buffers between steps of a query.
     // RefCell is used so that the query can write to the buffers when it is executing
     // but the application can do whatever with the buffers between steps.
-    pub location: &'data RefCell<OutputLocation<'data, C>>,
+    pub location: &'data RefCell<QueryBuffersMut<'data, C>>,
 }
 
 impl<'data, C> RawReadHandle<'data, C> {
     pub fn new<S>(
         field: S,
-        location: &'data RefCell<OutputLocation<'data, C>>,
+        location: &'data RefCell<QueryBuffersMut<'data, C>>,
     ) -> Self
     where
         S: AsRef<str>,
     {
         let (data, cell_offsets) = {
-            let mut scratch: RefMut<OutputLocation<'data, C>> =
+            let mut scratch: RefMut<QueryBuffersMut<'data, C>> =
                 location.borrow_mut();
 
             let data = scratch.data.as_mut() as *mut [C];

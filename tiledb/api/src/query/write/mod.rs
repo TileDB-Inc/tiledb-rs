@@ -3,15 +3,16 @@ use super::*;
 use std::collections::HashMap;
 use std::pin::Pin;
 
+use crate::query::buffer::QueryBuffers;
 use crate::query::private::QueryCAPIInterface;
-use crate::query::write::input::{DataProvider, InputData};
+use crate::query::write::input::DataProvider;
 
 pub mod input;
 
 struct RawWriteInput<'data> {
     data_size: Pin<Box<u64>>,
     offsets_size: Option<Pin<Box<u64>>>,
-    input: InputData<'data>,
+    input: QueryBuffers<'data>,
 }
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;

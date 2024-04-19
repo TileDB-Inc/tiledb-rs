@@ -5,7 +5,7 @@ use super::*;
 #[derive(ContextBound, QueryCAPIInterface)]
 pub struct ManagedReadQuery<'data, C, A, Q> {
     pub(crate) alloc: A,
-    pub(crate) scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+    pub(crate) scratch: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
     #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: Q,
 }
@@ -15,7 +15,7 @@ where
     A: ScratchAllocator<C>,
 {
     fn realloc(&self) {
-        let tmp = OutputLocation {
+        let tmp = QueryBuffersMut {
             data: BufferMut::Empty,
             cell_offsets: None,
         };
@@ -25,7 +25,7 @@ where
         .expect("ManagedReadQuery cannot have a borrowed output location");
 
         let new_scratch = self.alloc.realloc(old_scratch);
-        let _ = self.scratch.replace(OutputLocation::from(new_scratch));
+        let _ = self.scratch.replace(QueryBuffersMut::from(new_scratch));
     }
 }
 
@@ -58,7 +58,7 @@ where
 #[derive(ContextBound, QueryCAPIInterface)]
 pub struct ManagedReadBuilder<'data, C, A, B> {
     pub(crate) alloc: A,
-    pub(crate) scratch: Pin<Box<RefCell<OutputLocation<'data, C>>>>,
+    pub(crate) scratch: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
     #[base(ContextBound, QueryCAPIInterface)]
     pub(crate) base: B,
 }

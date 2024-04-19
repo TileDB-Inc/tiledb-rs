@@ -467,7 +467,7 @@ mod tests {
     use proptest::prelude::*;
 
     use crate::query::read::output::{NonVarSized, VarSized};
-    use crate::query::write::input::{Buffer, InputData};
+    use crate::query::write::input::{Buffer, QueryBuffers};
 
     const MIN_RECORDS: usize = 0;
     const MAX_RECORDS: usize = 1024;
@@ -505,7 +505,7 @@ mod tests {
                 )
             };
 
-            let input_data = InputData {
+            let input_data = QueryBuffers {
                 data: Buffer::Borrowed(&scratch_space.0),
                 cell_offsets: None,
             };
@@ -627,7 +627,7 @@ mod tests {
 
             /* then copy from scratch data to stringdst */
             let prev_len = stringdst.len();
-            let input = InputData {
+            let input = QueryBuffers {
                 data: Buffer::Borrowed(&scratch_space.0),
                 cell_offsets: scratch_space
                     .1

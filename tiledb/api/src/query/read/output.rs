@@ -1,101 +1,25 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::iter::FusedIterator;
-use std::ops::{Deref, DerefMut};
 
 use anyhow::anyhow;
 
 use crate::convert::CAPISameRepr;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::query::write::input::{Buffer, InputData};
+use crate::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
 use crate::Result as TileDBResult;
-
-pub enum BufferMut<'data, T = u8> {
-    Empty,
-    Borrowed(&'data mut [T]),
-    Owned(Box<[T]>),
-}
-
-impl<'data, T> BufferMut<'data, T> {
-    pub fn size(&self) -> usize {
-        std::mem::size_of_val(self.as_ref())
-    }
-}
-
-impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
-    fn as_ref(&self) -> &[T] {
-        match self {
-            BufferMut::Empty => unsafe {
-                std::slice::from_raw_parts(
-                    std::ptr::NonNull::dangling().as_ptr(),
-                    0,
-                )
-            },
-            BufferMut::Borrowed(data) => data,
-            BufferMut::Owned(data) => data,
-        }
-    }
-}
-
-impl<'data, T> AsMut<[T]> for BufferMut<'data, T> {
-    fn as_mut(&mut self) -> &mut [T] {
-        match self {
-            BufferMut::Empty => unsafe {
-                std::slice::from_raw_parts_mut(
-                    std::ptr::NonNull::dangling().as_ptr(),
-                    0,
-                )
-            },
-            BufferMut::Borrowed(data) => data,
-            BufferMut::Owned(data) => &mut *data,
-        }
-    }
-}
-
-impl<'data, T> Deref for BufferMut<'data, T> {
-    type Target = [T];
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
-}
-
-impl<'data, T> DerefMut for BufferMut<'data, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut()
-    }
-}
-
-pub struct OutputLocation<'data, T = u8> {
-    pub data: BufferMut<'data, T>,
-    pub cell_offsets: Option<BufferMut<'data, u64>>,
-}
-
-impl<'data, T> OutputLocation<'data, T> {
-    /// Borrows this OutputLocation to use as input data.
-    pub fn as_input<'this>(&'this self) -> InputData<'data, T>
-    where
-        'this: 'data,
-    {
-        InputData {
-            data: Buffer::Borrowed(self.data.as_ref()),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
-        }
-    }
-}
 
 pub struct RawReadOutput<'data, C> {
     pub nrecords: usize,
     pub nbytes: usize,
-    pub input: &'data InputData<'data, C>,
+    pub input: &'data QueryBuffers<'data, C>,
 }
 
 pub struct ScratchSpace<C>(pub Box<[C]>, pub Option<Box<[u64]>>);
 
-impl<'data, C> TryFrom<OutputLocation<'data, C>> for ScratchSpace<C> {
+impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
     type Error = crate::error::Error;
 
-    fn try_from(value: OutputLocation<'data, C>) -> TileDBResult<Self> {
+    fn try_from(value: QueryBuffersMut<'data, C>) -> TileDBResult<Self> {
         let data = match value.data {
             BufferMut::Empty => vec![].into_boxed_slice(),
             BufferMut::Borrowed(_) => {
@@ -121,9 +45,9 @@ impl<'data, C> TryFrom<OutputLocation<'data, C>> for ScratchSpace<C> {
     }
 }
 
-impl<'data, C> From<ScratchSpace<C>> for OutputLocation<'data, C> {
+impl<'data, C> From<ScratchSpace<C>> for QueryBuffersMut<'data, C> {
     fn from(value: ScratchSpace<C>) -> Self {
-        OutputLocation {
+        QueryBuffersMut {
             data: BufferMut::Owned(value.0),
             cell_offsets: value.1.map(BufferMut::Owned),
         }
@@ -270,14 +194,14 @@ pub struct VarDataIterator<'data, C> {
     nrecords: usize,
     nbytes: usize,
     offset_cursor: usize,
-    location: InputData<'data, C>,
+    location: QueryBuffers<'data, C>,
 }
 
 impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
         nrecords: usize,
         nbytes: usize,
-        location: &'data InputData<'data, C>,
+        location: &'data QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
         let location = location.borrow();
 

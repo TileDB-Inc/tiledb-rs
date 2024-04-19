@@ -6,10 +6,9 @@ use std::pin::Pin;
 use paste::paste;
 
 use crate::convert::CAPISameRepr;
+use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::private::QueryCAPIInterface;
-use crate::query::read::output::{
-    BufferMut, HasScratchSpaceStrategy, OutputLocation, ScratchAllocator,
-};
+use crate::query::read::output::{HasScratchSpaceStrategy, ScratchAllocator};
 use crate::Result as TileDBResult;
 
 mod callback;
@@ -143,7 +142,7 @@ macro_rules! fn_register_callback {
                 $(
                     ([< field_ $U:snake >],
                      [< scratch_ $U:snake >]):
-                    (&str, &'data RefCell<OutputLocation<'data, <T as $Callback>::$U>>),
+                    (&str, &'data RefCell<QueryBuffersMut<'data, <T as $Callback>::$U>>),
                 )+
                 callback: T
             ) -> TileDBResult<$Builder<'data, T, Self>>
@@ -176,7 +175,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     fn register_raw<'data, S, C>(
         self,
         field: S,
-        scratch: &'data RefCell<OutputLocation<'data, C>>,
+        scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
     ) -> TileDBResult<RawReadBuilder<C, Self>>
     where
         S: AsRef<str>,
@@ -239,7 +238,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     {
         let scratch = scratch_allocator.alloc();
 
-        let scratch = OutputLocation {
+        let scratch = QueryBuffersMut {
             data: BufferMut::Owned(scratch.0),
             cell_offsets: scratch.1.map(BufferMut::Owned),
         };
@@ -249,12 +248,12 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let base = {
             let scratch = scratch.as_ref().get_ref()
                 as *const RefCell<
-                    OutputLocation<'data, <T as ReadCallback>::Unit>,
+                    QueryBuffersMut<'data, <T as ReadCallback>::Unit>,
                 >;
             let scratch = unsafe {
                 &*scratch
                     as &'data RefCell<
-                        OutputLocation<'data, <T as ReadCallback>::Unit>,
+                        QueryBuffersMut<'data, <T as ReadCallback>::Unit>,
                     >
             };
             self.register_callback((field.as_ref(), scratch), callback)
@@ -273,7 +272,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         self,
         field: S,
         scratch: &'data RefCell<
-            OutputLocation<
+            QueryBuffersMut<
                 'data,
                 <<T as ReadResult>::Constructor as ReadCallback>::Unit,
             >,
@@ -309,7 +308,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     {
         let scratch = scratch_allocator.alloc();
 
-        let scratch = OutputLocation {
+        let scratch = QueryBuffersMut {
             data: BufferMut::Owned(scratch.0),
             cell_offsets: scratch.1.map(BufferMut::Owned),
         };
@@ -318,9 +317,9 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
 
         let base = {
             let scratch = scratch.as_ref().get_ref()
-                as *const RefCell<OutputLocation<'data, C>>;
+                as *const RefCell<QueryBuffersMut<'data, C>>;
             let scratch = unsafe {
-                &*scratch as &'data RefCell<OutputLocation<'data, C>>
+                &*scratch as &'data RefCell<QueryBuffersMut<'data, C>>
             };
             self.register_constructor::<S, T>(field, scratch)
         }?;
