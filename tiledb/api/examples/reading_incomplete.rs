@@ -2,6 +2,7 @@ extern crate tiledb;
 
 use std::cell::{Ref, RefCell};
 
+use itertools::izip;
 use tiledb::array::{CellOrder, TileOrder};
 use tiledb::query::read::output::{
     BufferMut, NonVarSized, OutputLocation, VarDataIterator, VarSized,
@@ -209,8 +210,8 @@ fn read_array_step() -> TileDBResult<()> {
                     .collect::<Vec<String>>()
             };
 
-            for (((row, column), a1), a2) in
-                rows.iter().zip(cols.iter()).zip(a1.iter()).zip(a2)
+            for (row, column, a1, a2) in
+                izip!(rows.iter(), cols.iter(), a1.iter(), a2)
             {
                 println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
             }
@@ -265,7 +266,8 @@ fn read_array_collect() -> TileDBResult<()> {
         .build();
 
     let (a2, (a1, (column, (row, _)))) = qq.execute()?;
-    for (((row, column), a1), a2) in row.iter().zip(column).zip(a1).zip(a2) {
+
+    for (row, column, a1, a2) in izip!(row, column, a1, a2) {
         println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
     }
 
