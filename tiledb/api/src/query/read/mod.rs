@@ -107,14 +107,14 @@ impl<I, F> ReadStepOutput<I, F> {
     ///
     /// ```
     /// use tiledb::query::ReadStepOutput;
-    /// let r = ReadStepOutput::<u64, String>::Intermediate(0);
-    /// assert_eq!(0u64, r.unwrap_intermediate());
+    /// let r = ReadStepOutput::<String, String>::Intermediate("tiledb".to_string());
+    /// assert_eq!("tiledb", r.unwrap_intermediate());
     /// ```
     ///
     /// ```should_panic
     /// use tiledb::query::ReadStepOutput;
-    /// let r = ReadStepOutput::<u64, String>::Final("tiledb".to_string());
-    /// assert_eq!(0, r.unwrap_intermediate()); // fails
+    /// let r = ReadStepOutput::<String, String>::Final("tiledb".to_string());
+    /// assert_eq!("tiledb", r.unwrap_intermediate()); // fails
     /// ```
     pub fn unwrap_intermediate(self) -> I {
         match self {
@@ -134,13 +134,13 @@ impl<I, F> ReadStepOutput<I, F> {
     ///
     /// ```
     /// use tiledb::query::ReadStepOutput;
-    /// let r = ReadStepOutput::<u64, String>::Final("tiledb".to_string());
+    /// let r = ReadStepOutput::<String, String>::Final("tiledb".to_string());
     /// assert_eq!("tiledb", r.unwrap_final());
     /// ```
     ///
     /// ```should_panic
     /// use tiledb::query::ReadStepOutput;
-    /// let r = ReadStepOutput::<u64, String>::Intermediate(0);
+    /// let r = ReadStepOutput::<String, String>::Intermediate("tiledb".to_string());
     /// assert_eq!("tiledb", r.unwrap_final()); // fails
     /// ```
     pub fn unwrap_final(self) -> F {
