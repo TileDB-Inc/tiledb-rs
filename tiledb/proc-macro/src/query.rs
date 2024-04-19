@@ -6,17 +6,19 @@ use syn::spanned::Spanned;
 use syn::{GenericParam, Lifetime, LifetimeParam, Path};
 
 pub fn expand(input: &syn::DeriveInput) -> TokenStream {
-    context_bound_impl(input).into()
+    query_capi_interface_impl(input).into()
 }
 
-fn context_bound_impl(input: &syn::DeriveInput) -> proc_macro2::TokenStream {
+fn query_capi_interface_impl(
+    input: &syn::DeriveInput,
+) -> proc_macro2::TokenStream {
     match input.data {
         syn::Data::Struct(ref structdata) => match structdata.fields {
             syn::Fields::Named(ref fields) => {
-                match context_bound_impl_fields_named(input, fields) {
+                match query_capi_interface_fields_named(input, fields) {
                     Some(tt) => tt,
                     None => quote_spanned! {
-                        fields.span() => compile_error!("expected field with #[context] or #[base(ContextBound)] attribute")
+                        fields.span() => compile_error!("expected field with #[raw_query] or #[base(Query)] attribute")
                     },
                 }
             }
@@ -25,12 +27,12 @@ fn context_bound_impl(input: &syn::DeriveInput) -> proc_macro2::TokenStream {
             }
             syn::Fields::Unit => unimplemented!("syn::Fields::Unit"),
         },
-        syn::Data::Enum(ref edata) => context_bound_impl_enum(input, edata),
+        syn::Data::Enum(_) => unimplemented!("syn::Data::Enum"),
         syn::Data::Union(_) => unimplemented!("syn::Data::Union"),
     }
 }
 
-fn context_bound_impl_fields_named(
+fn query_capi_interface_fields_named(
     input: &syn::DeriveInput,
     fields: &syn::FieldsNamed,
 ) -> Option<proc_macro2::TokenStream> {
@@ -38,20 +40,7 @@ fn context_bound_impl_fields_named(
         for a in f.attrs.iter() {
             if let syn::AttrStyle::Outer = a.style {
                 match a.meta {
-                    syn::Meta::Path(ref p) => {
-                        let mpath = p
-                            .segments
-                            .iter()
-                            .map(|p| p.ident.to_string())
-                            .collect::<Vec<String>>();
-                        if mpath == vec!["context"] {
-                            return Some(
-                                context_bound_impl_fields_named_direct(
-                                    input, f,
-                                ),
-                            );
-                        }
-                    }
+                    syn::Meta::Path(_) => continue,
                     syn::Meta::List(ref ll) => {
                         let parser =
                             Punctuated::<Path, Token![,]>::parse_terminated;
@@ -65,11 +54,9 @@ fn context_bound_impl_fields_named(
                                 .iter()
                                 .map(|p| p.ident.to_string())
                                 .collect::<Vec<String>>();
-                            if mpath == vec!["ContextBound"]
-                                || mpath == vec!["context", "ContextBound"]
-                            {
+                            if mpath == vec!["Query"] {
                                 return Some(
-                                    context_bound_impl_fields_named_base(
+                                    query_capi_interface_impl_fields_named_base(
                                         input, f,
                                     ),
                                 );
@@ -84,26 +71,7 @@ fn context_bound_impl_fields_named(
     None
 }
 
-fn context_bound_impl_fields_named_direct(
-    input: &syn::DeriveInput,
-    f: &syn::Field,
-) -> proc_macro2::TokenStream {
-    let name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) =
-        input.generics.split_for_impl();
-    let fname =
-        Ident::new(&f.ident.as_ref().unwrap().to_string(), Span::call_site());
-    let expanded = quote! {
-        impl #impl_generics ContextBound <'ctx> for #name #ty_generics #where_clause {
-            fn context(&self) -> &'ctx Context {
-                self.#fname
-            }
-        }
-    };
-    expanded
-}
-
-fn context_bound_impl_fields_named_base(
+fn query_capi_interface_impl_fields_named_base(
     input: &syn::DeriveInput,
     f: &syn::Field,
 ) -> proc_macro2::TokenStream {
@@ -151,14 +119,14 @@ fn context_bound_impl_fields_named_base(
     /*
      * It is perfectly fine to write the same trait bound multiple times,
      * or write trait bounds on non-generic types. For simplicity, always
-     * add a ContextBound<'ctx> bound to the base field.
+     * add a Query<'ctx> bound to the base field.
      */
     let where_clause = {
         let bound = {
             let field_type = crate::ty::try_deref(&f.ty);
             let parser = syn::WherePredicate::parse;
             parser
-                .parse(quote!(#field_type: ContextBound<'ctx>).into())
+                .parse(quote!(#field_type: Query<'ctx>).into())
                 .unwrap()
         };
 
@@ -175,53 +143,12 @@ fn context_bound_impl_fields_named_base(
     };
 
     let expanded = quote! {
-        impl #impl_generics ContextBound<'ctx> for #name #ty_generics #where_clause {
-            fn context(&self) -> &'ctx Context {
-                self.#fname.context()
+        impl #impl_generics Query<'ctx> for #name #ty_generics #where_clause {
+            fn base(&self) -> &QueryBase<'ctx> {
+                self.#fname.base()
             }
         }
     };
 
     expanded
-}
-
-fn context_bound_impl_enum(
-    input: &syn::DeriveInput,
-    edata: &syn::DataEnum,
-) -> proc_macro2::TokenStream {
-    let name = &input.ident;
-    let variants = edata.variants.iter().map(|v| {
-        let vname = &v.ident;
-        match v.fields {
-            syn::Fields::Named(_) => {
-                unimplemented!("syn::DataEnum => syn::Fields::Named")
-            }
-            syn::Fields::Unnamed(ref fields) => {
-                if fields.unnamed.len() == 1 {
-                    quote! {
-                        #name::#vname(ref base) => base.context()
-                    }
-                } else {
-                    unimplemented!("syn::DataEnum => syn::Fields::Unnamed")
-                }
-            }
-            syn::Fields::Unit => quote_spanned! {
-                v.fields.span() => compile_error!(
-                    "Cannot derive ContextBound from an enum variant with no data",
-                ),
-            },
-        }
-    });
-
-    let (impl_generics, ty_generics, where_clause) =
-        input.generics.split_for_impl();
-    quote! {
-        impl #impl_generics ContextBound<'ctx> for #name #ty_generics #where_clause {
-            fn context(&self) -> &'ctx Context {
-                match self {
-                    #(#variants,)*
-                }
-            }
-        }
-    }
 }

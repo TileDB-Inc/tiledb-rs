@@ -121,26 +121,22 @@ impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
     }
 }
 
-pub(crate) struct RawArray {
-    ffi: *mut ffi::tiledb_array_t,
-}
-
-impl RawArray {
-    pub fn new(ffi: *mut ffi::tiledb_array_t) -> Self {
-        RawArray { ffi }
-    }
+pub enum RawArray {
+    Owned(*mut ffi::tiledb_array_t),
 }
 
 impl Deref for RawArray {
     type Target = *mut ffi::tiledb_array_t;
     fn deref(&self) -> &Self::Target {
-        &self.ffi
+        let RawArray::Owned(ffi) = self;
+        ffi
     }
 }
 
 impl Drop for RawArray {
     fn drop(&mut self) {
-        unsafe { ffi::tiledb_array_free(&mut self.ffi) }
+        let RawArray::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_array_free(ffi) }
     }
 }
 
@@ -148,12 +144,12 @@ impl Drop for RawArray {
 pub struct Array<'ctx> {
     #[context]
     context: &'ctx Context,
-    raw: RawArray,
+    pub(crate) raw: RawArray,
 }
 
 impl<'ctx> Array<'ctx> {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_t {
-        *self.raw
+    pub(crate) fn capi(&self) -> &RawArray {
+        &self.raw
     }
 
     pub fn create<S>(
@@ -207,7 +203,7 @@ impl<'ctx> Array<'ctx> {
         })?;
         Ok(Array {
             context,
-            raw: RawArray::new(array_raw),
+            raw: RawArray::Owned(array_raw),
         })
     }
 }

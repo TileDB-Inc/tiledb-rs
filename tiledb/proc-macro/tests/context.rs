@@ -1,10 +1,25 @@
-extern crate tiledb;
 #[macro_use]
 extern crate tiledb_proc_macro;
 
 use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 
-use tiledb::{Context, ContextBound};
+struct Context {}
+
+impl Context {
+    pub fn new() -> Self {
+        Context {}
+    }
+}
+
+unsafe impl Send for Context {}
+
+unsafe impl Sync for Context {}
+
+trait ContextBound<'ctx> {
+    fn context(&self) -> &'ctx Context;
+}
 
 #[derive(ContextBound)]
 struct SimpleThing<'ctx> {
@@ -14,7 +29,7 @@ struct SimpleThing<'ctx> {
 
 #[test]
 fn simple() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
     let simple = SimpleThing { context: &context };
 
     assert_eq!(
@@ -45,6 +60,10 @@ impl<'ctx> ContextBound<'ctx> for DeriveBase<'ctx> {
     }
 }
 
+unsafe impl<'ctx> Send for DeriveBase<'ctx> {}
+
+unsafe impl<'ctx> Sync for DeriveBase<'ctx> {}
+
 #[derive(ContextBound)]
 struct DirectBase<'ctx> {
     #[base(ContextBound)]
@@ -53,7 +72,7 @@ struct DirectBase<'ctx> {
 
 #[test]
 fn direct_base() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = DirectBase {
         base: DeriveBase::new(&context),
@@ -71,7 +90,7 @@ struct IndirectBase<'ctx> {
 
 #[test]
 fn indirect_base() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = IndirectBase {
         base: DirectBase {
@@ -92,7 +111,7 @@ struct GenericDirectBase<'ctx, T> {
 
 #[test]
 fn generic_direct_base() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = GenericDirectBase {
         _marker: std::marker::PhantomData::<u64>,
@@ -111,7 +130,7 @@ struct GenericIndirectBase<'ctx, T> {
 
 #[test]
 fn generic_indirect_base() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = GenericIndirectBase {
         base: GenericDirectBase {
@@ -136,7 +155,7 @@ where
 
 #[test]
 fn generic_direct_base_bounded() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = GenericDirectBaseBounded {
         _marker: std::marker::PhantomData::<u64>,
@@ -158,7 +177,7 @@ where
 
 #[test]
 fn generic_indirect_base_bounded() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = GenericIndirectBaseBounded {
         base: GenericDirectBaseBounded {
@@ -180,7 +199,7 @@ struct UnboundedCtxBaseNotCtx<'ctx, T> {
 
 #[test]
 fn unbounded_ctx_base_not_ctx() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = UnboundedCtxBaseNotCtx {
         _marker: std::marker::PhantomData,
@@ -203,7 +222,7 @@ where
 
 #[test]
 fn context_bound_base() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = ContextBoundBase {
         _marker: std::marker::PhantomData,
@@ -222,7 +241,7 @@ struct UnboundedBase<T> {
 
 #[test]
 fn unbounded_base() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = UnboundedBase {
         base: DeriveBase::new(&context),
@@ -243,10 +262,82 @@ where
 
 #[test]
 fn unrelated_bounded_base() {
-    let context = Context::new().unwrap();
+    let context = Context::new();
 
     let s = UnrelatedBoundedBase {
         base: DeriveBase::new(&context),
+    };
+
+    assert_eq!(&context as *const Context, s.context() as *const Context);
+    assert!(*s.base.found.borrow());
+}
+
+#[derive(ContextBound)]
+struct BoxedBase<'ctx> {
+    #[base(ContextBound)]
+    base: Box<DeriveBase<'ctx>>,
+}
+
+#[test]
+fn boxed_base() {
+    let context = Context::new();
+
+    let s = BoxedBase {
+        base: Box::new(DeriveBase::new(&context)),
+    };
+
+    assert_eq!(&context as *const Context, s.context() as *const Context);
+    assert!(*s.base.found.borrow());
+}
+
+#[derive(ContextBound)]
+struct ArcBase<'ctx> {
+    #[base(ContextBound)]
+    base: Arc<DeriveBase<'ctx>>,
+}
+
+#[test]
+fn arc_base() {
+    let context = Context::new();
+
+    let s = ArcBase {
+        base: Arc::new(DeriveBase::new(&context)),
+    };
+
+    assert_eq!(&context as *const Context, s.context() as *const Context);
+    assert!(*s.base.found.borrow());
+}
+
+#[derive(ContextBound)]
+struct RcBase<'ctx> {
+    #[base(ContextBound)]
+    base: Rc<DeriveBase<'ctx>>,
+}
+
+#[test]
+fn rc_base() {
+    let context = Context::new();
+
+    let s = RcBase {
+        base: Rc::new(DeriveBase::new(&context)),
+    };
+
+    assert_eq!(&context as *const Context, s.context() as *const Context);
+    assert!(*s.base.found.borrow());
+}
+
+#[derive(ContextBound)]
+struct BoxUnboundedBase<T> {
+    #[base(ContextBound)]
+    base: Box<T>,
+}
+
+#[test]
+fn box_unbounded_base() {
+    let context = Context::new();
+
+    let s = BoxedBase {
+        base: Box::new(DeriveBase::new(&context)),
     };
 
     assert_eq!(&context as *const Context, s.context() as *const Context);

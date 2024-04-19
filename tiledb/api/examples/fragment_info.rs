@@ -1,5 +1,6 @@
 extern crate tiledb;
 
+use tiledb::query::QueryBuilder;
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
@@ -147,16 +148,12 @@ fn write_array() -> TileDBResult<()> {
         tiledb::array::Mode::Write,
     )?;
 
-    let mut data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+    let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-    let query =
-        tiledb::QueryBuilder::new(&tdb, array, tiledb::QueryType::Write)?
-            .layout(tiledb::query::QueryLayout::RowMajor)?
-            .dimension_buffer_typed(
-                FRAGMENT_INFO_ATTRIBUTE_NAME,
-                data.as_mut_slice(),
-            )?
-            .build();
+    let query = tiledb::query::WriteBuilder::new(&tdb, array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .data_typed(FRAGMENT_INFO_ATTRIBUTE_NAME, &data)?
+        .build();
 
     query.submit().map(|_| ())
 }

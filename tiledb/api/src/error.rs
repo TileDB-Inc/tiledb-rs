@@ -33,6 +33,8 @@ pub enum DatatypeErrorKind {
         user_type: &'static str,
         tiledb_type: Datatype,
     },
+    ExpectedFixedSize(Option<String>),
+    ExpectedVarSize(Option<String>, Option<u64>),
 }
 
 impl Display for DatatypeErrorKind {
@@ -49,6 +51,33 @@ impl Display for DatatypeErrorKind {
                     f,
                     "Type mismatch: requested {}, but found {}",
                     user_type, tiledb_type
+                )
+            }
+            DatatypeErrorKind::ExpectedFixedSize(ref field) => {
+                if let Some(field) = field.as_ref() {
+                    write!(f, "Expected fixed-size result for field {}, but found variable-sized", field)
+                } else {
+                    write!(
+                        f,
+                        "Expected fixed-size result, but found variable-sized"
+                    )
+                }
+            }
+            DatatypeErrorKind::ExpectedVarSize(ref field, cell_val_num) => {
+                let field = if let Some(field) = field.as_ref() {
+                    format!(" for field {}", field)
+                } else {
+                    "".to_string()
+                };
+                let cell_val_num = if let Some(cvn) = cell_val_num {
+                    format!(" (cell val num: {})", cvn)
+                } else {
+                    "".to_string()
+                };
+                write!(
+                    f,
+                    "Expected var-size result{}, but found fixed-sized{}",
+                    field, cell_val_num
                 )
             }
         }
@@ -79,6 +108,10 @@ pub enum Error {
     /// Error deserializing data
     #[error("Deserialization error: {0}: {1}")]
     Deserialization(String, #[source] anyhow::Error),
+    /// Error occurred executing a query callback
+    #[error("Query callback error for attribute [{}]: {1}",
+        .0.iter().map(|s| s.as_ref()).collect::<Vec<&str>>().join(","))]
+    QueryCallback(Vec<String>, #[source] anyhow::Error),
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),

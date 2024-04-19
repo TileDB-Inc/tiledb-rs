@@ -36,7 +36,7 @@ pub trait ContextBound<'ctx> {
     fn context(&self) -> &'ctx Context;
 }
 
-pub(crate) trait CApiInterface {
+pub trait CApiInterface {
     fn capi_return(&self, c_ret: i32) -> TileDBResult<()>;
 }
 

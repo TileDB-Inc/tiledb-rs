@@ -25,7 +25,19 @@ struct APIVisitor {
 
 impl<'ast> Visit<'ast> for APIVisitor {
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
-        if let syn::Expr::Path(path) = node.func.as_ref() {
+        let mut path: Option<&syn::ExprPath> = None;
+
+        if let syn::Expr::Path(p) = node.func.as_ref() {
+            path = Some(p);
+        } else if let syn::Expr::Paren(expr) = node.func.as_ref() {
+            if let syn::Expr::Field(field) = expr.expr.as_ref() {
+                if let syn::Expr::Path(p) = field.base.as_ref() {
+                    path = Some(p);
+                }
+            }
+        }
+
+        if let Some(path) = path {
             let mut fnname = FnNameVisitor::default();
             visit::visit_expr_path(&mut fnname, path);
             let fnname = fnname.segments.join("::");

@@ -3,7 +3,7 @@ use std::ops::Deref;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPIConverter;
 use crate::key::LookupKey;
-use crate::query::Builder as QueryBuilder;
+use crate::query::QueryBuilder;
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawSubarray {
@@ -34,17 +34,20 @@ pub struct Subarray<'ctx> {
 }
 
 #[derive(ContextBound)]
-pub struct Builder<'ctx> {
-    query: QueryBuilder<'ctx>,
+pub struct Builder<'ctx, Q> {
+    query: Q,
     #[base(ContextBound)]
     subarray: Subarray<'ctx>,
 }
 
-impl<'ctx> Builder<'ctx> {
-    pub(crate) fn for_query(query: QueryBuilder<'ctx>) -> TileDBResult<Self> {
-        let context = query.query.context;
+impl<'ctx, Q> Builder<'ctx, Q>
+where
+    Q: QueryBuilder<'ctx> + Sized,
+{
+    pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
+        let context = query.base().context();
         let c_context = context.capi();
-        let c_array = query.query.array.capi();
+        let c_array = **query.base().carray();
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
 
         context.capi_return(unsafe {
@@ -103,9 +106,9 @@ impl<'ctx> Builder<'ctx> {
     }
 
     /// Apply the subarray to the query, returning the query builder.
-    pub fn finish_subarray(self) -> TileDBResult<QueryBuilder<'ctx>> {
+    pub fn finish_subarray(self) -> TileDBResult<Q> {
         let c_context = self.subarray.context.capi();
-        let c_query = *self.query.query.raw;
+        let c_query = **self.query.base().cquery();
         let c_subarray = *self.subarray.raw;
 
         self.capi_return(unsafe {
