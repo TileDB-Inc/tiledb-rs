@@ -274,7 +274,7 @@ fn read_array_collect() -> TileDBResult<()> {
 /// Ignores the details of incomplete results by register a callback to run
 /// on each record which prints the result set.  Capacities for each attribute
 /// are deliberately small in this example to force the NotEnoughSpace result,
-/// which is handled inside of `execute`.
+/// which is handled manually by swapping the buffer inside of the RefCell.
 fn read_array_callback() -> TileDBResult<()> {
     fn callback(row: i32, column: i32, a1: i32, a2: String) {
         println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
