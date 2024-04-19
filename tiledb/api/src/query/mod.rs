@@ -12,8 +12,6 @@ pub mod write;
 
 mod private {
     use super::*;
-    use std::rc::Rc;
-    use std::sync::Arc;
 
     pub trait QueryCAPIInterface {
         fn carray(&self) -> &RawArray;
@@ -81,32 +79,6 @@ mod private {
                 ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
             })
             .map(|_| c_status)
-        }
-    }
-
-    impl<T> QueryCAPIInterface for Arc<T>
-    where
-        T: QueryCAPIInterface,
-    {
-        fn carray(&self) -> &RawArray {
-            (**self).carray()
-        }
-
-        fn cquery(&self) -> &RawQuery {
-            (**self).cquery()
-        }
-    }
-
-    impl<T> QueryCAPIInterface for Rc<T>
-    where
-        T: QueryCAPIInterface,
-    {
-        fn carray(&self) -> &RawArray {
-            (**self).carray()
-        }
-
-        fn cquery(&self) -> &RawQuery {
-            (**self).cquery()
         }
     }
 }

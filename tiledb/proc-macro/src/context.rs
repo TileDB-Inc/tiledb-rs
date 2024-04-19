@@ -155,7 +155,7 @@ fn context_bound_impl_fields_named_base(
      */
     let where_clause = {
         let bound = {
-            let field_type = &f.ty;
+            let field_type = crate::ty::try_deref(&f.ty);
             let parser = syn::WherePredicate::parse;
             parser
                 .parse(quote!(#field_type: ContextBound<'ctx>).into())

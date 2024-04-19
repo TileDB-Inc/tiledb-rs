@@ -1,6 +1,4 @@
 use std::ops::Deref;
-use std::rc::Rc;
-use std::sync::Arc;
 
 use crate::config::{Config, RawConfig};
 use crate::error::{Error, RawError};
@@ -36,24 +34,6 @@ impl Drop for RawContext {
 
 pub trait ContextBound<'ctx> {
     fn context(&self) -> &'ctx Context;
-}
-
-impl<'ctx, T> ContextBound<'ctx> for Arc<T>
-where
-    T: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        (**self).context()
-    }
-}
-
-impl<'ctx, T> ContextBound<'ctx> for Rc<T>
-where
-    T: ContextBound<'ctx>,
-{
-    fn context(&self) -> &'ctx Context {
-        (**self).context()
-    }
 }
 
 pub trait CApiInterface {
