@@ -156,6 +156,7 @@ impl<'ctx> Group<'ctx> {
         S: AsRef<str>,
         T: AsRef<str>,
     {
+        println!("{}", uri.as_ref());
         let c_context = self.context.capi();
         let c_uri = cstring!(uri.as_ref());
         let c_ptr = match name {
