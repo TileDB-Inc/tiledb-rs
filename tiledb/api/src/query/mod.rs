@@ -123,30 +123,20 @@ pub type QueryLayout = crate::array::CellOrder;
 
 pub enum RawQuery {
     Owned(*mut ffi::tiledb_query_t),
-    Borrowed(*mut ffi::tiledb_query_t),
-}
-
-impl RawQuery {
-    pub fn borrow(&self) -> RawQuery {
-        RawQuery::Borrowed(**self)
-    }
 }
 
 impl Deref for RawQuery {
     type Target = *mut ffi::tiledb_query_t;
     fn deref(&self) -> &Self::Target {
-        match *self {
-            RawQuery::Owned(ref ffi) => ffi,
-            RawQuery::Borrowed(ref ffi) => ffi,
-        }
+        let RawQuery::Owned(ref ffi) = self;
+        ffi
     }
 }
 
 impl Drop for RawQuery {
     fn drop(&mut self) {
-        if let RawQuery::Owned(ref mut ffi) = *self {
-            unsafe { ffi::tiledb_query_free(ffi) }
-        }
+        let RawQuery::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_query_free(ffi) }
     }
 }
 

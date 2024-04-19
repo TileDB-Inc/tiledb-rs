@@ -123,30 +123,20 @@ impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
 
 pub enum RawArray {
     Owned(*mut ffi::tiledb_array_t),
-    Borrowed(*mut ffi::tiledb_array_t),
-}
-
-impl RawArray {
-    pub fn borrow(&self) -> RawArray {
-        RawArray::Borrowed(**self)
-    }
 }
 
 impl Deref for RawArray {
     type Target = *mut ffi::tiledb_array_t;
     fn deref(&self) -> &Self::Target {
-        match self {
-            RawArray::Owned(ffi) => ffi,
-            RawArray::Borrowed(ffi) => ffi,
-        }
+        let RawArray::Owned(ffi) = self;
+        ffi
     }
 }
 
 impl Drop for RawArray {
     fn drop(&mut self) {
-        if let RawArray::Owned(ref mut ffi) = *self {
-            unsafe { ffi::tiledb_array_free(ffi) }
-        }
+        let RawArray::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_array_free(ffi) }
     }
 }
 
