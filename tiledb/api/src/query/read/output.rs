@@ -9,7 +9,7 @@ use crate::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
 use crate::Result as TileDBResult;
 
 pub struct RawReadOutput<'data, C> {
-    pub nrecords: usize,
+    pub nvalues: usize,
     pub nbytes: usize,
     pub input: &'data QueryBuffers<'data, C>,
 }
@@ -183,7 +183,7 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
             Err(Error::Datatype(DatatypeErrorKind::ExpectedFixedSize(None)))
         } else {
             Ok(FixedDataIterator {
-                fixed: value.input.data.as_ref()[0..value.nrecords].iter(),
+                fixed: value.input.data.as_ref()[0..value.nvalues].iter(),
             })
         }
     }
@@ -191,7 +191,7 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
 
 /// Iterator which yields variable-sized records from a raw read result.
 pub struct VarDataIterator<'data, C> {
-    nrecords: usize,
+    nvalues: usize,
     nbytes: usize,
     offset_cursor: usize,
     location: QueryBuffers<'data, C>,
@@ -199,7 +199,7 @@ pub struct VarDataIterator<'data, C> {
 
 impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
-        nrecords: usize,
+        nvalues: usize,
         nbytes: usize,
         location: &'data QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
@@ -211,7 +211,7 @@ impl<'data, C> VarDataIterator<'data, C> {
             )))
         } else {
             Ok(VarDataIterator {
-                nrecords,
+                nvalues,
                 nbytes,
                 offset_cursor: 0,
                 location,
@@ -230,7 +230,7 @@ where
             "VarDataIterator {{ cursor: {}, offsets: {:?}, bytes: {:?} }}",
             self.offset_cursor,
             &self.location.cell_offsets.as_ref().unwrap().as_ref()
-                [0..self.nrecords],
+                [0..self.nvalues],
             &self.location.data.as_ref()[0..self.nbytes]
         )
     }
@@ -256,11 +256,11 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
         let s = self.offset_cursor;
         self.offset_cursor += 1;
 
-        if s + 1 < self.nrecords {
+        if s + 1 < self.nvalues {
             let start = offset_buffer[s] as usize;
             let slen = offset_buffer[s + 1] as usize - start;
             Some(&data_buffer[start..start + slen])
-        } else if s < self.nrecords {
+        } else if s < self.nvalues {
             let start = offset_buffer[s] as usize;
             let slen = self.nbytes - start;
             Some(&data_buffer[start..start + slen])
@@ -275,7 +275,7 @@ impl<'data, C> FusedIterator for VarDataIterator<'data, C> {}
 impl<'data, C> TryFrom<RawReadOutput<'data, C>> for VarDataIterator<'data, C> {
     type Error = crate::error::Error;
     fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
-        Self::new(value.nrecords, value.nbytes, value.input)
+        Self::new(value.nvalues, value.nbytes, value.input)
     }
 }
 

@@ -197,7 +197,7 @@ mod impls {
             &mut self,
             arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            self.extend_from_slice(&arg.input.data.as_ref()[0..arg.nrecords]);
+            self.extend_from_slice(&arg.input.data.as_ref()[0..arg.nvalues]);
             Ok(())
         }
 
@@ -313,26 +313,26 @@ macro_rules! query_read_callback {
 
                 paste! {
                     $(
-                        let ([< nrecords_ $U:snake >], [< nbytes_ $U:snake >]) = {
-                            let (nrecords, nbytes) = self.[< arg_ $U:snake >].last_read_size();
+                        let ([< nvalues_ $U:snake >], [< nbytes_ $U:snake >]) = {
+                            let (nvalues, nbytes) = self.[< arg_ $U:snake >].last_read_size();
                             if !base_result.is_final() {
-                                if nrecords == 0 && nbytes == 0 {
+                                if nvalues == 0 && nbytes == 0 {
                                     return Ok(ReadStepOutput::NotEnoughSpace)
-                                } else if nrecords == 0 {
+                                } else if nvalues == 0 {
                                     return Err(Error::Internal(format!(
                                                 "Invalid read: returned {} offsets but {} bytes",
-                                                nrecords, nbytes
+                                                nvalues, nbytes
                                     )));
                                 }
                             }
-                            (nrecords, nbytes)
+                            (nvalues, nbytes)
                         };
 
                         let [< l_ $U:snake >] = self.[< arg_ $U:snake >].location.borrow();
                         let [< input_ $U:snake >] = [< l_ $U:snake >].as_shared();
 
                         let [< arg_ $U:snake >] = RawReadOutput {
-                            nrecords: [< nrecords_ $U:snake >],
+                            nvalues: [< nvalues_ $U:snake >],
                             nbytes: [< nbytes_ $U:snake >],
                             input: &[< input_ $U:snake >]
                         };
@@ -514,7 +514,7 @@ mod tests {
             };
 
             let arg = RawReadOutput {
-                nrecords: ncells,
+                nvalues: ncells,
                 nbytes: ncells * std::mem::size_of::<u64>(),
                 input: &input_data,
             };
@@ -579,9 +579,9 @@ mod tests {
 
         while stringdst.len() < stringsrc.len() {
             /* copy from stringsrc to scratch data */
-            let (nrecords, nbytes) = {
+            let (nvalues, nbytes) = {
                 /* write the offsets first */
-                let (nrecords, nbytes) = {
+                let (nvalues, nbytes) = {
                     let scratch_offsets = scratch_space.1.as_mut().unwrap();
                     let mut i = 0;
                     let mut off = 0;
@@ -605,7 +605,7 @@ mod tests {
                     }
                 };
 
-                if nrecords == 0 {
+                if nvalues == 0 {
                     assert_eq!(0, nbytes);
                     scratch_space = alloc.realloc(scratch_space);
                     continue;
@@ -614,10 +614,10 @@ mod tests {
                 let scratch_offsets = scratch_space.1.as_ref().unwrap();
 
                 /* then transfer contents */
-                for i in 0..nrecords {
+                for i in 0..nvalues {
                     let s = &stringsrc[stringdst.len() + i];
                     let start = scratch_offsets[i] as usize;
-                    let end = if i + 1 < nrecords {
+                    let end = if i + 1 < nvalues {
                         scratch_offsets[i + 1] as usize
                     } else {
                         nbytes
@@ -625,7 +625,7 @@ mod tests {
                     scratch_space.0[start..end].copy_from_slice(s.as_bytes())
                 }
 
-                (nrecords, nbytes)
+                (nvalues, nbytes)
             };
 
             /* then copy from scratch data to stringdst */
@@ -638,7 +638,7 @@ mod tests {
                     .map(|c| Buffer::Borrowed(c)),
             };
             let arg = RawReadOutput {
-                nrecords,
+                nvalues,
                 nbytes,
                 input: &input,
             };
@@ -646,7 +646,7 @@ mod tests {
                 .intermediate_result(arg)
                 .expect("Error aggregating Vec<String>");
 
-            assert_eq!(nrecords, stringdst.len() - prev_len);
+            assert_eq!(nvalues, stringdst.len() - prev_len);
             assert_eq!(stringsrc[0..stringdst.len()], stringdst);
         }
     }

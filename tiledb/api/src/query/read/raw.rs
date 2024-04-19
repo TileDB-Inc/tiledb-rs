@@ -122,7 +122,7 @@ impl<'data, C> RawReadHandle<'data, C> {
     /// Returns the number of records and bytes produced by the last read,
     /// or the capacity of the destination buffers if no read has occurred.
     pub fn last_read_size(&self) -> (usize, usize) {
-        let nrecords = match self.offsets_size.as_ref() {
+        let nvalues = match self.offsets_size.as_ref() {
             Some(offsets_size) => {
                 **offsets_size as usize / std::mem::size_of::<u64>()
             }
@@ -130,7 +130,7 @@ impl<'data, C> RawReadHandle<'data, C> {
         };
         let nbytes = *self.data_size as usize;
 
-        (nrecords, nbytes)
+        (nvalues, nbytes)
     }
 }
 
@@ -165,8 +165,7 @@ where
             self.base.step()?
         };
 
-        let (records_written, bytes_written) =
-            self.raw_read_output.last_read_size();
+        let (nvalues, nbytes) = self.raw_read_output.last_read_size();
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
@@ -174,26 +173,20 @@ where
                 ReadStepOutput::NotEnoughSpace
             }
             ReadStepOutput::Intermediate(base_result) => {
-                if records_written == 0 && bytes_written == 0 {
+                if nvalues == 0 && nbytes == 0 {
                     ReadStepOutput::NotEnoughSpace
-                } else if records_written == 0 {
+                } else if nvalues == 0 {
                     return Err(Error::Internal(format!(
                         "Invalid read: returned {} offsets but {} bytes",
-                        records_written, bytes_written
+                        nvalues, nbytes
                     )));
                 } else {
-                    ReadStepOutput::Intermediate((
-                        records_written,
-                        bytes_written,
-                        base_result,
-                    ))
+                    ReadStepOutput::Intermediate((nvalues, nbytes, base_result))
                 }
             }
-            ReadStepOutput::Final(base_result) => ReadStepOutput::Final((
-                records_written,
-                bytes_written,
-                base_result,
-            )),
+            ReadStepOutput::Final(base_result) => {
+                ReadStepOutput::Final((nvalues, nbytes, base_result))
+            }
         })
     }
 }
