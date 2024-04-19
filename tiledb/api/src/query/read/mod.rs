@@ -288,13 +288,17 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
         callback: T,
         scratch_allocator: A,
     ) -> TileDBResult<
-        ManagedReadBuilder<'data, C, A, CallbackReadBuilder<'data, T, Self>>,
+        ManagedReadBuilder<'data, CallbackReadBuilder<'data, T, Self>>,
     >
     where
         Self: Sized,
         S: AsRef<str>,
         T: ReadCallback<Unit = C> + HasScratchSpaceStrategy<C, Strategy = A>,
-        A: ScratchAllocator<C>,
+        A: ScratchAllocator<C> + 'data,
+        (
+            Box<dyn ScratchAllocator<C> + 'data>,
+            Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
+        ): Into<ManagedScratch<'data>>,
     {
         let scratch = scratch_allocator.alloc();
 
@@ -320,9 +324,10 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
             self.register_callback((field.as_ref(), scratch), callback)
         }?;
 
+        let scratch_allocator: Box<dyn ScratchAllocator<C> + 'data> =
+            Box::new(scratch_allocator);
         Ok(ManagedReadBuilder {
-            alloc: scratch_allocator,
-            scratch,
+            scratch: (scratch_allocator, scratch).into(),
             base,
         })
     }
@@ -358,16 +363,18 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
         self,
         field: S,
         scratch_allocator: A,
-    ) -> TileDBResult<
-        ManagedReadBuilder<'data, C, A, TypedReadBuilder<'data, T, Self>>,
-    >
+    ) -> TileDBResult<ManagedReadBuilder<'data, TypedReadBuilder<'data, T, Self>>>
     where
         Self: Sized,
         S: AsRef<str>,
         T: ReadResult<Constructor = R>
             + HasScratchSpaceStrategy<C, Strategy = A>,
         R: Default + ReadCallback<Unit = C>,
-        A: ScratchAllocator<C>,
+        A: ScratchAllocator<C> + 'data,
+        (
+            Box<dyn ScratchAllocator<C> + 'data>,
+            Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
+        ): Into<ManagedScratch<'data>>,
     {
         let scratch = scratch_allocator.alloc();
 
@@ -388,9 +395,10 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
             self.register_constructor::<S, T>(field, scratch)
         }?;
 
+        let scratch_allocator: Box<dyn ScratchAllocator<C> + 'data> =
+            Box::new(scratch_allocator);
         Ok(ManagedReadBuilder {
-            alloc: scratch_allocator,
-            scratch,
+            scratch: (scratch_allocator, scratch).into(),
             base,
         })
     }

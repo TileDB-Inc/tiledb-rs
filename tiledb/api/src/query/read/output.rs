@@ -70,7 +70,7 @@ impl<'data, C> From<ScratchSpace<C>> for QueryBuffersMut<'data, C> {
     }
 }
 
-pub trait ScratchAllocator<C>: Default {
+pub trait ScratchAllocator<C> {
     fn alloc(&self) -> ScratchSpace<C>;
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C>;
 }

@@ -1,39 +1,148 @@
 use super::output::ScratchSpace;
 use super::*;
 
+pub enum ManagedScratch<'data> {
+    UInt8(
+        Box<dyn ScratchAllocator<u8> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, u8>>>>,
+    ),
+    UInt16(
+        Box<dyn ScratchAllocator<u16> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, u16>>>>,
+    ),
+    UInt32(
+        Box<dyn ScratchAllocator<u32> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, u32>>>>,
+    ),
+    UInt64(
+        Box<dyn ScratchAllocator<u64> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, u64>>>>,
+    ),
+    Int8(
+        Box<dyn ScratchAllocator<i8> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, i8>>>>,
+    ),
+    Int16(
+        Box<dyn ScratchAllocator<i16> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, i16>>>>,
+    ),
+    Int32(
+        Box<dyn ScratchAllocator<i32> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, i32>>>>,
+    ),
+    Int64(
+        Box<dyn ScratchAllocator<i64> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, i64>>>>,
+    ),
+    Float32(
+        Box<dyn ScratchAllocator<f32> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, f32>>>>,
+    ),
+    Float64(
+        Box<dyn ScratchAllocator<f64> + 'data>,
+        Pin<Box<RefCell<QueryBuffersMut<'data, f64>>>>,
+    ),
+}
+
+macro_rules! managed_output_location {
+    ($($V:ident : $U:ty),+) => {
+        $(
+            impl<'data> From<(Box<dyn ScratchAllocator<$U> + 'data>, Pin<Box<RefCell<QueryBuffersMut<'data, $U>>>>)> for ManagedScratch<'data> {
+                fn from(value: (Box<dyn ScratchAllocator<$U> + 'data>, Pin<Box<RefCell<QueryBuffersMut<'data, $U>>>>)) -> Self {
+                    ManagedScratch::$V(value.0, value.1)
+                }
+            }
+        )+
+    }
+}
+
+managed_output_location!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+managed_output_location!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+managed_output_location!(Float32: f32, Float64: f64);
+
+macro_rules! managed_output_location_go {
+    ($managed:expr, $C:ident, ($alloc:pat, $scratch:pat), $go:expr) => {
+        match $managed {
+            ManagedScratch::UInt8($alloc, $scratch) => {
+                type $C = u8;
+                $go
+            }
+            ManagedScratch::UInt16($alloc, $scratch) => {
+                type $C = u16;
+                $go
+            }
+            ManagedScratch::UInt32($alloc, $scratch) => {
+                type $C = u32;
+                $go
+            }
+            ManagedScratch::UInt64($alloc, $scratch) => {
+                type $C = u64;
+                $go
+            }
+            ManagedScratch::Int8($alloc, $scratch) => {
+                type $C = i8;
+                $go
+            }
+            ManagedScratch::Int16($alloc, $scratch) => {
+                type $C = i16;
+                $go
+            }
+            ManagedScratch::Int32($alloc, $scratch) => {
+                type $C = i32;
+                $go
+            }
+            ManagedScratch::Int64($alloc, $scratch) => {
+                type $C = i64;
+                $go
+            }
+            ManagedScratch::Float32($alloc, $scratch) => {
+                type $C = f32;
+                $go
+            }
+            ManagedScratch::Float64($alloc, $scratch) => {
+                type $C = f64;
+                $go
+            }
+        }
+    };
+}
+
 /// Adapter for a read result which allocates and manages scratch space opaquely.
 #[derive(ContextBound, Query)]
-pub struct ManagedReadQuery<'data, C, A, Q> {
-    pub(crate) alloc: A,
-    pub(crate) scratch: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
+pub struct ManagedReadQuery<'data, Q> {
+    pub(crate) scratch: ManagedScratch<'data>,
     #[base(ContextBound, Query)]
     pub(crate) base: Q,
 }
 
-impl<'data, C, A, Q> ManagedReadQuery<'data, C, A, Q>
-where
-    A: ScratchAllocator<C>,
-{
+impl<'data, Q> ManagedReadQuery<'data, Q> {
     fn realloc(&self) {
-        let tmp = QueryBuffersMut {
-            data: BufferMut::Empty,
-            cell_offsets: None,
-            validity: None,
-        };
-        let old_scratch = ScratchSpace::<C>::try_from(
-            self.scratch.replace(tmp),
-        )
-        .expect("ManagedReadQuery cannot have a borrowed output location");
-
-        let new_scratch = self.alloc.realloc(old_scratch);
-        let _ = self.scratch.replace(QueryBuffersMut::from(new_scratch));
+        managed_output_location_go!(
+            self.scratch,
+            C,
+            (ref alloc, ref scratch),
+            {
+                let tmp = QueryBuffersMut {
+                    data: BufferMut::Empty,
+                    cell_offsets: None,
+                    validity: None,
+                };
+                let old_scratch = ScratchSpace::<C>::try_from(
+                    scratch.replace(tmp),
+                )
+                .expect(
+                    "ManagedReadQuery cannot have a borrowed output location",
+                );
+                let new_scratch = alloc.realloc(old_scratch);
+                let _ = scratch.replace(QueryBuffersMut::from(new_scratch));
+            }
+        );
     }
 }
 
-impl<'ctx, 'data, C, A, Q> ReadQuery<'ctx> for ManagedReadQuery<'data, C, A, Q>
+impl<'ctx, 'data, Q> ReadQuery<'ctx> for ManagedReadQuery<'data, Q>
 where
     Q: ReadQuery<'ctx>,
-    A: ScratchAllocator<C>,
 {
     type Intermediate = Q::Intermediate;
     type Final = Q::Final;
@@ -57,19 +166,17 @@ where
 }
 
 #[derive(ContextBound)]
-pub struct ManagedReadBuilder<'data, C, A, B> {
-    pub(crate) alloc: A,
-    pub(crate) scratch: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
+pub struct ManagedReadBuilder<'data, B> {
+    pub(crate) scratch: ManagedScratch<'data>,
     #[base(ContextBound)]
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, C, A, B> QueryBuilder<'ctx>
-    for ManagedReadBuilder<'data, C, A, B>
+impl<'ctx, 'data, B> QueryBuilder<'ctx> for ManagedReadBuilder<'data, B>
 where
     B: QueryBuilder<'ctx>,
 {
-    type Query = ManagedReadQuery<'data, C, A, B::Query>;
+    type Query = ManagedReadQuery<'data, B::Query>;
 
     fn base(&self) -> &BuilderBase<'ctx> {
         self.base.base()
@@ -77,15 +184,14 @@ where
 
     fn build(self) -> Self::Query {
         ManagedReadQuery {
-            alloc: self.alloc,
             scratch: self.scratch,
             base: self.base.build(),
         }
     }
 }
 
-impl<'ctx, 'data, C, A, B> ReadQueryBuilder<'ctx, 'data>
-    for ManagedReadBuilder<'data, C, A, B>
+impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data>
+    for ManagedReadBuilder<'data, B>
 where
     B: ReadQueryBuilder<'ctx, 'data>,
 {
@@ -93,15 +199,15 @@ where
     type IntoVarRaw = VarRawReadBuilder<'data, Self>;
 
     /// Register a raw memory location to write query results into.
-    fn register_raw<S, C2>(
+    fn register_raw<S, C>(
         self,
         field: S,
-        scratch: &'data RefCell<QueryBuffersMut<'data, C2>>,
+        scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
     ) -> TileDBResult<Self::IntoRaw>
     where
         Self: Sized,
         S: AsRef<str>,
-        RawReadHandle<'data, C2>: Into<TypedReadHandle<'data>>,
+        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
     {
         Ok(RawReadBuilder {
             raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
