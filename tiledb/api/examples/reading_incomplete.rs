@@ -192,7 +192,7 @@ fn read_array_step() -> TileDBResult<()> {
         let final_result = res.is_final();
 
         if let Some((n_a2, b_a2, (n_a1, _, (n_cols, _, (n_rows, _, _))))) =
-            res.unwrap()
+            res.into_inner()
         {
             let rows =
                 Ref::map(rows_output.borrow(), |o| &o.data.as_ref()[0..n_rows]);

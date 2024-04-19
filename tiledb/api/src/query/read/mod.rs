@@ -23,7 +23,7 @@ pub use raw::*;
 pub use typed::*;
 
 /// Contains a return status and/or result from submitting a query.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ReadStepOutput<I, F> {
     /// There was not enough space to hold any results.
     /// Allocate more space and try again.
@@ -38,15 +38,18 @@ pub enum ReadStepOutput<I, F> {
 }
 
 impl<I, F> ReadStepOutput<I, F> {
-    pub fn is_intermediate(&self) -> bool {
+    /// Returns `true` if the output is an intermediate query result.
+    pub const fn is_intermediate(&self) -> bool {
         matches!(self, ReadStepOutput::Intermediate(_))
     }
 
-    pub fn is_final(&self) -> bool {
+    /// Returns `true` if the output is a final query result.
+    pub const fn is_final(&self) -> bool {
         matches!(self, ReadStepOutput::Final(_))
     }
 
-    pub fn as_ref(&self) -> ReadStepOutput<&I, &F> {
+    /// Converts from `&ReadStepOutput<I, F>` to `ReadStepOutput<&I, &F>`.
+    pub const fn as_ref(&self) -> ReadStepOutput<&I, &F> {
         match self {
             ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
             ReadStepOutput::Intermediate(ref i) => {
@@ -56,6 +59,19 @@ impl<I, F> ReadStepOutput<I, F> {
         }
     }
 
+    /// Converts from `&mut ReadStepOutput<I, F>` to `ReadStepOutput<&mut I, &mut F>`.
+    pub fn as_mut(&mut self) -> ReadStepOutput<&mut I, &mut F> {
+        match self {
+            ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
+            ReadStepOutput::Intermediate(ref mut i) => {
+                ReadStepOutput::Intermediate(i)
+            }
+            ReadStepOutput::Final(ref mut f) => ReadStepOutput::Final(f),
+        }
+    }
+
+    /// Maps a `ReadStepOutput<I, F>` to `ReadStepOutput<U, F>` by applying a
+    /// function to an intermediate result value if able.
     pub fn map_i<U, FN>(self, f: FN) -> ReadStepOutput<U, F>
     where
         FN: FnOnce(I) -> U,
@@ -69,6 +85,8 @@ impl<I, F> ReadStepOutput<I, F> {
         }
     }
 
+    /// Maps a `ReadStepOutput<I, F>` to `ReadStepOutput<I, U>` by applying a
+    /// function to a final result value if able.
     pub fn map_f<U, FN>(self, f: FN) -> ReadStepOutput<I, U>
     where
         FN: FnOnce(F) -> U,
@@ -80,6 +98,25 @@ impl<I, F> ReadStepOutput<I, F> {
         }
     }
 
+    /// Returns the contained `Intermediate` result value, consuming `self`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `self` value is not `Intermediate`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tiledb::query::ReadStepOutput;
+    /// let r = ReadStepOutput::<u64, String>::Intermediate(0);
+    /// assert_eq!(0u64, r.unwrap_intermediate());
+    /// ```
+    ///
+    /// ```should_panic
+    /// use tiledb::query::ReadStepOutput;
+    /// let r = ReadStepOutput::<u64, String>::Final("tiledb".to_string());
+    /// assert_eq!(0, r.unwrap_intermediate()); // fails
+    /// ```
     pub fn unwrap_intermediate(self) -> I {
         match self {
             ReadStepOutput::Intermediate(i) => i,
@@ -88,6 +125,25 @@ impl<I, F> ReadStepOutput<I, F> {
         }
     }
 
+    /// Returns the contained `Final` result value, consuming `self`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `self` value is not `Final`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tiledb::query::ReadStepOutput;
+    /// let r = ReadStepOutput::<u64, String>::Final("tiledb".to_string());
+    /// assert_eq!("tiledb", r.unwrap_final());
+    /// ```
+    ///
+    /// ```should_panic
+    /// use tiledb::query::ReadStepOutput;
+    /// let r = ReadStepOutput::<u64, String>::Intermediate(0);
+    /// assert_eq!("tiledb", r.unwrap_final()); // fails
+    /// ```
     pub fn unwrap_final(self) -> F {
         match self {
             ReadStepOutput::Final(f) => f,
@@ -102,7 +158,8 @@ impl<I, F> ReadStepOutput<I, F> {
 }
 
 impl<U> ReadStepOutput<U, U> {
-    pub fn unwrap(self) -> Option<U> {
+    /// Consumes the `ReadStepOutput`, returning the enclosed output if one is available.
+    pub fn into_inner(self) -> Option<U> {
         match self {
             ReadStepOutput::NotEnoughSpace => None,
             ReadStepOutput::Intermediate(i) => Some(i),
