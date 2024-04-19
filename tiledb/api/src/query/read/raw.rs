@@ -119,16 +119,18 @@ impl<'data, C> RawReadHandle<'data, C> {
         Ok(())
     }
 
+    /// Returns the number of records and bytes produced by the last read,
+    /// or the capacity of the destination buffers if no read has occurred.
     pub fn last_read_size(&self) -> (usize, usize) {
-        let records_written = match self.offsets_size.as_ref() {
+        let nrecords = match self.offsets_size.as_ref() {
             Some(offsets_size) => {
                 **offsets_size as usize / std::mem::size_of::<u64>()
             }
             None => *self.data_size as usize / std::mem::size_of::<C>(),
         };
-        let bytes_written = *self.data_size as usize;
+        let nbytes = *self.data_size as usize;
 
-        (records_written, bytes_written)
+        (nrecords, nbytes)
     }
 }
 
