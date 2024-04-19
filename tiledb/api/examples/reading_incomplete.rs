@@ -204,7 +204,7 @@ fn read_array_step() -> TileDBResult<()> {
                 Ref::map(int32_output.borrow(), |o| &o.data.as_ref()[0..n_a1]);
 
             let char_output: Ref<OutputLocation<u8>> = char_output.borrow();
-            let char_output: InputData<u8> = char_output.borrow();
+            let char_output: InputData<u8> = char_output.as_input();
             let a2 = VarDataIterator::new(n_a2, b_a2, &char_output)
                 .expect("Expected variable data offsets")
                 .map(|bytes| String::from_utf8_lossy(bytes).to_string());

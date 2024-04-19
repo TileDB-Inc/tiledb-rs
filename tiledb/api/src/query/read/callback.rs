@@ -329,7 +329,7 @@ macro_rules! query_read_callback {
                         };
 
                         let [< l_ $U:snake >] = self.[< arg_ $U:snake >].location.borrow();
-                        let [< input_ $U:snake >] = [< l_ $U:snake >].borrow();
+                        let [< input_ $U:snake >] = [< l_ $U:snake >].as_input();
 
                         let [< arg_ $U:snake >] = RawReadOutput {
                             nrecords: [< nrecords_ $U:snake >],

@@ -70,7 +70,8 @@ pub struct OutputLocation<'data, T = u8> {
 }
 
 impl<'data, T> OutputLocation<'data, T> {
-    pub fn borrow<'this>(&'this self) -> InputData<'data, T>
+    /// Borrows this OutputLocation to use as input data.
+    pub fn as_input<'this>(&'this self) -> InputData<'data, T>
     where
         'this: 'data,
     {
@@ -78,18 +79,6 @@ impl<'data, T> OutputLocation<'data, T> {
             data: Buffer::Borrowed(self.data.as_ref()),
             cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
                 Buffer::Borrowed(c.as_ref())
-            }),
-        }
-    }
-
-    pub fn borrow_mut<'this>(&'this mut self) -> OutputLocation<'data, T>
-    where
-        'this: 'data,
-    {
-        OutputLocation {
-            data: BufferMut::Borrowed(self.data.as_mut()),
-            cell_offsets: Option::map(self.cell_offsets.as_mut(), |c| {
-                BufferMut::Borrowed(c.as_mut())
             }),
         }
     }
