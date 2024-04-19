@@ -190,3 +190,6 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
         Ok(self)
     }
 }
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
