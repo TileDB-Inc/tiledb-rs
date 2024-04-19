@@ -106,35 +106,33 @@ fn create_arrays_groups() -> TileDBResult<()> {
     )?;
 
     // Add members to groups
-    let group = Group::open(&tdb, "my_group", tiledb::query::QueryType::Write)?;
+    let mut group = Group::open(&tdb, "my_group", tiledb::query::QueryType::Write)?;
     group.add_member(
-        &tdb,
         "dense_arrays/array_A",
         true,
         None as Option<String>,
     )?;
-    group.add_member(&tdb, "dense_arrays/array_B", true, Some("array_b"))?;
+    group.add_member("dense_arrays/array_B", true, Some("array_b"))?;
     group.add_member(
-        &tdb,
         "sparse_arrays",
         true,
         Some("sparse_arrays_group"),
     )?;
 
-    let sparse_group = Group::open(
+    let mut sparse_group = Group::open(
         &tdb,
         "my_group/sparse_arrays",
         tiledb::query::QueryType::Write,
     )?;
-    sparse_group.add_member(&tdb, "array_C", true, None as Option<String>)?;
-    sparse_group.add_member(&tdb, "array_D", true, None as Option<String>)?;
+    sparse_group.add_member("array_C", true, None as Option<String>)?;
+    sparse_group.add_member("array_D", true, None as Option<String>)?;
     Ok(())
 }
 
 fn print_group() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
     let group = Group::open(&tdb, "my_group", tiledb::query::QueryType::Read)?;
-    let dump_str = group.dump(&tdb, true)?;
+    let dump_str = group.dump(true)?;
 
     if let Some(s) = dump_str {
         println!("{}", s)
