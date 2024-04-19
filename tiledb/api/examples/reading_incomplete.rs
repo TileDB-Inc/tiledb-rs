@@ -92,12 +92,12 @@ fn create_array() -> TileDBResult<()> {
     tiledb::Array::create(&tdb, ARRAY_NAME, schema)
 }
 
-/// Writes data into the array in row-major order from a 1D-array buffer.
+/// Writes data into the array.
 /// After the write, the contents of the array will be:
-/// [[ 1,  2,  3,  4],
-///  [ 5,  6,  7,  8],
-///  [ 9, 10, 11, 12],
-///  [13, 14, 15, 16]]
+/// [[ (1, "a"), (2, "bb"),  _, _],
+///  [ _,        (3, "ccc"), _, _],
+///  [ _,        _,          _, _],
+///  [ _,        _,          _, _]]
 fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::Context::new()?;
 
