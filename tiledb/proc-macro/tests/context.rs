@@ -13,6 +13,10 @@ impl Context {
     }
 }
 
+unsafe impl Send for Context {}
+
+unsafe impl Sync for Context {}
+
 trait ContextBound<'ctx> {
     fn context(&self) -> &'ctx Context;
 }
@@ -55,6 +59,10 @@ impl<'ctx> ContextBound<'ctx> for DeriveBase<'ctx> {
         self.context
     }
 }
+
+unsafe impl<'ctx> Send for DeriveBase<'ctx> {}
+
+unsafe impl<'ctx> Sync for DeriveBase<'ctx> {}
 
 #[derive(ContextBound)]
 struct DirectBase<'ctx> {

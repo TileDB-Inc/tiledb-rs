@@ -10,16 +10,16 @@ pub fn try_deref(ty: &syn::Type) -> &syn::Type {
                 .expect("Field with empty type path");
             match last.arguments {
                 syn::PathArguments::AngleBracketed(ref arg) => {
-                    if arg.args.len() == 1 {
-                        if matches!(
+                    if arg.args.len() == 1
+                        && matches!(
                             last.ident.to_string().as_ref(),
                             "Box" | "Arc" | "Rc"
-                        ) {
-                            if let syn::GenericArgument::Type(pointee) =
-                                arg.args.first().unwrap()
-                            {
-                                return try_deref(pointee);
-                            }
+                        )
+                    {
+                        if let syn::GenericArgument::Type(pointee) =
+                            arg.args.first().unwrap()
+                        {
+                            return try_deref(pointee);
                         }
                     }
                     ty
