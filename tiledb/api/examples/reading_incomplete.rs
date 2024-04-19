@@ -8,6 +8,7 @@ use tiledb::query::read::output::{
     BufferMut, NonVarSized, OutputLocation, VarDataIterator, VarSized,
 };
 use tiledb::query::read::{FnMutAdapter, ReadStepOutput};
+use tiledb::query::write::input::InputData;
 use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
@@ -202,13 +203,11 @@ fn read_array_step() -> TileDBResult<()> {
             let a1 =
                 Ref::map(int32_output.borrow(), |o| &o.data.as_ref()[0..n_a1]);
 
-            let a2 = {
-                let char_output = char_output.borrow();
-                VarDataIterator::new(n_a2, b_a2, &char_output.borrow())
-                    .expect("Expected variable data offsets")
-                    .map(|bytes| String::from_utf8_lossy(bytes).to_string())
-                    .collect::<Vec<String>>()
-            };
+            let char_output: Ref<OutputLocation<u8>> = char_output.borrow();
+            let char_output: InputData<u8> = char_output.borrow();
+            let a2 = VarDataIterator::new(n_a2, b_a2, &char_output)
+                .expect("Expected variable data offsets")
+                .map(|bytes| String::from_utf8_lossy(bytes).to_string());
 
             for (row, column, a1, a2) in
                 izip!(rows.iter(), cols.iter(), a1.iter(), a2)
