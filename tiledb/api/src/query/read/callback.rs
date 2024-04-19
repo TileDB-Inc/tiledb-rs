@@ -466,8 +466,8 @@ mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
 
+    use crate::query::buffer::{Buffer, QueryBuffers};
     use crate::query::read::output::{NonVarSized, VarSized};
-    use crate::query::write::input::{Buffer, QueryBuffers};
 
     const MIN_RECORDS: usize = 0;
     const MAX_RECORDS: usize = 1024;
