@@ -50,15 +50,12 @@ impl<'data, C> RawReadHandle<'data, C> {
             (data, cell_offsets)
         };
 
-        let (data_size, offsets_size) = {
-            (
-                Box::pin(std::mem::size_of_val(&*data) as u64),
-                cell_offsets.as_ref().map(|off| {
-                    let sz = std::mem::size_of_val::<[u64]>(*off);
-                    Box::pin(sz as u64)
-                }),
-            )
-        };
+        let data_size = Box::pin(std::mem::size_of_val(&*data) as u64);
+
+        let offsets_size = cell_offsets.as_ref().map(|off| {
+            let sz = std::mem::size_of_val::<[u64]>(*off);
+            Box::pin(sz as u64)
+        });
 
         RawReadHandle {
             field: field.as_ref().to_string(),
