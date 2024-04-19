@@ -14,7 +14,11 @@ pub struct RawReadOutput<'data, C> {
     pub input: &'data QueryBuffers<'data, C>,
 }
 
-pub struct ScratchSpace<C>(pub Box<[C]>, pub Option<Box<[u64]>>);
+pub struct ScratchSpace<C>(
+    pub Box<[C]>,
+    pub Option<Box<[u64]>>,
+    pub Option<Box<[u8]>>,
+);
 
 impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
     type Error = crate::error::Error;
@@ -41,7 +45,18 @@ impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
             None
         };
 
-        Ok(ScratchSpace(data, cell_offsets))
+        let validity = if let Some(validity) = value.validity {
+            Some(match validity {
+                BufferMut::Empty => vec![].into_boxed_slice(),
+                BufferMut::Borrowed(_) => return Err(Error::InvalidArgument(
+                    anyhow!("Cannot convert borrowed validity buffer into owned scratch space"))),
+                BufferMut::Owned(d) => d,
+            })
+        } else {
+            None
+        };
+
+        Ok(ScratchSpace(data, cell_offsets, validity))
     }
 }
 
@@ -50,6 +65,7 @@ impl<'data, C> From<ScratchSpace<C>> for QueryBuffersMut<'data, C> {
         QueryBuffersMut {
             data: BufferMut::Owned(value.0),
             cell_offsets: value.1.map(BufferMut::Owned),
+            validity: value.2.map(BufferMut::Owned),
         }
     }
 }
@@ -81,11 +97,15 @@ where
     C: CAPISameRepr,
 {
     fn alloc(&self) -> ScratchSpace<C> {
-        ScratchSpace(vec![C::default(); self.capacity].into_boxed_slice(), None)
+        ScratchSpace(
+            vec![C::default(); self.capacity].into_boxed_slice(),
+            None,
+            None,
+        )
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let ScratchSpace(old, _) = old;
+        let ScratchSpace(old, _, _) = old;
 
         let old_capacity = old.len();
         let new_capacity = 2 * (old_capacity + 1);
@@ -96,7 +116,53 @@ where
             v.into_boxed_slice()
         };
 
-        ScratchSpace(new_data, None)
+        ScratchSpace(new_data, None, None)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NullableNonVarSized {
+    pub data_capacity: usize,
+    pub validity_capacity: usize,
+}
+
+impl Default for NullableNonVarSized {
+    fn default() -> Self {
+        NullableNonVarSized {
+            data_capacity: 1024 * 1024,
+            validity_capacity: 1024 * 1024,
+        }
+    }
+}
+
+impl<C> ScratchAllocator<C> for NullableNonVarSized
+where
+    C: CAPISameRepr,
+{
+    fn alloc(&self) -> ScratchSpace<C> {
+        ScratchSpace(
+            vec![C::default(); self.data_capacity].into_boxed_slice(),
+            None,
+            Some(vec![0u8; self.validity_capacity].into_boxed_slice()),
+        )
+    }
+
+    fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
+        let ScratchSpace(old_data, _, old_validity) = old;
+
+        let new_data = {
+            let mut v = old_data.to_vec();
+            v.resize(2 * v.len() + 1, Default::default());
+            v.into_boxed_slice()
+        };
+
+        let new_validity = {
+            let mut v = old_validity.unwrap().to_vec();
+            v.resize(2 * v.len() + 1, 0u8);
+            v.into_boxed_slice()
+        };
+
+        ScratchSpace(new_data, None, Some(new_validity))
     }
 }
 
@@ -125,11 +191,11 @@ where
     fn alloc(&self) -> ScratchSpace<C> {
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
         let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
-        ScratchSpace(data, Some(offsets))
+        ScratchSpace(data, Some(offsets), None)
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let ScratchSpace(old_data, old_offsets) = old;
+        let ScratchSpace(old_data, old_offsets, _) = old;
 
         let new_data = {
             let mut v = old_data.to_vec();
@@ -143,7 +209,63 @@ where
             v.into_boxed_slice()
         };
 
-        ScratchSpace(new_data, Some(new_offsets))
+        ScratchSpace(new_data, Some(new_offsets), None)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct NullableVarSized {
+    pub byte_capacity: usize,
+    pub offset_capacity: usize,
+    pub validity_capacity: usize,
+}
+
+impl Default for NullableVarSized {
+    fn default() -> Self {
+        const DEFAULT_BYTE_CAPACITY: usize = 1024 * 1024;
+        const DEFAULT_RECORD_CAPACITY: usize = 256 * 1024;
+
+        NullableVarSized {
+            byte_capacity: DEFAULT_BYTE_CAPACITY,
+            offset_capacity: DEFAULT_RECORD_CAPACITY,
+            validity_capacity: DEFAULT_RECORD_CAPACITY,
+        }
+    }
+}
+
+impl<C> ScratchAllocator<C> for NullableVarSized
+where
+    C: CAPISameRepr,
+{
+    fn alloc(&self) -> ScratchSpace<C> {
+        let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
+        let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
+        let validity = vec![0u8; self.validity_capacity].into_boxed_slice();
+        ScratchSpace(data, Some(offsets), Some(validity))
+    }
+
+    fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
+        let ScratchSpace(old_data, old_offsets, old_validity) = old;
+
+        let new_data = {
+            let mut v = old_data.to_vec();
+            v.resize(2 * v.len() + 1, Default::default());
+            v.into_boxed_slice()
+        };
+
+        let new_offsets = {
+            let mut v = old_offsets.unwrap().into_vec();
+            v.resize(2 * v.len() + 1, Default::default());
+            v.into_boxed_slice()
+        };
+
+        let new_validity = {
+            let mut v = old_validity.unwrap().into_vec();
+            v.resize(2 * v.len() + 1, Default::default());
+            v.into_boxed_slice()
+        };
+
+        ScratchSpace(new_data, Some(new_offsets), Some(new_validity))
     }
 }
 
@@ -154,8 +276,19 @@ where
     type Strategy = NonVarSized;
 }
 
+impl<C> HasScratchSpaceStrategy<C> for (Vec<C>, Vec<u8>)
+where
+    C: CAPISameRepr,
+{
+    type Strategy = NullableNonVarSized;
+}
+
 impl HasScratchSpaceStrategy<u8> for Vec<String> {
     type Strategy = VarSized;
+}
+
+impl HasScratchSpaceStrategy<u8> for (Vec<String>, Vec<u8>) {
+    type Strategy = NullableVarSized;
 }
 
 pub struct FixedDataIterator<'data, C> {

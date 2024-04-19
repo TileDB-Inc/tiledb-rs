@@ -18,6 +18,7 @@ where
         let tmp = QueryBuffersMut {
             data: BufferMut::Empty,
             cell_offsets: None,
+            validity: None,
         };
         let old_scratch = ScratchSpace::<C>::try_from(
             self.scratch.replace(tmp),

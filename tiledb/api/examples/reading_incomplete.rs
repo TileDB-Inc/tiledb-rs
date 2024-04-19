@@ -164,20 +164,24 @@ fn read_array_step() -> TileDBResult<()> {
     let rows_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
+        validity: None,
     });
     let cols_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
+        validity: None,
     });
     let int32_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
+        validity: None,
     });
     let char_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
         cell_offsets: Some(BufferMut::Owned(
             vec![0u64; init_capacity].into_boxed_slice(),
         )),
+        validity: None,
     });
 
     let mut qq = query_builder_start(&tdb)?
@@ -289,20 +293,24 @@ fn read_array_callback() -> TileDBResult<()> {
     let rows_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
+        validity: None,
     });
     let cols_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
+        validity: None,
     });
     let int32_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
         cell_offsets: None,
+        validity: None,
     });
     let char_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
         cell_offsets: Some(BufferMut::Owned(
             vec![0u64; init_capacity].into_boxed_slice(),
         )),
+        validity: None,
     });
     let mut qq = query_builder_start(&tdb)?
         .register_callback4::<FnMutAdapter<(i32, i32, i32, String), _>>(

@@ -209,6 +209,38 @@ mod impls {
         }
     }
 
+    impl<C> ReadCallback for (Vec<C>, Vec<u8>)
+    where
+        C: CAPISameRepr,
+    {
+        type Unit = C;
+        type Intermediate = ();
+        type Final = Self;
+        type Error = std::convert::Infallible;
+
+        fn intermediate_result(
+            &mut self,
+            arg: RawReadOutput<Self::Unit>,
+        ) -> Result<Self::Intermediate, Self::Error> {
+            self.0
+                .extend_from_slice(&arg.input.data.as_ref()[0..arg.nvalues]);
+            // TileDB Core currently ensures that all buffers are properly set
+            // as required. Thus, this unwrap should never fail as its only
+            // called after submit has returned successfully.
+            self.1.extend_from_slice(
+                &arg.input.validity.as_ref().unwrap().as_ref()[0..arg.nvalues],
+            );
+            Ok(())
+        }
+
+        fn final_result(
+            mut self,
+            arg: RawReadOutput<Self::Unit>,
+        ) -> Result<Self::Final, Self::Error> {
+            self.intermediate_result(arg).map(|_| self)
+        }
+    }
+
     impl<C> ReadCallback for Vec<Vec<C>>
     where
         C: CAPISameRepr,
@@ -222,7 +254,9 @@ mod impls {
             &mut self,
             arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            /* TODO: this `unwrap` is not a sure thing since it depends on user input */
+            // TileDB Core currently ensures that all buffers are properly set
+            // as required. Thus, this unwrap should never fail as its only
+            // called after submit has returned successfully.
             for slice in VarDataIterator::try_from(arg).unwrap() {
                 self.push(slice.to_vec())
             }
@@ -251,7 +285,9 @@ mod impls {
             &mut self,
             arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            /* TODO: this `unwrap` is not a sure thing since it depends on user input */
+            // TileDB Core currently ensures that all buffers are properly set
+            // as required. Thus, this unwrap should never fail as its only
+            // called after submit has returned successfully.
             for slice in VarDataIterator::try_from(arg).unwrap() {
                 self.push(String::from_utf8_lossy(slice).to_string())
             }
@@ -267,6 +303,42 @@ mod impls {
 
         fn cleared(&self) -> Option<Self> {
             Some(vec![])
+        }
+    }
+
+    impl ReadCallback for (Vec<String>, Vec<u8>) {
+        type Unit = u8;
+        type Intermediate = ();
+        type Final = Self;
+        type Error = std::convert::Infallible;
+
+        fn intermediate_result(
+            &mut self,
+            arg: RawReadOutput<Self::Unit>,
+        ) -> Result<Self::Intermediate, Self::Error> {
+            // Copy validity before VarDataIter consumes arg.
+            self.1.extend_from_slice(
+                &arg.input.validity.as_ref().unwrap().as_ref()[0..arg.nvalues],
+            );
+
+            // TileDB Core currently ensures that all buffers are properly set
+            // as required. Thus, this unwrap should never fail as its only
+            // called after submit has returned successfully.
+            for slice in VarDataIterator::try_from(arg).unwrap() {
+                self.0.push(String::from_utf8_lossy(slice).to_string())
+            }
+            Ok(())
+        }
+
+        fn final_result(
+            mut self,
+            arg: RawReadOutput<Self::Unit>,
+        ) -> Result<Self::Final, Self::Error> {
+            self.intermediate_result(arg).map(|_| self)
+        }
+
+        fn cleared(&self) -> Option<Self> {
+            Some((vec![], vec![]))
         }
     }
 }
@@ -511,6 +583,7 @@ mod tests {
             let input_data = QueryBuffers {
                 data: Buffer::Borrowed(&scratch_space.0),
                 cell_offsets: None,
+                validity: None,
             };
 
             let arg = RawReadOutput {
@@ -636,6 +709,7 @@ mod tests {
                     .1
                     .as_ref()
                     .map(|c| Buffer::Borrowed(c)),
+                validity: scratch_space.2.as_ref().map(|v| Buffer::Borrowed(v)),
             };
             let arg = RawReadOutput {
                 nvalues,
@@ -661,7 +735,11 @@ mod tests {
             )
         )
         {
-            do_read_result_strings(record_capacity, byte_capacity, stringsrc)
+            do_read_result_strings(
+                record_capacity,
+                byte_capacity,
+                stringsrc
+            )
         }
     }
 }

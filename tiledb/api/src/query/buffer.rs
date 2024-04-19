@@ -37,6 +37,7 @@ impl<'data, T> Deref for Buffer<'data, T> {
 pub struct QueryBuffers<'data, T = u8> {
     pub data: Buffer<'data, T>,
     pub cell_offsets: Option<Buffer<'data, u64>>,
+    pub validity: Option<Buffer<'data, u8>>,
 }
 
 impl<'data, T> QueryBuffers<'data, T> {
@@ -48,6 +49,9 @@ impl<'data, T> QueryBuffers<'data, T> {
             data: Buffer::Borrowed(self.data.as_ref()),
             cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
                 Buffer::Borrowed(c.as_ref())
+            }),
+            validity: Option::map(self.validity.as_ref(), |v| {
+                Buffer::Borrowed(v.as_ref())
             }),
         }
     }
@@ -111,6 +115,7 @@ impl<'data, T> DerefMut for BufferMut<'data, T> {
 pub struct QueryBuffersMut<'data, T = u8> {
     pub data: BufferMut<'data, T>,
     pub cell_offsets: Option<BufferMut<'data, u64>>,
+    pub validity: Option<BufferMut<'data, u8>>,
 }
 
 impl<'data, T> QueryBuffersMut<'data, T> {
@@ -123,6 +128,9 @@ impl<'data, T> QueryBuffersMut<'data, T> {
             data: Buffer::Borrowed(self.data.as_ref()),
             cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
                 Buffer::Borrowed(c.as_ref())
+            }),
+            validity: Option::map(self.validity.as_ref(), |v| {
+                Buffer::Borrowed(v.as_ref())
             }),
         }
     }

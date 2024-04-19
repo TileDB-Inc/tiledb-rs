@@ -86,7 +86,18 @@ mod impls {
         type Constructor = Self;
     }
 
+    impl<C> ReadResult for (Vec<C>, Vec<u8>)
+    where
+        C: CAPISameRepr,
+    {
+        type Constructor = Self;
+    }
+
     impl ReadResult for Vec<String> {
+        type Constructor = Self;
+    }
+
+    impl ReadResult for (Vec<String>, Vec<u8>) {
         type Constructor = Self;
     }
 }
