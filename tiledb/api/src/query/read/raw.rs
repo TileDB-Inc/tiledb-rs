@@ -16,6 +16,10 @@ pub(crate) struct RawReadHandle<'data, C> {
     /// As output from the C API, the size in bytes of intermediate offset results.
     pub offsets_size: Option<Pin<Box<u64>>>,
 
+    /// As input to the C API, the size of the validity buffer.
+    /// As output from the C API, the size in bytes of validity results.
+    pub validity_size: Option<Pin<Box<u64>>>,
+
     /// Buffers for writing data and cell offsets.
     /// These are re-registered with the query at each step.
     /// The application which owns the query may own these buffers,
@@ -35,7 +39,7 @@ impl<'data, C> RawReadHandle<'data, C> {
     where
         S: AsRef<str>,
     {
-        let (data, cell_offsets) = {
+        let (data, cell_offsets, validity) = {
             let mut scratch: RefMut<QueryBuffersMut<'data, C>> =
                 location.borrow_mut();
 
@@ -47,7 +51,12 @@ impl<'data, C> RawReadHandle<'data, C> {
                 unsafe { &mut *c as &mut [u64] }
             });
 
-            (data, cell_offsets)
+            let validity = scratch.validity.as_mut().map(|v| {
+                let v = v.as_mut() as *mut [u8];
+                unsafe { &mut *v as &mut [u8] }
+            });
+
+            (data, cell_offsets, validity)
         };
 
         let data_size = Box::pin(std::mem::size_of_val(&*data) as u64);
@@ -57,10 +66,16 @@ impl<'data, C> RawReadHandle<'data, C> {
             Box::pin(sz as u64)
         });
 
+        let validity_size = validity.as_ref().map(|val| {
+            let sz = std::mem::size_of_val::<[u8]>(*val);
+            Box::pin(sz as u64)
+        });
+
         RawReadHandle {
             field: field.as_ref().to_string(),
             data_size,
             offsets_size,
+            validity_size,
             location,
         }
     }
@@ -111,6 +126,28 @@ impl<'data, C> RawReadHandle<'data, C> {
                     c_query,
                     c_name.as_ptr(),
                     c_offptr,
+                    c_sizeptr,
+                )
+            })?;
+        }
+
+        let validity = &mut location.validity;
+
+        if let Some(ref mut validity_size) = self.validity_size.as_mut() {
+            let validity = validity.as_mut().unwrap();
+
+            *validity_size.as_mut() =
+                std::mem::size_of_val::<[u8]>(validity) as u64;
+
+            let c_validityptr = validity.as_mut_ptr();
+            let c_sizeptr = validity_size.as_mut().get_mut() as *mut u64;
+
+            context.capi_return(unsafe {
+                ffi::tiledb_query_set_validity_buffer(
+                    c_context,
+                    c_query,
+                    c_name.as_ptr(),
+                    c_validityptr,
                     c_sizeptr,
                 )
             })?;

@@ -11,6 +11,7 @@ pub mod input;
 struct RawWriteInput<'data> {
     data_size: Pin<Box<u64>>,
     offsets_size: Option<Pin<Box<u64>>>,
+    validity_size: Option<Pin<Box<u64>>>,
     input: QueryBuffers<'data>,
 }
 
@@ -93,6 +94,10 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
                 .cell_offsets
                 .as_ref()
                 .map(|b| Box::pin(b.size() as u64)),
+            validity_size: input
+                .validity
+                .as_ref()
+                .map(|v| Box::pin(v.size() as u64)),
             input,
         };
 
@@ -133,6 +138,29 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
                     c_query,
                     c_name.as_ptr(),
                     c_offptr,
+                    c_sizeptr,
+                )
+            })?;
+        }
+
+        if let Some(ref mut validity_size) =
+            raw_write_input.validity_size.as_mut()
+        {
+            let c_validityptr = raw_write_input
+                .input
+                .validity
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .as_ptr() as *mut u8;
+            let c_sizeptr = validity_size.as_mut().get_mut() as *mut u64;
+
+            self.capi_return(unsafe {
+                ffi::tiledb_query_set_validity_buffer(
+                    c_context,
+                    c_query,
+                    c_name.as_ptr(),
+                    c_validityptr,
                     c_sizeptr,
                 )
             })?;

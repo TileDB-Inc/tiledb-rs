@@ -1,8 +1,44 @@
 use crate::convert::CAPISameRepr;
-use crate::query::buffer::{Buffer, QueryBuffers};
+use crate::query::buffer::{Buffer, QueryBuffers, QueryBuffersMut};
 
 pub trait DataProvider {
     fn as_tiledb_input(&self) -> QueryBuffers;
+}
+
+impl<'data, T> DataProvider for QueryBuffers<'data, T> {
+    fn as_tiledb_input(&self) -> QueryBuffers {
+        let ptr = self.data.as_ptr();
+        let byte_len = std::mem::size_of_val(&self.data);
+        let raw_slice =
+            unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+        QueryBuffers {
+            data: Buffer::Borrowed(raw_slice),
+            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
+                Buffer::Borrowed(c.as_ref())
+            }),
+            validity: Option::map(self.validity.as_ref(), |v| {
+                Buffer::Borrowed(v.as_ref())
+            }),
+        }
+    }
+}
+
+impl<'data, T> DataProvider for QueryBuffersMut<'data, T> {
+    fn as_tiledb_input(&self) -> QueryBuffers {
+        let ptr = self.data.as_ptr();
+        let byte_len = std::mem::size_of_val(&self.data);
+        let raw_slice =
+            unsafe { std::slice::from_raw_parts(ptr as *const u8, byte_len) };
+        QueryBuffers {
+            data: Buffer::Borrowed(raw_slice),
+            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
+                Buffer::Borrowed(c.as_ref())
+            }),
+            validity: Option::map(self.validity.as_ref(), |v| {
+                Buffer::Borrowed(v.as_ref())
+            }),
+        }
+    }
 }
 
 impl<C> DataProvider for Vec<C>
@@ -26,6 +62,7 @@ where
         QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_offsets: None,
+            validity: None,
         }
     }
 }
@@ -51,6 +88,7 @@ impl DataProvider for Vec<&str> {
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
             cell_offsets: Some(Buffer::Owned(offsets)),
+            validity: None,
         }
     }
 }
@@ -76,6 +114,7 @@ impl DataProvider for Vec<String> {
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
             cell_offsets: Some(Buffer::Owned(offsets)),
+            validity: None,
         }
     }
 }

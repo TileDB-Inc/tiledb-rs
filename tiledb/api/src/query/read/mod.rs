@@ -297,6 +297,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let scratch = QueryBuffersMut {
             data: BufferMut::Owned(scratch.0),
             cell_offsets: scratch.1.map(BufferMut::Owned),
+            validity: scratch.2.map(BufferMut::Owned),
         };
 
         let scratch = Box::pin(RefCell::new(scratch));
@@ -367,6 +368,7 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
         let scratch = QueryBuffersMut {
             data: BufferMut::Owned(scratch.0),
             cell_offsets: scratch.1.map(BufferMut::Owned),
+            validity: scratch.2.map(BufferMut::Owned),
         };
 
         let scratch = Box::pin(RefCell::new(scratch));
