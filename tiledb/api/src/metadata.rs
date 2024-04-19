@@ -1,7 +1,5 @@
 use crate::{datatype::Datatype, fn_typed};
-use std::any::TypeId;
 use core::slice;
-use crate::Result as TileDBResult;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -114,17 +112,16 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn create<T>(
-        key : String,
-        datatype : Datatype,
-        vec : Vec<T>) -> Self 
-        where T : ValueType {
-            return Metadata {
-                key,
-                datatype,
-                value : T::get_value(vec)
-            }
-        }
+    pub fn create<T>(key: String, datatype: Datatype, vec: Vec<T>) -> Self
+    where
+        T: ValueType,
+    {
+        return Metadata {
+            key,
+            datatype,
+            value: T::get_value(vec),
+        };
+    }
 
     pub fn new(
         key: String,
