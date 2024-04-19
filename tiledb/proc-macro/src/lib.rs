@@ -19,7 +19,7 @@ pub fn derive_context_bound(input: TokenStream) -> TokenStream {
     context::expand(&input)
 }
 
-#[proc_macro_derive(QueryCAPIInterface, attributes(raw_array, raw_query, base))]
+#[proc_macro_derive(Query, attributes(base))]
 pub fn derive_query_capi_interface(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     query::expand(&input)

@@ -10,80 +10,6 @@ pub mod buffer;
 pub mod read;
 pub mod write;
 
-mod private {
-    use super::*;
-
-    pub trait QueryCAPIInterface {
-        fn carray(&self) -> &RawArray;
-        fn cquery(&self) -> &RawQuery;
-
-        fn do_submit<'ctx>(&self) -> TileDBResult<()>
-        where
-            Self: ContextBound<'ctx> + CApiInterface,
-        {
-            let c_context = self.context().capi();
-            let c_query = **self.cquery();
-            self.capi_return(unsafe {
-                ffi::tiledb_query_submit(c_context, c_query)
-            })?;
-            Ok(())
-        }
-
-        fn do_submit_read<'ctx>(&self) -> TileDBResult<ReadStepOutput<(), ()>>
-        where
-            Self: ContextBound<'ctx> + CApiInterface,
-        {
-            self.do_submit()?;
-
-            match self.capi_status()? {
-                ffi::tiledb_query_status_t_TILEDB_FAILED => {
-                    Err(self.context().expect_last_error())
-                }
-                ffi::tiledb_query_status_t_TILEDB_COMPLETED => {
-                    Ok(ReadStepOutput::Final(()))
-                }
-                ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
-                ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => {
-                    /*
-                     * Note: the returned status itself is not enough to distinguish between
-                     * "no results, allocate more space plz" and "there are more results after you consume these".
-                     * The API tiledb_query_get_status_details exists but is experimental,
-                     * so we will worry about it later.
-                     * For now: it's a fair assumption that the user requested data, and that is
-                     * where we will catch the difference. See RawReadQuery.
-                     * We also assume that the same number of records are filled in for all
-                     * queried data - if a result is empty for one attribute then it will be so
-                     * for all attributes.
-                     */
-                    Ok(ReadStepOutput::Intermediate(()))
-                }
-                ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => {
-                    unreachable!()
-                }
-                ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
-                unrecognized => Err(Error::Internal(format!(
-                    "Unrecognized query status: {}",
-                    unrecognized
-                ))),
-            }
-        }
-
-        fn capi_status<'ctx>(&self) -> TileDBResult<ffi::tiledb_query_status_t>
-        where
-            Self: ContextBound<'ctx> + CApiInterface,
-        {
-            let c_context = self.context().capi();
-            let c_query = **self.cquery();
-            let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
-            self.capi_return(unsafe {
-                ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
-            })
-            .map(|_| c_status)
-        }
-    }
-}
-
-use self::private::QueryCAPIInterface;
 pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };
@@ -112,44 +38,103 @@ impl Drop for RawQuery {
     }
 }
 
+pub trait Query<'ctx> {
+    fn base(&self) -> &QueryBase<'ctx>;
+}
+
 #[derive(ContextBound)]
-pub struct Query<'ctx> {
+pub struct QueryBase<'ctx> {
     #[base(ContextBound)]
     array: Array<'ctx>,
     raw: RawQuery,
 }
 
-impl<'ctx> QueryCAPIInterface for Query<'ctx> {
-    fn carray(&self) -> &RawArray {
-        self.array.capi()
-    }
-
+impl<'ctx> QueryBase<'ctx> {
     fn cquery(&self) -> &RawQuery {
         &self.raw
     }
+
+    /// Executes a single step of the query.
+    fn do_submit(&self) -> TileDBResult<()> {
+        let c_context = self.context().capi();
+        let c_query = **self.cquery();
+        self.capi_return(unsafe {
+            ffi::tiledb_query_submit(c_context, c_query)
+        })?;
+        Ok(())
+    }
+
+    /// Returns the ffi status of the last submit()
+    fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
+        let c_context = self.context().capi();
+        let c_query = **self.cquery();
+        let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
+        self.capi_return(unsafe {
+            ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
+        })
+        .map(|_| c_status)
+    }
 }
 
-impl<'ctx> ReadQuery for Query<'ctx> {
+impl<'ctx> Query<'ctx> for QueryBase<'ctx> {
+    fn base(&self) -> &QueryBase<'ctx> {
+        self
+    }
+}
+
+impl<'ctx> ReadQuery<'ctx> for QueryBase<'ctx> {
     type Intermediate = ();
     type Final = ();
 
     fn step(
         &mut self,
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
-        self.do_submit_read()
+        self.do_submit()?;
+
+        match self.capi_status()? {
+            ffi::tiledb_query_status_t_TILEDB_FAILED => {
+                Err(self.context().expect_last_error())
+            }
+            ffi::tiledb_query_status_t_TILEDB_COMPLETED => {
+                Ok(ReadStepOutput::Final(()))
+            }
+            ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
+            ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => {
+                /*
+                 * Note: the returned status itself is not enough to distinguish between
+                 * "no results, allocate more space plz" and "there are more results after you consume these".
+                 * The API tiledb_query_get_status_details exists but is experimental,
+                 * so we will worry about it later.
+                 * For now: it's a fair assumption that the user requested data, and that is
+                 * where we will catch the difference. See RawReadQuery.
+                 * We also assume that the same number of records are filled in for all
+                 * queried data - if a result is empty for one attribute then it will be so
+                 * for all attributes.
+                 */
+                Ok(ReadStepOutput::Intermediate(()))
+            }
+            ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => {
+                unreachable!()
+            }
+            ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
+            unrecognized => Err(Error::Internal(format!(
+                "Unrecognized query status: {}",
+                unrecognized
+            ))),
+        }
     }
 }
 
-pub trait QueryBuilder<'ctx>:
-    ContextBound<'ctx> + private::QueryCAPIInterface + Sized
-{
-    type Query;
+pub trait QueryBuilder<'ctx>: Sized {
+    type Query: Query<'ctx>;
+
+    fn base(&self) -> &BuilderBase<'ctx>;
 
     fn layout(self, layout: QueryLayout) -> TileDBResult<Self> {
-        let c_context = self.context().capi();
-        let c_query = **self.cquery();
+        let c_context = self.base().context().capi();
+        let c_query = **self.base().cquery();
         let c_layout = layout.capi_enum();
-        self.capi_return(unsafe {
+        self.base().capi_return(unsafe {
             ffi::tiledb_query_set_layout(c_context, c_query, c_layout)
         })?;
         Ok(self)
@@ -162,14 +147,27 @@ pub trait QueryBuilder<'ctx>:
     fn build(self) -> Self::Query;
 }
 
-#[derive(ContextBound, QueryCAPIInterface)]
-struct BuilderBase<'ctx> {
-    #[base(ContextBound, QueryCAPIInterface)]
-    query: Query<'ctx>,
+#[derive(ContextBound)]
+pub struct BuilderBase<'ctx> {
+    #[base(ContextBound)]
+    query: QueryBase<'ctx>,
+}
+
+impl<'ctx> BuilderBase<'ctx> {
+    fn carray(&self) -> &RawArray {
+        self.query.array.capi()
+    }
+    fn cquery(&self) -> &RawQuery {
+        &self.query.raw
+    }
 }
 
 impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
-    type Query = Query<'ctx>;
+    type Query = QueryBase<'ctx>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        self
+    }
 
     fn build(self) -> Self::Query {
         self.query
@@ -195,7 +193,7 @@ impl<'ctx> BuilderBase<'ctx> {
             )
         })?;
         Ok(BuilderBase {
-            query: Query {
+            query: QueryBase {
                 array,
                 raw: RawQuery::Owned(c_query),
             },

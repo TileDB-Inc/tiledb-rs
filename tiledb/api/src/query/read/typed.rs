@@ -5,21 +5,21 @@ pub trait ReadResult: Sized {
 }
 
 /// Query result handler which constructs an object from query results.
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound, Query)]
 pub struct TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound, Query)]
     pub(crate) base:
         CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>,
 }
 
-impl<'ctx, 'data, T, Q> ReadQuery for TypedReadQuery<'data, T, Q>
+impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
-    Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
+    Q: ReadQuery<'ctx>,
 {
     type Intermediate = Q::Intermediate;
     type Final = (T, Q::Final);
@@ -39,13 +39,13 @@ where
     }
 }
 
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound)]
 pub struct TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound)]
     pub(crate) base:
         CallbackReadBuilder<'data, <T as ReadResult>::Constructor, B>,
 }
@@ -56,6 +56,10 @@ where
     B: QueryBuilder<'ctx>,
 {
     type Query = TypedReadQuery<'data, T, B::Query>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        self.base.base()
+    }
 
     fn build(self) -> Self::Query {
         TypedReadQuery {

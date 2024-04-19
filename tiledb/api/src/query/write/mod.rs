@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::pin::Pin;
 
 use crate::query::buffer::QueryBuffers;
-use crate::query::private::QueryCAPIInterface;
 use crate::query::write::input::DataProvider;
 
 pub mod input;
@@ -17,10 +16,10 @@ struct RawWriteInput<'data> {
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound, Query)]
 pub struct WriteQuery<'ctx, 'data> {
-    #[base(ContextBound, QueryCAPIInterface)]
-    base: Query<'ctx>,
+    #[base(ContextBound, Query)]
+    base: QueryBase<'ctx>,
 
     /// Hold on to query inputs to ensure they live long enough
     _inputs: InputMap<'data>,
@@ -35,7 +34,7 @@ impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
 impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     pub fn finalize(self) -> TileDBResult<Array<'ctx>> {
         let c_context = self.context().capi();
-        let c_query = **self.cquery();
+        let c_query = **self.base().cquery();
         self.capi_return(unsafe {
             ffi::tiledb_query_finalize(c_context, c_query)
         })?;
@@ -44,15 +43,19 @@ impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     }
 }
 
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound)]
 pub struct WriteBuilder<'ctx, 'data> {
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound)]
     base: BuilderBase<'ctx>,
     inputs: InputMap<'data>,
 }
 
 impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
     type Query = WriteQuery<'ctx, 'data>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        &self.base
+    }
 
     fn build(self) -> Self::Query {
         WriteQuery {
@@ -94,7 +97,7 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
         };
 
         let c_context = self.context().capi();
-        let c_query = **self.cquery();
+        let c_query = **self.base().cquery();
         let c_name = cstring!(field);
 
         self.capi_return(unsafe {

@@ -7,7 +7,6 @@ use paste::paste;
 
 use crate::convert::CAPISameRepr;
 use crate::query::buffer::{BufferMut, QueryBuffersMut};
-use crate::query::private::QueryCAPIInterface;
 use crate::query::read::output::{HasScratchSpaceStrategy, ScratchAllocator};
 use crate::Result as TileDBResult;
 
@@ -169,7 +168,7 @@ impl<U> ReadStepOutput<U, U> {
 }
 
 /// Trait for runnable read queries.
-pub trait ReadQuery: Sized {
+pub trait ReadQuery<'ctx>: Query<'ctx> + Sized {
     type Intermediate;
     type Final;
 
@@ -389,9 +388,9 @@ pub trait ReadQueryBuilder<'ctx>: Sized + QueryBuilder<'ctx> {
     }
 }
 
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound)]
 pub struct ReadBuilder<'ctx> {
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound)]
     base: BuilderBase<'ctx>,
 }
 
@@ -407,7 +406,11 @@ impl<'ctx> ReadBuilder<'ctx> {
 }
 
 impl<'ctx> QueryBuilder<'ctx> for ReadBuilder<'ctx> {
-    type Query = Query<'ctx>;
+    type Query = QueryBase<'ctx>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        &self.base
+    }
 
     fn build(self) -> Self::Query {
         self.base.build()

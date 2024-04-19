@@ -2,11 +2,11 @@ use super::output::ScratchSpace;
 use super::*;
 
 /// Adapter for a read result which allocates and manages scratch space opaquely.
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound, Query)]
 pub struct ManagedReadQuery<'data, C, A, Q> {
     pub(crate) alloc: A,
     pub(crate) scratch: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound, Query)]
     pub(crate) base: Q,
 }
 
@@ -29,9 +29,9 @@ where
     }
 }
 
-impl<'data, C, A, Q> ReadQuery for ManagedReadQuery<'data, C, A, Q>
+impl<'ctx, 'data, C, A, Q> ReadQuery<'ctx> for ManagedReadQuery<'data, C, A, Q>
 where
-    Q: ReadQuery,
+    Q: ReadQuery<'ctx>,
     A: ScratchAllocator<C>,
 {
     type Intermediate = Q::Intermediate;
@@ -55,11 +55,11 @@ where
     }
 }
 
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound)]
 pub struct ManagedReadBuilder<'data, C, A, B> {
     pub(crate) alloc: A,
     pub(crate) scratch: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound)]
     pub(crate) base: B,
 }
 
@@ -69,6 +69,10 @@ where
     B: QueryBuilder<'ctx>,
 {
     type Query = ManagedReadQuery<'data, C, A, B::Query>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        self.base.base()
+    }
 
     fn build(self) -> Self::Query {
         ManagedReadQuery {

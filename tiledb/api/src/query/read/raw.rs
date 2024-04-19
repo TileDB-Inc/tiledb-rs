@@ -138,16 +138,16 @@ impl<'data, C> RawReadHandle<'data, C> {
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
 /// the buffers between each step to process intermediate results.
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound, Query)]
 pub struct RawReadQuery<'data, C, Q> {
     pub(crate) raw_read_output: RawReadHandle<'data, C>,
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound, Query)]
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, C, Q> ReadQuery for RawReadQuery<'data, C, Q>
+impl<'ctx, 'data, C, Q> ReadQuery<'ctx> for RawReadQuery<'data, C, Q>
 where
-    Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface,
+    Q: ReadQuery<'ctx>,
 {
     type Intermediate = (usize, usize, Q::Intermediate);
     type Final = (usize, usize, Q::Final);
@@ -157,7 +157,7 @@ where
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
         self.raw_read_output
-            .attach_query(self.context(), **self.cquery())?;
+            .attach_query(self.base().context(), **self.base().cquery())?;
 
         /* then execute */
         let base_result = {
@@ -198,10 +198,10 @@ where
     }
 }
 
-#[derive(ContextBound, QueryCAPIInterface)]
+#[derive(ContextBound)]
 pub struct RawReadBuilder<'data, C, B> {
     pub(crate) raw_read_output: RawReadHandle<'data, C>,
-    #[base(ContextBound, QueryCAPIInterface)]
+    #[base(ContextBound)]
     pub(crate) base: B,
 }
 
@@ -210,6 +210,10 @@ where
     B: QueryBuilder<'ctx>,
 {
     type Query = RawReadQuery<'data, C, B::Query>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        self.base.base()
+    }
 
     fn build(self) -> Self::Query {
         RawReadQuery {

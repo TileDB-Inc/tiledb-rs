@@ -276,13 +276,13 @@ macro_rules! query_read_callback {
         paste! {
             /// Query result handler which runs a callback on the results after each
             /// step of execution.
-            #[derive(ContextBound, QueryCAPIInterface)]
+            #[derive(ContextBound, Query)]
             pub struct $query<'data, T, Q>
             where
                 T: $callback,
             {
                 pub(crate) callback: Option<T>,
-                #[base(ContextBound, QueryCAPIInterface)]
+                #[base(ContextBound, Query)]
                 pub(crate) base: Q,
                 $(
                     pub(crate) [< arg_ $U:snake >]: RawReadHandle<'data, T::$U>
@@ -290,9 +290,9 @@ macro_rules! query_read_callback {
             }
         }
 
-        impl<'ctx, 'data, T, Q> ReadQuery for $query <'data, T, Q>
+        impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for $query <'data, T, Q>
             where T: $callback,
-                  Q: ReadQuery + ContextBound<'ctx> + QueryCAPIInterface
+                  Q: ReadQuery<'ctx>
         {
             type Intermediate = (T::Intermediate, Q::Intermediate);
             type Final = (T::Final, Q::Final);
@@ -304,8 +304,8 @@ macro_rules! query_read_callback {
                 paste! {
                     $(
                         self.[< arg_ $U:snake >].attach_query(
-                            self.context(),
-                            **self.cquery())?;
+                            self.base().context(),
+                            **self.base().cquery())?;
                     )+
                 }
 
@@ -393,12 +393,12 @@ macro_rules! query_read_callback {
         }
 
         paste! {
-            #[derive(ContextBound, QueryCAPIInterface)]
+            #[derive(ContextBound)]
             pub struct $Builder<'data, T, B>
             where T: $callback,
             {
                 pub(crate) callback: T,
-                #[base(ContextBound, QueryCAPIInterface)]
+                #[base(ContextBound)]
                 pub(crate) base: B,
                 $(
                     pub(crate) [< arg_ $U:snake >]: RawReadHandle<'data, T::$U>
@@ -406,11 +406,14 @@ macro_rules! query_read_callback {
             }
 
             impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for $Builder <'data, T, B>
-            where
-                T: $callback,
+            where T: $callback,
                   B: QueryBuilder<'ctx>,
             {
                 type Query = $query<'data, T, B::Query>;
+
+                fn base(&self) -> &BuilderBase<'ctx> {
+                    self.base.base()
+                }
 
                 fn build(self) -> Self::Query {
                     $query {
