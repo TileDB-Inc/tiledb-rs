@@ -653,7 +653,13 @@ mod tests {
 
     proptest! {
         #[test]
-        fn read_result_strings(record_capacity in MIN_RECORDS..=MAX_RECORDS, byte_capacity in MIN_BYTE_CAPACITY..=MAX_BYTE_CAPACITY, stringsrc in vec(any::<String>(), MIN_RECORDS..=MAX_RECORDS))
+        fn read_result_strings(
+            record_capacity in MIN_RECORDS..=MAX_RECORDS,
+            byte_capacity in MIN_BYTE_CAPACITY..=MAX_BYTE_CAPACITY,
+            stringsrc in crate::query::buffer::strategy::prop_string_vec(
+                (MIN_RECORDS..=MAX_RECORDS).into()
+            )
+        )
         {
             do_read_result_strings(record_capacity, byte_capacity, stringsrc)
         }

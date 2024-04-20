@@ -127,3 +127,21 @@ impl<'data, T> QueryBuffersMut<'data, T> {
         }
     }
 }
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+
+    pub fn prop_string_vec(
+        range: proptest::collection::SizeRange,
+    ) -> impl Strategy<Value = Vec<String>> {
+        vec(vec(1u8..127, 0..64), range)
+            .prop_map(move |mut v| {
+                v.iter_mut()
+                    .map(|s| String::from_utf8(s.clone()).unwrap())
+                    .collect::<Vec<_>>()
+            })
+            .boxed()
+    }
+}
