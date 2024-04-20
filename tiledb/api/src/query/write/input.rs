@@ -109,7 +109,11 @@ mod tests {
         }
 
         #[test]
-        fn input_provider_strings(stringvec in vec(any::<String>(), MIN_RECORDS..=MAX_RECORDS)) {
+        fn input_provider_strings(
+            stringvec in crate::query::buffer::strategy::prop_string_vec(
+                (MIN_RECORDS..=MAX_RECORDS).into()
+            )
+        ) {
             let input = stringvec.as_tiledb_input();
             let (bytes, offsets) = (input.data.as_ref(), input.cell_offsets);
             assert!(offsets.is_some());
