@@ -107,6 +107,26 @@ macro_rules! managed_output_location_go {
     };
 }
 
+pub enum ScratchStrategy<'data, C> {
+    AttributeDefault,
+    RawBuffers(&'data RefCell<QueryBuffersMut<'data, C>>),
+    CustomAllocator(Box<dyn ScratchAllocator<C> + 'data>),
+}
+
+impl<'data, C> Default for ScratchStrategy<'data, C> {
+    fn default() -> Self {
+        ScratchStrategy::AttributeDefault
+    }
+}
+
+impl<'data, C> From<&'data RefCell<QueryBuffersMut<'data, C>>>
+    for ScratchStrategy<'data, C>
+{
+    fn from(value: &'data RefCell<QueryBuffersMut<'data, C>>) -> Self {
+        ScratchStrategy::RawBuffers(value)
+    }
+}
+
 /// Adapter for a read result which allocates and manages scratch space opaquely.
 #[derive(ContextBound, Query)]
 pub struct ManagedReadQuery<'data, Q> {

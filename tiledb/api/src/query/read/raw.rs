@@ -5,6 +5,11 @@ use std::cell::RefMut;
 use crate::error::Error;
 use crate::query::buffer::QueryBuffersMut;
 
+pub struct ManagedBuffer<'data, C> {
+    pub buffers: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
+    pub allocator: Box<dyn ScratchAllocator<C> + 'data>,
+}
+
 /// Encapsulates data for writing intermediate query results for a data field.
 pub struct RawReadHandle<'data, C> {
     /// Name of the field which this handle receives data from
@@ -31,6 +36,9 @@ pub struct RawReadHandle<'data, C> {
     // RefCell is used so that the query can write to the buffers when it is executing
     // but the application can do whatever with the buffers between steps.
     pub location: &'data RefCell<QueryBuffersMut<'data, C>>,
+
+    /// Optional allocator for query buffers wrapped by this handle.
+    pub managed_buffer: Option<ManagedBuffer<'data, C>>,
 }
 
 impl<'data, C> RawReadHandle<'data, C> {
@@ -79,6 +87,24 @@ impl<'data, C> RawReadHandle<'data, C> {
             offsets_size,
             validity_size,
             location,
+            managed_buffer: None,
+        }
+    }
+
+    pub fn managed<S>(field: S, managed: ManagedBuffer<'data, C>) -> Self
+    where
+        S: AsRef<str>,
+    {
+        let qb = {
+            let qb = managed.buffers.as_ref().get_ref()
+                as *const RefCell<QueryBuffersMut<'data, C>>;
+            unsafe { &*qb as &'data RefCell<QueryBuffersMut<'data, C>> }
+        };
+
+        let r = RawReadHandle::new(field, qb);
+        RawReadHandle {
+            managed_buffer: Some(managed),
+            ..r
         }
     }
 
