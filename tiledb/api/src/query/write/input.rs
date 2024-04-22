@@ -104,6 +104,7 @@ where
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
             cell_offsets: Some(Buffer::Owned(offsets)),
+            validity: None,
         }
     }
 }
