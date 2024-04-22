@@ -536,38 +536,6 @@ macro_rules! query_read_callback {
                 T: $callback,
                 B: ReadQueryBuilder<'ctx, 'data>,
             {
-                type IntoRaw = RawReadBuilder<'data, Self>;
-                type IntoVarRaw = VarRawReadBuilder<'data, Self>;
-
-                /// Register a raw memory location to write query results into.
-                fn register_raw<S, C>(
-                    self,
-                    field: S,
-                    scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
-                ) -> TileDBResult<Self::IntoRaw>
-                where
-                    Self: Sized,
-                    S: AsRef<str>,
-                    RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
-                {
-                    Ok(RawReadBuilder {
-                        raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
-                        base: self,
-                    })
-                }
-
-                fn register_var_raw<I>(
-                    self,
-                    fields: I,
-                ) -> TileDBResult<Self::IntoVarRaw>
-                where
-                    I: IntoIterator<Item = TypedReadHandle<'data>>,
-                {
-                    Ok(VarRawReadBuilder {
-                        raw_read_output: fields.into_iter().collect(),
-                        base: self,
-                    })
-                }
             }
         }
     }
@@ -723,35 +691,6 @@ impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data>
 where
     B: QueryBuilder<'ctx>,
 {
-    type IntoRaw = RawReadBuilder<'data, Self>;
-    type IntoVarRaw = VarRawReadBuilder<'data, Self>;
-
-    /// Register a raw memory location to write query results into.
-    fn register_raw<S, C>(
-        self,
-        field: S,
-        scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
-    ) -> TileDBResult<Self::IntoRaw>
-    where
-        Self: Sized,
-        S: AsRef<str>,
-        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
-    {
-        Ok(RawReadBuilder {
-            raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
-            base: self,
-        })
-    }
-
-    fn register_var_raw<I>(self, fields: I) -> TileDBResult<Self::IntoVarRaw>
-    where
-        I: IntoIterator<Item = TypedReadHandle<'data>>,
-    {
-        Ok(VarRawReadBuilder {
-            raw_read_output: fields.into_iter().collect(),
-            base: self,
-        })
-    }
 }
 
 #[cfg(test)]

@@ -174,7 +174,7 @@ impl WriteQueryData {
     pub fn attach_read<'ctx, 'data, B>(
         &'data mut self,
         b: B,
-    ) -> <B as ReadQueryBuilder<'ctx, 'data>>::IntoVarRaw
+    ) -> VarCallbackReadQueryBuilder<'data, B>
     where
         B: ReadQueryBuilder<'ctx, 'data>,
     {
@@ -451,7 +451,7 @@ mod tests {
             let array = Array::open(&ctx, &uri, Mode::Write).expect("Error opening array");
 
             for write in write_sequence {
-                let write = write.attach(WriteBuilder::new(array)).expect("Error building write query")
+                let write = write.attach_write(WriteBuilder::new(array)).expect("Error building write query")
                     .build();
                 write.submit()?;
                 array = write.finalize()?;
