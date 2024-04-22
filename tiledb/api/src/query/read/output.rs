@@ -269,6 +269,44 @@ where
     }
 }
 
+pub struct GeneralPurposeScratchAllocator {
+    pub byte_capacity: NonZeroUsize,
+    pub offset_capacity: Option<NonZeroUsize>,
+}
+
+impl<C> ScratchAllocator<C> for GeneralPurposeScratchAllocator
+where
+    C: CAPISameRepr,
+{
+    fn alloc(&self) -> ScratchSpace<C> {
+        let data =
+            vec![C::default(); self.byte_capacity.get()].into_boxed_slice();
+        let offsets = self
+            .offset_capacity
+            .map(|capacity| vec![0u64; capacity.get()].into_boxed_slice());
+
+        ScratchSpace(data, offsets)
+    }
+
+    fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
+        let ScratchSpace(old_data, old_offsets) = old;
+
+        let new_data = {
+            let mut v = old_data.to_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        };
+
+        let new_offsets = old_offsets.map(|old_offsets| {
+            let mut v = old_offsets.to_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        });
+
+        ScratchSpace(new_data, new_offsets)
+    }
+}
+
 impl<C> HasScratchSpaceStrategy<C> for Vec<C>
 where
     C: CAPISameRepr,

@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -171,6 +171,13 @@ impl<'ctx> Field<'ctx> {
             Field::Attribute(ref a) => a.cell_val_num(),
         }
     }
+
+    pub fn query_scratch_allocator(
+        &self,
+    ) -> TileDBResult<crate::query::read::output::GeneralPurposeScratchAllocator>
+    {
+        Ok(FieldData::try_from(self)?.query_scratch_allocator())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
@@ -179,6 +186,35 @@ pub struct FieldData {
     pub datatype: Datatype,
     pub nullability: Option<bool>,
     pub cell_val_num: Option<CellValNum>,
+}
+
+impl FieldData {
+    pub fn query_scratch_allocator(
+        &self,
+    ) -> crate::query::read::output::GeneralPurposeScratchAllocator {
+        /*
+         * TODO: a hint from the schema would be good to use in some way,
+         * these numbers are super made up and should be improved.
+         * The user can edit them if they want of course but they probably aren't
+         * going to, so we ought to come up with something good by default.
+         */
+        crate::query::read::output::GeneralPurposeScratchAllocator {
+            byte_capacity: NonZeroUsize::new(1024 * 1024).unwrap(),
+            offset_capacity: if let Some(cell_val_num) = self.cell_val_num {
+                if cell_val_num.is_var_sized() {
+                    /*
+                     * TODO: derive a smarter capacity from expected average
+                     * value length and the byte capacity
+                     */
+                    Some(NonZeroUsize::new(1024 * 128).unwrap())
+                } else {
+                    None
+                }
+            } else {
+                None
+            },
+        }
+    }
 }
 
 impl Display for FieldData {
