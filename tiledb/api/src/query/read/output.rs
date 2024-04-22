@@ -1,17 +1,26 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::iter::FusedIterator;
+use std::num::NonZeroUsize;
 
 use anyhow::anyhow;
 
 use crate::convert::CAPISameRepr;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
+use crate::query::buffer::{
+    BufferMut, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
+};
 use crate::Result as TileDBResult;
 
 pub struct RawReadOutput<'data, C> {
     pub nvalues: usize,
     pub nbytes: usize,
     pub input: &'data QueryBuffers<'data, C>,
+}
+
+pub struct TypedRawReadOutput<'data> {
+    pub nvalues: usize,
+    pub nbytes: usize,
+    pub buffers: TypedQueryBuffers<'data>,
 }
 
 pub struct ScratchSpace<C>(
@@ -269,9 +278,20 @@ where
     }
 }
 
+/// General-purpose allocator for any shape of scratch data.
+/*
+ * TODO: I think this is sort of wrong, it should probably have the
+ * cell val num, record capacity, bytes per record, and a flag for is_nullable
+ *
+ * Would you ever want to have distinct offset/validity capacities? Probably not, right?
+ *
+ * And if the cell val num is fixed then there is a linear relationship between byte
+ * and validity capacity, so we probably want to stick the datatype here too
+ */
 pub struct GeneralPurposeScratchAllocator {
     pub byte_capacity: NonZeroUsize,
     pub offset_capacity: Option<NonZeroUsize>,
+    pub validity_capacity: Option<NonZeroUsize>,
 }
 
 impl<C> ScratchAllocator<C> for GeneralPurposeScratchAllocator
@@ -284,12 +304,15 @@ where
         let offsets = self
             .offset_capacity
             .map(|capacity| vec![0u64; capacity.get()].into_boxed_slice());
+        let validity = self
+            .validity_capacity
+            .map(|capacity| vec![0u8; capacity.get()].into_boxed_slice());
 
-        ScratchSpace(data, offsets)
+        ScratchSpace(data, offsets, validity)
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let ScratchSpace(old_data, old_offsets) = old;
+        let ScratchSpace(old_data, old_offsets, old_validity) = old;
 
         let new_data = {
             let mut v = old_data.to_vec();
@@ -303,7 +326,13 @@ where
             v.into_boxed_slice()
         });
 
-        ScratchSpace(new_data, new_offsets)
+        let new_validity = old_validity.map(|old_validity| {
+            let mut v = old_validity.to_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        });
+
+        ScratchSpace(new_data, new_offsets, new_validity)
     }
 }
 

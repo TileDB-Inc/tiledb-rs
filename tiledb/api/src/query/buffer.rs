@@ -185,8 +185,56 @@ typed_query_buffers!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 typed_query_buffers!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 typed_query_buffers!(Float32: f32, Float64: f64);
 
+#[macro_export]
+macro_rules! typed_query_buffers_go {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
+        match $expr {
+            TypedQueryBuffers::UInt8($inner) => {
+                type $DT = u8;
+                $then
+            }
+            TypedQueryBuffers::UInt16($inner) => {
+                type $DT = u16;
+                $then
+            }
+            TypedQueryBuffers::UInt32($inner) => {
+                type $DT = u32;
+                $then
+            }
+            TypedQueryBuffers::UInt64($inner) => {
+                type $DT = u64;
+                $then
+            }
+            TypedQueryBuffers::Int8($inner) => {
+                type $DT = i8;
+                $then
+            }
+            TypedQueryBuffers::Int16($inner) => {
+                type $DT = i16;
+                $then
+            }
+            TypedQueryBuffers::Int32($inner) => {
+                type $DT = i32;
+                $then
+            }
+            TypedQueryBuffers::Int64($inner) => {
+                type $DT = i64;
+                $then
+            }
+            TypedQueryBuffers::Float32($inner) => {
+                type $DT = f32;
+                $then
+            }
+            TypedQueryBuffers::Float64($inner) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    };
+}
+
 macro_rules! ref_typed_query_buffers_go {
-    ($expr:expr, $DT:ident, $inner:ident, $then:expr) => {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
         match $expr {
             RefTypedQueryBuffersMut::UInt8($inner) => {
                 type $DT = u8;

@@ -10,6 +10,26 @@ pub struct ManagedBuffer<'data, C> {
     pub allocator: Box<dyn ScratchAllocator<C> + 'data>,
 }
 
+impl<'data, C> ManagedBuffer<'data, C> {
+    pub fn new<A>(allocator: A) -> Self
+    where
+        A: ScratchAllocator<C> + 'data,
+    {
+        let allocator: Box<dyn ScratchAllocator<C> + 'data> =
+            Box::new(allocator);
+        ManagedBuffer::from(allocator)
+    }
+}
+
+impl<'data, C> From<Box<dyn ScratchAllocator<C> + 'data>>
+    for ManagedBuffer<'data, C>
+{
+    fn from(allocator: Box<dyn ScratchAllocator<C> + 'data>) -> Self {
+        let buffers = Box::pin(RefCell::new(allocator.alloc().into()));
+        ManagedBuffer { buffers, allocator }
+    }
+}
+
 /// Encapsulates data for writing intermediate query results for a data field.
 pub struct RawReadHandle<'data, C> {
     /// Name of the field which this handle receives data from

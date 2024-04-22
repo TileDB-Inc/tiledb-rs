@@ -8,14 +8,21 @@ use proptest::test_runner::TestRunner;
 
 use super::*;
 use crate::array::{ArrayType, CellValNum, SchemaData};
-use crate::fn_typed;
+use crate::query::read::output::{
+    FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
+};
+use crate::query::read::{
+    CallbackVarArgReadBuilder, ManagedBuffer, RawReadHandle,
+    ReadCallbackVarArg, TypedReadHandle,
+};
+use crate::{fn_typed, typed_query_buffers_go};
 
 trait WriteFieldInput<C>: DataProvider<Unit = C> + Debug {}
 
 impl<T, C> WriteFieldInput<C> for T where T: DataProvider<Unit = C> + Debug {}
 
 #[derive(Clone, Debug)]
-pub enum WriteFieldData {
+pub enum FieldData {
     UInt8(Vec<u8>),
     UInt16(Vec<u16>),
     UInt32(Vec<u32>),
@@ -41,16 +48,16 @@ pub enum WriteFieldData {
 macro_rules! typed_write_field {
     ($($V:ident : $U:ty),+) => {
         $(
-            impl From<Vec<$U>> for WriteFieldData {
+            impl From<Vec<$U>> for FieldData {
                 fn from(value: Vec<$U>) -> Self {
-                    WriteFieldData::$V(value)
+                    FieldData::$V(value)
                 }
             }
 
-            impl From<Vec<Vec<$U>>> for WriteFieldData {
+            impl From<Vec<Vec<$U>>> for FieldData {
                 fn from(value: Vec<Vec<$U>>) -> Self {
                     paste! {
-                        WriteFieldData::[< Vec $V >](value)
+                        FieldData::[< Vec $V >](value)
                     }
                 }
             }
@@ -62,86 +69,112 @@ typed_write_field!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 typed_write_field!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 typed_write_field!(Float32: f32, Float64: f64);
 
+impl From<&TypedRawReadOutput<'_>> for FieldData {
+    fn from(value: &TypedRawReadOutput) -> Self {
+        typed_query_buffers_go!(value.buffers, DT, ref handle, {
+            let rr = RawReadOutput {
+                nvalues: value.nvalues,
+                nbytes: value.nbytes,
+                input: handle,
+            };
+            if rr.input.cell_offsets.is_some() {
+                Self::from(
+                    VarDataIterator::try_from(rr)
+                        .unwrap()
+                        .map(|s| s.to_vec())
+                        .collect::<Vec<Vec<DT>>>(),
+                )
+            } else {
+                Self::from(
+                    FixedDataIterator::try_from(rr)
+                        .unwrap()
+                        .collect::<Vec<DT>>(),
+                )
+            }
+        })
+    }
+}
+
 macro_rules! fn_write_field {
     ($field:expr, $DT:ident, $data:ident, $then:expr) => {
         match $field {
-            WriteFieldData::UInt8(ref $data) => {
+            FieldData::UInt8(ref $data) => {
                 type $DT = Vec<u8>;
                 $then
             }
-            WriteFieldData::UInt16(ref $data) => {
+            FieldData::UInt16(ref $data) => {
                 type $DT = Vec<u16>;
                 $then
             }
-            WriteFieldData::UInt32(ref $data) => {
+            FieldData::UInt32(ref $data) => {
                 type $DT = Vec<u32>;
                 $then
             }
-            WriteFieldData::UInt64(ref $data) => {
+            FieldData::UInt64(ref $data) => {
                 type $DT = Vec<u64>;
                 $then
             }
-            WriteFieldData::Int8(ref $data) => {
+            FieldData::Int8(ref $data) => {
                 type $DT = Vec<i8>;
                 $then
             }
-            WriteFieldData::Int16(ref $data) => {
+            FieldData::Int16(ref $data) => {
                 type $DT = Vec<i16>;
                 $then
             }
-            WriteFieldData::Int32(ref $data) => {
+            FieldData::Int32(ref $data) => {
                 type $DT = Vec<i32>;
                 $then
             }
-            WriteFieldData::Int64(ref $data) => {
+            FieldData::Int64(ref $data) => {
                 type $DT = Vec<i64>;
                 $then
             }
-            WriteFieldData::Float32(ref $data) => {
+            FieldData::Float32(ref $data) => {
                 type $DT = Vec<f32>;
                 $then
             }
-            WriteFieldData::Float64(ref $data) => {
+            FieldData::Float64(ref $data) => {
                 type $DT = Vec<f64>;
                 $then
             }
-            WriteFieldData::VecUInt8(ref $data) => {
+            FieldData::VecUInt8(ref $data) => {
                 type $DT = Vec<Vec<u8>>;
                 $then
             }
-            WriteFieldData::VecUInt16(ref $data) => {
+            FieldData::VecUInt16(ref $data) => {
                 type $DT = Vec<Vec<u16>>;
                 $then
             }
-            WriteFieldData::VecUInt32(ref $data) => {
+            FieldData::VecUInt32(ref $data) => {
                 type $DT = Vec<Vec<u32>>;
                 $then
             }
-            WriteFieldData::VecUInt64(ref $data) => {
+            FieldData::VecUInt64(ref $data) => {
                 type $DT = Vec<Vec<u64>>;
                 $then
             }
-            WriteFieldData::VecInt8(ref $data) => {
+            FieldData::VecInt8(ref $data) => {
                 type $DT = Vec<Vec<i8>>;
                 $then
             }
-            WriteFieldData::VecInt16(ref $data) => {
+            FieldData::VecInt16(ref $data) => {
                 type $DT = Vec<Vec<i16>>;
                 $then
             }
-            WriteFieldData::VecInt32(ref $data) => {
+            FieldData::VecInt32(ref $data) => {
                 type $DT = Vec<Vec<i32>>;
                 $then
             }
-            WriteFieldData::VecInt64(ref $data) => {
+            FieldData::VecInt64(ref $data) => {
                 type $DT = Vec<Vec<i64>>;
                 $then
             }
-            WriteFieldData::VecFloat32(ref $data) => {
+            FieldData::VecFloat32(ref $data) => {
                 type $DT = Vec<Vec<f32>>;
                 $then
             }
-            WriteFieldData::VecFloat64(ref $data) => {
+            FieldData::VecFloat64(ref $data) => {
                 type $DT = Vec<Vec<f64>>;
                 $then
             }
@@ -149,9 +182,41 @@ macro_rules! fn_write_field {
     };
 }
 
+pub struct RawReadQueryResult(pub Vec<FieldData>);
+
+pub struct RawResultCallback {}
+
+impl ReadCallbackVarArg for RawResultCallback {
+    type Intermediate = RawReadQueryResult;
+    type Final = RawReadQueryResult;
+    type Error = std::convert::Infallible;
+
+    fn intermediate_result(
+        &mut self,
+        args: &[TypedRawReadOutput],
+    ) -> Result<Self::Intermediate, Self::Error> {
+        Ok(RawReadQueryResult(
+            args.iter()
+                .map(|a| FieldData::from(a))
+                .collect::<Vec<FieldData>>(),
+        ))
+    }
+
+    fn final_result(
+        self,
+        args: &[TypedRawReadOutput],
+    ) -> Result<Self::Intermediate, Self::Error> {
+        Ok(RawReadQueryResult(
+            args.iter()
+                .map(|a| FieldData::from(a))
+                .collect::<Vec<FieldData>>(),
+        ))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct WriteQueryData {
-    fields: Vec<(String, WriteFieldData)>,
+    fields: Vec<(String, FieldData)>,
 }
 
 impl WriteQueryData {
@@ -174,12 +239,30 @@ impl WriteQueryData {
     pub fn attach_read<'ctx, 'data, B>(
         &'data mut self,
         b: B,
-    ) -> VarCallbackReadQueryBuilder<'data, B>
+    ) -> CallbackVarArgReadBuilder<'data, RawResultCallback, B>
     where
         B: ReadQueryBuilder<'ctx, 'data>,
     {
-        self.fields.iter_mut().map(|(name, data)| unimplemented!());
-        unimplemented!()
+        let handles = {
+            let schema = b.base().array().schema().unwrap();
+
+            self.fields
+                .iter()
+                .map(|(name, _)| {
+                    let field = schema.field(name.clone()).unwrap();
+                    fn_typed!(field.datatype().unwrap(), DT, {
+                        let managed: ManagedBuffer<DT> = ManagedBuffer::new(
+                            field.query_scratch_allocator().unwrap(),
+                        );
+                        let rr = RawReadHandle::managed(name, managed);
+                        TypedReadHandle::from(rr)
+                    })
+                })
+                .collect::<Vec<TypedReadHandle>>()
+        };
+
+        b.register_callback_var(handles, RawResultCallback {})
+            .expect("Error registering callback")
     }
 }
 
@@ -207,7 +290,7 @@ impl WriteFieldMask {
 struct WriteQueryDataValueTree {
     schema: Rc<SchemaData>,
     field_mask: Vec<WriteFieldMask>,
-    field_data: Vec<Option<WriteFieldData>>,
+    field_data: Vec<Option<FieldData>>,
 }
 
 impl ValueTree for WriteQueryDataValueTree {
@@ -223,7 +306,7 @@ impl ValueTree for WriteQueryDataValueTree {
                 let f = self.schema.field(i);
                 (f.name.clone(), self.field_data[i].clone().unwrap())
             })
-            .collect::<Vec<(String, WriteFieldData)>>();
+            .collect::<Vec<(String, FieldData)>>();
 
         WriteQueryData { fields }
     }
@@ -322,7 +405,7 @@ impl Strategy for WriteQueryDataStrategy {
                             .expect("Error generating query data")
                             .current();
 
-                            WriteFieldData::from(data)
+                            FieldData::from(data)
                         }))
                     } else {
                         let (min, max) = if cell_val_num.is_var_sized() {
@@ -344,14 +427,14 @@ impl Strategy for WriteQueryDataStrategy {
                             .expect("Error generating query data")
                             .current();
 
-                            WriteFieldData::from(data)
+                            FieldData::from(data)
                         }))
                     }
                 } else {
                     None
                 }
             })
-            .collect::<Vec<Option<WriteFieldData>>>();
+            .collect::<Vec<Option<FieldData>>>();
 
         Ok(WriteQueryDataValueTree {
             schema: self.schema.clone(),

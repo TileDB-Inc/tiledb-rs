@@ -213,6 +213,11 @@ impl FieldData {
             } else {
                 None
             },
+            validity_capacity: if self.nullability.unwrap_or(true) {
+                Some(NonZeroUsize::new(1024 * 128).unwrap())
+            } else {
+                None
+            },
         }
     }
 }

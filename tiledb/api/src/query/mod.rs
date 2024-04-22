@@ -74,6 +74,10 @@ impl<'ctx> QueryBase<'ctx> {
         })
         .map(|_| c_status)
     }
+
+    pub fn array(&self) -> &Array<'ctx> {
+        &self.array
+    }
 }
 
 impl<'ctx> Query<'ctx> for QueryBase<'ctx> {
@@ -165,6 +169,10 @@ impl<'ctx> BuilderBase<'ctx> {
     }
     fn cquery(&self) -> &RawQuery {
         &self.query.raw
+    }
+
+    pub fn array(&self) -> &Array<'ctx> {
+        &self.query.array
     }
 }
 

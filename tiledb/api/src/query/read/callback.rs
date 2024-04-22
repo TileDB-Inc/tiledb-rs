@@ -4,8 +4,10 @@ use anyhow::anyhow;
 use itertools::izip;
 use paste::paste;
 
-use crate::query::buffer::{RefTypedQueryBuffersMut, TypedQueryBuffers};
-use crate::query::read::output::{FromQueryOutput, RawReadOutput};
+use crate::query::buffer::RefTypedQueryBuffersMut;
+use crate::query::read::output::{
+    FromQueryOutput, RawReadOutput, TypedRawReadOutput,
+};
 
 macro_rules! trait_read_callback {
     ($name:ident, $($U:ident),+) => {
@@ -48,12 +50,6 @@ trait_read_callback!(ReadCallback, Unit);
 trait_read_callback!(ReadCallback2Arg, Unit1, Unit2);
 trait_read_callback!(ReadCallback3Arg, Unit1, Unit2, Unit3);
 trait_read_callback!(ReadCallback4Arg, Unit1, Unit2, Unit3, Unit4);
-
-pub struct TypedRawReadOutput<'data> {
-    pub nvalues: usize,
-    pub nbytes: usize,
-    pub buffers: TypedQueryBuffers<'data>,
-}
 
 pub trait ReadCallbackVarArg: Sized {
     type Intermediate;
@@ -577,9 +573,9 @@ query_read_callback!(
 
 #[derive(ContextBound, Query)]
 pub struct CallbackVarArgReadQuery<'data, T, Q> {
-    callback: Option<T>,
+    pub(crate) callback: Option<T>,
     #[base(ContextBound, Query)]
-    base: VarRawReadQuery<'data, Q>,
+    pub(crate) base: VarRawReadQuery<'data, Q>,
 }
 
 impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for CallbackVarArgReadQuery<'data, T, Q>
@@ -662,9 +658,9 @@ where
 
 #[derive(ContextBound)]
 pub struct CallbackVarArgReadBuilder<'data, T, B> {
-    callback: T,
+    pub(crate) callback: T,
     #[base(ContextBound)]
-    base: VarRawReadBuilder<'data, B>,
+    pub(crate) base: VarRawReadBuilder<'data, B>,
 }
 
 impl<'ctx, 'data, T, B> QueryBuilder<'ctx>

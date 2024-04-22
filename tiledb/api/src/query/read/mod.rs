@@ -216,11 +216,7 @@ macro_rules! fn_register_callback {
                                 RawReadHandle::new(field, qb)
                             },
                             ScratchStrategy::CustomAllocator(a) => {
-                                let qb = Box::pin(RefCell::new(a.alloc().into()));
-                                let managed = ManagedBuffer {
-                                    buffers: qb,
-                                    allocator: a
-                                };
+                                let managed = ManagedBuffer::from(a);
                                 RawReadHandle::managed(field, managed)
                             }
                         }
@@ -307,6 +303,20 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
         Unit3,
         Unit4
     );
+
+    fn register_callback_var<I, T>(
+        self,
+        fields: I,
+        callback: T,
+    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, T, Self>>
+    where
+        I: IntoIterator<Item = TypedReadHandle<'data>>,
+    {
+        Ok(CallbackVarArgReadBuilder {
+            callback,
+            base: self.register_var_raw(fields)?,
+        })
+    }
 
     /// Register a typed result to be constructed from the query results.
     /// Intermediate raw results are written into the provided scratch space.
