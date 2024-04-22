@@ -3,7 +3,7 @@ use super::*;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::query::buffer::QueryBuffers;
+use crate::query::buffer::{QueryBuffers, TypedQueryBuffers};
 use crate::query::write::input::DataProvider;
 
 pub mod input;
@@ -14,35 +14,6 @@ struct RawWriteInput<'data> {
     _validity_size: Option<Pin<Box<u64>>>,
     _input: TypedQueryBuffers<'data>,
 }
-
-pub enum TypedQueryBuffers<'data> {
-    UInt8(QueryBuffers<'data, u8>),
-    UInt16(QueryBuffers<'data, u16>),
-    UInt32(QueryBuffers<'data, u32>),
-    UInt64(QueryBuffers<'data, u64>),
-    Int8(QueryBuffers<'data, i8>),
-    Int16(QueryBuffers<'data, i16>),
-    Int32(QueryBuffers<'data, i32>),
-    Int64(QueryBuffers<'data, i64>),
-    Float32(QueryBuffers<'data, f32>),
-    Float64(QueryBuffers<'data, f64>),
-}
-
-macro_rules! typed_input_data {
-    ($($V:ident : $U:ty),+) => {
-        $(
-            impl<'data> From<QueryBuffers<'data, $U>> for TypedQueryBuffers<'data> {
-                fn from(value: QueryBuffers<'data, $U>) -> Self {
-                    TypedQueryBuffers::$V(value)
-                }
-            }
-        )+
-    }
-}
-
-typed_input_data!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-typed_input_data!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-typed_input_data!(Float32: f32, Float64: f64);
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 

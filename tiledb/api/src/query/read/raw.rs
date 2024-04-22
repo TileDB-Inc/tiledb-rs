@@ -3,7 +3,7 @@ use super::*;
 use std::cell::RefMut;
 
 use crate::error::Error;
-use crate::query::buffer::QueryBuffersMut;
+use crate::query::buffer::{QueryBuffersMut, RefTypedQueryBuffersMut};
 
 pub struct ManagedBuffer<'data, C> {
     pub buffers: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
@@ -211,7 +211,7 @@ pub enum TypedReadHandle<'data> {
     Float32(RawReadHandle<'data, f32>),
     Float64(RawReadHandle<'data, f64>),
 }
-macro_rules! typed_read_handle_inner {
+macro_rules! typed_read_handle_go {
     ($expr:expr, $DT:ident, $inner:ident, $then:expr) => {
         match $expr {
             TypedReadHandle::UInt8($inner) => {
@@ -264,7 +264,7 @@ impl<'data> TypedReadHandle<'data> {
         context: &Context,
         query: *mut ffi::tiledb_query_t,
     ) -> TileDBResult<()> {
-        typed_read_handle_inner!(
+        typed_read_handle_go!(
             self,
             _DT,
             handle,
@@ -273,16 +273,22 @@ impl<'data> TypedReadHandle<'data> {
     }
 
     pub fn last_read_size(&self) -> (usize, usize) {
-        typed_read_handle_inner!(self, _DT, handle, handle.last_read_size())
+        typed_read_handle_go!(self, _DT, handle, handle.last_read_size())
     }
 
     pub fn borrow_mut(&mut self) -> RefMut<Option<BufferMut<'data, u64>>> {
-        typed_read_handle_inner!(
+        typed_read_handle_go!(
             self,
             _DT,
             handle,
             RefMut::map(handle.location.borrow_mut(), |o| &mut o.cell_offsets)
         )
+    }
+
+    pub fn borrow<'this>(&'this self) -> RefTypedQueryBuffersMut<'this, 'data> {
+        typed_read_handle_go!(self, _DT, handle, {
+            RefTypedQueryBuffersMut::from(handle.location.borrow())
+        })
     }
 }
 
@@ -292,6 +298,28 @@ macro_rules! typed_read_handle {
             impl<'data> From<RawReadHandle<'data, $U>> for TypedReadHandle<'data> {
                 fn from(value: RawReadHandle<'data, $U>) -> Self {
                     TypedReadHandle::$V(value)
+                }
+            }
+
+            impl<'data> TryFrom<TypedReadHandle<'data>> for RawReadHandle<'data, $U> {
+                type Error = ();
+                fn try_from(value: TypedReadHandle<'data>) -> std::result::Result<Self, Self::Error> {
+                    if let TypedReadHandle::$V(d) = value {
+                        Ok(d)
+                    } else {
+                        Err(())
+                    }
+                }
+            }
+
+            impl<'data, 'this> TryFrom<&'this TypedReadHandle<'data>> for &'this RawReadHandle<'data, $U> {
+                type Error = ();
+                fn try_from(value: &'this TypedReadHandle<'data>) -> std::result::Result<Self, Self::Error> {
+                    if let TypedReadHandle::$V(ref d) = value {
+                        Ok(d)
+                    } else {
+                        Err(())
+                    }
                 }
             }
         )+

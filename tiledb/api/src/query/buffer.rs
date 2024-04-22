@@ -1,3 +1,4 @@
+use std::cell::Ref;
 use std::ops::{Deref, DerefMut};
 
 pub enum Buffer<'data, T = u8> {
@@ -133,6 +134,109 @@ impl<'data, T> QueryBuffersMut<'data, T> {
                 Buffer::Borrowed(v.as_ref())
             }),
         }
+    }
+}
+
+pub enum TypedQueryBuffers<'data> {
+    UInt8(QueryBuffers<'data, u8>),
+    UInt16(QueryBuffers<'data, u16>),
+    UInt32(QueryBuffers<'data, u32>),
+    UInt64(QueryBuffers<'data, u64>),
+    Int8(QueryBuffers<'data, i8>),
+    Int16(QueryBuffers<'data, i16>),
+    Int32(QueryBuffers<'data, i32>),
+    Int64(QueryBuffers<'data, i64>),
+    Float32(QueryBuffers<'data, f32>),
+    Float64(QueryBuffers<'data, f64>),
+}
+
+pub enum RefTypedQueryBuffersMut<'cell, 'data> {
+    UInt8(Ref<'cell, QueryBuffersMut<'data, u8>>),
+    UInt16(Ref<'cell, QueryBuffersMut<'data, u16>>),
+    UInt32(Ref<'cell, QueryBuffersMut<'data, u32>>),
+    UInt64(Ref<'cell, QueryBuffersMut<'data, u64>>),
+    Int8(Ref<'cell, QueryBuffersMut<'data, i8>>),
+    Int16(Ref<'cell, QueryBuffersMut<'data, i16>>),
+    Int32(Ref<'cell, QueryBuffersMut<'data, i32>>),
+    Int64(Ref<'cell, QueryBuffersMut<'data, i64>>),
+    Float32(Ref<'cell, QueryBuffersMut<'data, f32>>),
+    Float64(Ref<'cell, QueryBuffersMut<'data, f64>>),
+}
+
+macro_rules! typed_query_buffers {
+    ($($V:ident : $U:ty),+) => {
+        $(
+            impl<'data> From<QueryBuffers<'data, $U>> for TypedQueryBuffers<'data> {
+                fn from(value: QueryBuffers<'data, $U>) -> Self {
+                    TypedQueryBuffers::$V(value)
+                }
+            }
+
+            impl<'cell, 'data> From<Ref<'cell, QueryBuffersMut<'data, $U>>> for RefTypedQueryBuffersMut<'cell, 'data> {
+                fn from(value: Ref<'cell, QueryBuffersMut<'data, $U>>) -> Self {
+                    RefTypedQueryBuffersMut::$V(value)
+                }
+            }
+        )+
+    }
+}
+
+typed_query_buffers!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+typed_query_buffers!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+typed_query_buffers!(Float32: f32, Float64: f64);
+
+macro_rules! ref_typed_query_buffers_go {
+    ($expr:expr, $DT:ident, $inner:ident, $then:expr) => {
+        match $expr {
+            RefTypedQueryBuffersMut::UInt8($inner) => {
+                type $DT = u8;
+                $then
+            }
+            RefTypedQueryBuffersMut::UInt16($inner) => {
+                type $DT = u16;
+                $then
+            }
+            RefTypedQueryBuffersMut::UInt32($inner) => {
+                type $DT = u32;
+                $then
+            }
+            RefTypedQueryBuffersMut::UInt64($inner) => {
+                type $DT = u64;
+                $then
+            }
+            RefTypedQueryBuffersMut::Int8($inner) => {
+                type $DT = i8;
+                $then
+            }
+            RefTypedQueryBuffersMut::Int16($inner) => {
+                type $DT = i16;
+                $then
+            }
+            RefTypedQueryBuffersMut::Int32($inner) => {
+                type $DT = i32;
+                $then
+            }
+            RefTypedQueryBuffersMut::Int64($inner) => {
+                type $DT = i64;
+                $then
+            }
+            RefTypedQueryBuffersMut::Float32($inner) => {
+                type $DT = f32;
+                $then
+            }
+            RefTypedQueryBuffersMut::Float64($inner) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    };
+}
+
+impl<'cell, 'data> RefTypedQueryBuffersMut<'cell, 'data> {
+    pub fn as_shared(&'cell self) -> TypedQueryBuffers<'cell> {
+        ref_typed_query_buffers_go!(self, _DT, qb, {
+            TypedQueryBuffers::from(qb.as_shared())
+        })
     }
 }
 

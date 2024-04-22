@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use itertools::izip;
 use paste::paste;
 
+use crate::query::buffer::{RefTypedQueryBuffersMut, TypedQueryBuffers};
 use crate::query::read::output::{FromQueryOutput, RawReadOutput};
 
 macro_rules! trait_read_callback {
@@ -47,6 +48,38 @@ trait_read_callback!(ReadCallback, Unit);
 trait_read_callback!(ReadCallback2Arg, Unit1, Unit2);
 trait_read_callback!(ReadCallback3Arg, Unit1, Unit2, Unit3);
 trait_read_callback!(ReadCallback4Arg, Unit1, Unit2, Unit3, Unit4);
+
+pub struct TypedRawReadOutput<'data> {
+    pub nvalues: usize,
+    pub nbytes: usize,
+    pub buffers: TypedQueryBuffers<'data>,
+}
+
+pub trait ReadCallbackVarArg: Sized {
+    type Intermediate;
+    type Final;
+    type Error: Into<anyhow::Error>;
+
+    /* TODO: some kind of argument validation */
+
+    fn intermediate_result(
+        &mut self,
+        args: &[TypedRawReadOutput],
+    ) -> Result<Self::Intermediate, Self::Error>;
+
+    fn final_result(
+        self,
+        args: &[TypedRawReadOutput],
+    ) -> Result<Self::Final, Self::Error>;
+
+    /// Optionally produce a blank instance of this callback to be run
+    /// if the query is restarted from the beginning. This is called
+    /// before `final_result` to prepare the query for re-submission
+    /// if necessary.
+    fn cleared(&self) -> Option<Self> {
+        None
+    }
+}
 
 #[derive(Clone)]
 pub struct FnMutAdapter<A, F> {
@@ -573,6 +606,153 @@ query_read_callback!(
     Unit3,
     Unit4
 );
+
+#[derive(ContextBound, Query)]
+pub struct CallbackVarArgReadQuery<'data, T, Q> {
+    callback: Option<T>,
+    #[base(ContextBound, Query)]
+    base: VarRawReadQuery<'data, Q>,
+}
+
+impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for CallbackVarArgReadQuery<'data, T, Q>
+where
+    T: ReadCallbackVarArg,
+    Q: ReadQuery<'ctx>,
+{
+    type Intermediate = (T::Intermediate, Q::Intermediate);
+    type Final = (T::Final, Q::Final);
+
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        let base_result = self.base.step()?;
+
+        match base_result {
+            ReadStepOutput::NotEnoughSpace => unreachable!(),
+            ReadStepOutput::Intermediate((sizes, base_result)) => {
+                let callback = match self.callback.as_mut() {
+                    None => unimplemented!(),
+                    Some(c) => c,
+                };
+
+                let buffers = self
+                    .base
+                    .raw_read_output
+                    .iter()
+                    .map(|r| r.borrow())
+                    .collect::<Vec<RefTypedQueryBuffersMut>>();
+                let args = sizes
+                    .iter()
+                    .zip(buffers.iter())
+                    .map(|(&(nvalues, nbytes), buffers)| TypedRawReadOutput {
+                        nvalues,
+                        nbytes,
+                        buffers: buffers.as_shared(),
+                    })
+                    .collect::<Vec<TypedRawReadOutput>>();
+
+                let ir = callback.intermediate_result(&args).map_err(|e| {
+                    let fields = vec![]; /* TODO */
+                    crate::error::Error::QueryCallback(fields, anyhow!(e))
+                })?;
+                Ok(ReadStepOutput::Intermediate((ir, base_result)))
+            }
+            ReadStepOutput::Final((sizes, base_result)) => {
+                let callback_final = match self.callback.take() {
+                    None => unimplemented!(),
+                    Some(c) => {
+                        self.callback = c.cleared();
+                        c
+                    }
+                };
+
+                let buffers = self
+                    .base
+                    .raw_read_output
+                    .iter()
+                    .map(|r| r.borrow())
+                    .collect::<Vec<RefTypedQueryBuffersMut>>();
+                let args = sizes
+                    .iter()
+                    .zip(buffers.iter())
+                    .map(|(&(nvalues, nbytes), buffers)| TypedRawReadOutput {
+                        nvalues,
+                        nbytes,
+                        buffers: buffers.as_shared(),
+                    })
+                    .collect::<Vec<TypedRawReadOutput>>();
+
+                let ir = callback_final.final_result(&args).map_err(|e| {
+                    let fields = vec![]; /* TODO */
+                    crate::error::Error::QueryCallback(fields, anyhow!(e))
+                })?;
+                Ok(ReadStepOutput::Final((ir, base_result)))
+            }
+        }
+    }
+}
+
+#[derive(ContextBound)]
+pub struct CallbackVarArgReadBuilder<'data, T, B> {
+    callback: T,
+    #[base(ContextBound)]
+    base: VarRawReadBuilder<'data, B>,
+}
+
+impl<'ctx, 'data, T, B> QueryBuilder<'ctx>
+    for CallbackVarArgReadBuilder<'data, T, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+    type Query = CallbackVarArgReadQuery<'data, T, B::Query>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        self.base.base()
+    }
+
+    fn build(self) -> Self::Query {
+        CallbackVarArgReadQuery {
+            callback: Some(self.callback),
+            base: self.base.build(),
+        }
+    }
+}
+
+impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data>
+    for CallbackVarArgReadBuilder<'data, T, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+    type IntoRaw = RawReadBuilder<'data, Self>;
+    type IntoVarRaw = VarRawReadBuilder<'data, Self>;
+
+    /// Register a raw memory location to write query results into.
+    fn register_raw<S, C>(
+        self,
+        field: S,
+        scratch: &'data RefCell<QueryBuffersMut<'data, C>>,
+    ) -> TileDBResult<Self::IntoRaw>
+    where
+        Self: Sized,
+        S: AsRef<str>,
+        RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
+    {
+        Ok(RawReadBuilder {
+            raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
+            base: self,
+        })
+    }
+
+    fn register_var_raw<I>(self, fields: I) -> TileDBResult<Self::IntoVarRaw>
+    where
+        I: IntoIterator<Item = TypedReadHandle<'data>>,
+    {
+        Ok(VarRawReadBuilder {
+            raw_read_output: fields.into_iter().collect(),
+            base: self,
+        })
+    }
+}
 
 #[cfg(test)]
 mod tests {
