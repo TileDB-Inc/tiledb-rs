@@ -158,6 +158,13 @@ impl<'ctx> Field<'ctx> {
         }
     }
 
+    pub fn nullability(&self) -> TileDBResult<bool> {
+        Ok(match self {
+            Field::Dimension(_) => false,
+            Field::Attribute(ref a) => a.is_nullable(),
+        })
+    }
+
     pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
         match self {
             Field::Dimension(ref d) => d.cell_val_num(),
@@ -170,6 +177,7 @@ impl<'ctx> Field<'ctx> {
 pub struct FieldData {
     pub name: String,
     pub datatype: Datatype,
+    pub nullability: Option<bool>,
     pub cell_val_num: Option<CellValNum>,
 }
 
@@ -185,6 +193,7 @@ impl From<&AttributeData> for FieldData {
             name: attr.name.clone(),
             cell_val_num: attr.cell_val_num,
             datatype: attr.datatype,
+            nullability: attr.nullability,
         }
     }
 }
@@ -195,6 +204,7 @@ impl From<&DimensionData> for FieldData {
             name: dim.name.clone(),
             cell_val_num: dim.cell_val_num,
             datatype: dim.datatype,
+            nullability: Some(false),
         }
     }
 }
@@ -207,6 +217,7 @@ impl<'ctx> TryFrom<&Field<'ctx>> for FieldData {
             name: field.name()?,
             cell_val_num: Some(field.cell_val_num()?),
             datatype: field.datatype()?,
+            nullability: Some(field.nullability()?),
         })
     }
 }
