@@ -40,6 +40,10 @@ impl Drop for RawQuery {
 
 pub trait Query<'ctx> {
     fn base(&self) -> &QueryBase<'ctx>;
+
+    fn finalize(self) -> TileDBResult<Array<'ctx>>
+    where
+        Self: Sized;
 }
 
 #[derive(ContextBound)]
@@ -76,6 +80,10 @@ impl<'ctx> QueryBase<'ctx> {
     }
 
     pub fn array(&self) -> &Array<'ctx> {
+        /*
+         * TODO: if this is pub then it defeats the purpose of the query API consuming
+         * the array to prevent shared usage of it
+         */
         &self.array
     }
 }
@@ -83,6 +91,16 @@ impl<'ctx> QueryBase<'ctx> {
 impl<'ctx> Query<'ctx> for QueryBase<'ctx> {
     fn base(&self) -> &QueryBase<'ctx> {
         self
+    }
+
+    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+        let c_context = self.context().capi();
+        let c_query = **self.base().cquery();
+        self.capi_return(unsafe {
+            ffi::tiledb_query_finalize(c_context, c_query)
+        })?;
+
+        Ok(self.array)
     }
 }
 

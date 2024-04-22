@@ -21,7 +21,7 @@ trait WriteFieldInput<C>: DataProvider<Unit = C> + Debug {}
 
 impl<T, C> WriteFieldInput<C> for T where T: DataProvider<Unit = C> + Debug {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum FieldData {
     UInt8(Vec<u8>),
     UInt16(Vec<u16>),
@@ -45,7 +45,7 @@ pub enum FieldData {
     VecFloat64(Vec<Vec<f64>>),
 }
 
-macro_rules! typed_write_field {
+macro_rules! typed_field_data {
     ($($V:ident : $U:ty),+) => {
         $(
             impl From<Vec<$U>> for FieldData {
@@ -65,9 +65,9 @@ macro_rules! typed_write_field {
     };
 }
 
-typed_write_field!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-typed_write_field!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-typed_write_field!(Float32: f32, Float64: f64);
+typed_field_data!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+typed_field_data!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+typed_field_data!(Float32: f32, Float64: f64);
 
 impl From<&TypedRawReadOutput<'_>> for FieldData {
     fn from(value: &TypedRawReadOutput) -> Self {
@@ -95,91 +95,97 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
     }
 }
 
-macro_rules! fn_write_field {
-    ($field:expr, $DT:ident, $data:ident, $then:expr) => {
+macro_rules! typed_field_data_go {
+    ($field:expr, $DT:ident, $data:pat, $then:expr) => {
         match $field {
-            FieldData::UInt8(ref $data) => {
+            FieldData::UInt8($data) => {
                 type $DT = Vec<u8>;
                 $then
             }
-            FieldData::UInt16(ref $data) => {
+            FieldData::UInt16($data) => {
                 type $DT = Vec<u16>;
                 $then
             }
-            FieldData::UInt32(ref $data) => {
+            FieldData::UInt32($data) => {
                 type $DT = Vec<u32>;
                 $then
             }
-            FieldData::UInt64(ref $data) => {
+            FieldData::UInt64($data) => {
                 type $DT = Vec<u64>;
                 $then
             }
-            FieldData::Int8(ref $data) => {
+            FieldData::Int8($data) => {
                 type $DT = Vec<i8>;
                 $then
             }
-            FieldData::Int16(ref $data) => {
+            FieldData::Int16($data) => {
                 type $DT = Vec<i16>;
                 $then
             }
-            FieldData::Int32(ref $data) => {
+            FieldData::Int32($data) => {
                 type $DT = Vec<i32>;
                 $then
             }
-            FieldData::Int64(ref $data) => {
+            FieldData::Int64($data) => {
                 type $DT = Vec<i64>;
                 $then
             }
-            FieldData::Float32(ref $data) => {
+            FieldData::Float32($data) => {
                 type $DT = Vec<f32>;
                 $then
             }
-            FieldData::Float64(ref $data) => {
+            FieldData::Float64($data) => {
                 type $DT = Vec<f64>;
                 $then
             }
-            FieldData::VecUInt8(ref $data) => {
+            FieldData::VecUInt8($data) => {
                 type $DT = Vec<Vec<u8>>;
                 $then
             }
-            FieldData::VecUInt16(ref $data) => {
+            FieldData::VecUInt16($data) => {
                 type $DT = Vec<Vec<u16>>;
                 $then
             }
-            FieldData::VecUInt32(ref $data) => {
+            FieldData::VecUInt32($data) => {
                 type $DT = Vec<Vec<u32>>;
                 $then
             }
-            FieldData::VecUInt64(ref $data) => {
+            FieldData::VecUInt64($data) => {
                 type $DT = Vec<Vec<u64>>;
                 $then
             }
-            FieldData::VecInt8(ref $data) => {
+            FieldData::VecInt8($data) => {
                 type $DT = Vec<Vec<i8>>;
                 $then
             }
-            FieldData::VecInt16(ref $data) => {
+            FieldData::VecInt16($data) => {
                 type $DT = Vec<Vec<i16>>;
                 $then
             }
-            FieldData::VecInt32(ref $data) => {
+            FieldData::VecInt32($data) => {
                 type $DT = Vec<Vec<i32>>;
                 $then
             }
-            FieldData::VecInt64(ref $data) => {
+            FieldData::VecInt64($data) => {
                 type $DT = Vec<Vec<i64>>;
                 $then
             }
-            FieldData::VecFloat32(ref $data) => {
+            FieldData::VecFloat32($data) => {
                 type $DT = Vec<Vec<f32>>;
                 $then
             }
-            FieldData::VecFloat64(ref $data) => {
+            FieldData::VecFloat64($data) => {
                 type $DT = Vec<Vec<f64>>;
                 $then
             }
         }
     };
+}
+
+impl FieldData {
+    pub fn len(&self) -> usize {
+        typed_field_data_go!(self, _DT, v, v.len())
+    }
 }
 
 pub struct RawReadQueryResult(pub Vec<FieldData>);
@@ -226,7 +232,7 @@ impl WriteQueryData {
     ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
         let mut b = b;
         for f in self.fields.iter() {
-            b = fn_write_field!(
+            b = typed_field_data_go!(
                 &f.1,
                 DT,
                 data,
@@ -237,9 +243,9 @@ impl WriteQueryData {
     }
 
     pub fn attach_read<'ctx, 'data, B>(
-        &'data mut self,
+        &self,
         b: B,
-    ) -> CallbackVarArgReadBuilder<'data, RawResultCallback, B>
+    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, RawResultCallback, B>>
     where
         B: ReadQueryBuilder<'ctx, 'data>,
     {
@@ -262,7 +268,6 @@ impl WriteQueryData {
         };
 
         b.register_callback_var(handles, RawResultCallback {})
-            .expect("Error registering callback")
     }
 }
 
@@ -509,6 +514,95 @@ mod tests {
     use crate::array::Mode;
     use crate::Factory;
 
+    fn do_write_readback(
+        ctx: &Context,
+        schema_spec: Rc<SchemaData>,
+        write_sequence: WriteSequence,
+    ) {
+        let tempdir = TempDir::new().expect("Error creating temp dir");
+        let uri = String::from("file:///")
+            + tempdir.path().join("array").to_str().unwrap();
+
+        let schema_in = schema_spec
+            .create(&ctx)
+            .expect("Error constructing arbitrary schema");
+        Array::create(&ctx, &uri, schema_in).expect("Error creating array");
+
+        let mut array =
+            Array::open(&ctx, &uri, Mode::Write).expect("Error opening array");
+
+        for write in write_sequence {
+            /* write data */
+            {
+                let write = write
+                    .attach_write(
+                        WriteBuilder::new(array)
+                            .expect("Error building write query"),
+                    )
+                    .expect("Error building write query")
+                    .build();
+                write.submit().expect("Error running write query");
+                array = write.finalize().expect("Error finalizing write query");
+            }
+
+            /* then read it back */
+            {
+                let mut cursors = std::iter::repeat(0)
+                    .take(write.fields.len())
+                    .collect::<Vec<_>>();
+
+                let mut read = write
+                    .attach_read(
+                        ReadBuilder::new(array)
+                            .expect("Error building read query"),
+                    )
+                    .expect("Error building read query")
+                    .build();
+
+                loop {
+                    let res = read.step().expect("Error in read query step");
+                    match res.as_ref().into_inner() {
+                        None => unimplemented!(), /* TODO: allocate more */
+                        Some((raw, _)) => {
+                            let raw = &raw.0;
+                            /* TODO: when attributes have different cell val nums this will
+                             * have to look different */
+                            let mut nvalues = None;
+                            for i in 0..raw.len() {
+                                let r = &raw[i];
+                                let w = &write.fields[i].1;
+
+                                let nv = if let Some(nv) = nvalues {
+                                    assert_eq!(nv, r.len());
+                                    nv
+                                } else {
+                                    nvalues = Some(r.len());
+                                    r.len()
+                                };
+
+                                let w = typed_field_data_go!(w, _DT, w, {
+                                    FieldData::from(
+                                        w[cursors[i]..cursors[i] + nv].to_vec(),
+                                    )
+                                });
+
+                                assert_eq!(w, *r);
+
+                                cursors[i] += nv;
+                            }
+                        }
+                    }
+
+                    if res.is_final() {
+                        break;
+                    }
+                }
+
+                array = read.finalize().expect("Error finalizing read query");
+            }
+        }
+    }
+
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
     fn write_readback() {
@@ -523,22 +617,7 @@ mod tests {
         });
 
         proptest!(|((schema_spec, write_sequence) in strategy)| {
-            let tempdir = TempDir::new().expect("Error creating temp dir");
-            let uri = String::from("file:///") + tempdir.path().join("array").to_str().unwrap();
-
-            let schema_in = schema_spec.create(&ctx)
-                .expect("Error constructing arbitrary schema");
-            Array::create(&ctx, &uri, schema_in)
-                .expect("Error creating array");
-
-            let array = Array::open(&ctx, &uri, Mode::Write).expect("Error opening array");
-
-            for write in write_sequence {
-                let write = write.attach_write(WriteBuilder::new(array)).expect("Error building write query")
-                    .build();
-                write.submit()?;
-                array = write.finalize()?;
-            }
+            do_write_readback(&ctx, schema_spec, write_sequence)
         })
     }
 }
