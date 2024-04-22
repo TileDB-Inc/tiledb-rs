@@ -6,8 +6,10 @@ use itertools::izip;
 use tiledb::array::{CellOrder, TileOrder};
 use tiledb::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
 use tiledb::query::read::output::{NonVarSized, VarDataIterator, VarSized};
-use tiledb::query::read::{FnMutAdapter, ReadStepOutput};
-use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
+use tiledb::query::read::{FnMutAdapter, ReadStepOutput, ScratchStrategy};
+use tiledb::query::{
+    Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder,
+};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
@@ -314,10 +316,16 @@ fn read_array_callback() -> TileDBResult<()> {
     });
     let mut qq = query_builder_start(&tdb)?
         .register_callback4::<FnMutAdapter<(i32, i32, i32, String), _>>(
-            ("rows", &rows_output),
-            ("columns", &cols_output),
-            (INT32_ATTRIBUTE_NAME, &int32_output),
-            (CHAR_ATTRIBUTE_NAME, &char_output),
+            ("rows", ScratchStrategy::RawBuffers(&rows_output)),
+            ("columns", ScratchStrategy::RawBuffers(&cols_output)),
+            (
+                INT32_ATTRIBUTE_NAME,
+                ScratchStrategy::RawBuffers(&int32_output),
+            ),
+            (
+                CHAR_ATTRIBUTE_NAME,
+                ScratchStrategy::RawBuffers(&char_output),
+            ),
             FnMutAdapter::new(callback),
         )?
         .build();
