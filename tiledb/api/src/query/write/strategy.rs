@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::rc::Rc;
 
 use paste::paste;
+use proptest::bits::{BitSetLike, VarBitSet};
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
@@ -186,6 +187,19 @@ impl FieldData {
     pub fn len(&self) -> usize {
         typed_field_data_go!(self, _DT, v, v.len())
     }
+
+    pub fn filter(&self, set: &VarBitSet) -> FieldData {
+        typed_field_data_go!(self, _DT, ref values, {
+            FieldData::from(
+                values
+                    .iter()
+                    .enumerate()
+                    .filter(|&(i, _)| set.test(i))
+                    .map(|(_, e)| e.clone())
+                    .collect::<Vec<_>>(),
+            )
+        })
+    }
 }
 
 pub struct RawReadQueryResult(pub Vec<FieldData>);
@@ -271,14 +285,17 @@ impl WriteQueryData {
     }
 }
 
+/// Mask for whether a field should be included in a write query.
+// As of this writing, core does not support default values being filled in,
+// so this construct is not terribly useful. But someday that may change
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum WriteFieldMask {
     /// This field must appear in the write set
     Include,
     /// This field appears in the write set but simplification may change that
-    TentativelyInclude,
+    _TentativelyInclude,
     /// This field may appear in the write set again after complication
-    TentativelyExclude,
+    _TentativelyExclude,
     /// This field may not appear in the write set again
     Exclude,
 }
@@ -287,7 +304,7 @@ impl WriteFieldMask {
     pub fn is_included(&self) -> bool {
         matches!(
             self,
-            WriteFieldMask::Include | WriteFieldMask::TentativelyInclude
+            WriteFieldMask::Include | WriteFieldMask::_TentativelyInclude
         )
     }
 }
@@ -296,6 +313,7 @@ struct WriteQueryDataValueTree {
     schema: Rc<SchemaData>,
     field_mask: Vec<WriteFieldMask>,
     field_data: Vec<Option<FieldData>>,
+    record_mask: VarBitSet,
 }
 
 impl ValueTree for WriteQueryDataValueTree {
@@ -309,7 +327,13 @@ impl ValueTree for WriteQueryDataValueTree {
             .filter(|(_, f)| f.is_included())
             .map(|(i, _)| {
                 let f = self.schema.field(i);
-                (f.name.clone(), self.field_data[i].clone().unwrap())
+                (
+                    f.name.clone(),
+                    self.field_data[i]
+                        .as_ref()
+                        .unwrap()
+                        .filter(&self.record_mask),
+                )
             })
             .collect::<Vec<(String, FieldData)>>();
 
@@ -371,17 +395,8 @@ impl Strategy for WriteQueryDataStrategy {
             };
 
             /* choose a random set of attributes to initially manifest */
-            let attributes_mask: Vec<WriteFieldMask> =
-                proptest::collection::vec(
-                    prop_oneof![
-                        Just(WriteFieldMask::TentativelyInclude),
-                        Just(WriteFieldMask::Exclude)
-                    ],
-                    nattributes..=nattributes,
-                )
-                .prop_shuffle()
-                .new_tree(runner)?
-                .current();
+            let attributes_mask =
+                std::iter::repeat(WriteFieldMask::Include).take(nattributes);
 
             dimensions_mask
                 .into_iter()
@@ -445,6 +460,7 @@ impl Strategy for WriteQueryDataStrategy {
             schema: self.schema.clone(),
             field_mask,
             field_data,
+            record_mask: VarBitSet::saturated(nrecords),
         })
     }
 }
