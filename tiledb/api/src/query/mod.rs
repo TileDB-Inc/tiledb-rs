@@ -1,14 +1,14 @@
-pub mod conditions;
-pub mod subarray;
-
 use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
+use crate::range::Range;
 use crate::{array::RawArray, Array, Result as TileDBResult};
 
 pub mod buffer;
+pub mod conditions;
 pub mod read;
+pub mod subarray;
 pub mod write;
 
 pub use self::conditions::{QueryCondition, QueryConditionExpr};
@@ -16,7 +16,9 @@ pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };
 pub use self::subarray::{Builder as SubarrayBuilder, Subarray};
-pub use self::write::WriteBuilder;
+pub use self::write::{WriteBuilder, WriteQuery};
+
+use self::subarray::RawSubarray;
 
 pub type QueryType = crate::array::Mode;
 pub type QueryLayout = crate::array::CellOrder;
@@ -46,6 +48,23 @@ pub trait Query<'ctx> {
     fn finalize(self) -> TileDBResult<Array<'ctx>>
     where
         Self: Sized;
+
+    fn subarray(&self) -> TileDBResult<Subarray<'ctx>> {
+        let ctx = self.base().context();
+        let c_query = *self.base().raw;
+        let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_subarray_t(ctx, c_query, &mut c_subarray)
+        })?;
+
+        Ok(Subarray::new(ctx, RawSubarray::Owned(c_subarray)))
+    }
+
+    fn ranges(&self) -> TileDBResult<Vec<Vec<Range>>> {
+        let schema = self.base().array.schema()?;
+        let subarray = self.subarray()?;
+        subarray.ranges(&schema)
+    }
 }
 
 #[derive(ContextBound)]

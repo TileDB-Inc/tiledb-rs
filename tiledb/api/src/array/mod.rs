@@ -29,7 +29,7 @@ pub use enumeration::{
 };
 pub use fragment_info::{Builder as FragmentInfoBuilder, FragmentInfo};
 pub use schema::{
-    ArrayType, Builder as SchemaBuilder, CellValNum, Schema, SchemaData,
+    ArrayType, Builder as SchemaBuilder, CellValNum, Field, Schema, SchemaData,
 };
 
 #[derive(Clone, Debug, PartialEq)]

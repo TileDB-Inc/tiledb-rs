@@ -70,7 +70,7 @@ fn read_array(ctx: &Context, qc: Option<&QC>) -> TileDBResult<()> {
         .register_constructor::<_, Vec<i32>>("c", Default::default())?
         .register_constructor::<_, Vec<f32>>("d", Default::default())?
         .start_subarray()?
-        .dimension_range_typed::<i32, _>("index", &[0, NUM_ELEMS - 1])?
+        .add_range("index", &[0i32, NUM_ELEMS - 1])?
         .finish_subarray()?;
 
     query = if let Some(qc) = qc {
@@ -185,7 +185,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
         .data_typed("c", &c_input)?
         .data_typed("d", &d_input)?
         .start_subarray()?
-        .dimension_range_typed::<i32, _>("index", &[0, NUM_ELEMS - 1])?
+        .add_range("index", &[0i32, NUM_ELEMS - 1])?
         .finish_subarray()?
         .build();
 

@@ -257,4 +257,162 @@ extern "C" {
         type_: *mut tiledb_object_t,
     ) -> capi_return_t;
 
+    // Setting ranges directly on the query instance is deprecated. All of
+    // these calls are replaced by the equivalent APIs on subarray instances.
+
+    pub fn tiledb_query_add_range(
+        ctx: *mut tiledb_ctx_t,
+        query: *mut tiledb_query_t,
+        dim_idx: u32,
+        start: *const ::std::os::raw::c_void,
+        end: *const ::std::os::raw::c_void,
+        stride: *const ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_query_add_range_by_name(
+        ctx: *mut tiledb_ctx_t,
+        query: *mut tiledb_query_t,
+        dim_name: *const ::std::os::raw::c_char,
+        start: *const ::std::os::raw::c_void,
+        end: *const ::std::os::raw::c_void,
+        stride: *const ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_query_add_range_var(
+        ctx: *mut tiledb_ctx_t,
+        query: *mut tiledb_query_t,
+        dim_idx: u32,
+        start: *const ::std::os::raw::c_void,
+        start_size: u64,
+        end: *const ::std::os::raw::c_void,
+        end_size: u64,
+    ) -> i32;
+
+    pub fn tiledb_query_add_range_var_by_name(
+        ctx: *mut tiledb_ctx_t,
+        query: *mut tiledb_query_t,
+        dim_name: *const ::std::os::raw::c_char,
+        start: *const ::std::os::raw::c_void,
+        start_size: u64,
+        end: *const ::std::os::raw::c_void,
+        end_size: u64,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range_num(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_idx: u32,
+        range_num: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range_num_from_name(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_num: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_idx: u32,
+        range_idx: u64,
+        start: *mut *const ::std::os::raw::c_void,
+        end: *mut *const ::std::os::raw::c_void,
+        stride: *mut *const ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range_from_name(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_idx: u64,
+        start: *mut *const ::std::os::raw::c_void,
+        end: *mut *const ::std::os::raw::c_void,
+        stride: *mut *const ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range_var_size(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_idx: u32,
+        range_idx: u64,
+        start_size: *mut u64,
+        end_size: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range_var_size_from_name(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_idx: u64,
+        start_size: *mut u64,
+        end_size: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range_var(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_idx: u32,
+        range_idx: u64,
+        start: *mut ::std::os::raw::c_void,
+        end: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_query_get_range_var_from_name(
+        ctx: *mut tiledb_ctx_t,
+        query: *const tiledb_query_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_idx: u64,
+        start: *mut ::std::os::raw::c_void,
+        end: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_query_add_point_ranges(
+        ctx: *mut tiledb_ctx_t,
+        query: *mut tiledb_query_t,
+        dim_idx: u32,
+        start: *const ::std::os::raw::c_void,
+        count: u64,
+    ) -> i32;
+
+    // The Subarray get range by name APIs are not used becuse we return all
+    // ranges for all dimensions in a single call. And doing that means we
+    // only need the index variants of these APIs.
+
+    pub fn tiledb_subarray_get_range_num_from_name(
+        ctx: *mut tiledb_ctx_t,
+        subarray: *const tiledb_subarray_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_num: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_subarray_get_range_from_name(
+        ctx: *mut tiledb_ctx_t,
+        subarray: *const tiledb_subarray_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_idx: u64,
+        start: *mut *const ::std::os::raw::c_void,
+        end: *mut *const ::std::os::raw::c_void,
+        stride: *mut *const ::std::os::raw::c_void,
+    ) -> i32;
+
+    pub fn tiledb_subarray_get_range_var_size_from_name(
+        ctx: *mut tiledb_ctx_t,
+        subarray: *const tiledb_subarray_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_idx: u64,
+        start_size: *mut u64,
+        end_size: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_subarray_get_range_var_from_name(
+        ctx: *mut tiledb_ctx_t,
+        subarray: *const tiledb_subarray_t,
+        dim_name: *const ::std::os::raw::c_char,
+        range_idx: u64,
+        start: *mut ::std::os::raw::c_void,
+        end: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
 }

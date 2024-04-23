@@ -9,7 +9,7 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::Datatype;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::fn_typed;
-use crate::non_empty_domain::{
+use crate::range::{
     MinimumBoundingRectangle, NonEmptyDomain, Range, TypedRange,
 };
 use crate::string::{RawTDBString, TDBString};
