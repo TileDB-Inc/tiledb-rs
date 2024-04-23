@@ -405,7 +405,7 @@ impl WriteQueryData {
                                     .clone_from_slice(theirs.as_slice());
                             }
                         },
-                        { unreachable!() }
+                        unreachable!()
                     );
                 }
             }
@@ -437,39 +437,6 @@ impl WriteFieldMask {
     }
 }
 
-/*
-struct RangeSet {
-    disjoint_ranges: Vec<Range<usize>>
-}
-
-impl RangeSet {
-    pub fn new() -> Self {
-        RangeSet {
-            disjoint_ranges: vec![]
-        }
-    }
-
-    pub fn iter<'a>(&'a self) -> std::vec::Iter<&'a Range<usize>> {
-        self.disjoint_ranges.iter()
-    }
-
-    pub fn insert(&mut self, range: Range<usize>) {
-        let mut i = 0;
-        let mut
-        while i < self.disjoint_ranges.len() {
-            if range.end < self.disjoint_ranges[i].start {
-                i += 1
-            } else if self.disjoint_ranges[i].end < range.start {
-                self.disjoint_ranges.insert(i, range)
-                break
-            } else {
-
-            }
-        }
-    }
-}
-*/
-
 /// Tracks the last step taken for the write shrinking.
 enum ShrinkSearchStep {
     /// Remove a range of records
@@ -486,8 +453,9 @@ const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
 /// in the shortest number of iterations.
 /// That would be ideal but really finding any input that's small enough
 /// to be human readable sounds good enough. We divide the record space
-/// into 8 chunks and identify which of those chunks are necessary for the
-/// failure. Recur until all of the chunks are necessary for failure, or there
+/// into WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES chunks and identify which
+/// of those chunks are necessary for the failure.
+/// Recur until all of the chunks are necessary for failure, or there
 /// is only one record.
 ///
 /// TODO: for var sized attributes, follow up by shrinking the values.
@@ -530,7 +498,7 @@ impl WriteQueryDataValueTree {
     fn explore_step(&mut self, failed: bool) -> bool {
         match self.search {
             None => {
-                if failed {
+                if failed && self.nrecords > 0 {
                     /* failed on the whole input, begin the search */
                     self.search = Some(ShrinkSearchStep::Explore(0));
                     true
@@ -610,7 +578,8 @@ impl ValueTree for WriteQueryDataValueTree {
                     self.records_included.len(),
                     WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES,
                 );
-                assert!(nchunks > 0, "");
+                assert!(nchunks > 0, "Shrinking cannot reduce to empty input");
+
                 let approx_chunk_len = self.records_included.len() / nchunks;
                 assert!(approx_chunk_len > 0);
 
@@ -705,7 +674,7 @@ impl Strategy for WriteQueryDataStrategy {
             .new_tree(runner)?
             .current();
 
-        /* generate a random set of fields to query */
+        /* generate an initial set of fields to write */
         let field_mask = {
             let ndimensions = self.schema.domain.dimension.len();
             let nattributes = self.schema.attributes.len();
@@ -721,7 +690,7 @@ impl Strategy for WriteQueryDataStrategy {
                 }
             };
 
-            /* choose a random set of attributes to initially manifest */
+            /* as of this writing, write queries must write to all attributes */
             let attributes_mask =
                 std::iter::repeat(WriteFieldMask::Include).take(nattributes);
 
