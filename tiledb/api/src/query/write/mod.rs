@@ -73,12 +73,20 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
         QueryBuffers<'data, <T as DataProvider>::Unit>:
             Into<TypedQueryBuffers<'data>>,
     {
-        let field = field.as_ref();
-        let input = data.as_tiledb_input();
+        let field_name = field.as_ref().to_string();
+
+        let input = {
+            let schema = self.base().array().schema()?;
+            let schema_field = schema.field(field_name.clone())?;
+            data.as_tiledb_input(
+                schema_field.cell_val_num()?,
+                schema_field.nullability()?,
+            )
+        };
 
         let c_context = self.context().capi();
         let c_query = **self.base().cquery();
-        let c_name = cstring!(field);
+        let c_name = cstring!(field_name.clone());
 
         let mut data_size = Box::pin(input.data.size() as u64);
 
@@ -144,7 +152,7 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             _input: input.into(),
         };
 
-        self.inputs.insert(String::from(field), raw_write_input);
+        self.inputs.insert(field_name, raw_write_input);
 
         Ok(self)
     }

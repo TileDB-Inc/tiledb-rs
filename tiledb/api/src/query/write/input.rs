@@ -1,9 +1,14 @@
+use crate::array::CellValNum;
 use crate::convert::CAPISameRepr;
 use crate::query::buffer::{Buffer, QueryBuffers, QueryBuffersMut};
 
 pub trait DataProvider {
     type Unit: CAPISameRepr;
-    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit>;
+    fn as_tiledb_input(
+        &self,
+        cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit>;
 }
 
 impl<'data, C> DataProvider for QueryBuffers<'data, C>
@@ -12,7 +17,11 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(&self) -> QueryBuffers<C> {
+    fn as_tiledb_input(
+        &self,
+        _cell_val_num: CellValNum,
+        _is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice =
@@ -35,7 +44,11 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(&self) -> QueryBuffers<C> {
+    fn as_tiledb_input(
+        &self,
+        _cell_val_num: CellValNum,
+        _is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice =
@@ -58,8 +71,12 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
-        self.as_slice().as_tiledb_input()
+    fn as_tiledb_input(
+        &self,
+        cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit> {
+        self.as_slice().as_tiledb_input(cell_val_num, is_nullable)
     }
 }
 
@@ -69,11 +86,21 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
+    fn as_tiledb_input(
+        &self,
+        _cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit> {
+        let validity = if is_nullable {
+            Some(Buffer::Owned(vec![1u8; self.len()].into_boxed_slice()))
+        } else {
+            None
+        };
+
         QueryBuffers {
             data: Buffer::Borrowed(self.as_ref()),
             cell_offsets: None,
-            validity: None,
+            validity,
         }
     }
 }
@@ -84,7 +111,11 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
+    fn as_tiledb_input(
+        &self,
+        _cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit> {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -101,10 +132,16 @@ where
             data.extend(s);
         });
 
+        let validity = if is_nullable {
+            Some(Buffer::Owned(vec![1u8; self.len()].into_boxed_slice()))
+        } else {
+            None
+        };
+
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
             cell_offsets: Some(Buffer::Owned(offsets)),
-            validity: None,
+            validity,
         }
     }
 }
@@ -112,7 +149,11 @@ where
 impl DataProvider for Vec<&str> {
     type Unit = u8;
 
-    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
+    fn as_tiledb_input(
+        &self,
+        _cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit> {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -121,18 +162,23 @@ impl DataProvider for Vec<&str> {
                 offset_accumulator += s.len();
                 my_offset as u64
             })
-            .collect::<Vec<u64>>()
-            .into_boxed_slice();
+            .collect::<Vec<u64>>();
 
         let mut data = Vec::with_capacity(offset_accumulator);
         self.iter().for_each(|s| {
             data.extend(s.as_bytes());
         });
 
+        let validity = if is_nullable {
+            Some(Buffer::Owned(vec![1u8; offsets.len()].into_boxed_slice()))
+        } else {
+            None
+        };
+
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_offsets: Some(Buffer::Owned(offsets)),
-            validity: None,
+            cell_offsets: Some(Buffer::Owned(offsets.into_boxed_slice())),
+            validity,
         }
     }
 }
@@ -140,7 +186,11 @@ impl DataProvider for Vec<&str> {
 impl DataProvider for Vec<String> {
     type Unit = u8;
 
-    fn as_tiledb_input(&self) -> QueryBuffers<Self::Unit> {
+    fn as_tiledb_input(
+        &self,
+        _cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> QueryBuffers<Self::Unit> {
         let mut offset_accumulator = 0;
         let offsets = self
             .iter()
@@ -149,18 +199,23 @@ impl DataProvider for Vec<String> {
                 offset_accumulator += s.len();
                 my_offset as u64
             })
-            .collect::<Vec<u64>>()
-            .into_boxed_slice();
+            .collect::<Vec<u64>>();
 
         let mut data = Vec::with_capacity(offset_accumulator);
         self.iter().for_each(|s| {
             data.extend(s.as_bytes());
         });
 
+        let validity = if is_nullable {
+            Some(Buffer::Owned(vec![1u8; offsets.len()].into_boxed_slice()))
+        } else {
+            None
+        };
+
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_offsets: Some(Buffer::Owned(offsets)),
-            validity: None,
+            cell_offsets: Some(Buffer::Owned(offsets.into_boxed_slice())),
+            validity,
         }
     }
 }
@@ -177,7 +232,7 @@ mod tests {
     proptest! {
         #[test]
         fn input_provider_u64(u64vec in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
-            let input = u64vec.as_tiledb_input();
+            let input = u64vec.as_tiledb_input(CellValNum::try_from(1).unwrap(), false);
             let (u64in, offsets) = (input.data.as_ref(), input.cell_offsets);
             assert!(offsets.is_none());
 
@@ -199,7 +254,7 @@ mod tests {
                 (MIN_RECORDS..=MAX_RECORDS).into()
             )
         ) {
-            let input = stringvec.as_tiledb_input();
+            let input = stringvec.as_tiledb_input(CellValNum::Var, false);
             let (bytes, offsets) = (input.data.as_ref(), input.cell_offsets);
             assert!(offsets.is_some());
             let mut offsets = offsets.unwrap().to_vec();
