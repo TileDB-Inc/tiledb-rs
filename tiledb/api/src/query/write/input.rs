@@ -24,8 +24,7 @@ where
     ) -> QueryBuffers<Self::Unit> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
-        let raw_slice =
-            unsafe { std::slice::from_raw_parts(ptr as *const C, byte_len) };
+        let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
         QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
@@ -51,8 +50,7 @@ where
     ) -> QueryBuffers<Self::Unit> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
-        let raw_slice =
-            unsafe { std::slice::from_raw_parts(ptr as *const C, byte_len) };
+        let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
         QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
@@ -98,7 +96,7 @@ where
         };
 
         QueryBuffers {
-            data: Buffer::Borrowed(self.as_ref()),
+            data: Buffer::Borrowed(self),
             cell_offsets: None,
             validity,
         }

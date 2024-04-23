@@ -107,16 +107,12 @@ macro_rules! managed_output_location_go {
     };
 }
 
+#[derive(Default)]
 pub enum ScratchStrategy<'data, C> {
+    #[default]
     AttributeDefault,
     RawBuffers(&'data RefCell<QueryBuffersMut<'data, C>>),
     CustomAllocator(Box<dyn ScratchAllocator<C> + 'data>),
-}
-
-impl<'data, C> Default for ScratchStrategy<'data, C> {
-    fn default() -> Self {
-        ScratchStrategy::AttributeDefault
-    }
 }
 
 impl<'data, C> From<&'data RefCell<QueryBuffersMut<'data, C>>>

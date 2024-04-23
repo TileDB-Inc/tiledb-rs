@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -276,6 +277,10 @@ macro_rules! typed_field_data_go {
 }
 
 impl FieldData {
+    pub fn is_empty(&self) -> bool {
+        typed_field_data_go!(self, _DT, v, v.is_empty())
+    }
+
     pub fn len(&self) -> usize {
         typed_field_data_go!(self, _DT, v, v.len())
     }
@@ -284,10 +289,11 @@ impl FieldData {
         typed_field_data_go!(self, _DT, ref values, {
             FieldData::from(
                 values
-                    .iter()
+                    .clone()
+                    .into_iter()
                     .enumerate()
                     .filter(|&(i, _)| set.test(i))
-                    .map(|(_, e)| e.clone())
+                    .map(|(_, e)| e)
                     .collect::<Vec<_>>(),
             )
         })
@@ -355,8 +361,7 @@ impl WriteQueryData {
     where
         B: ReadQueryBuilder<'ctx, 'data>,
     {
-        let field_order =
-            self.fields.keys().map(|s| s.clone()).collect::<Vec<_>>();
+        let field_order = self.fields.keys().cloned().collect::<Vec<_>>();
         let handles = {
             let schema = b.base().array().schema().unwrap();
 
@@ -504,8 +509,7 @@ impl WriteQueryDataValueTree {
     ) -> Self {
         let nrecords = field_data
             .values()
-            .filter(|f| f.is_some())
-            .map(|o| o.as_ref().unwrap())
+            .filter_map(|f| f.as_ref())
             .take(1)
             .next()
             .unwrap()
@@ -543,41 +547,44 @@ impl WriteQueryDataValueTree {
 
                 self.explore_results[c] = Some(failed);
 
-                if c + 1 < nchunks {
-                    self.search = Some(ShrinkSearchStep::Explore(c + 1));
-                    true
-                } else if c + 1 == nchunks {
-                    /* finished exploring at this level, either recur or finish */
-                    let approx_chunk_len =
-                        self.records_included.len() / nchunks;
-                    let mut new_records_included = vec![];
-                    for i in 0..nchunks {
-                        let chunk_min = i * approx_chunk_len;
-                        let chunk_max = if i + 1 == nchunks {
-                            self.records_included.len()
-                        } else {
-                            (i + 1) * approx_chunk_len
-                        };
+                match (c + 1).cmp(&nchunks) {
+                    Ordering::Less => {
+                        self.search = Some(ShrinkSearchStep::Explore(c + 1));
+                        true
+                    }
+                    Ordering::Equal => {
+                        /* finished exploring at this level, either recur or finish */
+                        let approx_chunk_len =
+                            self.records_included.len() / nchunks;
+                        let mut new_records_included = vec![];
+                        for i in 0..nchunks {
+                            let chunk_min = i * approx_chunk_len;
+                            let chunk_max = if i + 1 == nchunks {
+                                self.records_included.len()
+                            } else {
+                                (i + 1) * approx_chunk_len
+                            };
 
-                        if !self.explore_results[i].take().unwrap() {
-                            /* the test passed when chunk `i` was not included; keep it */
-                            new_records_included.extend_from_slice(
-                                &self.records_included[chunk_min..chunk_max],
-                            );
+                            if !self.explore_results[i].take().unwrap() {
+                                /* the test passed when chunk `i` was not included; keep it */
+                                new_records_included.extend_from_slice(
+                                    &self.records_included
+                                        [chunk_min..chunk_max],
+                                );
+                            }
                         }
-                    }
 
-                    if new_records_included == self.records_included {
-                        /* everything was needed to pass */
-                        self.search = Some(ShrinkSearchStep::Done);
-                    } else {
-                        self.records_included = new_records_included;
-                        self.search = Some(ShrinkSearchStep::Recur);
+                        if new_records_included == self.records_included {
+                            /* everything was needed to pass */
+                            self.search = Some(ShrinkSearchStep::Done);
+                        } else {
+                            self.records_included = new_records_included;
+                            self.search = Some(ShrinkSearchStep::Recur);
+                        }
+                        /* run another round on the updated input */
+                        true
                     }
-                    /* run another round on the updated input */
-                    true
-                } else {
-                    unreachable!()
+                    Ordering::Greater => unreachable!(),
                 }
             }
             Some(ShrinkSearchStep::Recur) => {
@@ -720,7 +727,7 @@ impl Strategy for WriteQueryDataStrategy {
 
             dimensions_mask
                 .into_iter()
-                .chain(attributes_mask.into_iter())
+                .chain(attributes_mask)
                 .collect::<Vec<_>>()
         };
 
@@ -860,12 +867,12 @@ mod tests {
             + tempdir.path().join("array").to_str().unwrap();
 
         let schema_in = schema_spec
-            .create(&ctx)
+            .create(ctx)
             .expect("Error constructing arbitrary schema");
-        Array::create(&ctx, &uri, schema_in).expect("Error creating array");
+        Array::create(ctx, &uri, schema_in).expect("Error creating array");
 
         let mut array =
-            Array::open(&ctx, &uri, Mode::Write).expect("Error opening array");
+            Array::open(ctx, &uri, Mode::Write).expect("Error opening array");
 
         let mut accumulated_write: Option<WriteQueryData> = None;
 
