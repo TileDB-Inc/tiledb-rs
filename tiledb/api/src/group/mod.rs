@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
 use crate::context::{ObjectType, ContextBound};
+use crate::key::LookupKey;
 use crate::{Context, Datatype};
 
 extern crate tiledb_sys as ffi;
@@ -192,7 +193,7 @@ impl<'ctx> Group<'ctx> {
         Ok(())
     }
 
-    pub fn get_member_count(
+    pub fn num_members(
         &self,
     ) -> TileDBResult<u64> {
         let c_context = self.context.capi();
@@ -207,62 +208,43 @@ impl<'ctx> Group<'ctx> {
         Ok(c_count)
     }
 
-    pub fn get_member_by_index(
-        &self,
-        index: u64,
-    ) -> TileDBResult<GroupInfo> {
-        let c_context = self.context.capi();
-        let mut tiledb_uri: *mut ffi::tiledb_string_t = out_ptr!();
-        let mut tiledb_name: *mut ffi::tiledb_string_t = out_ptr!();
-        let mut tiledb_type: ffi::tiledb_object_t = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_member_by_index_v2(
-                c_context,
-                Self::capi(self),
-                index,
-                &mut tiledb_uri as *mut *mut ffi::tiledb_string_t,
-                &mut tiledb_type,
-                &mut tiledb_name as *mut *mut ffi::tiledb_string_t,
-            )
-        })?;
-        let uri = TDBString {
-            raw: RawTDBString::Owned(tiledb_uri),
-        }
-        .to_string()?;
-
-        let name = TDBString {
-            raw: RawTDBString::Owned(tiledb_name),
-        }
-        .to_string()?;
-
-        let object_type = ObjectType::try_from(tiledb_type)?;
-        Ok(GroupInfo {
-            uri,
-            group_type: object_type,
-            name,
-        })
-    }
-
-    pub fn get_member_by_name<S>(
-        &self,
-        name: S,
-    ) -> TileDBResult<GroupInfo>
-    where
-        S: AsRef<str>,
-    {
+    pub fn member(&self, key : LookupKey) -> TileDBResult<GroupInfo> {
         let c_context = self.context.capi();
         let mut tiledb_uri: *mut ffi::tiledb_string_t = out_ptr!();
         let mut tiledb_type: ffi::tiledb_object_t = out_ptr!();
-        let c_name = cstring!(name.as_ref());
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_member_by_name_v2(
-                c_context,
-                Self::capi(self),
-                c_name.as_ptr(),
-                &mut tiledb_uri as *mut *mut ffi::tiledb_string_t,
-                &mut tiledb_type,
-            )
-        })?;
+        let name : String = match key {
+            LookupKey::Index(index) => {
+                let mut tiledb_name: *mut ffi::tiledb_string_t = out_ptr!();
+                self.context.capi_return(unsafe {
+                    ffi::tiledb_group_get_member_by_index_v2(
+                        c_context,
+                        Self::capi(self),
+                        index.try_into().unwrap(),
+                        &mut tiledb_uri as *mut *mut ffi::tiledb_string_t,
+                        &mut tiledb_type,
+                        &mut tiledb_name as *mut *mut ffi::tiledb_string_t,
+                    )
+                })?;
+                let name : String = TDBString {
+                    raw: RawTDBString::Owned(tiledb_name),
+                }
+                .to_string()?;
+                Ok(name) as TileDBResult<String>
+            },
+            LookupKey::Name(name) => {
+                let c_name = cstring!(name.as_ref() as &str);
+                self.context.capi_return(unsafe {
+                    ffi::tiledb_group_get_member_by_name_v2(
+                        c_context,
+                        Self::capi(self),
+                        c_name.as_ptr(),
+                        &mut tiledb_uri as *mut *mut ffi::tiledb_string_t,
+                        &mut tiledb_type,
+                    )
+                })?;
+                Ok(name.to_owned())
+            }
+        }?;
 
         let uri = TDBString {
             raw: RawTDBString::Owned(tiledb_uri),
@@ -273,7 +255,7 @@ impl<'ctx> Group<'ctx> {
         Ok(GroupInfo {
             uri,
             group_type: object_type,
-            name: name.as_ref().to_string(),
+            name
         })
     }
 
@@ -341,7 +323,7 @@ impl<'ctx> Group<'ctx> {
         Ok(())
     }
 
-    pub fn get_config(&self) -> TileDBResult<Config> {
+    pub fn config(&self) -> TileDBResult<Config> {
         let c_context = self.context.capi();
         let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
         self.context.capi_return(unsafe {
@@ -395,39 +377,7 @@ impl<'ctx> Group<'ctx> {
         Ok(())
     }
 
-    pub fn get_metadata<S>(
-        &self,
-        name: S,
-    ) -> TileDBResult<Metadata>
-    where
-        S: AsRef<str>,
-    {
-        // TODO: figure out if you need to copy metadata in ::new
-        let c_context = self.context.capi();
-        let c_name = cstring!(name.as_ref());
-        let mut vec_size: u32 = out_ptr!();
-        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
-        let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_metadata(
-                c_context,
-                Self::capi(self),
-                c_name.as_ptr(),
-                &mut c_datatype,
-                &mut vec_size,
-                &mut vec_ptr,
-            )
-        })?;
-        let datatype = Datatype::try_from(c_datatype)?;
-        Ok(Metadata::new(
-            String::from(name.as_ref()),
-            datatype,
-            vec_ptr,
-            vec_size,
-        ))
-    }
-
-    pub fn get_metadata_num(
+    pub fn num_metadata(
         &self,
     ) -> TileDBResult<u64> {
         let c_context = self.context.capi();
@@ -438,33 +388,48 @@ impl<'ctx> Group<'ctx> {
         Ok(num)
     }
 
-    pub fn get_metadata_from_index(
-        &self,
-        index: u64,
-    ) -> TileDBResult<Metadata> {
+    pub fn metadata(&self, key : LookupKey) -> TileDBResult<Metadata> {
         let c_context = self.context.capi();
-        let mut key_ptr: *const std::ffi::c_char = out_ptr!();
-        let mut key_len: u32 = out_ptr!();
+        let mut vec_size: u32 = out_ptr!();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
-        let mut vec_size: u32 = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_metadata_from_index(
-                c_context,
-                Self::capi(self),
-                index,
-                &mut key_ptr,
-                &mut key_len,
-                &mut c_datatype,
-                &mut vec_size,
-                &mut vec_ptr,
-            )
-        })?;
 
-        let c_key = unsafe { std::ffi::CStr::from_ptr(key_ptr) };
-        let key = c_key.to_string_lossy().into_owned();
+        let name : String = match key {
+            LookupKey::Index(index) => {
+                let mut key_ptr: *const std::ffi::c_char = out_ptr!();
+                let mut key_len: u32 = out_ptr!();
+                self.context.capi_return(unsafe {
+                    ffi::tiledb_group_get_metadata_from_index(
+                        c_context,
+                        Self::capi(self),
+                        index.try_into().unwrap(),
+                        &mut key_ptr,
+                        &mut key_len,
+                        &mut c_datatype,
+                        &mut vec_size,
+                        &mut vec_ptr,
+                    )
+                })?;
+                let c_key = unsafe { std::ffi::CStr::from_ptr(key_ptr) };
+                Ok(c_key.to_string_lossy().into_owned()) as TileDBResult<String>
+            },
+            LookupKey::Name(name) => {
+                let c_name = cstring!(name.as_ref() as &str);
+                self.context.capi_return(unsafe {
+                    ffi::tiledb_group_get_metadata(
+                        c_context,
+                        Self::capi(self),
+                        c_name.as_ptr(),
+                        &mut c_datatype,
+                        &mut vec_size,
+                        &mut vec_ptr,
+                    )
+                })?;
+                Ok(name.to_owned())
+            }
+        }?;
         let datatype = Datatype::try_from(c_datatype)?;
-        Ok(Metadata::new(key, datatype, vec_ptr, vec_size))
+        Ok(Metadata::new(name, datatype, vec_ptr, vec_size))
     }
 
     pub fn has_metadata_key<S>(
