@@ -279,6 +279,10 @@ macro_rules! typed_read_handle_go {
 }
 
 impl<'data> TypedReadHandle<'data> {
+    pub fn field(&self) -> &String {
+        typed_read_handle_go!(self, _DT, handle, &handle.field)
+    }
+
     pub fn attach_query(
         &mut self,
         context: &Context,

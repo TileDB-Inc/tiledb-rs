@@ -616,7 +616,12 @@ where
                     .collect::<Vec<TypedRawReadOutput>>();
 
                 let ir = callback.intermediate_result(&args).map_err(|e| {
-                    let fields = vec![]; /* TODO */
+                    let fields = self
+                        .base
+                        .raw_read_output
+                        .iter()
+                        .map(|rh| rh.field().clone())
+                        .collect::<Vec<String>>();
                     crate::error::Error::QueryCallback(fields, anyhow!(e))
                 })?;
                 Ok(ReadStepOutput::Intermediate((ir, base_result)))
@@ -647,7 +652,12 @@ where
                     .collect::<Vec<TypedRawReadOutput>>();
 
                 let ir = callback_final.final_result(&args).map_err(|e| {
-                    let fields = vec![]; /* TODO */
+                    let fields = self
+                        .base
+                        .raw_read_output
+                        .iter()
+                        .map(|rh| rh.field().clone())
+                        .collect::<Vec<String>>();
                     crate::error::Error::QueryCallback(fields, anyhow!(e))
                 })?;
                 Ok(ReadStepOutput::Final((ir, base_result)))
