@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -22,6 +24,11 @@ trait WriteFieldInput<C>: DataProvider<Unit = C> + Debug {}
 
 impl<T, C> WriteFieldInput<C> for T where T: DataProvider<Unit = C> + Debug {}
 
+/// Represents the write query input for a single field.
+/// For each variant, the outer Vec is the collection of records, and the interior is value in the
+/// cell for the record. Fields with cell val num of 1 are flat, and other cell values use the
+/// inner Vec. For fixed-size attributes, the inner Vecs shall all have the same length; for
+/// var-sized attributes that is obviously not required.
 #[derive(Clone, Debug, PartialEq)]
 pub enum FieldData {
     UInt8(Vec<u8>),
@@ -181,6 +188,91 @@ macro_rules! typed_field_data_go {
             }
         }
     };
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {
+        match ($lexpr, $rexpr) {
+            (FieldData::UInt8($lpat), FieldData::UInt8($rpat)) => {
+                type $DT = Vec<u8>;
+                $same_type
+            }
+            (FieldData::UInt16($lpat), FieldData::UInt16($rpat)) => {
+                type $DT = Vec<u16>;
+                $same_type
+            }
+            (FieldData::UInt32($lpat), FieldData::UInt32($rpat)) => {
+                type $DT = Vec<u32>;
+                $same_type
+            }
+            (FieldData::UInt64($lpat), FieldData::UInt64($rpat)) => {
+                type $DT = Vec<u64>;
+                $same_type
+            }
+            (FieldData::Int8($lpat), FieldData::Int8($rpat)) => {
+                type $DT = Vec<i8>;
+                $same_type
+            }
+            (FieldData::Int16($lpat), FieldData::Int16($rpat)) => {
+                type $DT = Vec<i16>;
+                $same_type
+            }
+            (FieldData::Int32($lpat), FieldData::Int32($rpat)) => {
+                type $DT = Vec<i32>;
+                $same_type
+            }
+            (FieldData::Int64($lpat), FieldData::Int64($rpat)) => {
+                type $DT = Vec<i64>;
+                $same_type
+            }
+            (FieldData::Float32($lpat), FieldData::Float32($rpat)) => {
+                type $DT = Vec<f32>;
+                $same_type
+            }
+            (FieldData::Float64($lpat), FieldData::Float64($rpat)) => {
+                type $DT = Vec<f64>;
+                $same_type
+            }
+            (FieldData::VecUInt8($lpat), FieldData::VecUInt8($rpat)) => {
+                type $DT = Vec<Vec<u8>>;
+                $same_type
+            }
+            (FieldData::VecUInt16($lpat), FieldData::VecUInt16($rpat)) => {
+                type $DT = Vec<Vec<u16>>;
+                $same_type
+            }
+            (FieldData::VecUInt32($lpat), FieldData::VecUInt32($rpat)) => {
+                type $DT = Vec<Vec<u32>>;
+                $same_type
+            }
+            (FieldData::VecUInt64($lpat), FieldData::VecUInt64($rpat)) => {
+                type $DT = Vec<Vec<u64>>;
+                $same_type
+            }
+            (FieldData::VecInt8($lpat), FieldData::VecInt8($rpat)) => {
+                type $DT = Vec<Vec<i8>>;
+                $same_type
+            }
+            (FieldData::VecInt16($lpat), FieldData::VecInt16($rpat)) => {
+                type $DT = Vec<Vec<i16>>;
+                $same_type
+            }
+            (FieldData::VecInt32($lpat), FieldData::VecInt32($rpat)) => {
+                type $DT = Vec<Vec<i32>>;
+                $same_type
+            }
+            (FieldData::VecInt64($lpat), FieldData::VecInt64($rpat)) => {
+                type $DT = Vec<Vec<i64>>;
+                $same_type
+            }
+            (FieldData::VecFloat32($lpat), FieldData::VecFloat32($rpat)) => {
+                type $DT = Vec<Vec<f32>>;
+                $same_type
+            }
+            (FieldData::VecFloat64($lpat), FieldData::VecFloat64($rpat)) => {
+                type $DT = Vec<Vec<f64>>;
+                $same_type
+            }
+            _ => $else,
+        }
+    };
 }
 
 impl FieldData {
@@ -202,9 +294,11 @@ impl FieldData {
     }
 }
 
-pub struct RawReadQueryResult(pub Vec<FieldData>);
+pub struct RawReadQueryResult(pub HashMap<String, FieldData>);
 
-pub struct RawResultCallback {}
+pub struct RawResultCallback {
+    field_order: Vec<String>,
+}
 
 impl ReadCallbackVarArg for RawResultCallback {
     type Intermediate = RawReadQueryResult;
@@ -216,27 +310,25 @@ impl ReadCallbackVarArg for RawResultCallback {
         args: &[TypedRawReadOutput],
     ) -> Result<Self::Intermediate, Self::Error> {
         Ok(RawReadQueryResult(
-            args.iter()
-                .map(|a| FieldData::from(a))
-                .collect::<Vec<FieldData>>(),
+            self.field_order
+                .iter()
+                .zip(args.iter())
+                .map(|(f, a)| (f.clone(), FieldData::from(a)))
+                .collect::<HashMap<String, FieldData>>(),
         ))
     }
 
     fn final_result(
-        self,
+        mut self,
         args: &[TypedRawReadOutput],
     ) -> Result<Self::Intermediate, Self::Error> {
-        Ok(RawReadQueryResult(
-            args.iter()
-                .map(|a| FieldData::from(a))
-                .collect::<Vec<FieldData>>(),
-        ))
+        self.intermediate_result(args)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct WriteQueryData {
-    fields: Vec<(String, FieldData)>,
+    fields: HashMap<String, FieldData>,
 }
 
 impl WriteQueryData {
@@ -247,10 +339,10 @@ impl WriteQueryData {
         let mut b = b;
         for f in self.fields.iter() {
             b = typed_field_data_go!(
-                &f.1,
+                f.1,
                 DT,
                 data,
-                b.data_typed::<_, DT>(&f.0, data)
+                b.data_typed::<_, DT>(f.0, data)
             )?;
         }
         Ok(b)
@@ -263,12 +355,14 @@ impl WriteQueryData {
     where
         B: ReadQueryBuilder<'ctx, 'data>,
     {
+        let field_order =
+            self.fields.keys().map(|s| s.clone()).collect::<Vec<_>>();
         let handles = {
             let schema = b.base().array().schema().unwrap();
 
-            self.fields
+            field_order
                 .iter()
-                .map(|(name, _)| {
+                .map(|name| {
                     let field = schema.field(name.clone()).unwrap();
                     fn_typed!(field.datatype().unwrap(), DT, {
                         let managed: ManagedBuffer<DT> = ManagedBuffer::new(
@@ -281,7 +375,36 @@ impl WriteQueryData {
                 .collect::<Vec<TypedReadHandle>>()
         };
 
-        b.register_callback_var(handles, RawResultCallback {})
+        b.register_callback_var(handles, RawResultCallback { field_order })
+    }
+
+    pub fn accumulate(&mut self, next_write: Self) {
+        for (field, data) in next_write.fields.into_iter() {
+            match self.fields.entry(field) {
+                Entry::Vacant(v) => {
+                    v.insert(data);
+                }
+                Entry::Occupied(mut o) => {
+                    let prev_write_data = o.get_mut();
+                    typed_field_data_go!(
+                        prev_write_data,
+                        data,
+                        _DT,
+                        ref mut mine,
+                        theirs,
+                        {
+                            if mine.len() <= theirs.len() {
+                                *mine = theirs;
+                            } else {
+                                mine[0..theirs.len()]
+                                    .clone_from_slice(theirs.as_slice());
+                            }
+                        },
+                        { unreachable!() }
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -309,17 +432,212 @@ impl WriteFieldMask {
     }
 }
 
+/*
+struct RangeSet {
+    disjoint_ranges: Vec<Range<usize>>
+}
+
+impl RangeSet {
+    pub fn new() -> Self {
+        RangeSet {
+            disjoint_ranges: vec![]
+        }
+    }
+
+    pub fn iter<'a>(&'a self) -> std::vec::Iter<&'a Range<usize>> {
+        self.disjoint_ranges.iter()
+    }
+
+    pub fn insert(&mut self, range: Range<usize>) {
+        let mut i = 0;
+        let mut
+        while i < self.disjoint_ranges.len() {
+            if range.end < self.disjoint_ranges[i].start {
+                i += 1
+            } else if self.disjoint_ranges[i].end < range.start {
+                self.disjoint_ranges.insert(i, range)
+                break
+            } else {
+
+            }
+        }
+    }
+}
+*/
+
+/// Tracks the last step taken for the write shrinking.
+enum ShrinkSearchStep {
+    /// Remove a range of records
+    Explore(usize),
+    Recur,
+    Done,
+}
+
+const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
+
+/// Value tree to shrink a write query input.
+/// For a failing test which writes N records, there are 2^N possible
+/// candidate subsets and we want to find the smallest one which fails the test
+/// in the shortest number of iterations.
+/// That would be ideal but really finding any input that's small enough
+/// to be human readable sounds good enough. We divide the record space
+/// into 8 chunks and identify which of those chunks are necessary for the
+/// failure. Recur until all of the chunks are necessary for failure, or there
+/// is only one record.
+///
+/// TODO: for var sized attributes, follow up by shrinking the values.
 struct WriteQueryDataValueTree {
     schema: Rc<SchemaData>,
     field_mask: Vec<WriteFieldMask>,
-    field_data: Vec<Option<FieldData>>,
-    record_mask: VarBitSet,
+    field_data: HashMap<String, Option<FieldData>>,
+    nrecords: usize,
+    records_included: Vec<usize>,
+    explore_results: [Option<bool>; WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES],
+    search: Option<ShrinkSearchStep>,
+}
+
+impl WriteQueryDataValueTree {
+    pub fn new(
+        schema: Rc<SchemaData>,
+        field_mask: Vec<WriteFieldMask>,
+        field_data: HashMap<String, Option<FieldData>>,
+    ) -> Self {
+        let nrecords = field_data
+            .values()
+            .filter(|f| f.is_some())
+            .map(|o| o.as_ref().unwrap())
+            .take(1)
+            .next()
+            .unwrap()
+            .len();
+        let records_included = (0..nrecords).collect::<Vec<usize>>();
+
+        WriteQueryDataValueTree {
+            schema,
+            field_mask,
+            field_data,
+            nrecords,
+            records_included,
+            explore_results: [None; WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES],
+            search: None,
+        }
+    }
+
+    fn explore_step(&mut self, failed: bool) -> bool {
+        match self.search {
+            None => {
+                if failed {
+                    /* failed on the whole input, begin the search */
+                    self.search = Some(ShrinkSearchStep::Explore(0));
+                    true
+                } else {
+                    /* passed on the whole input, nothing to do */
+                    false
+                }
+            }
+            Some(ShrinkSearchStep::Explore(c)) => {
+                let nchunks = std::cmp::min(
+                    self.records_included.len(),
+                    WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES,
+                );
+
+                self.explore_results[c] = Some(failed);
+
+                if c + 1 < nchunks {
+                    self.search = Some(ShrinkSearchStep::Explore(c + 1));
+                    true
+                } else if c + 1 == nchunks {
+                    /* finished exploring at this level, either recur or finish */
+                    let approx_chunk_len =
+                        self.records_included.len() / nchunks;
+                    let mut new_records_included = vec![];
+                    for i in 0..nchunks {
+                        let chunk_min = i * approx_chunk_len;
+                        let chunk_max = if i + 1 == nchunks {
+                            self.records_included.len()
+                        } else {
+                            (i + 1) * approx_chunk_len
+                        };
+
+                        if !self.explore_results[i].take().unwrap() {
+                            /* the test passed when chunk `i` was not included; keep it */
+                            new_records_included.extend_from_slice(
+                                &self.records_included[chunk_min..chunk_max],
+                            );
+                        }
+                    }
+
+                    if new_records_included == self.records_included {
+                        /* everything was needed to pass */
+                        self.search = Some(ShrinkSearchStep::Done);
+                    } else {
+                        self.records_included = new_records_included;
+                        self.search = Some(ShrinkSearchStep::Recur);
+                    }
+                    /* run another round on the updated input */
+                    true
+                } else {
+                    unreachable!()
+                }
+            }
+            Some(ShrinkSearchStep::Recur) => {
+                /* we must have failed unless the test itself is non-deterministic */
+                assert!(failed);
+
+                self.search = Some(ShrinkSearchStep::Explore(0));
+                true
+            }
+            Some(ShrinkSearchStep::Done) => false,
+        }
+    }
 }
 
 impl ValueTree for WriteQueryDataValueTree {
     type Value = WriteQueryData;
 
     fn current(&self) -> Self::Value {
+        let record_mask = match self.search {
+            None => VarBitSet::saturated(self.nrecords),
+            Some(ShrinkSearchStep::Explore(c)) => {
+                let nchunks = std::cmp::min(
+                    self.records_included.len(),
+                    WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES,
+                );
+                assert!(nchunks > 0, "");
+                let approx_chunk_len = self.records_included.len() / nchunks;
+                assert!(approx_chunk_len > 0);
+
+                let mut record_mask = VarBitSet::new_bitset(self.nrecords);
+
+                if approx_chunk_len == 0 {
+                    unimplemented!()
+                } else {
+                    let exclude_min = c * approx_chunk_len;
+                    let exclude_max = if c + 1 == nchunks {
+                        self.records_included.len()
+                    } else {
+                        (c + 1) * approx_chunk_len
+                    };
+
+                    for r in self.records_included[0..exclude_min]
+                        .iter()
+                        .chain(self.records_included[exclude_max..].iter())
+                    {
+                        record_mask.set(*r)
+                    }
+                }
+
+                record_mask
+            }
+            Some(ShrinkSearchStep::Recur) | Some(ShrinkSearchStep::Done) => {
+                let mut record_mask = VarBitSet::new_bitset(self.nrecords);
+                for r in self.records_included.iter() {
+                    record_mask.set(*r);
+                }
+                record_mask
+            }
+        };
+
         let fields = self
             .field_mask
             .iter()
@@ -329,23 +647,25 @@ impl ValueTree for WriteQueryDataValueTree {
                 let f = self.schema.field(i);
                 (
                     f.name.clone(),
-                    self.field_data[i]
+                    self.field_data[&f.name]
                         .as_ref()
                         .unwrap()
-                        .filter(&self.record_mask),
+                        .filter(&record_mask),
                 )
             })
             .collect::<Vec<(String, FieldData)>>();
 
-        WriteQueryData { fields }
+        WriteQueryData {
+            fields: fields.into_iter().collect(),
+        }
     }
 
     fn simplify(&mut self) -> bool {
-        unimplemented!()
+        self.explore_step(true)
     }
 
     fn complicate(&mut self) -> bool {
-        unimplemented!()
+        self.explore_step(false)
     }
 }
 
@@ -408,8 +728,8 @@ impl Strategy for WriteQueryDataStrategy {
             .iter()
             .enumerate()
             .map(|(i, f)| {
-                if f.is_included() {
-                    let field = self.schema.field(i);
+                let field = self.schema.field(i);
+                let field_data = if f.is_included() {
                     let datatype = field.datatype;
                     let cell_val_num = field
                         .cell_val_num
@@ -452,16 +772,16 @@ impl Strategy for WriteQueryDataStrategy {
                     }
                 } else {
                     None
-                }
+                };
+                (field.name.clone(), field_data)
             })
-            .collect::<Vec<Option<FieldData>>>();
+            .collect::<HashMap<String, Option<FieldData>>>();
 
-        Ok(WriteQueryDataValueTree {
-            schema: self.schema.clone(),
+        Ok(WriteQueryDataValueTree::new(
+            Rc::clone(&self.schema),
             field_mask,
             field_data,
-            record_mask: VarBitSet::saturated(nrecords),
-        })
+        ))
     }
 }
 
@@ -547,6 +867,8 @@ mod tests {
         let mut array =
             Array::open(&ctx, &uri, Mode::Write).expect("Error opening array");
 
+        let mut accumulated_write: Option<WriteQueryData> = None;
+
         for write in write_sequence {
             /* write data */
             {
@@ -561,13 +883,24 @@ mod tests {
                 array = write.finalize().expect("Error finalizing write query");
             }
 
+            /* update accumulated expected array data */
+            if let Some(acc) = accumulated_write.as_mut() {
+                acc.accumulate(write)
+            } else {
+                accumulated_write = Some(write);
+            }
+
+            let accumulated_write = accumulated_write.as_ref().unwrap();
+
             /* then read it back */
             {
-                let mut cursors = std::iter::repeat(0)
-                    .take(write.fields.len())
-                    .collect::<Vec<_>>();
+                let mut cursors = accumulated_write
+                    .fields
+                    .keys()
+                    .map(|key| (key.clone(), 0))
+                    .collect::<HashMap<String, usize>>();
 
-                let mut read = write
+                let mut read = accumulated_write
                     .attach_read(
                         ReadBuilder::new(array)
                             .expect("Error building read query"),
@@ -581,30 +914,30 @@ mod tests {
                         None => unimplemented!(), /* TODO: allocate more */
                         Some((raw, _)) => {
                             let raw = &raw.0;
-                            /* TODO: when attributes have different cell val nums this will
-                             * have to look different */
                             let mut nvalues = None;
-                            for i in 0..raw.len() {
-                                let r = &raw[i];
-                                let w = &write.fields[i].1;
+                            for (key, rdata) in raw.iter() {
+                                let wdata = &accumulated_write.fields[key];
 
                                 let nv = if let Some(nv) = nvalues {
-                                    assert_eq!(nv, r.len());
+                                    assert_eq!(nv, rdata.len());
                                     nv
                                 } else {
-                                    nvalues = Some(r.len());
-                                    r.len()
+                                    nvalues = Some(rdata.len());
+                                    rdata.len()
                                 };
 
-                                let w = typed_field_data_go!(w, _DT, w, {
-                                    FieldData::from(
-                                        w[cursors[i]..cursors[i] + nv].to_vec(),
-                                    )
-                                });
+                                let wdata =
+                                    typed_field_data_go!(wdata, _DT, wdata, {
+                                        FieldData::from(
+                                            wdata[cursors[key]
+                                                ..cursors[key] + nv]
+                                                .to_vec(),
+                                        )
+                                    });
 
-                                assert_eq!(w, *r);
+                                assert_eq!(wdata, *rdata);
 
-                                cursors[i] += nv;
+                                *cursors.get_mut(key).unwrap() += nv;
                             }
                         }
                     }
