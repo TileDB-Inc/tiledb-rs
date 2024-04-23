@@ -120,8 +120,8 @@ fn read_array() -> TileDBResult<()> {
             Default::default(),
         )?
         .start_subarray()?
-        .dimension_range_typed::<i32, _>("rows", &[1, 2])?
-        .dimension_range_typed::<i32, _>("columns", &[2, 4])?
+        .add_range("rows", &[1i32, 2])?
+        .add_range("columns", &[2i32, 4])?
         .finish_subarray()?
         .build();
 

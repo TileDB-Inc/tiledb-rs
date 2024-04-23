@@ -211,11 +211,11 @@ fn prop_webp(
         const MAX_EXTENT: usize = 16383;
 
         let e0 = serde_json::value::from_value::<usize>(
-            domain.dimension[0].extent.clone(),
+            domain.dimension[0].extent.as_ref().unwrap().clone(),
         )
         .ok()?;
         let e1 = serde_json::value::from_value::<usize>(
-            domain.dimension[1].extent.clone(),
+            domain.dimension[1].extent.as_ref().unwrap().clone(),
         )
         .ok()?;
 

@@ -1,4 +1,6 @@
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+#[cfg(test)]
+use std::slice::Iter;
 
 use serde::{Deserialize, Serialize};
 use util::option::OptionSubset;
@@ -6,7 +8,7 @@ use util::option::OptionSubset;
 use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[repr(u64)]
 pub enum Datatype {
     /// A 32-bit signed integer
@@ -44,6 +46,9 @@ pub enum Datatype {
     /// A UCS4 string
     StringUcs4,
     /// An arbitrary type
+    // Any is default to cause an error if we forget to set it on either a
+    // DimensionData or AttributeData instance.
+    #[default]
     Any,
     /// DateTime with year resolution
     DateTimeYear,
@@ -381,6 +386,56 @@ impl Datatype {
             || self.is_datetime_type()
             || self.is_time_type()
     }
+
+    #[cfg(test)]
+    pub fn iter() -> Iter<'static, Datatype> {
+        static DATATYPES: [Datatype; 43] = [
+            Datatype::Int32,
+            Datatype::Int64,
+            Datatype::Float32,
+            Datatype::Float64,
+            Datatype::Char,
+            Datatype::Int8,
+            Datatype::UInt8,
+            Datatype::Int16,
+            Datatype::UInt16,
+            Datatype::UInt32,
+            Datatype::UInt64,
+            Datatype::StringAscii,
+            Datatype::StringUtf8,
+            Datatype::StringUtf16,
+            Datatype::StringUtf32,
+            Datatype::StringUcs2,
+            Datatype::StringUcs4,
+            Datatype::DateTimeYear,
+            Datatype::DateTimeMonth,
+            Datatype::DateTimeWeek,
+            Datatype::DateTimeDay,
+            Datatype::DateTimeHour,
+            Datatype::DateTimeMinute,
+            Datatype::DateTimeSecond,
+            Datatype::DateTimeMillisecond,
+            Datatype::DateTimeMicrosecond,
+            Datatype::DateTimeNanosecond,
+            Datatype::DateTimePicosecond,
+            Datatype::DateTimeFemtosecond,
+            Datatype::DateTimeAttosecond,
+            Datatype::TimeHour,
+            Datatype::TimeMinute,
+            Datatype::TimeSecond,
+            Datatype::TimeMillisecond,
+            Datatype::TimeMicrosecond,
+            Datatype::TimeNanosecond,
+            Datatype::TimePicosecond,
+            Datatype::TimeFemtosecond,
+            Datatype::TimeAttosecond,
+            Datatype::Blob,
+            Datatype::Boolean,
+            Datatype::GeometryWkb,
+            Datatype::GeometryWkt,
+        ];
+        DATATYPES.iter()
+    }
 }
 
 impl Debug for Datatype {
@@ -529,40 +584,40 @@ macro_rules! fn_typed {
             Datatype::UInt64 => { type $typename = u64; $then },
             Datatype::Float32 => { type $typename = f32; $then },
             Datatype::Float64 => { type $typename = f64; $then },
-            Datatype::Char => unimplemented!(),
-            Datatype::StringAscii => unimplemented!(),
-            Datatype::StringUtf8 => unimplemented!(),
-            Datatype::StringUtf16 => unimplemented!(),
-            Datatype::StringUtf32 => unimplemented!(),
-            Datatype::StringUcs2 => unimplemented!(),
-            Datatype::StringUcs4 => unimplemented!(),
+            Datatype::Char => { type $typename = i8; $then },
+            Datatype::StringAscii => { type $typename = u8; $then },
+            Datatype::StringUtf8 => { type $typename = u8; $then },
+            Datatype::StringUtf16 => { type $typename = u16; $then },
+            Datatype::StringUtf32 => { type $typename = u32; $then },
+            Datatype::StringUcs2 => { type $typename = u16; $then },
+            Datatype::StringUcs4 => { type $typename = u32; $then },
             Datatype::Any => unimplemented!(),
-            Datatype::DateTimeYear => unimplemented!(),
-            Datatype::DateTimeMonth => unimplemented!(),
-            Datatype::DateTimeWeek => unimplemented!(),
-            Datatype::DateTimeDay => unimplemented!(),
-            Datatype::DateTimeHour => unimplemented!(),
-            Datatype::DateTimeMinute => unimplemented!(),
-            Datatype::DateTimeSecond => unimplemented!(),
-            Datatype::DateTimeMillisecond => unimplemented!(),
-            Datatype::DateTimeMicrosecond => unimplemented!(),
-            Datatype::DateTimeNanosecond => unimplemented!(),
-            Datatype::DateTimePicosecond => unimplemented!(),
-            Datatype::DateTimeFemtosecond => unimplemented!(),
-            Datatype::DateTimeAttosecond => unimplemented!(),
-            Datatype::TimeHour => unimplemented!(),
-            Datatype::TimeMinute => unimplemented!(),
-            Datatype::TimeSecond => unimplemented!(),
-            Datatype::TimeMillisecond => unimplemented!(),
-            Datatype::TimeMicrosecond => unimplemented!(),
-            Datatype::TimeNanosecond => unimplemented!(),
-            Datatype::TimePicosecond => unimplemented!(),
-            Datatype::TimeFemtosecond => unimplemented!(),
-            Datatype::TimeAttosecond => unimplemented!(),
-            Datatype::Blob => unimplemented!(),
-            Datatype::Boolean => unimplemented!(),
-            Datatype::GeometryWkb => unimplemented!(),
-            Datatype::GeometryWkt => unimplemented!(),
+            Datatype::DateTimeYear => { type $typename = i64; $then },
+            Datatype::DateTimeMonth => { type $typename = i64; $then },
+            Datatype::DateTimeWeek => { type $typename = i64; $then },
+            Datatype::DateTimeDay => { type $typename = i64; $then },
+            Datatype::DateTimeHour => { type $typename = i64; $then },
+            Datatype::DateTimeMinute => { type $typename = i64; $then },
+            Datatype::DateTimeSecond => { type $typename = i64; $then },
+            Datatype::DateTimeMillisecond => { type $typename = i64; $then },
+            Datatype::DateTimeMicrosecond => { type $typename = i64; $then },
+            Datatype::DateTimeNanosecond => { type $typename = i64; $then },
+            Datatype::DateTimePicosecond => { type $typename = i64; $then },
+            Datatype::DateTimeFemtosecond => { type $typename = i64; $then },
+            Datatype::DateTimeAttosecond => { type $typename = i64; $then },
+            Datatype::TimeHour => { type $typename = i64; $then },
+            Datatype::TimeMinute => { type $typename = i64; $then },
+            Datatype::TimeSecond => { type $typename = i64; $then },
+            Datatype::TimeMillisecond => { type $typename = i64; $then },
+            Datatype::TimeMicrosecond => { type $typename = i64; $then },
+            Datatype::TimeNanosecond => { type $typename = i64; $then },
+            Datatype::TimePicosecond => { type $typename = i64; $then },
+            Datatype::TimeFemtosecond => { type $typename = i64; $then },
+            Datatype::TimeAttosecond => { type $typename = i64; $then },
+            Datatype::Blob => { type $typename = u8; $then },
+            Datatype::Boolean => { type $typename = u8; $then },
+            Datatype::GeometryWkb => { type $typename = u8; $then },
+            Datatype::GeometryWkt => { type $typename = u8; $then },
         }
     }};
 

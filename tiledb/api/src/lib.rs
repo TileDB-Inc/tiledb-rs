@@ -51,8 +51,9 @@ pub mod filter;
 pub mod group;
 pub mod key;
 pub mod metadata;
-pub mod non_empty_domain;
 pub mod query;
+#[macro_use]
+pub mod range;
 pub mod stats;
 pub mod string;
 pub mod vfs;

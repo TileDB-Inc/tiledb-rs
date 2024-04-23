@@ -10,6 +10,7 @@ use crate::array::{
     dimension::DimensionData, dimension::RawDimension, Dimension,
 };
 use crate::context::{CApiInterface, Context, ContextBound};
+use crate::error::Error;
 use crate::key::LookupKey;
 use crate::{Factory, Result as TileDBResult};
 
@@ -124,6 +125,28 @@ impl<'ctx> Domain<'ctx> {
             RawDimension::Owned(c_dimension),
         ))
     }
+
+    pub fn dimension_index<K: Into<LookupKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<usize> {
+        let name = match key.into() {
+            LookupKey::Index(idx) => return Ok(idx),
+            LookupKey::Name(name) => name,
+        };
+
+        for i in 0..self.ndim()? {
+            let dim = self.dimension(i)?;
+            if dim.name()? == name {
+                return Ok(i);
+            }
+        }
+
+        Err(Error::InvalidArgument(anyhow!(
+            "Dimension '{}' does not exist in this domain.",
+            name
+        )))
+    }
 }
 
 impl<'ctx> Debug for Domain<'ctx> {
@@ -207,7 +230,9 @@ impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
 }
 
 /// Encapsulation of data needed to construct a Domain
-#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
+#[derive(
+    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
+)]
 pub struct DomainData {
     pub dimension: Vec<DimensionData>,
 }

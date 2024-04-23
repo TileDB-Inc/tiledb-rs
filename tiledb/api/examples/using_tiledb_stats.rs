@@ -137,8 +137,8 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
             Default::default(),
         )?
         .start_subarray()?
-        .dimension_range_typed::<i32, _>(0, &[1, 3000])?
-        .dimension_range_typed::<i32, _>(1, &[1, 12000])?
+        .add_range(0, &[1u32, 3000])?
+        .add_range(1, &[1u32, 12000])?
         .finish_subarray()?
         .build();
 

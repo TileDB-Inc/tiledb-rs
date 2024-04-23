@@ -179,7 +179,6 @@ impl<'ctx> Builder<'ctx> {
         let c_datatype = datatype.capi_enum();
 
         let c_name = cstring!(name);
-
         let c_domain: [Conv::CAPIType; 2] =
             [domain[0].to_capi(), domain[1].to_capi()];
         let c_extent: Conv::CAPIType = extent.to_capi();
@@ -195,6 +194,34 @@ impl<'ctx> Builder<'ctx> {
                 &c_domain[0] as *const <Conv>::CAPIType
                     as *const std::ffi::c_void,
                 &c_extent as *const <Conv>::CAPIType as *const std::ffi::c_void,
+                &mut c_dimension,
+            )
+        })?;
+        Ok(Builder {
+            dim: Dimension {
+                context,
+                raw: RawDimension::Owned(c_dimension),
+            },
+        })
+    }
+
+    pub fn new_string(
+        context: &'ctx Context,
+        name: &str,
+        datatype: Datatype,
+    ) -> TileDBResult<Self> {
+        let c_datatype = datatype.capi_enum();
+        let c_name = cstring!(name);
+        let mut c_dimension: *mut ffi::tiledb_dimension_t =
+            std::ptr::null_mut();
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_alloc(
+                ctx,
+                c_name.as_ptr(),
+                c_datatype,
+                std::ptr::null(),
+                std::ptr::null(),
                 &mut c_dimension,
             )
         })?;
@@ -244,12 +271,14 @@ impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
 }
 
 /// Encapsulation of data needed to construct a Dimension
-#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
+#[derive(
+    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
+)]
 pub struct DimensionData {
     pub name: String,
     pub datatype: Datatype,
-    pub domain: [serde_json::value::Value; 2],
-    pub extent: serde_json::value::Value,
+    pub domain: Option<[serde_json::value::Value; 2]>,
+    pub extent: Option<serde_json::value::Value>,
     pub cell_val_num: Option<CellValNum>,
 
     /// Optional filters to apply to the dimension. If None or Some(empty),
@@ -279,8 +308,8 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
         Ok(DimensionData {
             name: dim.name()?,
             datatype,
-            domain,
-            extent,
+            domain: Some(domain),
+            extent: Some(extent),
             cell_val_num: Some(dim.cell_val_num()?),
             filters: {
                 let fl = FilterListData::try_from(&dim.filters()?)?;
@@ -306,36 +335,54 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     type Item = Dimension<'ctx>;
 
     fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
-        let mut b = fn_typed!(self.datatype, DT, {
-            let d0 = serde_json::from_value::<DT>(self.domain[0].clone())
-                .map_err(|e| {
-                    Error::Deserialization(
-                        format!("dimension '{}' lower bound", self.name),
-                        anyhow!(e),
-                    )
-                })?;
-            let d1 = serde_json::from_value::<DT>(self.domain[1].clone())
-                .map_err(|e| {
-                    Error::Deserialization(
-                        format!("dimension '{}' upper bound", self.name),
-                        anyhow!(e),
-                    )
-                })?;
-            let extent = serde_json::from_value::<DT>(self.extent.clone())
-                .map_err(|e| {
-                    Error::Deserialization(
-                        format!("dimension '{}' extent", self.name),
-                        anyhow!(e),
-                    )
-                })?;
-            Builder::new::<DT>(
-                context,
-                &self.name,
-                self.datatype,
-                &[d0, d1],
-                &extent,
-            )
-        })?;
+        let mut b = if self.datatype == Datatype::StringAscii {
+            Builder::new_string(context, &self.name, self.datatype)?
+        } else {
+            if self.domain.is_none() {
+                return Err(Error::InvalidArgument(anyhow!(
+                    "Dimension '{}' is missing its required domain.",
+                    self.name
+                )));
+            }
+            if self.extent.is_none() {
+                return Err(Error::InvalidArgument(anyhow!(
+                    "Dimension '{}' is missing an extent.",
+                    self.name
+                )));
+            }
+            let domain = self.domain.as_ref().unwrap();
+            let extent = self.extent.as_ref().unwrap();
+            fn_typed!(self.datatype, DT, {
+                let d0 = serde_json::from_value::<DT>(domain[0].clone())
+                    .map_err(|e| {
+                        Error::Deserialization(
+                            format!("dimension '{}' lower bound", self.name),
+                            anyhow!(e),
+                        )
+                    })?;
+                let d1 = serde_json::from_value::<DT>(domain[1].clone())
+                    .map_err(|e| {
+                        Error::Deserialization(
+                            format!("dimension '{}' upper bound", self.name),
+                            anyhow!(e),
+                        )
+                    })?;
+                let extent = serde_json::from_value::<DT>(extent.clone())
+                    .map_err(|e| {
+                        Error::Deserialization(
+                            format!("dimension '{}' extent", self.name),
+                            anyhow!(e),
+                        )
+                    })?;
+                Builder::new::<DT>(
+                    context,
+                    &self.name,
+                    self.datatype,
+                    &[d0, d1],
+                    &extent,
+                )
+            })?
+        };
         if let Some(fl) = self.filters.as_ref() {
             b = b.filters(fl.create(context)?)?;
         }
