@@ -5,6 +5,8 @@ pub use logical::*;
 pub use physical::PhysicalType;
 
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+#[cfg(test)]
+use std::slice::Iter;
 
 use serde::{Deserialize, Serialize};
 use util::option::OptionSubset;
@@ -12,7 +14,7 @@ use util::option::OptionSubset;
 use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[repr(u64)]
 pub enum Datatype {
     /// A 32-bit signed integer
@@ -50,6 +52,9 @@ pub enum Datatype {
     /// A UCS4 string
     StringUcs4,
     /// An arbitrary type
+    // Any is default to cause an error if we forget to set it on either a
+    // DimensionData or AttributeData instance.
+    #[default]
     Any,
     /// DateTime with year resolution
     DateTimeYear,
@@ -386,6 +391,56 @@ impl Datatype {
         self.is_integral_type()
             || self.is_datetime_type()
             || self.is_time_type()
+    }
+
+    #[cfg(test)]
+    pub fn iter() -> Iter<'static, Datatype> {
+        static DATATYPES: [Datatype; 43] = [
+            Datatype::Int32,
+            Datatype::Int64,
+            Datatype::Float32,
+            Datatype::Float64,
+            Datatype::Char,
+            Datatype::Int8,
+            Datatype::UInt8,
+            Datatype::Int16,
+            Datatype::UInt16,
+            Datatype::UInt32,
+            Datatype::UInt64,
+            Datatype::StringAscii,
+            Datatype::StringUtf8,
+            Datatype::StringUtf16,
+            Datatype::StringUtf32,
+            Datatype::StringUcs2,
+            Datatype::StringUcs4,
+            Datatype::DateTimeYear,
+            Datatype::DateTimeMonth,
+            Datatype::DateTimeWeek,
+            Datatype::DateTimeDay,
+            Datatype::DateTimeHour,
+            Datatype::DateTimeMinute,
+            Datatype::DateTimeSecond,
+            Datatype::DateTimeMillisecond,
+            Datatype::DateTimeMicrosecond,
+            Datatype::DateTimeNanosecond,
+            Datatype::DateTimePicosecond,
+            Datatype::DateTimeFemtosecond,
+            Datatype::DateTimeAttosecond,
+            Datatype::TimeHour,
+            Datatype::TimeMinute,
+            Datatype::TimeSecond,
+            Datatype::TimeMillisecond,
+            Datatype::TimeMicrosecond,
+            Datatype::TimeNanosecond,
+            Datatype::TimePicosecond,
+            Datatype::TimeFemtosecond,
+            Datatype::TimeAttosecond,
+            Datatype::Blob,
+            Datatype::Boolean,
+            Datatype::GeometryWkb,
+            Datatype::GeometryWkt,
+        ];
+        DATATYPES.iter()
     }
 }
 

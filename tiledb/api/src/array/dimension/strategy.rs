@@ -124,8 +124,8 @@ pub fn prop_dimension_for_datatype(
             .prop_map(move |(name, values, filters)| DimensionData {
                 name,
                 datatype,
-                domain: [json!(values.0[0]), json!(values.0[1])],
-                extent: json!(values.1),
+                domain: Some([json!(values.0[0]), json!(values.0[1])]),
+                extent: Some(json!(values.1)),
                 cell_val_num: None,
                 filters: if filters.is_empty() {
                     None
