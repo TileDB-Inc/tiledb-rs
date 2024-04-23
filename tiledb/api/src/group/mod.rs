@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
-use crate::context::ObjectType;
-use crate::{Context, ContextBound, Datatype};
+use crate::context::{ObjectType, ContextBound};
+use crate::{Context, Datatype};
 
 extern crate tiledb_sys as ffi;
 use crate::string::{RawTDBString, TDBString};
@@ -40,15 +40,11 @@ impl Drop for RawGroup {
     }
 }
 
+#[derive(ContextBound)]
 pub struct Group<'ctx> {
+    #[context]
     context: &'ctx Context,
     raw: RawGroup,
-}
-
-impl<'ctx> ContextBound<'ctx> for Group<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
-    }
 }
 
 impl<'ctx> Group<'ctx> {
@@ -87,16 +83,13 @@ impl<'ctx> Group<'ctx> {
             ffi::tiledb_group_alloc(c_context, c_uri.as_ptr(), &mut group_raw)
         })?;
 
+        let raw_group = RawGroup::new(group_raw);
+
         let query_type_raw = query_type.capi_enum();
         context.capi_return(unsafe {
             ffi::tiledb_group_open(c_context, group_raw, query_type_raw)
-        }).map_err(|e| {
-            unsafe {
-                ffi::tiledb_group_free(&mut group_raw as *mut *mut ffi::tiledb_group_t);
-            };
-            e
         })?;
-        Ok(Self::new(context, RawGroup::new(group_raw)))
+        Ok(Self::new(context, raw_group))
     }
 
     pub fn uri(&self) -> TileDBResult<String> {
@@ -159,9 +152,13 @@ impl<'ctx> Group<'ctx> {
         println!("{}", uri.as_ref());
         let c_context = self.context.capi();
         let c_uri = cstring!(uri.as_ref());
-        let c_ptr = match name {
+        let c_name = match name.as_ref() {   
+            None => None,
+            Some(s) => Some(cstring!(s.as_ref()))
+        };
+        let c_ptr = match c_name.as_ref() {
             None => out_ptr!(),
-            Some(s) => cstring!(s.as_ref()).as_ptr(),
+            Some(s) => s.as_ptr()
         };
         let c_relative: u8 = if relative { 1 } else { 0 };
         self.context.capi_return(unsafe {

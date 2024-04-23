@@ -3,21 +3,18 @@ use tiledb::group::Group;
 use tiledb::vfs::VFS;
 use tiledb::{Datatype, Result as TileDBResult};
 
-/**
- * This program creates a hierarchy as shown below. Specifically, it creates
- * groups `my_group` and `sparse_arrays`, and
- * then some dense/sparse arrays.
- *
- * my_group/
- * ├── dense_arrays
- * │   ├── array_A
- * │   └── array_B
- * └── sparse_arrays
- *     ├── array_C
- *     └── array_D
- *
- * The program then shows how to group these together using the TileDB Group API
- */
+/// This program creates a hierarchy as shown below. Specifically, it creates
+/// groups `my_group` and `sparse_arrays`, and
+/// then some dense/sparse arrays.
+///
+/// my_group/
+/// ├── dense_arrays/array_A
+/// ├── dense_arrays/array_B
+/// └── sparse_arrays
+///     ├── array_C
+///     └── array_D
+///
+/// The program then shows how to group these together using the TileDB Group API.
 
 fn create_array<S>(
     array_uri: S,
@@ -108,8 +105,6 @@ fn create_arrays_groups() -> TileDBResult<()> {
     // Add members to groups
     let mut group = Group::open(&tdb, "my_group", tiledb::query::QueryType::Write)?;
 
-    //print_group()?;
-
     group.add_member(
         "dense_arrays/array_A",
         true,
@@ -144,8 +139,16 @@ fn print_group() -> TileDBResult<()> {
     Ok(())
 }
 
+fn cleanup() -> TileDBResult<()> {
+    let tdb = tiledb::context::Context::new()?;
+    let group = Group::open(&tdb, "my_group", tiledb::query::QueryType::ModifyExclusive)?;
+    group.delete_group("my_group", true)?;
+    Ok(())
+}
+
 fn main() -> TileDBResult<()> {
     create_arrays_groups()?;
     print_group()?;
+    cleanup()?;
     Ok(())
 }
