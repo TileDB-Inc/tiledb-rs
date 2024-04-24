@@ -535,8 +535,7 @@ mod tests {
         let group1_uri = group1_path.to_str().unwrap();
         Group::create(&tdb, group1_uri)?;
 
-        let mut group1_err =
-            Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let mut group1_err = Group::open(&tdb, group1_uri, QueryType::Read)?;
         let res = group1_err.put_metadata(Metadata::new(
             "key".to_owned(),
             Datatype::Int32,
@@ -545,8 +544,7 @@ mod tests {
         assert!(res.is_err());
 
         std::mem::drop(group1_err);
-        let mut group1_write =
-            Group::open(&tdb, group1_uri.to_owned(), QueryType::Write)?;
+        let mut group1_write = Group::open(&tdb, group1_uri, QueryType::Write)?;
         let res1 = group1_write.put_metadata(Metadata::new(
             "key".to_owned(),
             Datatype::Any,
@@ -572,8 +570,7 @@ mod tests {
 
         std::mem::drop(group1_write);
 
-        let group1_read =
-            Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
         let metadata_aaa =
             group1_read.metadata(LookupKey::Name("aaa".to_owned()))?;
         assert_eq!(metadata_aaa.datatype, Datatype::Int32);
@@ -595,23 +592,18 @@ mod tests {
         assert_eq!(has_aaa, Some(Datatype::Int32));
         std::mem::drop(group1_read);
 
-        let mut group1_write =
-            Group::open(&tdb, group1_uri.to_owned(), QueryType::Write)?;
+        let mut group1_write = Group::open(&tdb, group1_uri, QueryType::Write)?;
         group1_write.delete_metadata("aaa")?;
         std::mem::drop(group1_write);
 
-        let group1_read =
-            Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
         let has_aaa = group1_read.has_metadata_key("aaa")?;
         assert_eq!(has_aaa, None);
         std::mem::drop(group1_read);
 
         // Cleanup
-        let group1_write = Group::open(
-            &tdb,
-            group1_uri.to_owned(),
-            QueryType::ModifyExclusive,
-        )?;
+        let group1_write =
+            Group::open(&tdb, group1_uri, QueryType::ModifyExclusive)?;
         group1_write.delete_group(group1_uri, true)?;
 
         tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
@@ -675,8 +667,7 @@ mod tests {
         let group_uri = group_path.to_str().unwrap();
         Group::create(&tdb, group_uri)?;
 
-        let group_read =
-            Group::open(&tdb, group_uri.to_owned(), QueryType::Read)?;
+        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
         let group_uri_copy = group_read.uri()?;
         assert_eq!(
             group_uri_copy,
@@ -693,15 +684,13 @@ mod tests {
         create_array(group_uri.to_owned() + "/bb", ArrayType::Dense)?;
         create_array(group_uri.to_owned() + "/cc", ArrayType::Sparse)?;
 
-        let mut group_write =
-            Group::open(&tdb, group_uri.to_owned(), QueryType::Write)?;
+        let mut group_write = Group::open(&tdb, group_uri, QueryType::Write)?;
         group_write.add_member("aa", true, Some("aa".to_owned()))?;
         group_write.add_member("bb", true, Some("bb".to_owned()))?;
         group_write.add_member("cc", true, Some("cc".to_owned()))?;
         std::mem::drop(group_write);
 
-        let group_read =
-            Group::open(&tdb, group_uri.to_owned(), QueryType::Read)?;
+        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
         let opt_string = group_read.dump(true)?;
         match opt_string {
             Some(s) => println!("{}", s),
@@ -709,21 +698,18 @@ mod tests {
         }
         std::mem::drop(group_read);
 
-        let mut group_write =
-            Group::open(&tdb, group_uri.to_owned(), QueryType::Write)?;
+        let mut group_write = Group::open(&tdb, group_uri, QueryType::Write)?;
         group_write.delete_member("bb")?;
         std::mem::drop(group_write);
 
-        let group_read =
-            Group::open(&tdb, group_uri.to_owned(), QueryType::Read)?;
+        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
         let opt_string = group_read.dump(true)?;
         match opt_string {
             Some(s) => println!("{}", s),
             None => println!("Empty group"),
         }
 
-        let group_read =
-            Group::open(&tdb, group_uri.to_owned(), QueryType::Read)?;
+        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
         let count = group_read.num_members()?;
         assert_eq!(count, 2);
 
