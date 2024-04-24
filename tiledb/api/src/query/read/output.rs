@@ -84,10 +84,6 @@ pub trait ScratchAllocator<C> {
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C>;
 }
 
-pub trait HasScratchSpaceStrategy<C> {
-    type Strategy: ScratchAllocator<C>;
-}
-
 #[derive(Clone, Debug)]
 pub struct NonVarSized {
     pub capacity: usize,
@@ -334,28 +330,6 @@ where
 
         ScratchSpace(new_data, new_offsets, new_validity)
     }
-}
-
-impl<C> HasScratchSpaceStrategy<C> for Vec<C>
-where
-    C: CAPISameRepr,
-{
-    type Strategy = NonVarSized;
-}
-
-impl<C> HasScratchSpaceStrategy<C> for (Vec<C>, Vec<u8>)
-where
-    C: CAPISameRepr,
-{
-    type Strategy = NullableNonVarSized;
-}
-
-impl HasScratchSpaceStrategy<u8> for Vec<String> {
-    type Strategy = VarSized;
-}
-
-impl HasScratchSpaceStrategy<u8> for (Vec<String>, Vec<u8>) {
-    type Strategy = NullableVarSized;
 }
 
 pub struct FixedDataIterator<'data, C> {

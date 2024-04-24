@@ -4,6 +4,7 @@ use std::cell::RefMut;
 
 use crate::error::Error;
 use crate::query::buffer::{QueryBuffersMut, RefTypedQueryBuffersMut};
+use crate::query::read::output::ScratchSpace;
 
 pub struct ManagedBuffer<'data, C> {
     pub buffers: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
@@ -18,6 +19,21 @@ impl<'data, C> ManagedBuffer<'data, C> {
         let allocator: Box<dyn ScratchAllocator<C> + 'data> =
             Box::new(allocator);
         ManagedBuffer::from(allocator)
+    }
+
+    pub fn realloc(&self) {
+        let old_scratch = {
+            let tmp = QueryBuffersMut {
+                data: BufferMut::Empty,
+                cell_offsets: None,
+                validity: None,
+            };
+            ScratchSpace::<C>::try_from(self.buffers.replace(tmp))
+                .expect("ManagedBuffer cannot have a borrowed output location")
+        };
+
+        let new_scratch = self.allocator.realloc(old_scratch);
+        let _ = self.buffers.replace(QueryBuffersMut::from(new_scratch));
     }
 }
 
@@ -232,7 +248,7 @@ pub enum TypedReadHandle<'data> {
     Float64(RawReadHandle<'data, f64>),
 }
 macro_rules! typed_read_handle_go {
-    ($expr:expr, $DT:ident, $inner:ident, $then:expr) => {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
         match $expr {
             TypedReadHandle::UInt8($inner) => {
                 type $DT = u8;
@@ -389,11 +405,30 @@ where
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
+                /* realloc any self-managed buffers */
+                typed_read_handle_go!(
+                    self.raw_read_output,
+                    _DT,
+                    ref handle,
+                    if let Some(managed_buffer) = handle.managed_buffer.as_ref()
+                    {
+                        managed_buffer.realloc();
+                    }
+                );
+
                 /* TODO: check that records/bytes are zero and produce an internal error if not */
                 ReadStepOutput::NotEnoughSpace
             }
             ReadStepOutput::Intermediate(base_result) => {
                 if nvalues == 0 && nbytes == 0 {
+                    /*
+                     * The input produced no data.
+                     * The returned status itself is not enough to distinguish between
+                     * "no results, allocate more space plz" and "there are more results after you consume these".
+                     * The API tiledb_query_get_status_details exists but is experimental,
+                     * so we will worry about it later.  For now, assume this is the first
+                     * raw read and it is our responsibility to signal NotEnoughSpace.
+                     */
                     ReadStepOutput::NotEnoughSpace
                 } else if nvalues == 0 {
                     return Err(Error::Internal(format!(
@@ -489,12 +524,34 @@ where
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
+                /* realloc any self-managed buffers */
+                for handle in self.raw_read_output.iter() {
+                    typed_read_handle_go!(
+                        handle,
+                        _DT,
+                        ref handle,
+                        if let Some(managed_buffer) =
+                            handle.managed_buffer.as_ref()
+                        {
+                            managed_buffer.realloc();
+                        }
+                    );
+                }
+
                 /* TODO: check that records/bytes are zero and produce an internal error if not */
                 ReadStepOutput::NotEnoughSpace
             }
             ReadStepOutput::Intermediate(base_result) => {
                 for (records_written, bytes_written) in read_sizes.iter() {
                     if *records_written == 0 && *bytes_written == 0 {
+                        /*
+                         * The input produced no data.
+                         * The returned status itself is not enough to distinguish between
+                         * "no results, allocate more space plz" and "there are more results after you consume these".
+                         * The API tiledb_query_get_status_details exists but is experimental,
+                         * so we will worry about it later.  For now, assume this is the first
+                         * raw read and it is our responsibility to signal NotEnoughSpace.
+                         */
                         return Ok(ReadStepOutput::NotEnoughSpace);
                     } else if *records_written == 0 {
                         return Err(Error::Internal(format!(

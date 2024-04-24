@@ -7,17 +7,15 @@ use paste::paste;
 
 use crate::convert::CAPISameRepr;
 use crate::query::buffer::{BufferMut, QueryBuffersMut};
-use crate::query::read::output::{HasScratchSpaceStrategy, ScratchAllocator};
+use crate::query::read::output::ScratchAllocator;
 use crate::Result as TileDBResult;
 
 mod callback;
-mod managed;
 pub mod output;
 mod raw;
 mod typed;
 
 pub use callback::*;
-pub use managed::*;
 pub use raw::*;
 pub use typed::*;
 
@@ -167,6 +165,22 @@ impl<U> ReadStepOutput<U, U> {
     }
 }
 
+#[derive(Default)]
+pub enum ScratchStrategy<'data, C> {
+    #[default]
+    AttributeDefault,
+    RawBuffers(&'data RefCell<QueryBuffersMut<'data, C>>),
+    CustomAllocator(Box<dyn ScratchAllocator<C> + 'data>),
+}
+
+impl<'data, C> From<&'data RefCell<QueryBuffersMut<'data, C>>>
+    for ScratchStrategy<'data, C>
+{
+    fn from(value: &'data RefCell<QueryBuffersMut<'data, C>>) -> Self {
+        ScratchStrategy::RawBuffers(value)
+    }
+}
+
 /// Trait for runnable read queries.
 pub trait ReadQuery<'ctx>: Query<'ctx> {
     type Intermediate;
@@ -206,12 +220,19 @@ macro_rules! fn_register_callback {
                 Self: Sized,
                 T: $Callback
             {
-                let base = self;
                 $(
                     let [< arg_ $U:snake >] = {
                         let field = [< field_ $U:snake >];
                         match [< scratch_ $U:snake >] {
-                            ScratchStrategy::AttributeDefault => unimplemented!(),
+                            ScratchStrategy::AttributeDefault => {
+                                let field = {
+                                    let schema = self.base().array().schema()?;
+                                    schema.field(field)?
+                                };
+                                let alloc : Box<dyn ScratchAllocator<<T as $Callback>::$U> + 'data> = Box::new(field.query_scratch_allocator()?);
+                                let managed = ManagedBuffer::from(alloc);
+                                RawReadHandle::managed(field.name()?, managed)
+                            },
                             ScratchStrategy::RawBuffers(qb) => {
                                 RawReadHandle::new(field, qb)
                             },
@@ -222,6 +243,8 @@ macro_rules! fn_register_callback {
                         }
                     };
                 )+
+
+                let base = self;
 
                 Ok($Builder {
                     callback,
@@ -323,11 +346,9 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
     fn register_constructor<S, T>(
         self,
         field: S,
-        scratch: &'data RefCell<
-            QueryBuffersMut<
-                'data,
-                <<T as ReadResult>::Constructor as ReadCallback>::Unit,
-            >,
+        scratch: ScratchStrategy<
+            'data,
+            <<T as ReadResult>::Constructor as ReadCallback>::Unit,
         >,
     ) -> TileDBResult<TypedReadBuilder<'data, T, Self>>
     where
@@ -339,56 +360,8 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
         let r = <T::Constructor as Default>::default();
         Ok(TypedReadBuilder {
             _marker: std::marker::PhantomData,
-            base: self.register_callback(
-                (field.as_ref(), ScratchStrategy::RawBuffers(scratch)),
-                r,
-            )?,
-        })
-    }
-
-    /// Register a typed result to be constructed from the query results.
-    /// Scratch space for raw results is managed by the callback.
-    fn register_constructor_managed<S, T, R, C, A>(
-        self,
-        field: S,
-        scratch_allocator: A,
-    ) -> TileDBResult<ManagedReadBuilder<'data, TypedReadBuilder<'data, T, Self>>>
-    where
-        Self: Sized,
-        S: AsRef<str>,
-        T: ReadResult<Constructor = R>
-            + HasScratchSpaceStrategy<C, Strategy = A>,
-        R: Default + ReadCallback<Unit = C>,
-        A: ScratchAllocator<C> + 'data,
-        (
-            Box<dyn ScratchAllocator<C> + 'data>,
-            Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
-        ): Into<ManagedScratch<'data>>,
-    {
-        let scratch = scratch_allocator.alloc();
-
-        let scratch = QueryBuffersMut {
-            data: BufferMut::Owned(scratch.0),
-            cell_offsets: scratch.1.map(BufferMut::Owned),
-            validity: scratch.2.map(BufferMut::Owned),
-        };
-
-        let scratch = Box::pin(RefCell::new(scratch));
-
-        let base = {
-            let scratch = scratch.as_ref().get_ref()
-                as *const RefCell<QueryBuffersMut<'data, C>>;
-            let scratch = unsafe {
-                &*scratch as &'data RefCell<QueryBuffersMut<'data, C>>
-            };
-            self.register_constructor::<S, T>(field, scratch)
-        }?;
-
-        let scratch_allocator: Box<dyn ScratchAllocator<C> + 'data> =
-            Box::new(scratch_allocator);
-        Ok(ManagedReadBuilder {
-            scratch: (scratch_allocator, scratch).into(),
-            base,
+            base: self
+                .register_callback((field.as_ref(), scratch.into()), r)?,
         })
     }
 }

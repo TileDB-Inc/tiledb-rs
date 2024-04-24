@@ -430,7 +430,7 @@ impl<'ctx> Schema<'ctx> {
     pub fn attribute<K: Into<LookupKey>>(
         &self,
         key: K,
-    ) -> TileDBResult<Attribute> {
+    ) -> TileDBResult<Attribute<'ctx>> {
         let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
@@ -471,7 +471,10 @@ impl<'ctx> Schema<'ctx> {
     /// If the key is an index, then values `[0.. ndimensions]` will look
     /// up a dimension, and values outside that range will be adjusted by `ndimensions`
     /// to look up an attribute.
-    pub fn field<K: Into<LookupKey>>(&self, key: K) -> TileDBResult<Field> {
+    pub fn field<K: Into<LookupKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<Field<'ctx>> {
         let domain = self.domain()?;
         match key.into() {
             LookupKey::Index(idx) => {

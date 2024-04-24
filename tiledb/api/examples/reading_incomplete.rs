@@ -247,24 +247,30 @@ fn read_array_collect() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let mut qq = query_builder_start(&tdb)?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
+        .register_constructor::<_, Vec<i32>>(
             "rows",
-            NonVarSized { capacity: 1 },
+            ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
+                capacity: 1,
+            })),
         )?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
+        .register_constructor::<_, Vec<i32>>(
             "columns",
-            NonVarSized { capacity: 1 },
+            ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
+                capacity: 1,
+            })),
         )?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
+        .register_constructor::<_, Vec<i32>>(
             INT32_ATTRIBUTE_NAME,
-            NonVarSized { capacity: 1 },
+            ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
+                capacity: 1,
+            })),
         )?
-        .register_constructor_managed::<_, Vec<String>, _, _, _>(
+        .register_constructor::<_, Vec<String>>(
             CHAR_ATTRIBUTE_NAME,
-            VarSized {
+            ScratchStrategy::CustomAllocator(Box::new(VarSized {
                 byte_capacity: 1,
                 offset_capacity: 1,
-            },
+            })),
         )?
         .build();
 
