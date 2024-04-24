@@ -132,8 +132,21 @@ impl<'data, C> RawReadHandle<'data, C> {
         S: AsRef<str>,
     {
         let qb = {
-            let qb = managed.buffers.as_ref().get_ref()
-                as *const RefCell<QueryBuffersMut<'data, C>>;
+            let qb: Pin<&RefCell<QueryBuffersMut<'data, C>>> =
+                managed.buffers.as_ref();
+            let qb: &RefCell<QueryBuffersMut<'data, C>> = qb.get_ref();
+            let qb = qb as *const RefCell<QueryBuffersMut<'data, C>>;
+
+            /*
+             * RawReadHandle keeps a reference to the RefCell which owns the buffers.
+             * If the user owns that RefCell, then this is fine.
+             * But when the user wants the query to manage the buffer instead,
+             * then the read handle shall also own the RefCell - this means that
+             * the RawReadHandle is self-referential, which is not sound in the
+             * general case because moving `self` would invalidate a reference.
+             * In this case, it is safe, because we Pin<Box> the RefCell,
+             * which prevents the pointee from moving around in memory.
+             */
             unsafe { &*qb as &'data RefCell<QueryBuffersMut<'data, C>> }
         };
 
