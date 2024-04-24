@@ -412,7 +412,7 @@ impl<'ctx> Group<'ctx> {
             }
         }?;
         let datatype = Datatype::try_from(c_datatype)?;
-        Ok(Metadata::new(name, datatype, vec_ptr, vec_size))
+        Ok(Metadata::new_raw(name, datatype, vec_ptr, vec_size))
     }
 
     pub fn has_metadata_key<S>(&self, name: S) -> TileDBResult<Option<Datatype>>
@@ -501,5 +501,111 @@ impl Drop for Group<'_> {
                 })
                 .expect("TileDB internal error when closing group");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{array::{AttributeBuilder, CellOrder, Dimension, DimensionBuilder, DomainBuilder, SchemaBuilder, TileOrder}, Result as TileDBResult};
+    use tempfile::TempDir;
+    use crate::{
+        array::Array,
+        array::ArrayType,
+        context::Context,
+        datatype::Datatype,
+        error::Error,
+        group::{Group, QueryType},
+        key::LookupKey,
+        metadata::{self, Metadata}
+    };
+    #[test]
+    fn test_group_metadata() -> TileDBResult<()> {
+        let tmp_dir = TempDir::new().map_err(|e| {
+            Error::Other(
+                e.to_string())
+        })?;
+
+        let tdb = Context::new()?;        
+        let group1_path = tmp_dir.path().join("group1");
+        let group1_uri = group1_path.to_str().unwrap();
+        Group::create(&tdb, group1_uri)?;
+
+        let mut group1_err =
+            Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let res = group1_err.put_metadata(
+            Metadata::new("key".to_owned(), Datatype::Int32, vec![5]),
+        );
+        assert!(res.is_err());
+
+        std::mem::drop(group1_err);
+        let mut group1_write =
+            Group::open(&tdb, group1_uri.to_owned(), QueryType::Write)?;
+        let res1 = group1_write.put_metadata(
+            Metadata::new("key".to_owned(), Datatype::Any, vec![5]),
+        );
+        assert!(res1.is_err());
+
+        group1_write.put_metadata(
+            Metadata::new("key".to_owned(), Datatype::Int32, vec![5]),
+        )?;
+        group1_write.put_metadata(
+            Metadata::new("aaa".to_owned(), Datatype::Int32, vec![5]),
+        )?;
+        group1_write.put_metadata(
+            Metadata::new(
+                "bb".to_owned(),
+                Datatype::Float32,
+                vec![1.1f32, 2.2f32],
+            ),
+        )?;
+
+        std::mem::drop(group1_write);
+
+        let group1_read =
+            Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let metadata_aaa = group1_read.metadata(LookupKey::Name("aaa".to_owned()))?;
+        assert_eq!(metadata_aaa.datatype, Datatype::Int32);
+        assert_eq!(metadata_aaa.value, metadata::Value::Int32Value(vec!(5)));
+        assert_eq!(metadata_aaa.key, "aaa");
+
+        let metadata_num = group1_read.num_metadata()?;
+        assert_eq!(metadata_num, 3);
+
+        let metadata_bb = group1_read.metadata(LookupKey::Index(1))?;
+        assert_eq!(metadata_bb.datatype, Datatype::Float32);
+        assert_eq!(metadata_bb.key, "bb");
+        assert_eq!(
+            metadata_bb.value,
+            metadata::Value::Float32Value(vec!(1.1f32, 2.2f32))
+        );
+
+        let has_aaa = group1_read.has_metadata_key("aaa")?;
+        assert_eq!(has_aaa, Some(Datatype::Int32));
+        std::mem::drop(group1_read);
+
+        let mut group1_write =
+            Group::open(&tdb, group1_uri.to_owned(), QueryType::Write)?;
+        group1_write.delete_metadata("aaa")?;
+        std::mem::drop(group1_write);
+
+        let group1_read =
+            Group::open(&tdb, group1_uri.to_owned(), QueryType::Read)?;
+        let has_aaa = group1_read.has_metadata_key("aaa")?;
+        assert_eq!(has_aaa, None);
+        std::mem::drop(group1_read);
+
+        // Cleanup
+        let group1_write = Group::open(
+            &tdb,
+            group1_uri.to_owned(),
+            QueryType::ModifyExclusive,
+        )?;
+        group1_write.delete_group(group1_uri, true)?;
+
+        tmp_dir.close().map_err(|e| {
+            Error::Other(
+                e.to_string())
+        })?;
+        Ok(())
     }
 }

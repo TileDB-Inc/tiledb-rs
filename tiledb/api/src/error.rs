@@ -5,7 +5,6 @@ use std::ops::Deref;
 
 use serde::{Serialize, Serializer};
 
-use crate::array::Mode;
 use crate::context::ObjectType;
 use crate::Datatype;
 
@@ -88,7 +87,7 @@ impl Display for DatatypeErrorKind {
 
 #[derive(Clone, Debug)]
 pub enum ObjectTypeErrorKind {
-    InvalidDiscriminant(ObjectType),
+    InvalidDiscriminant(u64),
     TypeMismatch {
         user_type: &'static str,
         tiledb_type: ObjectType,
@@ -117,10 +116,10 @@ impl Display for ObjectTypeErrorKind {
 
 #[derive(Clone, Debug)]
 pub enum ModeErrorKind {
-    InvalidDiscriminant(Mode),
+    InvalidDiscriminant(u64),
     TypeMismatch {
         user_type: &'static str,
-        tiledb_type: Mode,
+        tiledb_type: u64,
     },
 }
 

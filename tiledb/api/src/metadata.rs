@@ -107,7 +107,7 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn create<T>(key: String, datatype: Datatype, vec: Vec<T>) -> Self
+    pub fn new<T>(key: String, datatype: Datatype, vec: Vec<T>) -> Self
     where
         Value: From<Vec<T>>,
     {
@@ -118,7 +118,7 @@ impl Metadata {
         }
     }
 
-    pub(crate) fn new(
+    pub(crate) fn new_raw(
         key: String,
         datatype: Datatype,
         vec_ptr: *const std::ffi::c_void,
@@ -142,7 +142,7 @@ impl Metadata {
         }
     }
 
-    pub fn c_data(
+    pub(crate) fn c_data(
         &self,
     ) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) {
         let (vec_ptr, vec_size) = self.value.c_vec();
