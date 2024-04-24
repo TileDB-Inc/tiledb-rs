@@ -1,6 +1,6 @@
 use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -9,13 +9,14 @@ use serde_json::json;
 use util::option::OptionSubset;
 
 use crate::array::attribute::{AttributeData, RawAttribute};
-use crate::array::dimension::Dimension;
+use crate::array::dimension::{Dimension, DimensionData};
 use crate::array::domain::{DomainData, RawDomain};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::key::LookupKey;
+use crate::query::read::output::FieldScratchAllocator;
 use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
 
@@ -69,11 +70,24 @@ impl CellValNum {
             CellValNum::Var => u32::MAX,
         }
     }
+
+    pub fn is_var_sized(&self) -> bool {
+        matches!(self, CellValNum::Var)
+    }
 }
 
 impl Default for CellValNum {
     fn default() -> Self {
         CellValNum::Fixed(NonZeroU32::new(1).unwrap())
+    }
+}
+
+impl PartialEq<u32> for CellValNum {
+    fn eq(&self, other: &u32) -> bool {
+        match self {
+            CellValNum::Fixed(val) => val.get() == *other,
+            CellValNum::Var => *other == std::u32::MAX,
+        }
     }
 }
 
@@ -145,11 +159,103 @@ impl<'ctx> Field<'ctx> {
         }
     }
 
+    pub fn nullability(&self) -> TileDBResult<bool> {
+        Ok(match self {
+            Field::Dimension(_) => false,
+            Field::Attribute(ref a) => a.is_nullable(),
+        })
+    }
+
     pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
         match self {
             Field::Dimension(ref d) => d.cell_val_num(),
             Field::Attribute(ref a) => a.cell_val_num(),
         }
+    }
+
+    pub fn query_scratch_allocator(
+        &self,
+    ) -> TileDBResult<crate::query::read::output::FieldScratchAllocator> {
+        Ok(FieldData::try_from(self)?.query_scratch_allocator())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
+pub struct FieldData {
+    pub name: String,
+    pub datatype: Datatype,
+    pub nullability: Option<bool>,
+    pub cell_val_num: Option<CellValNum>,
+}
+
+impl FieldData {
+    pub fn query_scratch_allocator(
+        &self,
+    ) -> crate::query::read::output::FieldScratchAllocator {
+        /*
+         * TODO: a hint from the schema would be good to use in some way,
+         * this number is super made up and should be improved
+         * (especially if there is a large fixed cell val num).
+         * The user can use a custom allocator if they want, of course,
+         * but they probably aren't going to, so we ought to come up
+         * with something good by default.
+         */
+        let record_capacity = 1024 * 1024;
+
+        FieldScratchAllocator {
+            cell_val_num: self.cell_val_num.unwrap_or_default(),
+            record_capacity: NonZeroUsize::new(record_capacity).unwrap(),
+            is_nullable: self.nullability.unwrap_or(true),
+        }
+    }
+}
+
+impl Display for FieldData {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", json!(*self))
+    }
+}
+
+impl From<&AttributeData> for FieldData {
+    fn from(attr: &AttributeData) -> Self {
+        FieldData {
+            name: attr.name.clone(),
+            cell_val_num: attr.cell_val_num,
+            datatype: attr.datatype,
+            nullability: attr.nullability,
+        }
+    }
+}
+
+impl From<&DimensionData> for FieldData {
+    fn from(dim: &DimensionData) -> Self {
+        FieldData {
+            name: dim.name.clone(),
+            cell_val_num: dim.cell_val_num,
+            datatype: dim.datatype,
+            nullability: Some(false),
+        }
+    }
+}
+
+impl<'ctx> TryFrom<&Field<'ctx>> for FieldData {
+    type Error = crate::error::Error;
+
+    fn try_from(field: &Field<'ctx>) -> TileDBResult<Self> {
+        Ok(FieldData {
+            name: field.name()?,
+            cell_val_num: Some(field.cell_val_num()?),
+            datatype: field.datatype()?,
+            nullability: Some(field.nullability()?),
+        })
+    }
+}
+
+impl<'ctx> TryFrom<Field<'ctx>> for FieldData {
+    type Error = crate::error::Error;
+
+    fn try_from(field: Field<'ctx>) -> TileDBResult<Self> {
+        Self::try_from(&field)
     }
 }
 
@@ -312,7 +418,7 @@ impl<'ctx> Schema<'ctx> {
     pub fn attribute<K: Into<LookupKey>>(
         &self,
         key: K,
-    ) -> TileDBResult<Attribute> {
+    ) -> TileDBResult<Attribute<'ctx>> {
         let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
@@ -353,7 +459,10 @@ impl<'ctx> Schema<'ctx> {
     /// If the key is an index, then values `[0.. ndimensions]` will look
     /// up a dimension, and values outside that range will be adjusted by `ndimensions`
     /// to look up an attribute.
-    pub fn field<K: Into<LookupKey>>(&self, key: K) -> TileDBResult<Field> {
+    pub fn field<K: Into<LookupKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<Field<'ctx>> {
         let domain = self.domain()?;
         match key.into() {
             LookupKey::Index(idx) => {
@@ -614,6 +723,16 @@ pub struct SchemaData {
     pub coordinate_filters: FilterListData,
     pub offsets_filters: FilterListData,
     pub nullity_filters: FilterListData,
+}
+
+impl SchemaData {
+    pub fn field(&self, idx: usize) -> FieldData {
+        if idx < self.domain.dimension.len() {
+            FieldData::from(&self.domain.dimension[idx])
+        } else {
+            FieldData::from(&self.attributes[idx - self.domain.dimension.len()])
+        }
+    }
 }
 
 impl Display for SchemaData {

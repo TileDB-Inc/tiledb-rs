@@ -3,16 +3,16 @@ use super::*;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::query::buffer::QueryBuffers;
+use crate::query::buffer::{QueryBuffers, TypedQueryBuffers};
 use crate::query::write::input::DataProvider;
 
 pub mod input;
 
 struct RawWriteInput<'data> {
-    data_size: Pin<Box<u64>>,
-    offsets_size: Option<Pin<Box<u64>>>,
-    validity_size: Option<Pin<Box<u64>>>,
-    input: QueryBuffers<'data>,
+    _data_size: Pin<Box<u64>>,
+    _offsets_size: Option<Pin<Box<u64>>>,
+    _validity_size: Option<Pin<Box<u64>>>,
+    _input: TypedQueryBuffers<'data>,
 }
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
@@ -29,18 +29,6 @@ pub struct WriteQuery<'ctx, 'data> {
 impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     pub fn submit(&self) -> TileDBResult<()> {
         self.base.do_submit()
-    }
-}
-
-impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
-    pub fn finalize(self) -> TileDBResult<Array<'ctx>> {
-        let c_context = self.context().capi();
-        let c_query = **self.base().cquery();
-        self.capi_return(unsafe {
-            ffi::tiledb_query_finalize(c_context, c_query)
-        })?;
-
-        Ok(self.base.array)
     }
 }
 
@@ -67,12 +55,9 @@ impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
 }
 
 impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
-    pub fn new(
-        context: &'ctx Context,
-        array: Array<'ctx>,
-    ) -> TileDBResult<Self> {
+    pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
         Ok(WriteBuilder {
-            base: BuilderBase::new(context, array, QueryType::Write)?,
+            base: BuilderBase::new(array, QueryType::Write)?,
             inputs: HashMap::new(),
         })
     }
@@ -85,31 +70,30 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
     where
         S: AsRef<str>,
         T: DataProvider,
+        QueryBuffers<'data, <T as DataProvider>::Unit>:
+            Into<TypedQueryBuffers<'data>>,
     {
-        let field = field.as_ref();
-        let input = data.as_tiledb_input();
-        let mut raw_write_input = RawWriteInput {
-            data_size: Box::pin(input.data.size() as u64),
-            offsets_size: input
-                .cell_offsets
-                .as_ref()
-                .map(|b| Box::pin(b.size() as u64)),
-            validity_size: input
-                .validity
-                .as_ref()
-                .map(|v| Box::pin(v.size() as u64)),
-            input,
+        let field_name = field.as_ref().to_string();
+
+        let input = {
+            let schema = self.base().array().schema()?;
+            let schema_field = schema.field(field_name.clone())?;
+            data.as_tiledb_input(
+                schema_field.cell_val_num()?,
+                schema_field.nullability()?,
+            )
         };
 
         let c_context = self.context().capi();
         let c_query = **self.base().cquery();
-        let c_name = cstring!(field);
+        let c_name = cstring!(field_name.clone());
+
+        let mut data_size = Box::pin(input.data.size() as u64);
 
         self.capi_return(unsafe {
-            let c_bufptr = raw_write_input.input.data.as_ref().as_ptr()
-                as *mut std::ffi::c_void;
-            let c_sizeptr =
-                raw_write_input.data_size.as_mut().get_mut() as *mut u64;
+            let c_bufptr =
+                input.data.as_ref().as_ptr() as *mut std::ffi::c_void;
+            let c_sizeptr = data_size.as_mut().get_mut() as *mut u64;
 
             ffi::tiledb_query_set_data_buffer(
                 c_context,
@@ -120,16 +104,15 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             )
         })?;
 
-        if let Some(ref mut offsets_size) =
-            raw_write_input.offsets_size.as_mut()
-        {
-            let c_offptr = raw_write_input
-                .input
-                .cell_offsets
-                .as_ref()
-                .unwrap()
-                .as_ref()
-                .as_ptr() as *mut u64;
+        let mut offsets_size = input
+            .cell_offsets
+            .as_ref()
+            .map(|b| Box::pin(b.size() as u64));
+
+        if let Some(ref mut offsets_size) = offsets_size.as_mut() {
+            let c_offptr =
+                input.cell_offsets.as_ref().unwrap().as_ref().as_ptr()
+                    as *mut u64;
             let c_sizeptr = offsets_size.as_mut().get_mut() as *mut u64;
 
             self.capi_return(unsafe {
@@ -143,16 +126,12 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             })?;
         }
 
-        if let Some(ref mut validity_size) =
-            raw_write_input.validity_size.as_mut()
-        {
-            let c_validityptr = raw_write_input
-                .input
-                .validity
-                .as_ref()
-                .unwrap()
-                .as_ref()
-                .as_ptr() as *mut u8;
+        let mut validity_size =
+            input.validity.as_ref().map(|b| Box::pin(b.size() as u64));
+
+        if let Some(ref mut validity_size) = validity_size.as_mut() {
+            let c_validityptr =
+                input.validity.as_ref().unwrap().as_ref().as_ptr() as *mut u8;
             let c_sizeptr = validity_size.as_mut().get_mut() as *mut u64;
 
             self.capi_return(unsafe {
@@ -166,8 +145,18 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             })?;
         }
 
-        self.inputs.insert(String::from(field), raw_write_input);
+        let raw_write_input = RawWriteInput {
+            _data_size: data_size,
+            _offsets_size: offsets_size,
+            _validity_size: validity_size,
+            _input: input.into(),
+        };
+
+        self.inputs.insert(field_name, raw_write_input);
 
         Ok(self)
     }
 }
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;

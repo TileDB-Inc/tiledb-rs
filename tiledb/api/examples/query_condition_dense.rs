@@ -8,9 +8,8 @@ use tiledb::array::{
 };
 use tiledb::query::buffer::{BufferMut, QueryBuffersMut};
 use tiledb::query::conditions::QueryConditionExpr as QC;
-use tiledb::query::read::output::NullableNonVarSized;
 use tiledb::query::{
-    QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
+    Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
 };
 use tiledb::{Context, Datatype, Result as TileDBResult};
 
@@ -60,28 +59,16 @@ fn main() -> TileDBResult<()> {
 /// to stdout.
 fn read_array(ctx: &Context, qc: Option<&QC>) -> TileDBResult<()> {
     let array = tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
-    let mut query = ReadBuilder::new(ctx, array)?
+    let mut query = ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
-            "index",
-            Default::default(),
-        )?
-        .register_constructor_managed::<_, (Vec<i32>, Vec<u8>), _, _, _>(
+        .register_constructor::<_, Vec<i32>>("index", Default::default())?
+        .register_constructor::<_, (Vec<i32>, Vec<u8>)>(
             "a",
-            NullableNonVarSized::default(),
-        )?
-        .register_constructor_managed::<_, Vec<String>, _, _, _>(
-            "b",
             Default::default(),
         )?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
-            "c",
-            Default::default(),
-        )?
-        .register_constructor_managed::<_, Vec<f32>, _, _, _>(
-            "d",
-            Default::default(),
-        )?
+        .register_constructor::<_, Vec<String>>("b", Default::default())?
+        .register_constructor::<_, Vec<i32>>("c", Default::default())?
+        .register_constructor::<_, Vec<f32>>("d", Default::default())?
         .start_subarray()?
         .dimension_range_typed::<i32, _>("index", &[0, NUM_ELEMS - 1])?
         .finish_subarray()?;
@@ -192,7 +179,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
     let array =
         tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Write)?;
 
-    let query = WriteBuilder::new(ctx, array)?
+    let query = WriteBuilder::new(array)?
         .data_typed("a", &a_input)?
         .data_typed("b", &b_input)?
         .data_typed("c", &c_input)?

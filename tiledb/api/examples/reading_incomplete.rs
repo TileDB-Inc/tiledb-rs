@@ -6,8 +6,10 @@ use itertools::izip;
 use tiledb::array::{CellOrder, TileOrder};
 use tiledb::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
 use tiledb::query::read::output::{NonVarSized, VarDataIterator, VarSized};
-use tiledb::query::read::{FnMutAdapter, ReadStepOutput};
-use tiledb::query::{QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder};
+use tiledb::query::read::{FnMutAdapter, ReadStepOutput, ScratchStrategy};
+use tiledb::query::{
+    Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder,
+};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
@@ -109,7 +111,7 @@ fn write_array() -> TileDBResult<()> {
     let int32_data = vec![1, 2, 3];
     let char_data = vec!["a", "bb", "ccc"];
 
-    let query = tiledb::query::WriteBuilder::new(&tdb, array)?
+    let query = tiledb::query::WriteBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::Global)?
         .data_typed("rows", &coords_rows)?
         .data_typed("columns", &coords_cols)?
@@ -129,7 +131,7 @@ fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
     let array =
         tiledb::Array::open(tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
 
-    tiledb::query::ReadBuilder::new(tdb, array)?
+    tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .start_subarray()?
         .dimension_range_typed::<i32, _>(0, &[1, 4])?
@@ -245,24 +247,30 @@ fn read_array_collect() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let mut qq = query_builder_start(&tdb)?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
+        .register_constructor::<_, Vec<i32>>(
             "rows",
-            NonVarSized { capacity: 1 },
+            ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
+                capacity: 1,
+            })),
         )?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
+        .register_constructor::<_, Vec<i32>>(
             "columns",
-            NonVarSized { capacity: 1 },
+            ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
+                capacity: 1,
+            })),
         )?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
+        .register_constructor::<_, Vec<i32>>(
             INT32_ATTRIBUTE_NAME,
-            NonVarSized { capacity: 1 },
+            ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
+                capacity: 1,
+            })),
         )?
-        .register_constructor_managed::<_, Vec<String>, _, _, _>(
+        .register_constructor::<_, Vec<String>>(
             CHAR_ATTRIBUTE_NAME,
-            VarSized {
+            ScratchStrategy::CustomAllocator(Box::new(VarSized {
                 byte_capacity: 1,
                 offset_capacity: 1,
-            },
+            })),
         )?
         .build();
 
@@ -314,10 +322,16 @@ fn read_array_callback() -> TileDBResult<()> {
     });
     let mut qq = query_builder_start(&tdb)?
         .register_callback4::<FnMutAdapter<(i32, i32, i32, String), _>>(
-            ("rows", &rows_output),
-            ("columns", &cols_output),
-            (INT32_ATTRIBUTE_NAME, &int32_output),
-            (CHAR_ATTRIBUTE_NAME, &char_output),
+            ("rows", ScratchStrategy::RawBuffers(&rows_output)),
+            ("columns", ScratchStrategy::RawBuffers(&cols_output)),
+            (
+                INT32_ATTRIBUTE_NAME,
+                ScratchStrategy::RawBuffers(&int32_output),
+            ),
+            (
+                CHAR_ATTRIBUTE_NAME,
+                ScratchStrategy::RawBuffers(&char_output),
+            ),
             FnMutAdapter::new(callback),
         )?
         .build();

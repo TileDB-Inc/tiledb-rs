@@ -7,6 +7,7 @@ use std::ops::Deref;
 use serde::{Deserialize, Serialize};
 use util::option::OptionSubset;
 
+use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::Result as TileDBResult;
 
@@ -205,6 +206,22 @@ impl<'ctx> Array<'ctx> {
             context,
             raw: RawArray::Owned(array_raw),
         })
+    }
+
+    pub fn schema(&self) -> TileDBResult<Schema> {
+        let c_context = self.context.capi();
+        let c_array = *self.raw;
+        let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
+
+        self.capi_return(unsafe {
+            ffi::tiledb_array_get_schema(
+                c_context,
+                c_array,
+                &mut c_schema as *mut *mut ffi::tiledb_array_schema_t,
+            )
+        })?;
+
+        Ok(Schema::new(self.context, RawSchema::Owned(c_schema)))
     }
 }
 

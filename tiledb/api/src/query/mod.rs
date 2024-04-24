@@ -42,6 +42,10 @@ impl Drop for RawQuery {
 
 pub trait Query<'ctx> {
     fn base(&self) -> &QueryBase<'ctx>;
+
+    fn finalize(self) -> TileDBResult<Array<'ctx>>
+    where
+        Self: Sized;
 }
 
 #[derive(ContextBound)]
@@ -76,11 +80,25 @@ impl<'ctx> QueryBase<'ctx> {
         })
         .map(|_| c_status)
     }
+
+    pub fn array(&self) -> &Array<'ctx> {
+        &self.array
+    }
 }
 
 impl<'ctx> Query<'ctx> for QueryBase<'ctx> {
     fn base(&self) -> &QueryBase<'ctx> {
         self
+    }
+
+    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+        let c_context = self.context().capi();
+        let c_query = **self.base().cquery();
+        self.capi_return(unsafe {
+            ffi::tiledb_query_finalize(c_context, c_query)
+        })?;
+
+        Ok(self.array)
     }
 }
 
@@ -132,7 +150,10 @@ pub trait QueryBuilder<'ctx>: Sized {
 
     fn base(&self) -> &BuilderBase<'ctx>;
 
-    fn layout(self, layout: QueryLayout) -> TileDBResult<Self> {
+    fn layout(self, layout: QueryLayout) -> TileDBResult<Self>
+    where
+        Self: Sized,
+    {
         let c_context = self.base().context().capi();
         let c_query = **self.base().cquery();
         let c_layout = layout.capi_enum();
@@ -142,7 +163,10 @@ pub trait QueryBuilder<'ctx>: Sized {
         Ok(self)
     }
 
-    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>> {
+    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>>
+    where
+        Self: Sized,
+    {
         SubarrayBuilder::for_query(self)
     }
 
@@ -172,6 +196,10 @@ impl<'ctx> BuilderBase<'ctx> {
     fn cquery(&self) -> &RawQuery {
         &self.query.raw
     }
+
+    pub fn array(&self) -> &Array<'ctx> {
+        &self.query.array
+    }
 }
 
 impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
@@ -187,16 +215,12 @@ impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
 }
 
 impl<'ctx> BuilderBase<'ctx> {
-    fn new(
-        context: &'ctx Context,
-        array: Array<'ctx>,
-        query_type: QueryType,
-    ) -> TileDBResult<Self> {
-        let c_context = context.capi();
+    fn new(array: Array<'ctx>, query_type: QueryType) -> TileDBResult<Self> {
+        let c_context = array.context().capi();
         let c_array = **array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
-        context.capi_return(unsafe {
+        array.capi_return(unsafe {
             ffi::tiledb_query_alloc(
                 c_context,
                 c_array,

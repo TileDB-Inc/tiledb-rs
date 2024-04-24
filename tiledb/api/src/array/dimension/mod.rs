@@ -87,7 +87,7 @@ impl<'ctx> Dimension<'ctx> {
     }
 
     pub fn is_var_sized(&self) -> TileDBResult<bool> {
-        Ok(self.cell_val_num()? == CellValNum::Var)
+        Ok(self.cell_val_num()?.is_var_sized())
     }
 
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {

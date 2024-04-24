@@ -88,7 +88,7 @@ fn write_array() -> TileDBResult<()> {
 
     let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-    let query = tiledb::query::WriteBuilder::new(&tdb, array)?
+    let query = tiledb::query::WriteBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .data_typed(QUICKSTART_ATTRIBUTE_NAME, &data)?
         .build();
@@ -113,9 +113,9 @@ fn read_array() -> TileDBResult<()> {
         tiledb::array::Mode::Read,
     )?;
 
-    let mut query = tiledb::query::ReadBuilder::new(&tdb, array)?
+    let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .register_constructor_managed::<_, Vec<i32>, _, _, _>(
+        .register_constructor::<_, Vec<i32>>(
             QUICKSTART_ATTRIBUTE_NAME,
             Default::default(),
         )?

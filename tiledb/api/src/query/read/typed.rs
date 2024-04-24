@@ -69,10 +69,11 @@ where
     }
 }
 
-impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx> for TypedReadBuilder<'data, T, B>
+impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data>
+    for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
-    B: ReadQueryBuilder<'ctx>,
+    B: ReadQueryBuilder<'ctx, 'data>,
 {
 }
 

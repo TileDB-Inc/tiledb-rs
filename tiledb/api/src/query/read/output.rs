@@ -1,17 +1,27 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::iter::FusedIterator;
+use std::num::NonZeroUsize;
 
 use anyhow::anyhow;
 
+use crate::array::CellValNum;
 use crate::convert::CAPISameRepr;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
+use crate::query::buffer::{
+    BufferMut, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
+};
 use crate::Result as TileDBResult;
 
 pub struct RawReadOutput<'data, C> {
     pub nvalues: usize,
     pub nbytes: usize,
     pub input: &'data QueryBuffers<'data, C>,
+}
+
+pub struct TypedRawReadOutput<'data> {
+    pub nvalues: usize,
+    pub nbytes: usize,
+    pub buffers: TypedQueryBuffers<'data>,
 }
 
 pub struct ScratchSpace<C>(
@@ -70,13 +80,9 @@ impl<'data, C> From<ScratchSpace<C>> for QueryBuffersMut<'data, C> {
     }
 }
 
-pub trait ScratchAllocator<C>: Default {
+pub trait ScratchAllocator<C> {
     fn alloc(&self) -> ScratchSpace<C>;
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C>;
-}
-
-pub trait HasScratchSpaceStrategy<C> {
-    type Strategy: ScratchAllocator<C>;
 }
 
 #[derive(Clone, Debug)]
@@ -269,26 +275,69 @@ where
     }
 }
 
-impl<C> HasScratchSpaceStrategy<C> for Vec<C>
+/// Allocator for a schema field of any shape.
+// Note that we don't need bytes per value because the user
+// will be registering a buffer of appropriate primitive type.
+pub struct FieldScratchAllocator {
+    pub cell_val_num: CellValNum,
+    pub record_capacity: NonZeroUsize,
+    pub is_nullable: bool,
+}
+
+impl<C> ScratchAllocator<C> for FieldScratchAllocator
 where
     C: CAPISameRepr,
 {
-    type Strategy = NonVarSized;
-}
+    fn alloc(&self) -> ScratchSpace<C> {
+        let (byte_capacity, offset_capacity) = match self.cell_val_num {
+            CellValNum::Fixed(values_per_record) => {
+                let byte_capacity = self.record_capacity.get()
+                    * values_per_record.get() as usize;
+                (byte_capacity, None)
+            }
+            CellValNum::Var => {
+                let values_per_record = 64; /* TODO: get some kind of hint from the schema */
+                let byte_capacity =
+                    self.record_capacity.get() * values_per_record;
+                (byte_capacity, Some(self.record_capacity.get()))
+            }
+        };
 
-impl<C> HasScratchSpaceStrategy<C> for (Vec<C>, Vec<u8>)
-where
-    C: CAPISameRepr,
-{
-    type Strategy = NullableNonVarSized;
-}
+        let data = vec![C::default(); byte_capacity].into_boxed_slice();
+        let offsets = offset_capacity
+            .map(|capacity| vec![0u64; capacity].into_boxed_slice());
+        let validity = if self.is_nullable {
+            Some(vec![0u8; self.record_capacity.get()].into_boxed_slice())
+        } else {
+            None
+        };
 
-impl HasScratchSpaceStrategy<u8> for Vec<String> {
-    type Strategy = VarSized;
-}
+        ScratchSpace(data, offsets, validity)
+    }
 
-impl HasScratchSpaceStrategy<u8> for (Vec<String>, Vec<u8>) {
-    type Strategy = NullableVarSized;
+    fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
+        let ScratchSpace(old_data, old_offsets, old_validity) = old;
+
+        let new_data = {
+            let mut v = old_data.to_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        };
+
+        let new_offsets = old_offsets.map(|old_offsets| {
+            let mut v = old_offsets.to_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        });
+
+        let new_validity = old_validity.map(|old_validity| {
+            let mut v = old_validity.to_vec();
+            v.resize(2 * v.len(), Default::default());
+            v.into_boxed_slice()
+        });
+
+        ScratchSpace(new_data, new_offsets, new_validity)
+    }
 }
 
 pub struct FixedDataIterator<'data, C> {

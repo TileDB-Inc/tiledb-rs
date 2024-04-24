@@ -150,7 +150,7 @@ fn write_array() -> TileDBResult<()> {
 
     let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-    let query = tiledb::query::WriteBuilder::new(&tdb, array)?
+    let query = tiledb::query::WriteBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .data_typed(FRAGMENT_INFO_ATTRIBUTE_NAME, &data)?
         .build();

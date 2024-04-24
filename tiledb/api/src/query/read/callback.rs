@@ -4,7 +4,10 @@ use anyhow::anyhow;
 use itertools::izip;
 use paste::paste;
 
-use crate::query::read::output::{FromQueryOutput, RawReadOutput};
+use crate::query::buffer::RefTypedQueryBuffersMut;
+use crate::query::read::output::{
+    FromQueryOutput, RawReadOutput, TypedRawReadOutput,
+};
 
 macro_rules! trait_read_callback {
     ($name:ident, $($U:ident),+) => {
@@ -47,6 +50,32 @@ trait_read_callback!(ReadCallback, Unit);
 trait_read_callback!(ReadCallback2Arg, Unit1, Unit2);
 trait_read_callback!(ReadCallback3Arg, Unit1, Unit2, Unit3);
 trait_read_callback!(ReadCallback4Arg, Unit1, Unit2, Unit3, Unit4);
+
+pub trait ReadCallbackVarArg: Sized {
+    type Intermediate;
+    type Final;
+    type Error: Into<anyhow::Error>;
+
+    /* TODO: some kind of argument validation */
+
+    fn intermediate_result(
+        &mut self,
+        args: &[TypedRawReadOutput],
+    ) -> Result<Self::Intermediate, Self::Error>;
+
+    fn final_result(
+        self,
+        args: &[TypedRawReadOutput],
+    ) -> Result<Self::Final, Self::Error>;
+
+    /// Optionally produce a blank instance of this callback to be run
+    /// if the query is restarted from the beginning. This is called
+    /// before `final_result` to prepare the query for re-submission
+    /// if necessary.
+    fn cleared(&self) -> Option<Self> {
+        None
+    }
+}
 
 #[derive(Clone)]
 pub struct FnMutAdapter<A, F> {
@@ -362,6 +391,16 @@ macro_rules! query_read_callback {
             }
         }
 
+        impl<'data, T, Q> $query<'data, T, Q> where T: $callback {
+            fn realloc_managed_buffers(&mut self) {
+                paste! {
+                    $(
+                        self.[< arg_ $U:snake >].realloc_if_managed();
+                    )+
+                }
+            }
+        }
+
         impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for $query <'data, T, Q>
             where T: $callback,
                   Q: ReadQuery<'ctx>
@@ -389,6 +428,7 @@ macro_rules! query_read_callback {
                             let (nvalues, nbytes) = self.[< arg_ $U:snake >].last_read_size();
                             if !base_result.is_final() {
                                 if nvalues == 0 && nbytes == 0 {
+                                    self.realloc_managed_buffers();
                                     return Ok(ReadStepOutput::NotEnoughSpace)
                                 } else if nvalues == 0 {
                                     return Err(Error::Internal(format!(
@@ -497,6 +537,13 @@ macro_rules! query_read_callback {
                     }
                 }
             }
+
+            impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data> for $Builder<'data, T, B>
+            where
+                T: $callback,
+                B: ReadQueryBuilder<'ctx, 'data>,
+            {
+            }
         }
     }
 }
@@ -534,6 +581,136 @@ query_read_callback!(
     Unit3,
     Unit4
 );
+
+#[derive(ContextBound, Query)]
+pub struct CallbackVarArgReadQuery<'data, T, Q> {
+    pub(crate) callback: Option<T>,
+    #[base(ContextBound, Query)]
+    pub(crate) base: VarRawReadQuery<'data, Q>,
+}
+
+impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for CallbackVarArgReadQuery<'data, T, Q>
+where
+    T: ReadCallbackVarArg,
+    Q: ReadQuery<'ctx>,
+{
+    type Intermediate = (T::Intermediate, Q::Intermediate);
+    type Final = (T::Final, Q::Final);
+
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        let base_result = self.base.step()?;
+
+        match base_result {
+            ReadStepOutput::NotEnoughSpace => {
+                Ok(ReadStepOutput::NotEnoughSpace)
+            }
+            ReadStepOutput::Intermediate((sizes, base_result)) => {
+                let callback = match self.callback.as_mut() {
+                    None => unimplemented!(),
+                    Some(c) => c,
+                };
+
+                let buffers = self
+                    .base
+                    .raw_read_output
+                    .iter()
+                    .map(|r| r.borrow())
+                    .collect::<Vec<RefTypedQueryBuffersMut>>();
+                let args = sizes
+                    .iter()
+                    .zip(buffers.iter())
+                    .map(|(&(nvalues, nbytes), buffers)| TypedRawReadOutput {
+                        nvalues,
+                        nbytes,
+                        buffers: buffers.as_shared(),
+                    })
+                    .collect::<Vec<TypedRawReadOutput>>();
+
+                let ir = callback.intermediate_result(&args).map_err(|e| {
+                    let fields = self
+                        .base
+                        .raw_read_output
+                        .iter()
+                        .map(|rh| rh.field().clone())
+                        .collect::<Vec<String>>();
+                    crate::error::Error::QueryCallback(fields, anyhow!(e))
+                })?;
+                Ok(ReadStepOutput::Intermediate((ir, base_result)))
+            }
+            ReadStepOutput::Final((sizes, base_result)) => {
+                let callback_final = match self.callback.take() {
+                    None => unimplemented!(),
+                    Some(c) => {
+                        self.callback = c.cleared();
+                        c
+                    }
+                };
+
+                let buffers = self
+                    .base
+                    .raw_read_output
+                    .iter()
+                    .map(|r| r.borrow())
+                    .collect::<Vec<RefTypedQueryBuffersMut>>();
+                let args = sizes
+                    .iter()
+                    .zip(buffers.iter())
+                    .map(|(&(nvalues, nbytes), buffers)| TypedRawReadOutput {
+                        nvalues,
+                        nbytes,
+                        buffers: buffers.as_shared(),
+                    })
+                    .collect::<Vec<TypedRawReadOutput>>();
+
+                let ir = callback_final.final_result(&args).map_err(|e| {
+                    let fields = self
+                        .base
+                        .raw_read_output
+                        .iter()
+                        .map(|rh| rh.field().clone())
+                        .collect::<Vec<String>>();
+                    crate::error::Error::QueryCallback(fields, anyhow!(e))
+                })?;
+                Ok(ReadStepOutput::Final((ir, base_result)))
+            }
+        }
+    }
+}
+
+#[derive(ContextBound)]
+pub struct CallbackVarArgReadBuilder<'data, T, B> {
+    pub(crate) callback: T,
+    #[base(ContextBound)]
+    pub(crate) base: VarRawReadBuilder<'data, B>,
+}
+
+impl<'ctx, 'data, T, B> QueryBuilder<'ctx>
+    for CallbackVarArgReadBuilder<'data, T, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+    type Query = CallbackVarArgReadQuery<'data, T, B::Query>;
+
+    fn base(&self) -> &BuilderBase<'ctx> {
+        self.base.base()
+    }
+
+    fn build(self) -> Self::Query {
+        CallbackVarArgReadQuery {
+            callback: Some(self.callback),
+            base: self.base.build(),
+        }
+    }
+}
+
+impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data>
+    for CallbackVarArgReadBuilder<'data, T, B>
+where
+    B: QueryBuilder<'ctx>,
+{
+}
 
 #[cfg(test)]
 mod tests {

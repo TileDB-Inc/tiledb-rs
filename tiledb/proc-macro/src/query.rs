@@ -147,6 +147,10 @@ fn query_capi_interface_impl_fields_named_base(
             fn base(&self) -> &QueryBase<'ctx> {
                 self.#fname.base()
             }
+
+            fn finalize(self) -> TileDBResult<Array<'ctx>> {
+                self.#fname.finalize()
+            }
         }
     };
 
