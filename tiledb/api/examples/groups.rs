@@ -103,19 +103,16 @@ fn create_arrays_groups() -> TileDBResult<()> {
     )?;
 
     // Add members to groups
-    let mut group = Group::open(&tdb, "my_group", tiledb::query::QueryType::Write)?;
+    let mut group =
+        Group::open(&tdb, "my_group", tiledb::query::QueryType::Write)?;
 
-    group.add_member(
-        "dense_arrays/array_A",
-        true,
-        None as Option<String>,
-    )?;
+    group.add_member("dense_arrays/array_A", true, None as Option<String>)?;
     group.add_member("dense_arrays/array_B", true, Some("array_b"))?;
 
     group.add_member(
         "sparse_arrays",
         true,
-        None as Option<String> //Some("sparse_arrays_group"),
+        None as Option<String>, //Some("sparse_arrays_group"),
     )?;
 
     let mut sparse_group = Group::open(
@@ -141,7 +138,11 @@ fn print_group() -> TileDBResult<()> {
 
 fn cleanup() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
-    let group = Group::open(&tdb, "my_group", tiledb::query::QueryType::ModifyExclusive)?;
+    let group = Group::open(
+        &tdb,
+        "my_group",
+        tiledb::query::QueryType::ModifyExclusive,
+    )?;
     group.delete_group("my_group", true)?;
     Ok(())
 }

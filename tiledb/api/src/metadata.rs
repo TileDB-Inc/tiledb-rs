@@ -1,5 +1,6 @@
 use crate::{datatype::Datatype, fn_typed};
 use core::slice;
+use std::convert::From;
 
 #[derive(Debug, PartialEq)]
 pub enum Value {
@@ -77,16 +78,10 @@ impl Value {
     }
 }
 
-pub trait ValueType {
-    fn get_value(vec: Vec<Self>) -> Value
-    where
-        Self: Sized;
-}
-
 macro_rules! value_impl {
     ($ty:ty, $constructor:expr) => {
-        impl ValueType for $ty {
-            fn get_value(vec: Vec<Self>) -> Value {
+        impl From<Vec<$ty>> for Value {
+            fn from(vec: Vec<$ty>) -> Self {
                 $constructor(vec)
             }
         }
@@ -114,16 +109,16 @@ pub struct Metadata {
 impl Metadata {
     pub fn create<T>(key: String, datatype: Datatype, vec: Vec<T>) -> Self
     where
-        T: ValueType,
+        Value: From<Vec<T>>,
     {
-        return Metadata {
+        Metadata {
             key,
             datatype,
-            value: T::get_value(vec),
-        };
+            value: Value::from(vec),
+        }
     }
 
-    pub fn new(
+    pub(crate) fn new(
         key: String,
         datatype: Datatype,
         vec_ptr: *const std::ffi::c_void,
@@ -137,7 +132,7 @@ impl Metadata {
                 )
             };
             let vec_value: Vec<DT> = vec_slice.to_vec();
-            DT::get_value(vec_value)
+            Value::from(vec_value)
         });
 
         Metadata {

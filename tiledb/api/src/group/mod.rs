@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
-use crate::context::{ObjectType, ContextBound};
+use crate::context::{ContextBound, ObjectType};
 use crate::key::LookupKey;
 use crate::{Context, Datatype};
 
@@ -103,9 +103,7 @@ impl<'ctx> Group<'ctx> {
         Ok(String::from(uri.to_string_lossy()))
     }
 
-    pub fn query_type(
-        &self
-    ) -> TileDBResult<QueryType> {
+    pub fn query_type(&self) -> TileDBResult<QueryType> {
         let c_context = self.context.capi();
         let mut c_type: ffi::tiledb_query_type_t = out_ptr!();
         self.context.capi_return(unsafe {
@@ -118,11 +116,8 @@ impl<'ctx> Group<'ctx> {
         QueryType::try_from(c_type)
     }
 
-    pub fn delete_group<S>(
-        self,
-        uri: S,
-        recursive: bool,
-    ) -> TileDBResult<()>
+    // Deletes the group itself. Can only be called once.
+    pub fn delete_group<S>(self, uri: S, recursive: bool) -> TileDBResult<()>
     where
         S: AsRef<str>,
     {
@@ -153,13 +148,13 @@ impl<'ctx> Group<'ctx> {
         println!("{}", uri.as_ref());
         let c_context = self.context.capi();
         let c_uri = cstring!(uri.as_ref());
-        let c_name = match name.as_ref() {   
+        let c_name = match name.as_ref() {
             None => None,
-            Some(s) => Some(cstring!(s.as_ref()))
+            Some(s) => Some(cstring!(s.as_ref())),
         };
         let c_ptr = match c_name.as_ref() {
             None => out_ptr!(),
-            Some(s) => s.as_ptr()
+            Some(s) => s.as_ptr(),
         };
         let c_relative: u8 = if relative { 1 } else { 0 };
         self.context.capi_return(unsafe {
@@ -174,10 +169,8 @@ impl<'ctx> Group<'ctx> {
         Ok(())
     }
 
-    pub fn delete_member<S>(
-        &mut self,
-        name_or_uri: S,
-    ) -> TileDBResult<()>
+    // Deletes a member of the group.
+    pub fn delete_member<S>(&mut self, name_or_uri: S) -> TileDBResult<()>
     where
         S: AsRef<str>,
     {
@@ -193,9 +186,7 @@ impl<'ctx> Group<'ctx> {
         Ok(())
     }
 
-    pub fn num_members(
-        &self,
-    ) -> TileDBResult<u64> {
+    pub fn num_members(&self) -> TileDBResult<u64> {
         let c_context = self.context.capi();
         let mut c_count: u64 = out_ptr!();
         self.context.capi_return(unsafe {
@@ -208,11 +199,11 @@ impl<'ctx> Group<'ctx> {
         Ok(c_count)
     }
 
-    pub fn member(&self, key : LookupKey) -> TileDBResult<GroupInfo> {
+    pub fn member(&self, key: LookupKey) -> TileDBResult<GroupInfo> {
         let c_context = self.context.capi();
         let mut tiledb_uri: *mut ffi::tiledb_string_t = out_ptr!();
         let mut tiledb_type: ffi::tiledb_object_t = out_ptr!();
-        let name : String = match key {
+        let name: String = match key {
             LookupKey::Index(index) => {
                 let mut tiledb_name: *mut ffi::tiledb_string_t = out_ptr!();
                 self.context.capi_return(unsafe {
@@ -225,12 +216,13 @@ impl<'ctx> Group<'ctx> {
                         &mut tiledb_name as *mut *mut ffi::tiledb_string_t,
                     )
                 })?;
-                let name : String = TDBString {
+                let name = TDBString {
                     raw: RawTDBString::Owned(tiledb_name),
                 }
-                .to_string()?;
+                .to_string();
+                let name = name?;
                 Ok(name) as TileDBResult<String>
-            },
+            }
             LookupKey::Name(name) => {
                 let c_name = cstring!(name.as_ref() as &str);
                 self.context.capi_return(unsafe {
@@ -249,20 +241,18 @@ impl<'ctx> Group<'ctx> {
         let uri = TDBString {
             raw: RawTDBString::Owned(tiledb_uri),
         }
-        .to_string()?;
+        .to_string();
+        let uri = uri?;
 
         let object_type = ObjectType::try_from(tiledb_type)?;
         Ok(GroupInfo {
             uri,
             group_type: object_type,
-            name
+            name,
         })
     }
 
-    pub fn is_relative_uri<S>(
-        &self,
-        name: S,
-    ) -> TileDBResult<bool>
+    pub fn is_relative_uri<S>(&self, name: S) -> TileDBResult<bool>
     where
         S: AsRef<str>,
     {
@@ -289,10 +279,7 @@ impl<'ctx> Group<'ctx> {
         Ok(c_open > 0)
     }
 
-    pub fn dump(
-        &self,
-        recursive: bool,
-    ) -> TileDBResult<Option<String>> {
+    pub fn dump(&self, recursive: bool) -> TileDBResult<Option<String>> {
         let c_context = self.context.capi();
         let mut c_str: *mut std::ffi::c_char = out_ptr!();
         let c_recursive = if recursive { 1 } else { 0 };
@@ -307,14 +294,10 @@ impl<'ctx> Group<'ctx> {
         let group_dump = unsafe { std::ffi::CStr::from_ptr(c_str) };
         let group_dump_rust_str = group_dump.to_string_lossy().into_owned();
 
-        // ABI TODO: free string here?
         Ok(Some(group_dump_rust_str))
     }
 
-    pub fn set_config(
-        &mut self,
-        config: &Config,
-    ) -> TileDBResult<()> {
+    pub fn set_config(&mut self, config: &Config) -> TileDBResult<()> {
         let c_context = self.context.capi();
         let cfg = config.capi();
         self.context.capi_return(unsafe {
@@ -327,7 +310,11 @@ impl<'ctx> Group<'ctx> {
         let c_context = self.context.capi();
         let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
         self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_config(c_context, Self::capi(self), &mut c_cfg)
+            ffi::tiledb_group_get_config(
+                c_context,
+                Self::capi(self),
+                &mut c_cfg,
+            )
         })?;
 
         Ok(Config {
@@ -335,10 +322,7 @@ impl<'ctx> Group<'ctx> {
         })
     }
 
-    pub fn put_metadata(
-        &mut self,
-        metadata: Metadata,
-    ) -> TileDBResult<()> {
+    pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
         println!("{:?}", metadata);
         let c_context = self.context.capi();
         let (vec_size, vec_ptr, datatype) = metadata.c_data();
@@ -358,10 +342,7 @@ impl<'ctx> Group<'ctx> {
         Ok(())
     }
 
-    pub fn delete_metadata<S>(
-        &mut self,
-        name: S,
-    ) -> TileDBResult<()>
+    pub fn delete_metadata<S>(&mut self, name: S) -> TileDBResult<()>
     where
         S: AsRef<str>,
     {
@@ -377,24 +358,26 @@ impl<'ctx> Group<'ctx> {
         Ok(())
     }
 
-    pub fn num_metadata(
-        &self,
-    ) -> TileDBResult<u64> {
+    pub fn num_metadata(&self) -> TileDBResult<u64> {
         let c_context = self.context.capi();
         let mut num: u64 = out_ptr!();
         self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_metadata_num(c_context, Self::capi(self), &mut num)
+            ffi::tiledb_group_get_metadata_num(
+                c_context,
+                Self::capi(self),
+                &mut num,
+            )
         })?;
         Ok(num)
     }
 
-    pub fn metadata(&self, key : LookupKey) -> TileDBResult<Metadata> {
+    pub fn metadata(&self, key: LookupKey) -> TileDBResult<Metadata> {
         let c_context = self.context.capi();
         let mut vec_size: u32 = out_ptr!();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
 
-        let name : String = match key {
+        let name: String = match key {
             LookupKey::Index(index) => {
                 let mut key_ptr: *const std::ffi::c_char = out_ptr!();
                 let mut key_len: u32 = out_ptr!();
@@ -412,7 +395,7 @@ impl<'ctx> Group<'ctx> {
                 })?;
                 let c_key = unsafe { std::ffi::CStr::from_ptr(key_ptr) };
                 Ok(c_key.to_string_lossy().into_owned()) as TileDBResult<String>
-            },
+            }
             LookupKey::Name(name) => {
                 let c_name = cstring!(name.as_ref() as &str);
                 self.context.capi_return(unsafe {
@@ -432,10 +415,7 @@ impl<'ctx> Group<'ctx> {
         Ok(Metadata::new(name, datatype, vec_ptr, vec_size))
     }
 
-    pub fn has_metadata_key<S>(
-        &self,
-        name: S,
-    ) -> TileDBResult<Option<Datatype>>
+    pub fn has_metadata_key<S>(&self, name: S) -> TileDBResult<Option<Datatype>>
     where
         S: AsRef<str>,
     {
@@ -493,7 +473,11 @@ impl<'ctx> Group<'ctx> {
         let c_group_uri = cstring!(group_uri.as_ref());
         let cfg = config.capi();
         self.context.capi_return(unsafe {
-            ffi::tiledb_group_vacuum_metadata(c_context, c_group_uri.as_ptr(), cfg)
+            ffi::tiledb_group_vacuum_metadata(
+                c_context,
+                c_group_uri.as_ptr(),
+                cfg,
+            )
         })?;
         Ok(())
     }
