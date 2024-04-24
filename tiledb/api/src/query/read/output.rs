@@ -4,6 +4,7 @@ use std::num::NonZeroUsize;
 
 use anyhow::anyhow;
 
+use crate::array::CellValNum;
 use crate::convert::CAPISameRepr;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
@@ -274,35 +275,42 @@ where
     }
 }
 
-/// General-purpose allocator for any shape of scratch data.
-/*
- * TODO: I think this is sort of wrong, it should probably have the
- * cell val num, record capacity, bytes per record, and a flag for is_nullable
- *
- * Would you ever want to have distinct offset/validity capacities? Probably not, right?
- *
- * And if the cell val num is fixed then there is a linear relationship between byte
- * and validity capacity, so we probably want to stick the datatype here too
- */
-pub struct GeneralPurposeScratchAllocator {
-    pub byte_capacity: NonZeroUsize,
-    pub offset_capacity: Option<NonZeroUsize>,
-    pub validity_capacity: Option<NonZeroUsize>,
+/// Allocator for a schema field of any shape.
+// Note that we don't need bytes per value because the user
+// will be registering a buffer of appropriate primitive type.
+pub struct FieldScratchAllocator {
+    pub cell_val_num: CellValNum,
+    pub record_capacity: NonZeroUsize,
+    pub is_nullable: bool,
 }
 
-impl<C> ScratchAllocator<C> for GeneralPurposeScratchAllocator
+impl<C> ScratchAllocator<C> for FieldScratchAllocator
 where
     C: CAPISameRepr,
 {
     fn alloc(&self) -> ScratchSpace<C> {
-        let data =
-            vec![C::default(); self.byte_capacity.get()].into_boxed_slice();
-        let offsets = self
-            .offset_capacity
-            .map(|capacity| vec![0u64; capacity.get()].into_boxed_slice());
-        let validity = self
-            .validity_capacity
-            .map(|capacity| vec![0u8; capacity.get()].into_boxed_slice());
+        let (byte_capacity, offset_capacity) = match self.cell_val_num {
+            CellValNum::Fixed(values_per_record) => {
+                let byte_capacity = self.record_capacity.get()
+                    * values_per_record.get() as usize;
+                (byte_capacity, None)
+            }
+            CellValNum::Var => {
+                let values_per_record = 64; /* TODO: get some kind of hint from the schema */
+                let byte_capacity =
+                    self.record_capacity.get() * values_per_record;
+                (byte_capacity, Some(self.record_capacity.get()))
+            }
+        };
+
+        let data = vec![C::default(); byte_capacity].into_boxed_slice();
+        let offsets = offset_capacity
+            .map(|capacity| vec![0u64; capacity].into_boxed_slice());
+        let validity = if self.is_nullable {
+            Some(vec![0u8; self.record_capacity.get()].into_boxed_slice())
+        } else {
+            None
+        };
 
         ScratchSpace(data, offsets, validity)
     }

@@ -16,6 +16,7 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::key::LookupKey;
+use crate::query::read::output::FieldScratchAllocator;
 use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
 
@@ -174,8 +175,7 @@ impl<'ctx> Field<'ctx> {
 
     pub fn query_scratch_allocator(
         &self,
-    ) -> TileDBResult<crate::query::read::output::GeneralPurposeScratchAllocator>
-    {
+    ) -> TileDBResult<crate::query::read::output::FieldScratchAllocator> {
         Ok(FieldData::try_from(self)?.query_scratch_allocator())
     }
 }
@@ -191,33 +191,21 @@ pub struct FieldData {
 impl FieldData {
     pub fn query_scratch_allocator(
         &self,
-    ) -> crate::query::read::output::GeneralPurposeScratchAllocator {
+    ) -> crate::query::read::output::FieldScratchAllocator {
         /*
          * TODO: a hint from the schema would be good to use in some way,
-         * these numbers are super made up and should be improved.
-         * The user can edit them if they want of course but they probably aren't
-         * going to, so we ought to come up with something good by default.
+         * this number is super made up and should be improved
+         * (especially if there is a large fixed cell val num).
+         * The user can use a custom allocator if they want, of course,
+         * but they probably aren't going to, so we ought to come up
+         * with something good by default.
          */
-        crate::query::read::output::GeneralPurposeScratchAllocator {
-            byte_capacity: NonZeroUsize::new(1024 * 1024).unwrap(),
-            offset_capacity: if let Some(cell_val_num) = self.cell_val_num {
-                if cell_val_num.is_var_sized() {
-                    /*
-                     * TODO: derive a smarter capacity from expected average
-                     * value length and the byte capacity
-                     */
-                    Some(NonZeroUsize::new(1024 * 128).unwrap())
-                } else {
-                    None
-                }
-            } else {
-                None
-            },
-            validity_capacity: if self.nullability.unwrap_or(true) {
-                Some(NonZeroUsize::new(1024 * 128).unwrap())
-            } else {
-                None
-            },
+        let record_capacity = 1024 * 1024;
+
+        FieldScratchAllocator {
+            cell_val_num: self.cell_val_num.unwrap_or_default(),
+            record_capacity: NonZeroUsize::new(record_capacity).unwrap(),
+            is_nullable: self.nullability.unwrap_or(true),
         }
     }
 }
