@@ -360,8 +360,7 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
         let r = <T::Constructor as Default>::default();
         Ok(TypedReadBuilder {
             _marker: std::marker::PhantomData,
-            base: self
-                .register_callback((field.as_ref(), scratch.into()), r)?,
+            base: self.register_callback((field.as_ref(), scratch), r)?,
         })
     }
 }

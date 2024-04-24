@@ -80,10 +80,6 @@ impl<'ctx> QueryBase<'ctx> {
     }
 
     pub fn array(&self) -> &Array<'ctx> {
-        /*
-         * TODO: if this is pub then it defeats the purpose of the query API consuming
-         * the array to prevent shared usage of it
-         */
         &self.array
     }
 }
