@@ -88,7 +88,7 @@ impl Display for DatatypeErrorKind {
 
 #[derive(Clone, Debug)]
 pub enum ObjectTypeErrorKind {
-    InvalidDiscriminant(u64),
+    InvalidDiscriminant(ObjectType),
     TypeMismatch {
         user_type: &'static str,
         tiledb_type: ObjectType,
@@ -117,7 +117,7 @@ impl Display for ObjectTypeErrorKind {
 
 #[derive(Clone, Debug)]
 pub enum ModeErrorKind {
-    InvalidDiscriminant(u64),
+    InvalidDiscriminant(Mode),
     TypeMismatch {
         user_type: &'static str,
         tiledb_type: Mode,

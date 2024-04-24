@@ -8,7 +8,7 @@ use crate::filesystem::Filesystem;
 use crate::stats::RawStatsString;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ObjectType {
     Array,
     Group,
@@ -29,19 +29,9 @@ impl TryFrom<ffi::tiledb_object_t> for ObjectType {
     }
 }
 
-impl Debug for ObjectType {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        <Self as Display>::fmt(self, f)
-    }
-}
-
 impl Display for ObjectType {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let object_type_str = match *self {
-            ObjectType::Array => String::from("ObjectType::Array"),
-            ObjectType::Group => String::from("ObjectType::Group"),
-        };
-        write!(f, "{}", object_type_str)
+        <Self as Debug>::fmt(self, f)
     }
 }
 
