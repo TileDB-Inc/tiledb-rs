@@ -574,20 +574,22 @@ impl ValueTree for WriteQueryDataValueTree {
         let record_mask = match self.search {
             None => VarBitSet::saturated(self.nrecords),
             Some(ShrinkSearchStep::Explore(c)) => {
-                let nchunks = std::cmp::min(
-                    self.records_included.len(),
-                    WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES,
+                let nchunks = std::cmp::max(
+                    1,
+                    std::cmp::min(
+                        self.records_included.len(),
+                        WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES,
+                    ),
                 );
-                assert!(nchunks > 0, "Shrinking cannot reduce to empty input");
 
                 let approx_chunk_len = self.records_included.len() / nchunks;
-                assert!(approx_chunk_len > 0);
-
-                let mut record_mask = VarBitSet::new_bitset(self.nrecords);
 
                 if approx_chunk_len == 0 {
-                    unimplemented!()
+                    /* no records are included, we have shrunk down to empty */
+                    VarBitSet::new_bitset(self.nrecords)
                 } else {
+                    let mut record_mask = VarBitSet::new_bitset(self.nrecords);
+
                     let exclude_min = c * approx_chunk_len;
                     let exclude_max = if c + 1 == nchunks {
                         self.records_included.len()
@@ -601,9 +603,9 @@ impl ValueTree for WriteQueryDataValueTree {
                     {
                         record_mask.set(*r)
                     }
-                }
 
-                record_mask
+                    record_mask
+                }
             }
             Some(ShrinkSearchStep::Recur) | Some(ShrinkSearchStep::Done) => {
                 let mut record_mask = VarBitSet::new_bitset(self.nrecords);
