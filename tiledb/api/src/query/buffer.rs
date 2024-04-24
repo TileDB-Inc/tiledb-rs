@@ -172,6 +172,17 @@ macro_rules! typed_query_buffers {
                 }
             }
 
+            impl<'data> TryFrom<TypedQueryBuffers<'data>> for QueryBuffers<'data, $U> {
+                type Error = ();
+                fn try_from(value: TypedQueryBuffers<'data>) -> std::result::Result<Self, Self::Error> {
+                    if let TypedQueryBuffers::$V(value) = value {
+                        Ok(value)
+                    } else {
+                        Err(())
+                    }
+                }
+            }
+
             impl<'cell, 'data> From<Ref<'cell, QueryBuffersMut<'data, $U>>> for RefTypedQueryBuffersMut<'cell, 'data> {
                 fn from(value: Ref<'cell, QueryBuffersMut<'data, $U>>) -> Self {
                     RefTypedQueryBuffersMut::$V(value)
