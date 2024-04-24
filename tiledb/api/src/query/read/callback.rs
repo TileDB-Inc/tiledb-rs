@@ -391,6 +391,16 @@ macro_rules! query_read_callback {
             }
         }
 
+        impl<'data, T, Q> $query<'data, T, Q> where T: $callback {
+            fn realloc_managed_buffers(&mut self) {
+                paste! {
+                    $(
+                        self.[< arg_ $U:snake >].realloc_if_managed();
+                    )+
+                }
+            }
+        }
+
         impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for $query <'data, T, Q>
             where T: $callback,
                   Q: ReadQuery<'ctx>
@@ -418,6 +428,7 @@ macro_rules! query_read_callback {
                             let (nvalues, nbytes) = self.[< arg_ $U:snake >].last_read_size();
                             if !base_result.is_final() {
                                 if nvalues == 0 && nbytes == 0 {
+                                    self.realloc_managed_buffers();
                                     return Ok(ReadStepOutput::NotEnoughSpace)
                                 } else if nvalues == 0 {
                                     return Err(Error::Internal(format!(
@@ -592,7 +603,9 @@ where
         let base_result = self.base.step()?;
 
         match base_result {
-            ReadStepOutput::NotEnoughSpace => unreachable!(),
+            ReadStepOutput::NotEnoughSpace => {
+                Ok(ReadStepOutput::NotEnoughSpace)
+            }
             ReadStepOutput::Intermediate((sizes, base_result)) => {
                 let callback = match self.callback.as_mut() {
                     None => unimplemented!(),

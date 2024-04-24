@@ -233,6 +233,12 @@ impl<'data, C> RawReadHandle<'data, C> {
 
         (nvalues, nbytes)
     }
+
+    pub fn realloc_if_managed(&mut self) {
+        if let Some(managed_buffer) = self.managed_buffer.as_ref() {
+            managed_buffer.realloc();
+        }
+    }
 }
 
 pub enum TypedReadHandle<'data> {
@@ -330,6 +336,15 @@ impl<'data> TypedReadHandle<'data> {
             RefTypedQueryBuffersMut::from(handle.location.borrow())
         })
     }
+
+    pub fn realloc_if_managed(&mut self) {
+        typed_read_handle_go!(
+            self,
+            _DT,
+            ref mut handle,
+            handle.realloc_if_managed()
+        );
+    }
 }
 
 macro_rules! typed_read_handle {
@@ -406,15 +421,7 @@ where
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
                 /* realloc any self-managed buffers */
-                typed_read_handle_go!(
-                    self.raw_read_output,
-                    _DT,
-                    ref handle,
-                    if let Some(managed_buffer) = handle.managed_buffer.as_ref()
-                    {
-                        managed_buffer.realloc();
-                    }
-                );
+                self.raw_read_output.realloc_if_managed();
 
                 /* TODO: check that records/bytes are zero and produce an internal error if not */
                 ReadStepOutput::NotEnoughSpace
@@ -525,17 +532,8 @@ where
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
                 /* realloc any self-managed buffers */
-                for handle in self.raw_read_output.iter() {
-                    typed_read_handle_go!(
-                        handle,
-                        _DT,
-                        ref handle,
-                        if let Some(managed_buffer) =
-                            handle.managed_buffer.as_ref()
-                        {
-                            managed_buffer.realloc();
-                        }
-                    );
+                for handle in self.raw_read_output.iter_mut() {
+                    handle.realloc_if_managed();
                 }
 
                 /* TODO: check that records/bytes are zero and produce an internal error if not */
