@@ -142,6 +142,32 @@ pub const tiledb_object_t_TILEDB_GROUP: tiledb_object_t = 1;
 pub const tiledb_object_t_TILEDB_ARRAY: tiledb_object_t = 2;
 pub type tiledb_object_t = ::std::os::raw::c_uint;
 
+pub const tiledb_query_condition_combination_op_t_TILEDB_AND:
+    tiledb_query_condition_combination_op_t = 0;
+pub const tiledb_query_condition_combination_op_t_TILEDB_OR:
+    tiledb_query_condition_combination_op_t = 1;
+pub const tiledb_query_condition_combination_op_t_TILEDB_NOT:
+    tiledb_query_condition_combination_op_t = 2;
+pub type tiledb_query_condition_combination_op_t = ::std::os::raw::c_uint;
+
+pub const tiledb_query_condition_op_t_TILEDB_LT: tiledb_query_condition_op_t =
+    0;
+pub const tiledb_query_condition_op_t_TILEDB_LE: tiledb_query_condition_op_t =
+    1;
+pub const tiledb_query_condition_op_t_TILEDB_GT: tiledb_query_condition_op_t =
+    2;
+pub const tiledb_query_condition_op_t_TILEDB_GE: tiledb_query_condition_op_t =
+    3;
+pub const tiledb_query_condition_op_t_TILEDB_EQ: tiledb_query_condition_op_t =
+    4;
+pub const tiledb_query_condition_op_t_TILEDB_NE: tiledb_query_condition_op_t =
+    5;
+pub const tiledb_query_condition_op_t_TILEDB_IN: tiledb_query_condition_op_t =
+    6;
+pub const tiledb_query_condition_op_t_TILEDB_NOT_IN:
+    tiledb_query_condition_op_t = 7;
+pub type tiledb_query_condition_op_t = ::std::os::raw::c_uint;
+
 pub const tiledb_query_status_t_TILEDB_FAILED: tiledb_query_status_t = 0;
 pub const tiledb_query_status_t_TILEDB_COMPLETED: tiledb_query_status_t = 1;
 pub const tiledb_query_status_t_TILEDB_INPROGRESS: tiledb_query_status_t = 2;
