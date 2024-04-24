@@ -143,7 +143,15 @@ extern "C" {
     ) -> capi_return_t;
 
     pub fn tiledb_group_is_open(
+        ctx: *mut tiledb_ctx_t,
+        group: *mut tiledb_group_t,
+        is_open: *mut i32,
+    ) -> capi_return_t;
 
+    pub fn tiledb_group_get_uri(
+        ctx: *mut tiledb_ctx_t,
+        group: *mut tiledb_group_t,
+        group_uri: *mut *const ::std::ffi::c_char,
     ) -> capi_return_t;
 
     pub fn tiledb_group_get_query_type(
