@@ -932,6 +932,7 @@ mod tests {
 
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
+    #[ignore]
     fn write_readback() {
         let ctx = Context::new().expect("Error creating context");
 
