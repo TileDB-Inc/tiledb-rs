@@ -145,7 +145,6 @@ impl<'ctx> Group<'ctx> {
         S: AsRef<str>,
         T: AsRef<str>,
     {
-        println!("{}", uri.as_ref());
         let c_context = self.context.capi();
         let c_uri = cstring!(uri.as_ref());
         let c_name = match name.as_ref() {
@@ -323,11 +322,9 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
-        println!("{:?}", metadata);
         let c_context = self.context.capi();
         let (vec_size, vec_ptr, datatype) = metadata.c_data();
-        println!("{:?}", metadata);
-        let c_key = cstring!(metadata.key.clone()); // we're partially moving metadata
+        let c_key = cstring!(metadata.key);
         self.context.capi_return(unsafe {
             ffi::tiledb_group_put_metadata(
                 c_context,
@@ -338,7 +335,6 @@ impl<'ctx> Group<'ctx> {
                 vec_ptr,
             )
         })?;
-        println!("{:?}", metadata);
         Ok(())
     }
 
@@ -441,7 +437,7 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn consolidate_metadata<S>(
-        &self,
+        &mut self,
         config: &Config,
         group_uri: S,
     ) -> TileDBResult<()>
@@ -462,7 +458,7 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn vacuum_metadata<S>(
-        &self,
+        &mut self,
         config: &Config,
         group_uri: S,
     ) -> TileDBResult<()>
@@ -534,72 +530,81 @@ mod tests {
         let group1_path = tmp_dir.path().join("group1");
         let group1_uri = group1_path.to_str().unwrap();
         Group::create(&tdb, group1_uri)?;
+        {
+            let mut group1_err =
+                Group::open(&tdb, group1_uri, QueryType::Read)?;
+            let res = group1_err.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            ));
+            assert!(res.is_err());
+        }
 
-        let mut group1_err = Group::open(&tdb, group1_uri, QueryType::Read)?;
-        let res = group1_err.put_metadata(Metadata::new(
-            "key".to_owned(),
-            Datatype::Int32,
-            vec![5],
-        ));
-        assert!(res.is_err());
+        {
+            let mut group1_write =
+                Group::open(&tdb, group1_uri, QueryType::Write)?;
+            let res1 = group1_write.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Any,
+                vec![5],
+            ));
+            assert!(res1.is_err());
 
-        std::mem::drop(group1_err);
-        let mut group1_write = Group::open(&tdb, group1_uri, QueryType::Write)?;
-        let res1 = group1_write.put_metadata(Metadata::new(
-            "key".to_owned(),
-            Datatype::Any,
-            vec![5],
-        ));
-        assert!(res1.is_err());
+            group1_write.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            ))?;
+            group1_write.put_metadata(Metadata::new(
+                "aaa".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            ))?;
+            group1_write.put_metadata(Metadata::new(
+                "bb".to_owned(),
+                Datatype::Float32,
+                vec![1.1f32, 2.2f32],
+            ))?;
+        }
 
-        group1_write.put_metadata(Metadata::new(
-            "key".to_owned(),
-            Datatype::Int32,
-            vec![5],
-        ))?;
-        group1_write.put_metadata(Metadata::new(
-            "aaa".to_owned(),
-            Datatype::Int32,
-            vec![5],
-        ))?;
-        group1_write.put_metadata(Metadata::new(
-            "bb".to_owned(),
-            Datatype::Float32,
-            vec![1.1f32, 2.2f32],
-        ))?;
+        {
+            let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
+            let metadata_aaa =
+                group1_read.metadata(LookupKey::Name("aaa".to_owned()))?;
+            assert_eq!(metadata_aaa.datatype, Datatype::Int32);
+            assert_eq!(
+                metadata_aaa.value,
+                metadata::Value::Int32Value(vec!(5))
+            );
+            assert_eq!(metadata_aaa.key, "aaa");
 
-        std::mem::drop(group1_write);
+            let metadata_num = group1_read.num_metadata()?;
+            assert_eq!(metadata_num, 3);
 
-        let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
-        let metadata_aaa =
-            group1_read.metadata(LookupKey::Name("aaa".to_owned()))?;
-        assert_eq!(metadata_aaa.datatype, Datatype::Int32);
-        assert_eq!(metadata_aaa.value, metadata::Value::Int32Value(vec!(5)));
-        assert_eq!(metadata_aaa.key, "aaa");
+            let metadata_bb = group1_read.metadata(LookupKey::Index(1))?;
+            assert_eq!(metadata_bb.datatype, Datatype::Float32);
+            assert_eq!(metadata_bb.key, "bb");
+            assert_eq!(
+                metadata_bb.value,
+                metadata::Value::Float32Value(vec!(1.1f32, 2.2f32))
+            );
 
-        let metadata_num = group1_read.num_metadata()?;
-        assert_eq!(metadata_num, 3);
+            let has_aaa = group1_read.has_metadata_key("aaa")?;
+            assert_eq!(has_aaa, Some(Datatype::Int32));
+        }
 
-        let metadata_bb = group1_read.metadata(LookupKey::Index(1))?;
-        assert_eq!(metadata_bb.datatype, Datatype::Float32);
-        assert_eq!(metadata_bb.key, "bb");
-        assert_eq!(
-            metadata_bb.value,
-            metadata::Value::Float32Value(vec!(1.1f32, 2.2f32))
-        );
+        {
+            let mut group1_write =
+                Group::open(&tdb, group1_uri, QueryType::Write)?;
+            group1_write.delete_metadata("aaa")?;
+        }
 
-        let has_aaa = group1_read.has_metadata_key("aaa")?;
-        assert_eq!(has_aaa, Some(Datatype::Int32));
-        std::mem::drop(group1_read);
-
-        let mut group1_write = Group::open(&tdb, group1_uri, QueryType::Write)?;
-        group1_write.delete_metadata("aaa")?;
-        std::mem::drop(group1_write);
-
-        let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
-        let has_aaa = group1_read.has_metadata_key("aaa")?;
-        assert_eq!(has_aaa, None);
-        std::mem::drop(group1_read);
+        {
+            let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
+            let has_aaa = group1_read.has_metadata_key("aaa")?;
+            assert_eq!(has_aaa, None);
+        }
 
         // Cleanup
         let group1_write =
@@ -667,64 +672,75 @@ mod tests {
         let group_uri = group_path.to_str().unwrap();
         Group::create(&tdb, group_uri)?;
 
-        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
-        let group_uri_copy = group_read.uri()?;
-        assert_eq!(
-            group_uri_copy,
-            "file://".to_owned() + group_path.to_str().unwrap()
-        );
-        let group_type = group_read.query_type()?;
-        assert_eq!(group_type, QueryType::Read);
+        {
+            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let group_uri_copy = group_read.uri()?;
+            assert_eq!(
+                group_uri_copy,
+                "file://".to_owned() + group_path.to_str().unwrap()
+            );
+            let group_type = group_read.query_type()?;
+            assert_eq!(group_type, QueryType::Read);
 
-        let open = group_read.is_open()?;
-        assert!(open);
+            let open = group_read.is_open()?;
+            assert!(open);
+        }
 
-        std::mem::drop(group_read);
         create_array(group_uri.to_owned() + "/aa", ArrayType::Dense)?;
         create_array(group_uri.to_owned() + "/bb", ArrayType::Dense)?;
         create_array(group_uri.to_owned() + "/cc", ArrayType::Sparse)?;
 
-        let mut group_write = Group::open(&tdb, group_uri, QueryType::Write)?;
-        group_write.add_member("aa", true, Some("aa".to_owned()))?;
-        group_write.add_member("bb", true, Some("bb".to_owned()))?;
-        group_write.add_member("cc", true, Some("cc".to_owned()))?;
-        std::mem::drop(group_write);
-
-        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
-        let opt_string = group_read.dump(true)?;
-        match opt_string {
-            Some(s) => println!("{}", s),
-            None => println!("Empty group"),
-        }
-        std::mem::drop(group_read);
-
-        let mut group_write = Group::open(&tdb, group_uri, QueryType::Write)?;
-        group_write.delete_member("bb")?;
-        std::mem::drop(group_write);
-
-        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
-        let opt_string = group_read.dump(true)?;
-        match opt_string {
-            Some(s) => println!("{}", s),
-            None => println!("Empty group"),
+        {
+            let mut group_write =
+                Group::open(&tdb, group_uri, QueryType::Write)?;
+            group_write.add_member("aa", true, Some("aa".to_owned()))?;
+            group_write.add_member("bb", true, Some("bb".to_owned()))?;
+            group_write.add_member("cc", true, Some("cc".to_owned()))?;
         }
 
-        let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
-        let count = group_read.num_members()?;
-        assert_eq!(count, 2);
+        {
+            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let opt_string = group_read.dump(true)?;
+            // ABI TODO: make this a test...
+            match opt_string {
+                Some(s) => println!("{}", s),
+                None => println!("Empty group"),
+            }
+        }
 
-        let member_aa = group_read.member(LookupKey::Name("aa".to_owned()))?;
-        assert_eq!(member_aa.name, "aa".to_owned());
-        assert_eq!(member_aa.group_type, ObjectType::Array);
-        assert_eq!("file://".to_owned() + group_uri + "/aa", member_aa.uri);
+        {
+            let mut group_write =
+                Group::open(&tdb, group_uri, QueryType::Write)?;
+            group_write.delete_member("bb")?;
+        }
 
-        let member_cc = group_read.member(LookupKey::Index(1))?;
-        assert_eq!(member_cc.name, "cc".to_owned());
-        assert_eq!(member_cc.group_type, ObjectType::Array);
-        assert_eq!("file://".to_owned() + group_uri + "/cc", member_cc.uri);
+        {
+            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let opt_string = group_read.dump(true)?;
+            // ABI TODO: make this a test...
+            match opt_string {
+                Some(s) => println!("{}", s),
+                None => println!("Empty group"),
+            }
 
-        let is_aa_relative = group_read.is_relative_uri("aa")?;
-        assert!(is_aa_relative);
+            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let count = group_read.num_members()?;
+            assert_eq!(count, 2);
+
+            let member_aa =
+                group_read.member(LookupKey::Name("aa".to_owned()))?;
+            assert_eq!(member_aa.name, "aa".to_owned());
+            assert_eq!(member_aa.group_type, ObjectType::Array);
+            assert_eq!("file://".to_owned() + group_uri + "/aa", member_aa.uri);
+
+            let member_cc = group_read.member(LookupKey::Index(1))?;
+            assert_eq!(member_cc.name, "cc".to_owned());
+            assert_eq!(member_cc.group_type, ObjectType::Array);
+            assert_eq!("file://".to_owned() + group_uri + "/cc", member_cc.uri);
+
+            let is_aa_relative = group_read.is_relative_uri("aa")?;
+            assert!(is_aa_relative);
+        }
 
         Ok(())
     }
