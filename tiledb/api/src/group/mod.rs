@@ -518,14 +518,7 @@ impl Drop for Group<'_> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        array::Array,
-        array::ArrayType,
-        context::Context,
-        datatype::Datatype,
-        error::Error,
-        group::{Group, QueryType},
-        key::LookupKey,
-        metadata::{self, Metadata},
+        array::{Array, ArrayType}, config::Config, context::Context, datatype::Datatype, error::Error, group::{Group, QueryType}, key::LookupKey, metadata::{self, Metadata}, vfs::VFS
     };
     use crate::{
         array::{
@@ -747,5 +740,27 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    fn cv_write_group_metadata(group_uri : String) -> TileDBResult<()>{
+        let tdb = Context::new()?;
+        let mut group = Group::open(&tdb, group_uri, QueryType::Write)?;
+        group.put_metadata(Metadata::new("cons_test".to_string(), Datatype::Int32, vec![5])?)?;
+        Ok(())
+    }
+
+    fn cv_consolidate(group_uri : String, start: u64, end: u64) -> TileDBResult<()> {
+        let mut cfg = Config::new()?;
+        cfg.set("sm.consolidation.timestamp_start", start.to_string().as_str())?;
+        cfg.set("sm.consolidation.timestamp_end", end.to_string().as_str())?;
+
+        let tdb = Context::new()?;
+        let mut group = Group::open(&tdb, group_uri.as_ref() as &str, QueryType::Write)?;
+        group.consolidate_metadata(&cfg, group_uri.as_ref() as &str)?;
+        Ok(())
+    }
+
+    fn cv_get_meta_files(group_uri : String) -> TileDBResult<Vec<String>> {
+        Ok(vec!["hello".to_string()])
     }
 }
