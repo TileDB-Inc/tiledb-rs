@@ -701,11 +701,9 @@ mod tests {
         {
             let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
             let opt_string = group_read.dump(true)?;
-            // ABI TODO: make this a test...
-            match opt_string {
-                Some(s) => println!("{}", s),
-                None => println!("Empty group"),
-            }
+            let expected_str =
+                "group2 GROUP\n|-- aa ARRAY\n|-- bb ARRAY\n|-- cc ARRAY\n";
+            assert_eq!(opt_string, Some(expected_str.to_string()));
         }
 
         {
@@ -717,11 +715,8 @@ mod tests {
         {
             let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
             let opt_string = group_read.dump(true)?;
-            // ABI TODO: make this a test...
-            match opt_string {
-                Some(s) => println!("{}", s),
-                None => println!("Empty group"),
-            }
+            let expected_str = "group2 GROUP\n|-- aa ARRAY\n|-- cc ARRAY\n";
+            assert_eq!(opt_string, Some(expected_str.to_string()));
 
             let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
             let count = group_read.num_members()?;
