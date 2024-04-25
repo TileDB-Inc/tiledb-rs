@@ -48,7 +48,7 @@ extern "C" {
         key: *const ::std::os::raw::c_char,
         value_type: tiledb_datatype_t,
         value_num: u32,
-        value: *const ::std::ffi::c_void,
+        value: *const ::std::os::raw::c_void,
     ) -> capi_return_t;
 
     pub fn tiledb_group_delete_group(
@@ -70,7 +70,7 @@ extern "C" {
         key: *const ::std::os::raw::c_char,
         value_type: *mut tiledb_datatype_t,
         value_num: *mut u32,
-        value: *mut *const ::std::ffi::c_void,
+        value: *mut *const ::std::os::raw::c_void,
     ) -> capi_return_t;
 
     pub fn tiledb_group_get_metadata_num(
@@ -87,7 +87,7 @@ extern "C" {
         key_len: *mut u32,
         value_type: *mut tiledb_datatype_t,
         value_num: *mut u32,
-        value: *mut *const ::std::ffi::c_void,
+        value: *mut *const ::std::os::raw::c_void,
     ) -> capi_return_t;
 
     pub fn tiledb_group_has_metadata_key(
