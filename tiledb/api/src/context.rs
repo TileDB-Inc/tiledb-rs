@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use crate::config::{Config, RawConfig};
 use crate::error::{Error, RawError};
 use crate::filesystem::Filesystem;
@@ -12,6 +14,8 @@ pub enum ObjectType {
 pub(crate) struct RawContext {
     raw: *mut ffi::tiledb_ctx_t,
 }
+
+unsafe impl Send for RawContext {}
 
 impl Drop for RawContext {
     fn drop(&mut self) {
@@ -50,7 +54,7 @@ where
 }
 
 pub struct Context {
-    raw: RawContext,
+    raw: Arc<Mutex<RawContext>>,
 }
 
 impl Context {
@@ -64,7 +68,7 @@ impl Context {
         let res = unsafe { ffi::tiledb_ctx_alloc(cfg.capi(), &mut c_ctx) };
         if res == ffi::TILEDB_OK {
             Ok(Context {
-                raw: RawContext { raw: c_ctx },
+                raw: Arc::new(Mutex::new(RawContext { raw: c_ctx })),
             })
         } else {
             Err(Error::LibTileDB(String::from("Could not create context")))
@@ -75,10 +79,30 @@ impl Context {
     where
         Callable: FnOnce(*mut ffi::tiledb_ctx_t) -> i32,
     {
-        if action(self.raw.raw) == ffi::TILEDB_OK {
+        // Docs say that the error result from a poisoned lock are usually
+        // just propagated to all threads by just calling unwrap on locks.
+        let raw_ctx = self.raw.lock().unwrap();
+        if action(raw_ctx.raw) == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(self.expect_last_error())
+            // I've just pulled a second copy of the error code rather than
+            // futz around with something like creating a private shared
+            // function that has different guarantees about whether it holds
+            // a lock or not.
+            //
+            // N.B., we want to do this while we have the lock held from
+            // running the action callable so that any error we return is for
+            // the correct API call. Without this an error may have come from
+            // an intermediate API call instead.
+            let mut c_err: *mut ffi::tiledb_error_t = out_ptr!();
+            unsafe { ffi::tiledb_ctx_get_last_error(raw_ctx.raw, &mut c_err) };
+            if !c_err.is_null() {
+                Err(Error::from(RawError::Owned(c_err)))
+            } else {
+                Err(Error::Internal(String::from(
+                    "libtiledb: expected error data but found none",
+                )))
+            }
         }
     }
 

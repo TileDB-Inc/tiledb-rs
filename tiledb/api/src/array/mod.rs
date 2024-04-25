@@ -148,6 +148,8 @@ pub struct Array<'ctx> {
     pub(crate) raw: RawArray,
 }
 
+unsafe impl<'ctx> Send for Array<'ctx> {}
+
 impl<'ctx> Array<'ctx> {
     pub(crate) fn capi(&self) -> &RawArray {
         &self.raw
@@ -239,6 +241,11 @@ pub mod tests {
 
     use crate::array::*;
     use crate::Datatype;
+
+    #[test]
+    fn require_send() {
+        crate::require_send::<Array>();
+    }
 
     /// Create the array used in the "quickstart_dense" example
     pub fn create_quickstart_dense(
