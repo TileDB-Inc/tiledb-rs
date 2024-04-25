@@ -239,4 +239,22 @@ extern "C" {
         filter_option: *mut tiledb_filter_option_t,
     ) -> capi_return_t;
 
+    // There are v2 functions for these we use instead.
+    pub fn tiledb_group_get_member_by_index(
+        ctx: *mut tiledb_ctx_t,
+        group: *mut tiledb_group_t,
+        index: u64,
+        uri: *mut *mut ::std::os::raw::c_char,
+        type_: *mut tiledb_object_t,
+        name: *mut *mut ::std::os::raw::c_char,
+    ) -> capi_return_t;
+
+    pub fn tiledb_group_get_member_by_name(
+        ctx: *mut tiledb_ctx_t,
+        group: *mut tiledb_group_t,
+        name: *const ::std::os::raw::c_char,
+        uri: *mut *mut ::std::os::raw::c_char,
+        type_: *mut tiledb_object_t,
+    ) -> capi_return_t;
+
 }

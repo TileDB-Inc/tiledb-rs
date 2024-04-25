@@ -1,6 +1,6 @@
+use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
 use crate::{datatype::Datatype, fn_typed};
-use anyhow::anyhow;
 use core::slice;
 use std::convert::From;
 
@@ -116,11 +116,15 @@ impl Metadata {
     ) -> TileDBResult<Self>
     where
         Value: From<Vec<T>>,
+        T: 'static,
     {
-        if std::mem::size_of::<T>() != datatype.size() as usize {
-            return Err(crate::error::Error::InvalidArgument(anyhow!(
-                "datatype size and T size are not equal"
-            )));
+        if !datatype.is_compatible_type::<T>() {
+            return Err(crate::error::Error::Datatype(
+                DatatypeErrorKind::TypeMismatch {
+                    user_type: std::any::type_name::<T>(),
+                    tiledb_type: datatype,
+                },
+            ));
         }
         Ok(Metadata {
             key,

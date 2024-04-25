@@ -72,6 +72,7 @@ impl<'ctx> Group<'ctx> {
         context: &'ctx Context,
         uri: S,
         query_type: QueryType,
+        config: Option<&Config>,
     ) -> TileDBResult<Self>
     where
         S: AsRef<str>,
@@ -85,11 +86,19 @@ impl<'ctx> Group<'ctx> {
             ffi::tiledb_group_alloc(c_context, c_uri.as_ptr(), &mut group_raw)
         })?;
 
+        if let Some(cfg) = config {
+            let c_cfg = cfg.capi();
+            context.capi_return(unsafe {
+                ffi::tiledb_group_set_config(c_context, group_raw, c_cfg)
+            })?;
+        }
+
         let raw_group = RawGroup::new(group_raw);
         let query_type_raw = query_type.capi_enum();
         context.capi_return(unsafe {
             ffi::tiledb_group_open(c_context, group_raw, query_type_raw)
         })?;
+
         let mut c_open: i32 = out_ptr!();
         context
             .capi_return(unsafe {
@@ -292,7 +301,7 @@ impl<'ctx> Group<'ctx> {
         Ok(c_open > 0)
     }
 
-    pub fn dump(&self, recursive: bool) -> TileDBResult<Option<String>> {
+    pub fn dump(&self, recursive: bool) -> TileDBResult<String> {
         let c_context = self.context.capi();
         let mut c_str: *mut std::ffi::c_char = out_ptr!();
         let c_recursive = if recursive { 1 } else { 0 };
@@ -307,16 +316,7 @@ impl<'ctx> Group<'ctx> {
         let group_dump = unsafe { std::ffi::CStr::from_ptr(c_str) };
         let group_dump_rust_str = group_dump.to_string_lossy().into_owned();
 
-        Ok(Some(group_dump_rust_str))
-    }
-
-    pub fn set_config(&mut self, config: &Config) -> TileDBResult<()> {
-        let c_context = self.context.capi();
-        let cfg = config.capi();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_set_config(c_context, Self::capi(self), cfg)
-        })?;
-        Ok(())
+        Ok(group_dump_rust_str)
     }
 
     pub fn config(&self) -> TileDBResult<Config> {
@@ -505,6 +505,8 @@ impl Drop for Group<'_> {
             })
             .expect("TileDB internal error when checking for open group.");
 
+        // We check if the group is open, and only delete when the group is open, because
+        // if delete_group is called, then we should not close the group.
         if c_open > 0 {
             self.context
                 .capi_return(unsafe {
@@ -518,7 +520,14 @@ impl Drop for Group<'_> {
 #[cfg(test)]
 mod tests {
     use crate::{
-        array::{Array, ArrayType}, config::Config, context::Context, datatype::Datatype, error::Error, group::{Group, QueryType}, key::LookupKey, metadata::{self, Metadata}, vfs::VFS
+        array::{Array, ArrayType},
+        config::Config,
+        context::Context,
+        datatype::Datatype,
+        error::Error,
+        group::{Group, QueryType},
+        key::LookupKey,
+        metadata::{self, Metadata},
     };
     use crate::{
         array::{
@@ -540,7 +549,7 @@ mod tests {
         Group::create(&tdb, group1_uri)?;
         {
             let mut group1_err =
-                Group::open(&tdb, group1_uri, QueryType::Read)?;
+                Group::open(&tdb, group1_uri, QueryType::Read, None)?;
             let res = group1_err.put_metadata(Metadata::new(
                 "key".to_owned(),
                 Datatype::Int32,
@@ -551,7 +560,7 @@ mod tests {
 
         {
             let mut group1_write =
-                Group::open(&tdb, group1_uri, QueryType::Write)?;
+                Group::open(&tdb, group1_uri, QueryType::Write, None)?;
 
             group1_write.put_metadata(Metadata::new(
                 "key".to_owned(),
@@ -571,7 +580,8 @@ mod tests {
         }
 
         {
-            let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
+            let group1_read =
+                Group::open(&tdb, group1_uri, QueryType::Read, None)?;
             let metadata_aaa =
                 group1_read.metadata(LookupKey::Name("aaa".to_owned()))?;
             assert_eq!(metadata_aaa.datatype, Datatype::Int32);
@@ -598,19 +608,20 @@ mod tests {
 
         {
             let mut group1_write =
-                Group::open(&tdb, group1_uri, QueryType::Write)?;
+                Group::open(&tdb, group1_uri, QueryType::Write, None)?;
             group1_write.delete_metadata("aaa")?;
         }
 
         {
-            let group1_read = Group::open(&tdb, group1_uri, QueryType::Read)?;
+            let group1_read =
+                Group::open(&tdb, group1_uri, QueryType::Read, None)?;
             let has_aaa = group1_read.has_metadata_key("aaa")?;
             assert_eq!(has_aaa, None);
         }
 
         // Cleanup
         let group1_write =
-            Group::open(&tdb, group1_uri, QueryType::ModifyExclusive)?;
+            Group::open(&tdb, group1_uri, QueryType::ModifyExclusive, None)?;
         group1_write.delete_group(group1_uri, true)?;
 
         tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
@@ -675,7 +686,8 @@ mod tests {
         Group::create(&tdb, group_uri)?;
 
         {
-            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let group_read =
+                Group::open(&tdb, group_uri, QueryType::Read, None)?;
             let group_uri_copy = group_read.uri()?;
             assert_eq!(
                 group_uri_copy,
@@ -694,33 +706,36 @@ mod tests {
 
         {
             let mut group_write =
-                Group::open(&tdb, group_uri, QueryType::Write)?;
+                Group::open(&tdb, group_uri, QueryType::Write, None)?;
             group_write.add_member("aa", true, Some("aa".to_owned()))?;
             group_write.add_member("bb", true, Some("bb".to_owned()))?;
             group_write.add_member("cc", true, Some("cc".to_owned()))?;
         }
 
         {
-            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let group_read =
+                Group::open(&tdb, group_uri, QueryType::Read, None)?;
             let opt_string = group_read.dump(true)?;
             let expected_str =
                 "group2 GROUP\n|-- aa ARRAY\n|-- bb ARRAY\n|-- cc ARRAY\n";
-            assert_eq!(opt_string, Some(expected_str.to_string()));
+            assert_eq!(opt_string, expected_str.to_string());
         }
 
         {
             let mut group_write =
-                Group::open(&tdb, group_uri, QueryType::Write)?;
+                Group::open(&tdb, group_uri, QueryType::Write, None)?;
             group_write.delete_member("bb")?;
         }
 
         {
-            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let group_read =
+                Group::open(&tdb, group_uri, QueryType::Read, None)?;
             let opt_string = group_read.dump(true)?;
             let expected_str = "group2 GROUP\n|-- aa ARRAY\n|-- cc ARRAY\n";
-            assert_eq!(opt_string, Some(expected_str.to_string()));
+            assert_eq!(opt_string, expected_str.to_string());
 
-            let group_read = Group::open(&tdb, group_uri, QueryType::Read)?;
+            let group_read =
+                Group::open(&tdb, group_uri, QueryType::Read, None)?;
             let count = group_read.num_members()?;
             assert_eq!(count, 2);
 
@@ -742,25 +757,24 @@ mod tests {
         Ok(())
     }
 
-    fn cv_write_group_metadata(group_uri : String) -> TileDBResult<()>{
-        let tdb = Context::new()?;
-        let mut group = Group::open(&tdb, group_uri, QueryType::Write)?;
-        group.put_metadata(Metadata::new("cons_test".to_string(), Datatype::Int32, vec![5])?)?;
-        Ok(())
-    }
+    #[test]
+    fn test_group_config() -> TileDBResult<()> {
+        let tmp_dir =
+            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
 
-    fn cv_consolidate(group_uri : String, start: u64, end: u64) -> TileDBResult<()> {
+        let tdb = Context::new()?;
+        let group_path = tmp_dir.path().join("group");
+        let group_uri = group_path.to_str().unwrap();
+        Group::create(&tdb, group_uri)?;
+
         let mut cfg = Config::new()?;
-        cfg.set("sm.consolidation.timestamp_start", start.to_string().as_str())?;
-        cfg.set("sm.consolidation.timestamp_end", end.to_string().as_str())?;
+        cfg.set("foo", "bar")?;
 
-        let tdb = Context::new()?;
-        let mut group = Group::open(&tdb, group_uri.as_ref() as &str, QueryType::Write)?;
-        group.consolidate_metadata(&cfg, group_uri.as_ref() as &str)?;
+        let group_read: Group<'_> =
+            Group::open(&tdb, group_uri, QueryType::Read, Some(&cfg))?;
+        let cfg_copy = group_read.config()?;
+        assert!(cfg.eq(&cfg_copy));
+
         Ok(())
-    }
-
-    fn cv_get_meta_files(group_uri : String) -> TileDBResult<Vec<String>> {
-        Ok(vec!["hello".to_string()])
     }
 }

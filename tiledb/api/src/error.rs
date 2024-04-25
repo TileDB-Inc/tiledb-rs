@@ -3,10 +3,8 @@ extern crate tiledb_sys as ffi;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use serde::{Serialize, Serializer};
-
-use crate::context::ObjectType;
 use crate::Datatype;
+use serde::{Serialize, Serializer};
 
 pub(crate) enum RawError {
     Owned(*mut ffi::tiledb_error_t),
@@ -88,10 +86,6 @@ impl Display for DatatypeErrorKind {
 #[derive(Clone, Debug)]
 pub enum ObjectTypeErrorKind {
     InvalidDiscriminant(u64),
-    TypeMismatch {
-        user_type: &'static str,
-        tiledb_type: ObjectType,
-    },
 }
 
 impl Display for ObjectTypeErrorKind {
@@ -100,16 +94,6 @@ impl Display for ObjectTypeErrorKind {
             ObjectTypeErrorKind::InvalidDiscriminant(value) => {
                 write!(f, "Invalid object type: {}", value)
             }
-            ObjectTypeErrorKind::TypeMismatch {
-                user_type,
-                tiledb_type,
-            } => {
-                write!(
-                    f,
-                    "Type mismatch: requested {}, but found {}",
-                    user_type, tiledb_type
-                )
-            }
         }
     }
 }
@@ -117,10 +101,6 @@ impl Display for ObjectTypeErrorKind {
 #[derive(Clone, Debug)]
 pub enum ModeErrorKind {
     InvalidDiscriminant(u64),
-    TypeMismatch {
-        user_type: &'static str,
-        tiledb_type: u64,
-    },
 }
 
 impl Display for ModeErrorKind {
@@ -128,16 +108,6 @@ impl Display for ModeErrorKind {
         match self {
             ModeErrorKind::InvalidDiscriminant(value) => {
                 write!(f, "Invalid mode type: {}", value)
-            }
-            ModeErrorKind::TypeMismatch {
-                user_type,
-                tiledb_type,
-            } => {
-                write!(
-                    f,
-                    "Type mismatch: requested {}, but found {}",
-                    user_type, tiledb_type
-                )
             }
         }
     }
