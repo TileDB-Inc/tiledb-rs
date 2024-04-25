@@ -346,11 +346,10 @@ impl<'ctx> Filter<'ctx> {
         F: Borrow<FilterData>,
     {
         let filter_data = filter_data.borrow();
-        let c_context = context.capi();
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let ftype = filter_data.get_type().capi_enum();
-        context.capi_return(unsafe {
-            ffi::tiledb_filter_alloc(c_context, ftype, &mut c_filter)
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_alloc(ctx, ftype, &mut c_filter)
         })?;
 
         let raw = RawFilter::Owned(c_filter);
@@ -493,13 +492,10 @@ impl<'ctx> Filter<'ctx> {
     }
 
     pub fn filter_data(&self) -> TileDBResult<FilterData> {
+        let c_filter = self.capi();
         let mut c_ftype: u32 = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_filter_get_type(
-                self.context.capi(),
-                self.capi(),
-                &mut c_ftype,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_get_type(ctx, c_filter, &mut c_ftype)
         })?;
 
         let get_compression_data = |kind| -> TileDBResult<FilterData> {
@@ -595,12 +591,14 @@ impl<'ctx> Filter<'ctx> {
     }
 
     fn get_option<T>(&self, fopt: FilterOption) -> TileDBResult<T> {
+        let c_filter = self.capi();
+        let c_opt = fopt.capi_enum();
         let mut val: T = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_filter_get_option(
-                self.context.capi(),
-                self.capi(),
-                fopt.capi_enum(),
+                ctx,
+                c_filter,
+                c_opt,
                 &mut val as *mut T as *mut std::ffi::c_void,
             )
         })?;
@@ -613,14 +611,10 @@ impl<'ctx> Filter<'ctx> {
         fopt: FilterOption,
         val: T,
     ) -> TileDBResult<()> {
+        let c_opt = fopt.capi_enum();
         let c_val = &val as *const T as *const std::ffi::c_void;
-        context.capi_return(unsafe {
-            ffi::tiledb_filter_set_option(
-                context.capi(),
-                raw,
-                fopt.capi_enum(),
-                c_val,
-            )
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_set_option(ctx, raw, c_opt, c_val)
         })?;
         Ok(())
     }

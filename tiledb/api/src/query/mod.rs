@@ -62,21 +62,19 @@ impl<'ctx> QueryBase<'ctx> {
 
     /// Executes a single step of the query.
     fn do_submit(&self) -> TileDBResult<()> {
-        let c_context = self.context().capi();
         let c_query = **self.cquery();
-        self.capi_return(unsafe {
-            ffi::tiledb_query_submit(c_context, c_query)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_submit(ctx, c_query)
         })?;
         Ok(())
     }
 
     /// Returns the ffi status of the last submit()
     fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
-        let c_context = self.context().capi();
         let c_query = **self.cquery();
         let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_query_get_status(c_context, c_query, &mut c_status)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_status(ctx, c_query, &mut c_status)
         })
         .map(|_| c_status)
     }
@@ -92,10 +90,9 @@ impl<'ctx> Query<'ctx> for QueryBase<'ctx> {
     }
 
     fn finalize(self) -> TileDBResult<Array<'ctx>> {
-        let c_context = self.context().capi();
         let c_query = **self.base().cquery();
-        self.capi_return(unsafe {
-            ffi::tiledb_query_finalize(c_context, c_query)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_finalize(ctx, c_query)
         })?;
 
         Ok(self.array)
@@ -154,11 +151,10 @@ pub trait QueryBuilder<'ctx>: Sized {
     where
         Self: Sized,
     {
-        let c_context = self.base().context().capi();
         let c_query = **self.base().cquery();
         let c_layout = layout.capi_enum();
-        self.base().capi_return(unsafe {
-            ffi::tiledb_query_set_layout(c_context, c_query, c_layout)
+        self.base().capi_call(|ctx| unsafe {
+            ffi::tiledb_query_set_layout(ctx, c_query, c_layout)
         })?;
         Ok(self)
     }
@@ -171,11 +167,10 @@ pub trait QueryBuilder<'ctx>: Sized {
     }
 
     fn query_condition(self, qc: QueryCondition<'ctx>) -> TileDBResult<Self> {
-        let c_context = self.base().context().capi();
         let c_query = **self.base().cquery();
         let c_cond = qc.capi();
-        self.base().capi_return(unsafe {
-            ffi::tiledb_query_set_condition(c_context, c_query, c_cond)
+        self.base().capi_call(|ctx| unsafe {
+            ffi::tiledb_query_set_condition(ctx, c_query, c_cond)
         })?;
         Ok(self)
     }
@@ -216,17 +211,11 @@ impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
 
 impl<'ctx> BuilderBase<'ctx> {
     fn new(array: Array<'ctx>, query_type: QueryType) -> TileDBResult<Self> {
-        let c_context = array.context().capi();
         let c_array = **array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
-        array.capi_return(unsafe {
-            ffi::tiledb_query_alloc(
-                c_context,
-                c_array,
-                c_query_type,
-                &mut c_query,
-            )
+        array.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
         })?;
         Ok(BuilderBase {
             query: QueryBase {

@@ -90,6 +90,9 @@ pub enum Error {
     /// This should be not occur in normal usage of tiledb.
     #[error("Internal error: {0}")]
     Internal(String),
+    /// Error locking the context mutex.
+    #[error("Error locking context: {0}")]
+    LockError(#[source] anyhow::Error),
     /// Error received from the libtiledb backend
     #[error("libtiledb error: {0}")]
     LibTileDB(String),

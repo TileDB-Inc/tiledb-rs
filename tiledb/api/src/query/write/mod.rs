@@ -84,19 +84,17 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             )
         };
 
-        let c_context = self.context().capi();
         let c_query = **self.base().cquery();
         let c_name = cstring!(field_name.clone());
 
         let mut data_size = Box::pin(input.data.size() as u64);
 
-        self.capi_return(unsafe {
-            let c_bufptr =
-                input.data.as_ref().as_ptr() as *mut std::ffi::c_void;
-            let c_sizeptr = data_size.as_mut().get_mut() as *mut u64;
+        let c_bufptr = input.data.as_ref().as_ptr() as *mut std::ffi::c_void;
+        let c_sizeptr = data_size.as_mut().get_mut() as *mut u64;
 
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_data_buffer(
-                c_context,
+                ctx,
                 c_query,
                 c_name.as_ptr(),
                 c_bufptr,
@@ -115,9 +113,9 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
                     as *mut u64;
             let c_sizeptr = offsets_size.as_mut().get_mut() as *mut u64;
 
-            self.capi_return(unsafe {
+            self.capi_call(|ctx| unsafe {
                 ffi::tiledb_query_set_offsets_buffer(
-                    c_context,
+                    ctx,
                     c_query,
                     c_name.as_ptr(),
                     c_offptr,
@@ -134,9 +132,9 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
                 input.validity.as_ref().unwrap().as_ref().as_ptr() as *mut u8;
             let c_sizeptr = validity_size.as_mut().get_mut() as *mut u64;
 
-            self.capi_return(unsafe {
+            self.capi_call(|ctx| unsafe {
                 ffi::tiledb_query_set_validity_buffer(
-                    c_context,
+                    ctx,
                     c_query,
                     c_name.as_ptr(),
                     c_validityptr,

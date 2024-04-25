@@ -52,12 +52,8 @@ impl<'ctx> Domain<'ctx> {
 
     pub fn ndim(&self) -> TileDBResult<usize> {
         let mut ndim: u32 = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_domain_get_ndim(
-                self.context.capi(),
-                *self.raw,
-                &mut ndim,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_domain_get_ndim(ctx, *self.raw, &mut ndim)
         })?;
 
         Ok(ndim as usize)
@@ -70,13 +66,12 @@ impl<'ctx> Domain<'ctx> {
         match key.into() {
             LookupKey::Index(idx) => Ok(idx < self.ndim()?),
             LookupKey::Name(name) => {
-                let c_context = self.context.capi();
                 let c_domain = *self.raw;
                 let c_name = cstring!(name);
                 let mut c_has: i32 = out_ptr!();
-                self.capi_return(unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_domain_has_dimension(
-                        c_context,
+                        ctx,
                         c_domain,
                         c_name.as_ptr(),
                         &mut c_has,
@@ -92,38 +87,37 @@ impl<'ctx> Domain<'ctx> {
         &self,
         key: K,
     ) -> TileDBResult<Dimension<'ctx>> {
-        let c_context = self.context.capi();
         let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
 
-        self.capi_return(match key.into() {
+        match key.into() {
             LookupKey::Index(idx) => {
                 let c_idx: u32 = idx.try_into().map_err(
                     |e: <usize as TryInto<u32>>::Error| {
                         crate::error::Error::InvalidArgument(anyhow!(e))
                     },
                 )?;
-                unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_domain_get_dimension_from_index(
-                        c_context,
+                        ctx,
                         c_domain,
                         c_idx,
                         &mut c_dimension,
                     )
-                }
+                })?;
             }
             LookupKey::Name(name) => {
                 let c_name = cstring!(name);
-                unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_domain_get_dimension_from_name(
-                        c_context,
+                        ctx,
                         c_domain,
                         c_name.as_ptr(),
                         &mut c_dimension,
                     )
-                }
+                })?;
             }
-        })?;
+        }
 
         Ok(Dimension::new(
             self.context,
@@ -175,8 +169,8 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
-        context.capi_return(unsafe {
-            ffi::tiledb_domain_alloc(context.capi(), &mut c_domain)
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_domain_alloc(ctx, &mut c_domain)
         })?;
 
         Ok(Builder {
@@ -191,12 +185,11 @@ impl<'ctx> Builder<'ctx> {
         self,
         dimension: Dimension<'ctx>,
     ) -> TileDBResult<Self> {
-        let c_context = self.domain.context.capi();
         let c_domain = *self.domain.raw;
         let c_dim = dimension.capi();
 
-        self.capi_return(unsafe {
-            ffi::tiledb_domain_add_dimension(c_context, c_domain, c_dim)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_domain_add_dimension(ctx, c_domain, c_dim)
         })?;
 
         Ok(self)

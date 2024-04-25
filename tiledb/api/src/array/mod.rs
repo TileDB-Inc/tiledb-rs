@@ -162,13 +162,11 @@ impl<'ctx> Array<'ctx> {
         S: AsRef<str>,
     {
         let c_name = cstring!(name.as_ref());
-        context.capi_return(unsafe {
-            ffi::tiledb_array_create(
-                context.capi(),
-                c_name.as_ptr(),
-                schema.capi(),
-            )
-        })
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_create(ctx, c_name.as_ptr(), schema.capi())
+        })?;
+
+        Ok(())
     }
 
     pub fn exists<S>(context: &'ctx Context, uri: S) -> TileDBResult<bool>
@@ -189,19 +187,18 @@ impl<'ctx> Array<'ctx> {
     where
         S: AsRef<str>,
     {
-        let ctx = context.capi();
         let mut array_raw: *mut ffi::tiledb_array_t = std::ptr::null_mut();
-
         let c_uri = cstring!(uri.as_ref());
 
-        context.capi_return(unsafe {
+        context.capi_call(|ctx| unsafe {
             ffi::tiledb_array_alloc(ctx, c_uri.as_ptr(), &mut array_raw)
         })?;
 
         let mode_raw = mode.capi_enum();
-        context.capi_return(unsafe {
+        context.capi_call(|ctx| unsafe {
             ffi::tiledb_array_open(ctx, array_raw, mode_raw)
         })?;
+
         Ok(Array {
             context,
             raw: RawArray::Owned(array_raw),
@@ -209,13 +206,12 @@ impl<'ctx> Array<'ctx> {
     }
 
     pub fn schema(&self) -> TileDBResult<Schema> {
-        let c_context = self.context.capi();
         let c_array = *self.raw;
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
 
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_get_schema(
-                c_context,
+                ctx,
                 c_array,
                 &mut c_schema as *mut *mut ffi::tiledb_array_schema_t,
             )
@@ -227,12 +223,9 @@ impl<'ctx> Array<'ctx> {
 
 impl Drop for Array<'_> {
     fn drop(&mut self) {
-        let c_context = self.context.capi();
         let c_array = *self.raw;
-        self.capi_return(unsafe {
-            ffi::tiledb_array_close(c_context, c_array)
-        })
-        .expect("TileDB internal error when closing array");
+        self.capi_call(|ctx| unsafe { ffi::tiledb_array_close(ctx, c_array) })
+            .expect("TileDB internal error when closing array");
     }
 }
 

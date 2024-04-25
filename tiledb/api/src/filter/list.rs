@@ -42,23 +42,21 @@ impl<'ctx> FilterList<'ctx> {
     }
 
     pub fn get_num_filters(&self) -> TileDBResult<u32> {
+        let c_flist = self.capi();
         let mut num: u32 = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_filter_list_get_nfilters(
-                self.context.capi(),
-                *self.raw,
-                &mut num,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_list_get_nfilters(ctx, c_flist, &mut num)
         })?;
         Ok(num)
     }
 
     pub fn get_filter(&self, index: u32) -> TileDBResult<Filter<'ctx>> {
+        let c_flist = self.capi();
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_filter_list_get_filter_from_index(
-                self.context.capi(),
-                *self.raw,
+                ctx,
+                c_flist,
                 index,
                 &mut c_filter,
             )
@@ -73,13 +71,10 @@ impl<'ctx> FilterList<'ctx> {
     }
 
     pub fn get_max_chunk_size(&self) -> TileDBResult<u32> {
+        let c_flist = self.capi();
         let mut size: u32 = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_filter_list_get_max_chunk_size(
-                self.context.capi(),
-                *self.raw,
-                &mut size,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_list_get_max_chunk_size(ctx, c_flist, &mut size)
         })?;
         Ok(size)
     }
@@ -140,8 +135,8 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
         let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
-        context.capi_return(unsafe {
-            ffi::tiledb_filter_list_alloc(context.capi(), &mut c_flist)
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_list_alloc(ctx, &mut c_flist)
         })?;
         Ok(Builder {
             filter_list: FilterList {
@@ -152,23 +147,17 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn set_max_chunk_size(self, size: u32) -> TileDBResult<Self> {
-        self.capi_return(unsafe {
-            ffi::tiledb_filter_list_set_max_chunk_size(
-                self.filter_list.context.capi(),
-                *self.filter_list.raw,
-                size,
-            )
+        let c_flist = self.filter_list.capi();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_list_set_max_chunk_size(ctx, c_flist, size)
         })?;
         Ok(self)
     }
 
     pub fn add_filter(self, filter: Filter<'ctx>) -> TileDBResult<Self> {
-        self.capi_return(unsafe {
-            ffi::tiledb_filter_list_add_filter(
-                self.filter_list.context.capi(),
-                *self.filter_list.raw,
-                filter.capi(),
-            )
+        let c_flist = self.filter_list.capi();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_filter_list_add_filter(ctx, c_flist, filter.capi())
         })?;
         Ok(self)
     }

@@ -162,7 +162,7 @@ impl<'ctx> Field<'ctx> {
     pub fn nullability(&self) -> TileDBResult<bool> {
         Ok(match self {
             Field::Dimension(_) => false,
-            Field::Attribute(ref a) => a.is_nullable(),
+            Field::Attribute(ref a) => a.is_nullable()?,
         })
     }
 
@@ -282,15 +282,10 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn domain(&self) -> TileDBResult<Domain<'ctx>> {
-        let c_context: *mut ffi::tiledb_ctx_t = self.context.capi();
         let c_schema = *self.raw;
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_get_domain(
-                c_context,
-                c_schema,
-                &mut c_domain,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_get_domain(ctx, c_schema, &mut c_domain)
         })?;
 
         Ok(Domain::new(self.context, RawDomain::Owned(c_domain)))
@@ -301,27 +296,23 @@ impl<'ctx> Schema<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context: *mut ffi::tiledb_ctx_t = context.capi();
         let c_uri = cstring!(uri.as_ref());
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
 
-        context.capi_return(unsafe {
-            ffi::tiledb_array_schema_load(
-                c_context,
-                c_uri.as_ptr(),
-                &mut c_schema,
-            )
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_load(ctx, c_uri.as_ptr(), &mut c_schema)
         })?;
 
         Ok(Schema::new(context, RawSchema::Owned(c_schema)))
     }
 
     pub fn version(&self) -> TileDBResult<i64> {
+        let c_schema = self.capi();
         let mut c_version: std::os::raw::c_int = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_get_allows_dups(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_schema,
                 &mut c_version,
             )
         })?;
@@ -330,27 +321,21 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn array_type(&self) -> TileDBResult<ArrayType> {
-        let c_context = self.context.capi();
-        let c_schema = *self.raw;
+        let c_schema = self.capi();
         let mut c_atype: ffi::tiledb_array_type_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_get_array_type(
-                c_context,
-                c_schema,
-                &mut c_atype,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_get_array_type(ctx, c_schema, &mut c_atype)
         })?;
 
         ArrayType::try_from(c_atype)
     }
 
     pub fn capacity(&self) -> TileDBResult<u64> {
-        let c_context = self.context.capi();
-        let c_schema = *self.raw;
+        let c_schema = self.capi();
         let mut c_capacity: u64 = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_get_capacity(
-                c_context,
+                ctx,
                 c_schema,
                 &mut c_capacity,
             )
@@ -360,12 +345,11 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn cell_order(&self) -> TileDBResult<CellOrder> {
-        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_cell_order: ffi::tiledb_layout_t = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_get_cell_order(
-                c_context,
+                ctx,
                 c_schema,
                 &mut c_cell_order,
             )
@@ -375,12 +359,11 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn tile_order(&self) -> TileDBResult<TileOrder> {
-        let c_context = self.context.capi();
-        let c_schema = *self.raw;
+        let c_schema = self.capi();
         let mut c_tile_order: ffi::tiledb_layout_t = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_get_tile_order(
-                c_context,
+                ctx,
                 c_schema,
                 &mut c_tile_order,
             )
@@ -390,11 +373,12 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn allows_duplicates(&self) -> TileDBResult<bool> {
+        let c_schema = self.capi();
         let mut c_allows_duplicates: std::os::raw::c_int = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_get_allows_dups(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_schema,
                 &mut c_allows_duplicates,
             )
         })?;
@@ -402,12 +386,11 @@ impl<'ctx> Schema<'ctx> {
     }
 
     pub fn nattributes(&self) -> TileDBResult<usize> {
-        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_nattrs: u32 = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_get_attribute_num(
-                c_context,
+                ctx,
                 c_schema,
                 &mut c_nattrs,
             )
@@ -419,38 +402,37 @@ impl<'ctx> Schema<'ctx> {
         &self,
         key: K,
     ) -> TileDBResult<Attribute<'ctx>> {
-        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
 
-        self.capi_return(match key.into() {
+        match key.into() {
             LookupKey::Index(idx) => {
                 let c_idx: u32 = idx.try_into().map_err(
                     |e: <usize as TryInto<u32>>::Error| {
                         Error::InvalidArgument(anyhow!(e))
                     },
                 )?;
-                unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_array_schema_get_attribute_from_index(
-                        c_context,
+                        ctx,
                         c_schema,
                         c_idx,
                         &mut c_attr,
                     )
-                }
+                })?;
             }
             LookupKey::Name(name) => {
                 let c_name = cstring!(name);
-                unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_array_schema_get_attribute_from_name(
-                        c_context,
+                        ctx,
                         c_schema,
                         c_name.as_ptr(),
                         &mut c_attr,
                     )
-                }
+                })?;
             }
-        })?;
+        }
 
         Ok(Attribute::new(self.context, RawAttribute::Owned(c_attr)))
     }
@@ -487,12 +469,11 @@ impl<'ctx> Schema<'ctx> {
         &self,
         ffi_function: FnFilterListGet,
     ) -> TileDBResult<FilterList> {
-        let c_context = self.context.capi();
         let c_schema = *self.raw;
         let mut c_filters: *mut ffi::tiledb_filter_list_t = out_ptr!();
 
-        self.capi_return(unsafe {
-            ffi_function(c_context, c_schema, &mut c_filters)
+        self.capi_call(|ctx| unsafe {
+            ffi_function(ctx, c_schema, &mut c_filters)
         })?;
         Ok(FilterList {
             context: self.context,
@@ -565,21 +546,16 @@ impl<'ctx> Builder<'ctx> {
         array_type: ArrayType,
         domain: Domain<'ctx>,
     ) -> TileDBResult<Self> {
-        let c_context = context.capi();
         let c_array_type = array_type.capi_enum();
         let mut c_schema: *mut ffi::tiledb_array_schema_t =
             std::ptr::null_mut();
-        context.capi_return(unsafe {
-            ffi::tiledb_array_schema_alloc(
-                c_context,
-                c_array_type,
-                &mut c_schema,
-            )
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_alloc(ctx, c_array_type, &mut c_schema)
         })?;
 
         let c_domain = domain.capi();
-        context.capi_return(unsafe {
-            ffi::tiledb_array_schema_set_domain(c_context, c_schema, c_domain)
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_set_domain(ctx, c_schema, c_domain)
         })?;
 
         Ok(Builder {
@@ -591,57 +567,44 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn capacity(self, capacity: u64) -> TileDBResult<Self> {
-        let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
-        self.context().capi_return(unsafe {
-            ffi::tiledb_array_schema_set_capacity(c_context, c_schema, capacity)
+        self.context().capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_set_capacity(ctx, c_schema, capacity)
         })?;
         Ok(self)
     }
 
     pub fn cell_order(self, order: CellOrder) -> TileDBResult<Self> {
-        let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
         let c_order = order.capi_enum();
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_set_cell_order(
-                c_context, c_schema, c_order,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_set_cell_order(ctx, c_schema, c_order)
         })?;
         Ok(self)
     }
 
     pub fn tile_order(self, order: TileOrder) -> TileDBResult<Self> {
-        let c_context = self.schema.context.capi();
         let c_schema = *self.schema.raw;
         let c_order = order.capi_enum();
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_set_tile_order(
-                c_context, c_schema, c_order,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_set_tile_order(ctx, c_schema, c_order)
         })?;
         Ok(self)
     }
 
     pub fn allow_duplicates(self, allow: bool) -> TileDBResult<Self> {
+        let c_schema = self.schema.capi();
         let c_allow = if allow { 1 } else { 0 };
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_set_allows_dups(
-                self.schema.context.capi(),
-                *self.schema.raw,
-                c_allow,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_set_allows_dups(ctx, c_schema, c_allow)
         })?;
         Ok(self)
     }
 
     pub fn add_attribute(self, attr: Attribute) -> TileDBResult<Self> {
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_add_attribute(
-                self.schema.context.capi(),
-                *self.schema.raw,
-                attr.capi(),
-            )
+        let c_schema = self.schema.capi();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_add_attribute(ctx, c_schema, attr.capi())
         })?;
         Ok(self)
     }
@@ -654,10 +617,10 @@ impl<'ctx> Builder<'ctx> {
     where
         FL: Borrow<FilterList<'ctx>>,
     {
+        let c_schema = self.schema.capi();
         let filters = filters.borrow();
-        let c_context = self.schema.context.capi();
-        self.capi_return(unsafe {
-            ffi_function(c_context, *self.schema.raw, filters.capi())
+        self.capi_call(|ctx| unsafe {
+            ffi_function(ctx, c_schema, filters.capi())
         })?;
         Ok(self)
     }
@@ -693,10 +656,9 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn build(self) -> TileDBResult<Schema<'ctx>> {
-        let c_context = self.context().capi();
         let c_schema = *self.schema.raw;
-        self.capi_return(unsafe {
-            ffi::tiledb_array_schema_check(c_context, c_schema)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_check(ctx, c_schema)
         })
         .map(|_| self.schema)
     }

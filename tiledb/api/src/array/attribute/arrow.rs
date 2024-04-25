@@ -89,7 +89,7 @@ pub fn arrow_field(
                     )
                 })?;
         Ok(Some(
-            arrow_schema::Field::new(name, arrow_dt, attr.is_nullable())
+            arrow_schema::Field::new(name, arrow_dt, attr.is_nullable()?)
                 .with_metadata(HashMap::<String, String>::from([(
                     String::from("tiledb"),
                     metadata,
