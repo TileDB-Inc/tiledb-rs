@@ -162,7 +162,6 @@ impl<'data, C> RawReadHandle<'data, C> {
         context: &Context,
         c_query: *mut ffi::tiledb_query_t,
     ) -> TileDBResult<()> {
-        let c_context = context.capi();
         let c_name = cstring!(&*self.field);
 
         let mut location = self.location.borrow_mut();
@@ -170,20 +169,18 @@ impl<'data, C> RawReadHandle<'data, C> {
         *self.data_size.as_mut() =
             std::mem::size_of_val::<[C]>(&location.data) as u64;
 
-        context.capi_return({
-            let data = &mut location.data;
-            let c_bufptr = data.as_mut().as_ptr() as *mut std::ffi::c_void;
-            let c_sizeptr = self.data_size.as_mut().get_mut() as *mut u64;
+        let data = &mut location.data;
+        let c_bufptr = data.as_mut().as_ptr() as *mut std::ffi::c_void;
+        let c_sizeptr = self.data_size.as_mut().get_mut() as *mut u64;
 
-            unsafe {
-                ffi::tiledb_query_set_data_buffer(
-                    c_context,
-                    c_query,
-                    c_name.as_ptr(),
-                    c_bufptr,
-                    c_sizeptr,
-                )
-            }
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_set_data_buffer(
+                ctx,
+                c_query,
+                c_name.as_ptr(),
+                c_bufptr,
+                c_sizeptr,
+            )
         })?;
 
         let cell_offsets = &mut location.cell_offsets;
@@ -197,9 +194,9 @@ impl<'data, C> RawReadHandle<'data, C> {
             let c_offptr = cell_offsets.as_mut_ptr();
             let c_sizeptr = offsets_size.as_mut().get_mut() as *mut u64;
 
-            context.capi_return(unsafe {
+            context.capi_call(|ctx| unsafe {
                 ffi::tiledb_query_set_offsets_buffer(
-                    c_context,
+                    ctx,
                     c_query,
                     c_name.as_ptr(),
                     c_offptr,
@@ -219,9 +216,9 @@ impl<'data, C> RawReadHandle<'data, C> {
             let c_validityptr = validity.as_mut_ptr();
             let c_sizeptr = validity_size.as_mut().get_mut() as *mut u64;
 
-            context.capi_return(unsafe {
+            context.capi_call(|ctx| unsafe {
                 ffi::tiledb_query_set_validity_buffer(
-                    c_context,
+                    ctx,
                     c_query,
                     c_name.as_ptr(),
                     c_validityptr,

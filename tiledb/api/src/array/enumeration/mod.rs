@@ -45,13 +45,10 @@ impl<'ctx> Enumeration<'ctx> {
     }
 
     pub fn name(&self) -> TileDBResult<String> {
+        let c_enmr = self.capi();
         let mut c_str: *mut ffi::tiledb_string_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_enumeration_get_name(
-                self.context.capi(),
-                self.capi(),
-                &mut c_str,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_enumeration_get_name(ctx, c_enmr, &mut c_str)
         })?;
 
         TDBString {
@@ -61,26 +58,20 @@ impl<'ctx> Enumeration<'ctx> {
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
+        let c_enmr = self.capi();
         let mut dtype: ffi::tiledb_datatype_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_enumeration_get_type(
-                self.context.capi(),
-                self.capi(),
-                &mut dtype,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_enumeration_get_type(ctx, c_enmr, &mut dtype)
         })?;
 
         Datatype::try_from(dtype)
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<u32> {
+        let c_enmr = self.capi();
         let mut c_cvn: u32 = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_enumeration_get_cell_val_num(
-                self.context.capi(),
-                self.capi(),
-                &mut c_cvn,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_enumeration_get_cell_val_num(ctx, c_enmr, &mut c_cvn)
         })?;
 
         Ok(c_cvn)
@@ -91,25 +82,23 @@ impl<'ctx> Enumeration<'ctx> {
     }
 
     pub fn ordered(&self) -> TileDBResult<bool> {
+        let c_enmr = self.capi();
         let mut c_ordered: i32 = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_enumeration_get_ordered(
-                self.context.capi(),
-                self.capi(),
-                &mut c_ordered,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_enumeration_get_ordered(ctx, c_enmr, &mut c_ordered)
         })?;
 
         Ok(c_ordered != 0)
     }
 
     pub fn data(&self) -> TileDBResult<&[u8]> {
+        let c_enmr = self.capi();
         let mut ptr: *const std::ffi::c_uchar = out_ptr!();
         let mut size: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_enumeration_get_data(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_enmr,
                 &mut ptr as *mut *const std::ffi::c_uchar
                     as *mut *const std::ffi::c_void,
                 &mut size,
@@ -127,12 +116,13 @@ impl<'ctx> Enumeration<'ctx> {
     }
 
     pub fn offsets(&self) -> TileDBResult<Option<&[u64]>> {
+        let c_enmr = self.capi();
         let mut ptr: *const std::ffi::c_ulonglong = out_ptr!();
         let mut size: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_enumeration_get_offsets(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_enmr,
                 &mut ptr as *mut *const std::ffi::c_ulonglong
                     as *mut *const std::ffi::c_void,
                 &mut size,
@@ -159,6 +149,7 @@ impl<'ctx> Enumeration<'ctx> {
         data: &[T],
         offsets: Option<&[u64]>,
     ) -> TileDBResult<Enumeration<'ctx>> {
+        let c_enmr = self.capi();
         let mut c_new_enmr: *mut ffi::tiledb_enumeration_t = out_ptr!();
 
         // Rust semantics require that slice pointers aren't nullptr so that
@@ -177,10 +168,10 @@ impl<'ctx> Enumeration<'ctx> {
         // means this is safe as those bytes are guaranteed to be alive until
         // we drop self at the end of this method after returning from
         // tiledb_enumeration_alloc.
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_enumeration_extend(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_enmr,
                 data.as_ptr() as *const std::ffi::c_void,
                 std::mem::size_of_val(data) as u64,
                 offsets_ptr as *const std::ffi::c_void,
@@ -330,9 +321,9 @@ impl<'ctx, 'data, 'offsets> Builder<'ctx, 'data, 'offsets> {
         // means this is safe as those bytes are guaranteed to be alive until
         // we drop self at the end of this method after returning from
         // tiledb_enumeration_alloc.
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_enumeration_alloc(
-                self.context.capi(),
+                ctx,
                 c_name.as_c_str().as_ptr(),
                 c_dtype,
                 self.cell_val_num,
