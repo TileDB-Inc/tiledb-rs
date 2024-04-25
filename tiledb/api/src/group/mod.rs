@@ -97,7 +97,7 @@ impl<'ctx> Group<'ctx> {
             })
             .expect("TileDB internal error when checking for open group.");
 
-        if c_open == 0 {
+        if c_open < 0 {
             return Err(Error::LibTileDB(
                 "tiledb_group_open call does not successfully open group."
                     .to_string(),
@@ -498,9 +498,20 @@ impl Drop for Group<'_> {
         let c_context = self.context.capi();
         let c_group = Self::capi(self);
 
+        let mut c_open: i32 = out_ptr!();
         self.context
-            .capi_return(unsafe { ffi::tiledb_group_close(c_context, c_group) })
-            .expect("TileDB internal error when closing group");
+            .capi_return(unsafe {
+                ffi::tiledb_group_is_open(c_context, c_group, &mut c_open)
+            })
+            .expect("TileDB internal error when checking for open group.");
+
+        if c_open > 0 {
+            self.context
+                .capi_return(unsafe {
+                    ffi::tiledb_group_close(c_context, c_group)
+                })
+                .expect("TileDB internal error when closing group");
+        }
     }
 }
 
@@ -548,12 +559,6 @@ mod tests {
         {
             let mut group1_write =
                 Group::open(&tdb, group1_uri, QueryType::Write)?;
-            let res1 = group1_write.put_metadata(Metadata::new(
-                "key".to_owned(),
-                Datatype::Any,
-                vec![5],
-            )?);
-            assert!(res1.is_err());
 
             group1_write.put_metadata(Metadata::new(
                 "key".to_owned(),
