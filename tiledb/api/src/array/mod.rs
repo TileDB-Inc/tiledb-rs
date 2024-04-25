@@ -141,20 +141,23 @@ impl Drop for RawArray {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Array<'ctx> {
-    #[context]
-    context: &'ctx Context,
+unsafe impl Send for RawArray {}
+
+pub struct Array {
+    // Owned context so we can be Send.
+    // Option so that we can close on Drop if needed,
+    // but while the array is open this is assured to be Some.
+    context: Option<Context>,
     pub(crate) raw: RawArray,
 }
 
-impl<'ctx> Array<'ctx> {
+impl Array {
     pub(crate) fn capi(&self) -> &RawArray {
         &self.raw
     }
 
     pub fn create<S>(
-        context: &'ctx Context,
+        context: &Context,
         name: S,
         schema: Schema,
     ) -> TileDBResult<()>
@@ -171,7 +174,7 @@ impl<'ctx> Array<'ctx> {
         })
     }
 
-    pub fn exists<S>(context: &'ctx Context, uri: S) -> TileDBResult<bool>
+    pub fn exists<S>(context: &Context, uri: S) -> TileDBResult<bool>
     where
         S: AsRef<str>,
     {
@@ -181,11 +184,7 @@ impl<'ctx> Array<'ctx> {
         ))
     }
 
-    pub fn open<S>(
-        context: &'ctx Context,
-        uri: S,
-        mode: Mode,
-    ) -> TileDBResult<Self>
+    pub fn open<S>(context: Context, uri: S, mode: Mode) -> TileDBResult<Self>
     where
         S: AsRef<str>,
     {
@@ -203,13 +202,32 @@ impl<'ctx> Array<'ctx> {
             ffi::tiledb_array_open(ctx, array_raw, mode_raw)
         })?;
         Ok(Array {
-            context,
+            context: Some(context),
             raw: RawArray::Owned(array_raw),
         })
     }
 
+    fn close_impl(&mut self) -> TileDBResult<()> {
+        if let Some(context) = self.context.as_ref() {
+            let c_context = context.capi();
+            let c_array = *self.raw;
+            self.capi_return(unsafe {
+                ffi::tiledb_array_close(c_context, c_array)
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Consumes the array, closes it, and returns the wrapped Context.
+    pub fn close(self) -> TileDBResult<Context> {
+        let mut a = self;
+        a.close_impl()?;
+        Ok(a.context.take().unwrap())
+    }
+
     pub fn schema(&self) -> TileDBResult<Schema> {
-        let c_context = self.context.capi();
+        let c_context = self.context().capi();
         let c_array = *self.raw;
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
 
@@ -221,18 +239,20 @@ impl<'ctx> Array<'ctx> {
             )
         })?;
 
-        Ok(Schema::new(self.context, RawSchema::Owned(c_schema)))
+        Ok(Schema::new(self.context(), RawSchema::Owned(c_schema)))
     }
 }
 
-impl Drop for Array<'_> {
+impl ContextBound for Array {
+    fn context(&self) -> &Context {
+        self.context.as_ref().unwrap()
+    }
+}
+
+impl Drop for Array {
     fn drop(&mut self) {
-        let c_context = self.context.capi();
-        let c_array = *self.raw;
-        self.capi_return(unsafe {
-            ffi::tiledb_array_close(c_context, c_array)
-        })
-        .expect("TileDB internal error when closing array");
+        self.close_impl()
+            .expect("TileDB internal error when closing array")
     }
 }
 
@@ -246,6 +266,11 @@ pub mod tests {
 
     use crate::array::*;
     use crate::Datatype;
+
+    #[test]
+    fn require_send() {
+        crate::require_send::<Array>();
+    }
 
     /// Create the array used in the "quickstart_dense" example
     pub fn create_quickstart_dense(

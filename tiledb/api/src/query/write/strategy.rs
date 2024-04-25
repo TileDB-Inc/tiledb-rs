@@ -338,10 +338,10 @@ pub struct WriteQueryData {
 }
 
 impl WriteQueryData {
-    pub fn attach_write<'ctx, 'data>(
+    pub fn attach_write<'data>(
         &'data self,
-        b: WriteBuilder<'ctx, 'data>,
-    ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
+        b: WriteBuilder<'data>,
+    ) -> TileDBResult<WriteBuilder<'data>> {
         let mut b = b;
         for f in self.fields.iter() {
             b = typed_field_data_go!(
@@ -354,12 +354,12 @@ impl WriteQueryData {
         Ok(b)
     }
 
-    pub fn attach_read<'ctx, 'data, B>(
+    pub fn attach_read<'data, B>(
         &self,
         b: B,
     ) -> TileDBResult<CallbackVarArgReadBuilder<'data, RawResultCallback, B>>
     where
-        B: ReadQueryBuilder<'ctx, 'data>,
+        B: ReadQueryBuilder<'data>,
     {
         let field_order = self.fields.keys().cloned().collect::<Vec<_>>();
         let handles = {
@@ -829,18 +829,18 @@ mod tests {
     use crate::Factory;
 
     fn do_write_readback(
-        ctx: &Context,
+        ctx: Context,
         schema_spec: Rc<SchemaData>,
         write_sequence: WriteSequence,
-    ) {
+    ) -> TileDBResult<Context> {
         let tempdir = TempDir::new().expect("Error creating temp dir");
         let uri = String::from("file:///")
             + tempdir.path().join("array").to_str().unwrap();
 
         let schema_in = schema_spec
-            .create(ctx)
+            .create(&ctx)
             .expect("Error constructing arbitrary schema");
-        Array::create(ctx, &uri, schema_in).expect("Error creating array");
+        Array::create(&ctx, &uri, schema_in).expect("Error creating array");
 
         let mut array =
             Array::open(ctx, &uri, Mode::Write).expect("Error opening array");
@@ -928,14 +928,14 @@ mod tests {
                 array = read.finalize().expect("Error finalizing read query");
             }
         }
+
+        array.close()
     }
 
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
     #[ignore]
     fn write_readback() {
-        let ctx = Context::new().expect("Error creating context");
-
         let strategy = any::<SchemaData>().prop_flat_map(|schema| {
             let schema = Rc::new(schema);
             (
@@ -945,7 +945,9 @@ mod tests {
         });
 
         proptest!(|((schema_spec, write_sequence) in strategy)| {
-            do_write_readback(&ctx, schema_spec, write_sequence)
+            let ctx = Context::new().expect("Error creating context");
+            do_write_readback(ctx, schema_spec, write_sequence)
+                .expect("Error in do_write_readback");
         })
     }
 }

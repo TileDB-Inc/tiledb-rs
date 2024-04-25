@@ -143,7 +143,7 @@ fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array = tiledb::Array::open(
-        &tdb,
+        tdb,
         FRAGMENT_INFO_ARRAY_URI,
         tiledb::array::Mode::Write,
     )?;

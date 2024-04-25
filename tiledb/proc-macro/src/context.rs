@@ -3,7 +3,7 @@ use proc_macro2::{Ident, Span};
 use syn::parse::{Parse, Parser};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{GenericParam, Lifetime, LifetimeParam, Path};
+use syn::Path;
 
 pub fn expand(input: &syn::DeriveInput) -> TokenStream {
     context_bound_impl(input).into()
@@ -94,8 +94,8 @@ fn context_bound_impl_fields_named_direct(
     let fname =
         Ident::new(&f.ident.as_ref().unwrap().to_string(), Span::call_site());
     let expanded = quote! {
-        impl #impl_generics ContextBound <'ctx> for #name #ty_generics #where_clause {
-            fn context(&self) -> &'ctx Context {
+        impl #impl_generics ContextBound for #name #ty_generics #where_clause {
+            fn context(&self) -> &Context {
                 self.#fname
             }
         }
@@ -112,53 +112,20 @@ fn context_bound_impl_fields_named_base(
     let fname =
         Ident::new(&f.ident.as_ref().unwrap().to_string(), Span::call_site());
 
-    /*
-     * If the struct has a <'ctx> bound already then we can re-use
-     * the struct generics for the impl generics. Otherwise we have
-     * to add <'ctx> to the impl generics.
-     */
-    let impl_generics = {
-        let mut has_ctx_bound = false;
-        for generic in input.generics.params.iter() {
-            match generic {
-                GenericParam::Lifetime(ref l) => {
-                    if l.lifetime.ident == "ctx" {
-                        has_ctx_bound = true;
-                        break;
-                    }
-                }
-                _ => continue,
-            }
-        }
-
-        if has_ctx_bound {
-            input.generics.clone()
-        } else {
-            let mut g = input.generics.clone();
-            g.params.insert(
-                0,
-                GenericParam::Lifetime(LifetimeParam::new(Lifetime::new(
-                    "'ctx",
-                    Span::call_site(),
-                ))),
-            );
-            g
-        }
-    };
-
+    let impl_generics = input.generics.clone();
     let ty_generics = input.generics.clone();
 
     /*
      * It is perfectly fine to write the same trait bound multiple times,
      * or write trait bounds on non-generic types. For simplicity, always
-     * add a ContextBound<'ctx> bound to the base field.
+     * add a ContextBound bound to the base field.
      */
     let where_clause = {
         let bound = {
             let field_type = crate::ty::try_deref(&f.ty);
             let parser = syn::WherePredicate::parse;
             parser
-                .parse(quote!(#field_type: ContextBound<'ctx>).into())
+                .parse(quote!(#field_type: ContextBound).into())
                 .unwrap()
         };
 
@@ -175,8 +142,8 @@ fn context_bound_impl_fields_named_base(
     };
 
     let expanded = quote! {
-        impl #impl_generics ContextBound<'ctx> for #name #ty_generics #where_clause {
-            fn context(&self) -> &'ctx Context {
+        impl #impl_generics ContextBound for #name #ty_generics #where_clause {
+            fn context(&self) -> &Context {
                 self.#fname.context()
             }
         }
@@ -216,8 +183,8 @@ fn context_bound_impl_enum(
     let (impl_generics, ty_generics, where_clause) =
         input.generics.split_for_impl();
     quote! {
-        impl #impl_generics ContextBound<'ctx> for #name #ty_generics #where_clause {
-            fn context(&self) -> &'ctx Context {
+        impl #impl_generics ContextBound for #name #ty_generics #where_clause {
+            fn context(&self) -> &Context {
                 match self {
                     #(#variants,)*
                 }

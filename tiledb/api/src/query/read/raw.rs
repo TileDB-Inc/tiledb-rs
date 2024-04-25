@@ -157,12 +157,17 @@ impl<'data, C> RawReadHandle<'data, C> {
         }
     }
 
-    pub(crate) fn attach_query(
+    // Attach the buffers for this read field to the query.
+    // This takes raw arguments (and is correspondingly marked unsafe)
+    // because for a given query, the borrow checker is not smart enough
+    // to recognize that `self.base()` only borrows the `base` field,
+    // and it is thus safe to borrow that while mutably borrowing
+    // the raw read handle field.
+    pub(crate) unsafe fn attach_query(
         &mut self,
-        context: &Context,
+        c_context: *mut ffi::tiledb_ctx_t,
         c_query: *mut ffi::tiledb_query_t,
     ) -> TileDBResult<()> {
-        let c_context = context.capi();
         let c_name = cstring!(&*self.field);
 
         let mut location = self.location.borrow_mut();
@@ -170,7 +175,7 @@ impl<'data, C> RawReadHandle<'data, C> {
         *self.data_size.as_mut() =
             std::mem::size_of_val::<[C]>(&location.data) as u64;
 
-        context.capi_return({
+        Context::capi_return_raw(c_context, {
             let data = &mut location.data;
             let c_bufptr = data.as_mut().as_ptr() as *mut std::ffi::c_void;
             let c_sizeptr = self.data_size.as_mut().get_mut() as *mut u64;
@@ -197,7 +202,7 @@ impl<'data, C> RawReadHandle<'data, C> {
             let c_offptr = cell_offsets.as_mut_ptr();
             let c_sizeptr = offsets_size.as_mut().get_mut() as *mut u64;
 
-            context.capi_return(unsafe {
+            Context::capi_return_raw(c_context, unsafe {
                 ffi::tiledb_query_set_offsets_buffer(
                     c_context,
                     c_query,
@@ -219,7 +224,7 @@ impl<'data, C> RawReadHandle<'data, C> {
             let c_validityptr = validity.as_mut_ptr();
             let c_sizeptr = validity_size.as_mut().get_mut() as *mut u64;
 
-            context.capi_return(unsafe {
+            Context::capi_return_raw(c_context, unsafe {
                 ffi::tiledb_query_set_validity_buffer(
                     c_context,
                     c_query,
@@ -318,19 +323,6 @@ impl<'data> TypedReadHandle<'data> {
         typed_read_handle_go!(self, _DT, handle, &handle.field)
     }
 
-    pub fn attach_query(
-        &mut self,
-        context: &Context,
-        query: *mut ffi::tiledb_query_t,
-    ) -> TileDBResult<()> {
-        typed_read_handle_go!(
-            self,
-            _DT,
-            handle,
-            handle.attach_query(context, query)
-        )
-    }
-
     pub fn last_read_size(&self) -> (usize, usize) {
         typed_read_handle_go!(self, _DT, handle, handle.last_read_size())
     }
@@ -357,6 +349,19 @@ impl<'data> TypedReadHandle<'data> {
             ref mut handle,
             handle.realloc_if_managed()
         );
+    }
+
+    pub(crate) unsafe fn attach_query(
+        &mut self,
+        c_context: *mut ffi::tiledb_ctx_t,
+        c_query: *mut ffi::tiledb_query_t,
+    ) -> TileDBResult<()> {
+        typed_read_handle_go!(
+            self,
+            _DT,
+            handle,
+            handle.attach_query(c_context, c_query)
+        )
     }
 }
 
@@ -409,9 +414,9 @@ pub struct RawReadQuery<'data, Q> {
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, Q> ReadQuery<'ctx> for RawReadQuery<'data, Q>
+impl<'data, Q> ReadQuery for RawReadQuery<'data, Q>
 where
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery,
 {
     type Intermediate = (usize, usize, Q::Intermediate);
     type Final = (usize, usize, Q::Final);
@@ -420,8 +425,13 @@ where
         &mut self,
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
-        self.raw_read_output
-            .attach_query(self.base().context(), **self.base().cquery())?;
+        {
+            let c_context = self.base().context().capi();
+            let c_query = **self.base().cquery();
+            unsafe {
+                self.raw_read_output.attach_query(c_context, c_query)?;
+            }
+        }
 
         /* then execute */
         let base_result = {
@@ -473,13 +483,13 @@ pub struct RawReadBuilder<'data, B> {
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, B> QueryBuilder<'ctx> for RawReadBuilder<'data, B>
+impl<'data, B> QueryBuilder for RawReadBuilder<'data, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
     type Query = RawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -491,8 +501,8 @@ where
     }
 }
 
-impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data> for RawReadBuilder<'data, B> where
-    B: ReadQueryBuilder<'ctx, 'data>
+impl<'data, B> ReadQueryBuilder<'data> for RawReadBuilder<'data, B> where
+    B: ReadQueryBuilder<'data>
 {
 }
 
@@ -507,9 +517,9 @@ pub struct VarRawReadQuery<'data, Q> {
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, Q> ReadQuery<'ctx> for VarRawReadQuery<'data, Q>
+impl<'data, Q> ReadQuery for VarRawReadQuery<'data, Q>
 where
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery,
 {
     type Intermediate = (Vec<(usize, usize)>, Q::Intermediate);
     type Final = (Vec<(usize, usize)>, Q::Final);
@@ -519,10 +529,13 @@ where
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
         {
-            let context = self.base().context();
-            let cquery = **self.base().cquery();
+            let c_context = self.base().context().capi();
+            let c_query = **self.base().cquery();
+
             for handle in self.raw_read_output.iter_mut() {
-                handle.attach_query(context, cquery)?;
+                unsafe {
+                    handle.attach_query(c_context, c_query)?;
+                }
             }
         }
 
@@ -587,13 +600,13 @@ pub struct VarRawReadBuilder<'data, B> {
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, B> QueryBuilder<'ctx> for VarRawReadBuilder<'data, B>
+impl<'data, B> QueryBuilder for VarRawReadBuilder<'data, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
     type Query = VarRawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -605,9 +618,7 @@ where
     }
 }
 
-impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data>
-    for VarRawReadBuilder<'data, B>
-where
-    B: ReadQueryBuilder<'ctx, 'data>,
+impl<'data, B> ReadQueryBuilder<'data> for VarRawReadBuilder<'data, B> where
+    B: ReadQueryBuilder<'data>
 {
 }

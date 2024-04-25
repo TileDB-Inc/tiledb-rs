@@ -99,7 +99,7 @@ pub fn create_array(
 pub fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
     let array: Array =
-        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
+        tiledb::Array::open(tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
     let data: Vec<i32> = Vec::from_iter(0..12000 * 12000);
 
     let query = tiledb::query::WriteBuilder::new(array)?
@@ -128,7 +128,7 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array =
-        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
+        tiledb::Array::open(tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?

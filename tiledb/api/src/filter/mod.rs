@@ -322,6 +322,8 @@ impl Drop for RawFilter {
     }
 }
 
+unsafe impl Send for RawFilter {}
+
 #[derive(ContextBound)]
 pub struct Filter<'ctx> {
     #[context]
@@ -653,6 +655,11 @@ pub mod strategy;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn require_send() {
+        crate::require_send::<RawFilter>();
+    }
 
     /// Ensure that we can construct a filter from all options using default settings
     #[test]

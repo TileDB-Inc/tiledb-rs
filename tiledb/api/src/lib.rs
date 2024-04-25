@@ -77,3 +77,6 @@ pub trait Factory<'ctx> {
 
     fn create(&self, context: &'ctx context::Context) -> Result<Self::Item>;
 }
+
+#[cfg(test)]
+pub(crate) fn require_send<T: Send>() {}

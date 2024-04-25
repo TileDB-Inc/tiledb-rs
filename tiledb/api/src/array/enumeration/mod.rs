@@ -32,6 +32,8 @@ impl Drop for RawEnumeration {
     }
 }
 
+unsafe impl Send for RawEnumeration {}
+
 #[derive(ContextBound)]
 pub struct Enumeration<'ctx> {
     #[context]

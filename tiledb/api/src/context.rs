@@ -11,38 +11,39 @@ pub enum ObjectType {
     Group,
 }
 
-pub(crate) enum RawContext {
-    Owned(*mut ffi::tiledb_ctx_t),
-}
+pub(crate) struct RawContext(*mut ffi::tiledb_ctx_t);
 
 impl Deref for RawContext {
     type Target = *mut ffi::tiledb_ctx_t;
     fn deref(&self) -> &Self::Target {
-        let RawContext::Owned(ref ffi) = *self;
+        let RawContext(ref ffi) = *self;
         ffi
     }
 }
 
 impl Drop for RawContext {
     fn drop(&mut self) {
-        let RawContext::Owned(ref mut ffi) = *self;
+        let RawContext(ref mut ffi) = *self;
         unsafe {
             ffi::tiledb_ctx_free(ffi);
         }
     }
 }
 
-pub trait ContextBound<'ctx> {
-    fn context(&self) -> &'ctx Context;
+unsafe impl Send for RawContext {}
+unsafe impl Sync for RawContext {}
+
+pub trait ContextBound {
+    fn context(&self) -> &Context;
 }
 
 pub trait CApiInterface {
     fn capi_return(&self, c_ret: i32) -> TileDBResult<()>;
 }
 
-impl<'ctx, T> CApiInterface for T
+impl<T> CApiInterface for T
 where
-    T: ContextBound<'ctx>,
+    T: ContextBound,
 {
     fn capi_return(&self, c_ret: i32) -> TileDBResult<()> {
         self.context().capi_return(c_ret)
@@ -68,7 +69,7 @@ impl Context {
         let res = unsafe { ffi::tiledb_ctx_alloc(cfg.capi(), &mut c_ctx) };
         if res == ffi::TILEDB_OK {
             Ok(Context {
-                raw: RawContext::Owned(c_ctx),
+                raw: RawContext(c_ctx),
             })
         } else {
             Err(Error::LibTileDB(String::from("Could not create context")))
@@ -180,6 +181,27 @@ impl Context {
         }
     }
 
+    pub(crate) unsafe fn capi_return_raw(
+        c_context: *mut ffi::tiledb_ctx_t,
+        c_ret: i32,
+    ) -> TileDBResult<()> {
+        if c_ret == ffi::TILEDB_OK {
+            Ok(())
+        } else {
+            let mut c_err: *mut ffi::tiledb_error_t = out_ptr!();
+            let res = unsafe {
+                ffi::tiledb_ctx_get_last_error(c_context, &mut c_err)
+            };
+            if res == ffi::TILEDB_OK {
+                Err(Error::from(RawError::Owned(c_err)))
+            } else {
+                Err(Error::Internal(String::from(
+                    "libtiledb: expected error data but found none",
+                )))
+            }
+        }
+    }
+
     /// Safely translate a return value from the C API into a TileDBResult
     pub(crate) fn capi_return(&self, c_ret: i32) -> TileDBResult<()> {
         if c_ret == ffi::TILEDB_OK {
@@ -193,6 +215,12 @@ impl Context {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn require_send() {
+        crate::require_send::<RawContext>();
+        crate::require_send::<Context>();
+    }
 
     #[test]
     fn ctx_alloc() {

@@ -33,6 +33,8 @@ impl Drop for RawDomain {
     }
 }
 
+unsafe impl Send for RawDomain {}
+
 #[derive(ContextBound)]
 pub struct Domain<'ctx> {
     #[context]

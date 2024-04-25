@@ -81,7 +81,7 @@ fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array = tiledb::Array::open(
-        &tdb,
+        tdb,
         QUICKSTART_DENSE_ARRAY_URI,
         tiledb::array::Mode::Write,
     )?;
@@ -108,7 +108,7 @@ fn read_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array = tiledb::Array::open(
-        &tdb,
+        tdb,
         QUICKSTART_DENSE_ARRAY_URI,
         tiledb::array::Mode::Read,
     )?;

@@ -38,6 +38,8 @@ impl Drop for RawFragmentInfo {
     }
 }
 
+unsafe impl Send for RawFragmentInfo {}
+
 #[derive(ContextBound)]
 struct FragmentInfoInternal<'ctx> {
     #[context]
@@ -750,15 +752,15 @@ pub mod tests {
 
     use crate::array::*;
     use crate::config::Config;
-    use crate::query::{QueryBuilder, WriteBuilder};
+    use crate::query::{Query, QueryBuilder, WriteBuilder};
     use crate::Datatype;
 
     #[test]
     fn test_set_config() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
 
+        let ctx = Context::new().unwrap();
         let config = Config::new()?;
         let frag_infos =
             Builder::new(&ctx, &array_uri)?.config(&config)?.build();
@@ -770,9 +772,10 @@ pub mod tests {
 
     #[test]
     fn test_get_config() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         assert!(frag_infos.config().is_ok());
@@ -782,9 +785,10 @@ pub mod tests {
 
     #[test]
     fn test_load_infos() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos =
             Builder::new(&ctx, &array_uri)?.build_without_loading();
 
@@ -795,9 +799,10 @@ pub mod tests {
 
     #[test]
     fn test_unconsolidated_metadata_num() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         assert!(frag_infos.unconsolidated_metadata_num().is_ok());
@@ -807,9 +812,10 @@ pub mod tests {
 
     #[test]
     fn test_num_to_vacuum() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         assert!(frag_infos.num_to_vacuum().is_ok());
@@ -819,9 +825,10 @@ pub mod tests {
 
     #[test]
     fn test_total_cell_count() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         let cell_count = frag_infos.total_cell_count()?;
@@ -832,9 +839,10 @@ pub mod tests {
 
     #[test]
     fn test_num_fragments() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         let num_frags = frag_infos.num_fragments()?;
@@ -845,9 +853,10 @@ pub mod tests {
 
     #[test]
     fn test_get_fragment() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         assert!(frag_infos.get_fragment(0).is_ok());
@@ -857,9 +866,10 @@ pub mod tests {
 
     #[test]
     fn test_get_fragment_failure() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         assert!(frag_infos.get_fragment(3).is_err());
@@ -869,9 +879,10 @@ pub mod tests {
 
     #[test]
     fn test_iter_fragments() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let array_uri = create_dense_array(&tmp_dir).unwrap();
+
+        let ctx = Context::new().unwrap();
         let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
 
         let mut num_frags = 0;
@@ -886,11 +897,11 @@ pub mod tests {
 
     #[test]
     fn test_fragment_info_apis() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
-        let dense_array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let sparse_array_uri = create_sparse_array(&ctx, &tmp_dir).unwrap();
+        let dense_array_uri = create_dense_array(&tmp_dir).unwrap();
+        let sparse_array_uri = create_sparse_array(&tmp_dir).unwrap();
 
+        let ctx = Context::new().unwrap();
         check_fragment_info_apis(&ctx, &dense_array_uri, FragmentType::Dense)?;
         check_fragment_info_apis(
             &ctx,
@@ -929,16 +940,14 @@ pub mod tests {
     }
 
     /// Create a simple dense test array with a couple fragments to inspect.
-    pub fn create_dense_array(
-        ctx: &Context,
-        dir: &TempDir,
-    ) -> TileDBResult<String> {
+    pub fn create_dense_array(dir: &TempDir) -> TileDBResult<String> {
+        let mut ctx = Context::new().unwrap();
         let array_dir = dir.path().join("fragment_info_test_dense");
         let array_uri = String::from(array_dir.to_str().unwrap());
 
         let domain = {
             let rows = DimensionBuilder::new::<i32>(
-                ctx,
+                &ctx,
                 "id",
                 Datatype::Int32,
                 &[1, 10],
@@ -946,44 +955,45 @@ pub mod tests {
             )?
             .build();
 
-            DomainBuilder::new(ctx)?.add_dimension(rows)?.build()
+            DomainBuilder::new(&ctx)?.add_dimension(rows)?.build()
         };
 
-        let schema = SchemaBuilder::new(ctx, ArrayType::Dense, domain)?
+        let schema = SchemaBuilder::new(&ctx, ArrayType::Dense, domain)?
             .add_attribute(
-                AttributeBuilder::new(ctx, "attr", Datatype::UInt64)?.build(),
+                AttributeBuilder::new(&ctx, "attr", Datatype::UInt64)?.build(),
             )?
             .build()?;
 
-        Array::create(ctx, &array_uri, schema)?;
+        Array::create(&ctx, &array_uri, schema)?;
 
         // Two writes for multiple fragments
-        write_dense_array(ctx, &array_uri)?;
+        ctx = write_dense_array(ctx, &array_uri)?;
         write_dense_array(ctx, &array_uri)?;
         Ok(array_uri)
     }
 
     /// Write another fragment to the test array.
-    fn write_dense_array(ctx: &Context, array_uri: &str) -> TileDBResult<()> {
+    fn write_dense_array(
+        ctx: Context,
+        array_uri: &str,
+    ) -> TileDBResult<Context> {
         let data = vec![1u64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let array = Array::open(ctx, array_uri, Mode::Write)?;
         let query =
             WriteBuilder::new(array)?.data_typed("attr", &data)?.build();
         query.submit()?;
-        Ok(())
+        query.finalize()?.close()
     }
 
     /// Create a simple sparse test array with a couple fragments to inspect.
-    pub fn create_sparse_array(
-        ctx: &Context,
-        dir: &TempDir,
-    ) -> TileDBResult<String> {
+    pub fn create_sparse_array(dir: &TempDir) -> TileDBResult<String> {
+        let mut ctx = Context::new().unwrap();
         let array_dir = dir.path().join("fragment_info_test_sparse");
         let array_uri = String::from(array_dir.to_str().unwrap());
 
         let domain = {
             let rows = DimensionBuilder::new::<i32>(
-                ctx,
+                &ctx,
                 "id",
                 Datatype::Int32,
                 &[1, 10],
@@ -991,25 +1001,28 @@ pub mod tests {
             )?
             .build();
 
-            DomainBuilder::new(ctx)?.add_dimension(rows)?.build()
+            DomainBuilder::new(&ctx)?.add_dimension(rows)?.build()
         };
 
-        let schema = SchemaBuilder::new(ctx, ArrayType::Sparse, domain)?
+        let schema = SchemaBuilder::new(&ctx, ArrayType::Sparse, domain)?
             .add_attribute(
-                AttributeBuilder::new(ctx, "attr", Datatype::UInt64)?.build(),
+                AttributeBuilder::new(&ctx, "attr", Datatype::UInt64)?.build(),
             )?
             .build()?;
 
-        Array::create(ctx, &array_uri, schema)?;
+        Array::create(&ctx, &array_uri, schema)?;
 
         // Two writes for multiple fragments
-        write_sparse_array(ctx, &array_uri)?;
+        ctx = write_sparse_array(ctx, &array_uri)?;
         write_sparse_array(ctx, &array_uri)?;
         Ok(array_uri)
     }
 
     /// Write another fragment to the test array.
-    fn write_sparse_array(ctx: &Context, array_uri: &str) -> TileDBResult<()> {
+    fn write_sparse_array(
+        ctx: Context,
+        array_uri: &str,
+    ) -> TileDBResult<Context> {
         let id_data = vec![1u32, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let attr_data = vec![1u64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let array = Array::open(ctx, array_uri, Mode::Write)?;
@@ -1018,6 +1031,6 @@ pub mod tests {
             .data_typed("attr", &attr_data)?
             .build();
         query.submit()?;
-        Ok(())
+        query.finalize()?.close()
     }
 }

@@ -38,6 +38,8 @@ impl Drop for RawAttribute {
     }
 }
 
+unsafe impl Send for RawAttribute {}
+
 #[derive(ContextBound)]
 pub struct Attribute<'ctx> {
     #[context]

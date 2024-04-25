@@ -145,6 +145,8 @@ impl Serialize for Error {
     }
 }
 
+unsafe impl Send for RawError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

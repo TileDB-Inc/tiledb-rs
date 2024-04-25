@@ -17,8 +17,8 @@ unsafe impl Send for Context {}
 
 unsafe impl Sync for Context {}
 
-trait ContextBound<'ctx> {
-    fn context(&self) -> &'ctx Context;
+trait ContextBound {
+    fn context(&self) -> &Context;
 }
 
 #[derive(ContextBound)]
@@ -53,7 +53,7 @@ impl<'ctx> DeriveBase<'ctx> {
     }
 }
 
-impl<'ctx> ContextBound<'ctx> for DeriveBase<'ctx> {
+impl<'ctx> ContextBound for DeriveBase<'ctx> {
     fn context(&self) -> &'ctx Context {
         *self.found.borrow_mut() = true;
         self.context
@@ -211,11 +211,11 @@ fn unbounded_ctx_base_not_ctx() {
 }
 
 #[derive(ContextBound)]
-struct ContextBoundBase<'ctx, T>
+struct ContextBoundBase<T>
 where
-    T: ContextBound<'ctx>,
+    T: ContextBound,
 {
-    _marker: std::marker::PhantomData<&'ctx u64>,
+    _marker: std::marker::PhantomData<u64>,
     #[base(ContextBound)]
     base: T,
 }

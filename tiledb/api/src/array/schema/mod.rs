@@ -137,6 +137,8 @@ impl Drop for RawSchema {
     }
 }
 
+unsafe impl Send for RawSchema {}
+
 /// Holds a field of the schema, which may be either a dimension or an attribute.
 #[derive(ContextBound)]
 pub enum Field<'ctx> {

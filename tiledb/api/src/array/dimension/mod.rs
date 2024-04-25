@@ -33,6 +33,8 @@ impl Drop for RawDimension {
     }
 }
 
+unsafe impl Send for RawDimension {}
+
 #[derive(ContextBound)]
 pub struct Dimension<'ctx> {
     #[context]

@@ -29,6 +29,8 @@ impl Drop for RawFilterList {
     }
 }
 
+unsafe impl Send for RawFilterList {}
+
 #[derive(ContextBound)]
 pub struct FilterList<'ctx> {
     #[context]
