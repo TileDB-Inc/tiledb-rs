@@ -1,4 +1,6 @@
+use crate::Result as TileDBResult;
 use crate::{datatype::Datatype, fn_typed};
+use anyhow::anyhow;
 use core::slice;
 use std::convert::From;
 
@@ -107,15 +109,24 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn new<T>(key: String, datatype: Datatype, vec: Vec<T>) -> Self
+    pub fn new<T>(
+        key: String,
+        datatype: Datatype,
+        vec: Vec<T>,
+    ) -> TileDBResult<Self>
     where
         Value: From<Vec<T>>,
     {
-        Metadata {
+        if std::mem::size_of::<T>() != datatype.size() as usize {
+            return Err(crate::error::Error::InvalidArgument(anyhow!(
+                "datatype size and T size are not equal"
+            )));
+        }
+        Ok(Metadata {
             key,
             datatype,
             value: Value::from(vec),
-        }
+        })
     }
 
     pub(crate) fn new_raw(

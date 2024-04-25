@@ -2,6 +2,7 @@ use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
 use crate::context::{ContextBound, ObjectType};
+use crate::error::Error;
 use crate::key::LookupKey;
 use crate::{Context, Datatype};
 
@@ -85,11 +86,24 @@ impl<'ctx> Group<'ctx> {
         })?;
 
         let raw_group = RawGroup::new(group_raw);
-
         let query_type_raw = query_type.capi_enum();
         context.capi_return(unsafe {
             ffi::tiledb_group_open(c_context, group_raw, query_type_raw)
         })?;
+        let mut c_open: i32 = out_ptr!();
+        context
+            .capi_return(unsafe {
+                ffi::tiledb_group_is_open(c_context, raw_group.ffi, &mut c_open)
+            })
+            .expect("TileDB internal error when checking for open group.");
+
+        if c_open == 0 {
+            return Err(Error::LibTileDB(
+                "tiledb_group_open call does not successfully open group."
+                    .to_string(),
+            ));
+        }
+
         Ok(Self::new(context, raw_group))
     }
 
@@ -484,19 +498,9 @@ impl Drop for Group<'_> {
         let c_context = self.context.capi();
         let c_group = Self::capi(self);
 
-        let mut c_open: i32 = out_ptr!();
         self.context
-            .capi_return(unsafe {
-                ffi::tiledb_group_is_open(c_context, c_group, &mut c_open)
-            })
-            .expect("TileDB internal error when checking for open group.");
-        if c_open > 0 {
-            self.context
-                .capi_return(unsafe {
-                    ffi::tiledb_group_close(c_context, c_group)
-                })
-                .expect("TileDB internal error when closing group");
-        }
+            .capi_return(unsafe { ffi::tiledb_group_close(c_context, c_group) })
+            .expect("TileDB internal error when closing group");
     }
 }
 
@@ -537,7 +541,7 @@ mod tests {
                 "key".to_owned(),
                 Datatype::Int32,
                 vec![5],
-            ));
+            )?);
             assert!(res.is_err());
         }
 
@@ -548,24 +552,24 @@ mod tests {
                 "key".to_owned(),
                 Datatype::Any,
                 vec![5],
-            ));
+            )?);
             assert!(res1.is_err());
 
             group1_write.put_metadata(Metadata::new(
                 "key".to_owned(),
                 Datatype::Int32,
                 vec![5],
-            ))?;
+            )?)?;
             group1_write.put_metadata(Metadata::new(
                 "aaa".to_owned(),
                 Datatype::Int32,
                 vec![5],
-            ))?;
+            )?)?;
             group1_write.put_metadata(Metadata::new(
                 "bb".to_owned(),
                 Datatype::Float32,
                 vec![1.1f32, 2.2f32],
-            ))?;
+            )?)?;
         }
 
         {
