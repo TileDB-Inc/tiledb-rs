@@ -30,21 +30,22 @@ where
     C: Debug,
 {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let nrecords = self.nvalues;
         let nvalues = self.nbytes / std::mem::size_of::<C>();
 
         let offsets_json = self.input.cell_offsets.as_ref().map(|offsets| {
             json!({
                 "capacity": offsets.len(),
-                "defined": self.nvalues,
-                "values": format!("{:?}", &offsets.as_ref()[0.. self.nvalues])
+                "defined": nrecords,
+                "values": format!("{:?}", &offsets.as_ref()[0.. nrecords])
             })
         });
 
         let validity_json = self.input.validity.as_ref().map(|validity| {
             json!({
                 "capacity": validity.len(),
-                "defined": self.nvalues,
-                "values": format!("{:?}", &validity.as_ref()[0.. self.nvalues])
+                "defined": nrecords,
+                "values": format!("{:?}", &validity.as_ref()[0.. nrecords])
             })
         });
 
@@ -503,10 +504,8 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
             /*
              * If `self.location.data` is `Buffer::Owned`, then the underlying
              * data will be dropped when `self` is.
-             * TODO: try to poke at this and see if it is not safe in practice.
-             * By creating a 'data Buffer, transforming it into Owned,
-             * moving it into an iterator, getting an item, dropping the iterator,
-             * then using the Item.
+             * TODO: this actually is unsafe and `test_var_data_iterator_lifetime`
+             * demonstrates that.
              *
              * If `self.location.data` is `Buffer::Borrowed`, then the underlying
              * data will be dropped when 'data expires, are returned items

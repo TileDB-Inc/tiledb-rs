@@ -108,7 +108,7 @@ where
             MyPrimitiveArray::<C>::try_from(rr).unwrap()
         };
 
-        v_offsets.push(value.nbytes as u64); /* TODO: bytes is the unit of offsets, right? */
+        v_offsets.push(value.nbytes as u64);
 
         let v_offsets = v_offsets
             .into_iter()

@@ -39,6 +39,13 @@ impl Default for RawReadOutputParameters {
     }
 }
 
+/// Produces an arbitrary raw read output.
+/// Buffer capacities are not correlated with each other,
+/// but `nvalues` and `nbytes` are valid for each of the buffers.
+/// Unused capacity for all buffers is essentially random.
+/// Cell offsets are sorted and valid indices into the `data` buffer.
+/// Validity is random - null values have no guaranteed representation
+/// (or length, in the case of cell offsets).
 impl<'data, C> Arbitrary for RawReadOutput<'data, C>
 where
     C: Arbitrary + Clone + Debug + 'static,
@@ -47,11 +54,13 @@ where
     type Strategy = BoxedStrategy<RawReadOutput<'data, C>>;
 
     fn arbitrary_with(p: Self::Parameters) -> Self::Strategy {
+        /* strategy to generate initial data buffer */
         let strategy_data_buffer = proptest::collection::vec(
             any::<C>(),
             p.min_values_capacity..=p.max_values_capacity,
         );
 
+        /* strategy to choose cell offsets (the offsets themselves will be generated later) */
         let strategy_cell_offsets_capacity = {
             let strategy_capacity =
                 (p.min_offset_capacity..=p.max_offset_capacity).prop_map(Some);
@@ -64,18 +73,13 @@ where
             }
         };
 
+        /* strategy to choose validity buffer (the validity values themselves will be set later) */
         let strategy_validity_buffer = {
             let strategy_buffer = proptest::collection::vec(
-                any::<bool>(),
+                prop_oneof![Just(0), any::<u8>()],
                 p.min_validity_capacity..=p.max_validity_capacity,
             )
-            .prop_map(|v| {
-                Some(
-                    v.into_iter()
-                        .map(|b| if b { 1 } else { 0 })
-                        .collect::<Vec<u8>>(),
-                )
-            });
+            .prop_map(Some);
 
             if let Some(n) = p.is_nullable {
                 if n {
@@ -172,7 +176,17 @@ where
                 ),
                 Just(validity),
             )
-                .prop_map(|(data, mut offsets, validity)| {
+                .prop_map(|(data, mut offsets, mut validity)| {
+                    validity.iter_mut().for_each(|v| {
+                        v.iter_mut().take(offsets.len()).for_each(
+                            |v: &mut u8| {
+                                if *v != 0 {
+                                    *v = 1
+                                }
+                            },
+                        )
+                    });
+
                     offsets = offsets
                         .into_iter()
                         .map(|o| o * std::mem::size_of::<C>() as u64)
@@ -206,7 +220,15 @@ where
     };
 
     (0..=max_values, Just(data), Just(validity))
-        .prop_map(|(nvalues, data, validity)| {
+        .prop_map(|(nvalues, data, mut validity)| {
+            validity.iter_mut().for_each(|v| {
+                v.iter_mut().take(nvalues).for_each(|v: &mut u8| {
+                    if *v != 0 {
+                        *v = 1
+                    }
+                })
+            });
+
             let nbytes = nvalues * std::mem::size_of::<C>();
             RawReadOutput {
                 nvalues,
@@ -287,7 +309,7 @@ mod tests {
                 validity.len()
             );
 
-            for v in validity.iter() {
+            for v in validity[0..rr.nvalues].iter() {
                 assert!(*v == 0 || *v == 1);
             }
         }
