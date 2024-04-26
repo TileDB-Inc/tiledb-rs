@@ -110,171 +110,171 @@ macro_rules! typed_field_data_go {
         use $crate::query::write::strategy::FieldData;
         match $field {
             FieldData::UInt8($data) => {
-                type $DT = Vec<u8>;
+                type $DT = u8;
                 $fixed
             }
             FieldData::UInt16($data) => {
-                type $DT = Vec<u16>;
+                type $DT = u16;
                 $fixed
             }
             FieldData::UInt32($data) => {
-                type $DT = Vec<u32>;
+                type $DT = u32;
                 $fixed
             }
             FieldData::UInt64($data) => {
-                type $DT = Vec<u64>;
+                type $DT = u64;
                 $fixed
             }
             FieldData::Int8($data) => {
-                type $DT = Vec<i8>;
+                type $DT = i8;
                 $fixed
             }
             FieldData::Int16($data) => {
-                type $DT = Vec<i16>;
+                type $DT = i16;
                 $fixed
             }
             FieldData::Int32($data) => {
-                type $DT = Vec<i32>;
+                type $DT = i32;
                 $fixed
             }
             FieldData::Int64($data) => {
-                type $DT = Vec<i64>;
+                type $DT = i64;
                 $fixed
             }
             FieldData::Float32($data) => {
-                type $DT = Vec<f32>;
+                type $DT = f32;
                 $fixed
             }
             FieldData::Float64($data) => {
-                type $DT = Vec<f64>;
+                type $DT = f64;
                 $fixed
             }
             FieldData::VecUInt8($data) => {
-                type $DT = Vec<Vec<u8>>;
+                type $DT = u8;
                 $var
             }
             FieldData::VecUInt16($data) => {
-                type $DT = Vec<Vec<u16>>;
+                type $DT = u16;
                 $var
             }
             FieldData::VecUInt32($data) => {
-                type $DT = Vec<Vec<u32>>;
+                type $DT = u32;
                 $var
             }
             FieldData::VecUInt64($data) => {
-                type $DT = Vec<Vec<u64>>;
+                type $DT = u64;
                 $var
             }
             FieldData::VecInt8($data) => {
-                type $DT = Vec<Vec<i8>>;
+                type $DT = i8;
                 $var
             }
             FieldData::VecInt16($data) => {
-                type $DT = Vec<Vec<i16>>;
+                type $DT = i16;
                 $var
             }
             FieldData::VecInt32($data) => {
-                type $DT = Vec<Vec<i32>>;
+                type $DT = i32;
                 $var
             }
             FieldData::VecInt64($data) => {
-                type $DT = Vec<Vec<i64>>;
+                type $DT = i64;
                 $var
             }
             FieldData::VecFloat32($data) => {
-                type $DT = Vec<Vec<f32>>;
+                type $DT = f32;
                 $var
             }
             FieldData::VecFloat64($data) => {
-                type $DT = Vec<Vec<f64>>;
+                type $DT = f64;
                 $var
             }
         }
     }};
-    ($field:expr, $DT:ident, $data:pat, $then:expr) => {
-        typed_field_data_go!($field, $DT, $data, $then, $then)
+    ($field:expr, $data:pat, $then:expr) => {
+        typed_field_data_go!($field, _DT, $data, $then, $then)
     };
     ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
         use $crate::query::write::strategy::FieldData;
         match ($lexpr, $rexpr) {
             (FieldData::UInt8($lpat), FieldData::UInt8($rpat)) => {
-                type $DT = Vec<u8>;
+                type $DT = u8;
                 $same_type
             }
             (FieldData::UInt16($lpat), FieldData::UInt16($rpat)) => {
-                type $DT = Vec<u16>;
+                type $DT = u16;
                 $same_type
             }
             (FieldData::UInt32($lpat), FieldData::UInt32($rpat)) => {
-                type $DT = Vec<u32>;
+                type $DT = u32;
                 $same_type
             }
             (FieldData::UInt64($lpat), FieldData::UInt64($rpat)) => {
-                type $DT = Vec<u64>;
+                type $DT = u64;
                 $same_type
             }
             (FieldData::Int8($lpat), FieldData::Int8($rpat)) => {
-                type $DT = Vec<i8>;
+                type $DT = i8;
                 $same_type
             }
             (FieldData::Int16($lpat), FieldData::Int16($rpat)) => {
-                type $DT = Vec<i16>;
+                type $DT = i16;
                 $same_type
             }
             (FieldData::Int32($lpat), FieldData::Int32($rpat)) => {
-                type $DT = Vec<i32>;
+                type $DT = i32;
                 $same_type
             }
             (FieldData::Int64($lpat), FieldData::Int64($rpat)) => {
-                type $DT = Vec<i64>;
+                type $DT = i64;
                 $same_type
             }
             (FieldData::Float32($lpat), FieldData::Float32($rpat)) => {
-                type $DT = Vec<f32>;
+                type $DT = f32;
                 $same_type
             }
             (FieldData::Float64($lpat), FieldData::Float64($rpat)) => {
-                type $DT = Vec<f64>;
+                type $DT = f64;
                 $same_type
             }
             (FieldData::VecUInt8($lpat), FieldData::VecUInt8($rpat)) => {
-                type $DT = Vec<Vec<u8>>;
+                type $DT = u8;
                 $same_type
             }
             (FieldData::VecUInt16($lpat), FieldData::VecUInt16($rpat)) => {
-                type $DT = Vec<Vec<u16>>;
+                type $DT = u16;
                 $same_type
             }
             (FieldData::VecUInt32($lpat), FieldData::VecUInt32($rpat)) => {
-                type $DT = Vec<Vec<u32>>;
+                type $DT = u32;
                 $same_type
             }
             (FieldData::VecUInt64($lpat), FieldData::VecUInt64($rpat)) => {
-                type $DT = Vec<Vec<u64>>;
+                type $DT = u64;
                 $same_type
             }
             (FieldData::VecInt8($lpat), FieldData::VecInt8($rpat)) => {
-                type $DT = Vec<Vec<i8>>;
+                type $DT = i8;
                 $same_type
             }
             (FieldData::VecInt16($lpat), FieldData::VecInt16($rpat)) => {
-                type $DT = Vec<Vec<i16>>;
+                type $DT = i16;
                 $same_type
             }
             (FieldData::VecInt32($lpat), FieldData::VecInt32($rpat)) => {
-                type $DT = Vec<Vec<i32>>;
+                type $DT = i32;
                 $same_type
             }
             (FieldData::VecInt64($lpat), FieldData::VecInt64($rpat)) => {
-                type $DT = Vec<Vec<i64>>;
+                type $DT = i64;
                 $same_type
             }
             (FieldData::VecFloat32($lpat), FieldData::VecFloat32($rpat)) => {
-                type $DT = Vec<Vec<f32>>;
+                type $DT = f32;
                 $same_type
             }
             (FieldData::VecFloat64($lpat), FieldData::VecFloat64($rpat)) => {
-                type $DT = Vec<Vec<f64>>;
+                type $DT = f64;
                 $same_type
             }
             _ => $else,
@@ -284,15 +284,15 @@ macro_rules! typed_field_data_go {
 
 impl FieldData {
     pub fn is_empty(&self) -> bool {
-        typed_field_data_go!(self, _DT, v, v.is_empty())
+        typed_field_data_go!(self, v, v.is_empty())
     }
 
     pub fn len(&self) -> usize {
-        typed_field_data_go!(self, _DT, v, v.len())
+        typed_field_data_go!(self, v, v.len())
     }
 
     pub fn filter(&self, set: &VarBitSet) -> FieldData {
-        typed_field_data_go!(self, _DT, ref values, {
+        typed_field_data_go!(self, ref values, {
             FieldData::from(
                 values
                     .clone()
@@ -350,12 +350,7 @@ impl WriteQueryData {
     ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
         let mut b = b;
         for f in self.fields.iter() {
-            b = typed_field_data_go!(
-                f.1,
-                DT,
-                data,
-                b.data_typed::<_, DT>(f.0, data)
-            )?;
+            b = typed_field_data_go!(f.1, data, b.data_typed(f.0, data))?;
         }
         Ok(b)
     }
@@ -911,7 +906,7 @@ mod tests {
                                 };
 
                                 let wdata =
-                                    typed_field_data_go!(wdata, _DT, wdata, {
+                                    typed_field_data_go!(wdata, wdata, {
                                         FieldData::from(
                                             wdata[cursors[key]
                                                 ..cursors[key] + nv]
