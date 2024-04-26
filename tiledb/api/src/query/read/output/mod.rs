@@ -586,3 +586,40 @@ impl FromQueryOutput for String {
     type Unit = u8;
     type Iterator<'data> = Utf8LossyIterator<'data>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::query::buffer::Buffer;
+
+    #[test]
+    fn test_var_data_iterator_lifetime() {
+        let data = vec![0u8; 16]; // not important
+        let offsets = vec![0u64, 4, 8, 12];
+
+        let mut databuf = Buffer::Borrowed(&data);
+
+        let item = {
+            let _ = std::mem::replace(
+                &mut databuf,
+                Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
+            );
+
+            VarDataIterator::new(
+                offsets.len(),
+                data.len(),
+                QueryBuffers {
+                    data: databuf,
+                    cell_offsets: Some(offsets.into()),
+                    validity: None,
+                },
+            )
+            .unwrap()
+            .next()
+        }
+        .unwrap();
+
+        // this is a use after free which happens to pass but valgrind catches it
+        assert_eq!(item, vec![1u8; 4]);
+    }
+}
