@@ -35,6 +35,12 @@ impl<'data, T> Deref for Buffer<'data, T> {
     }
 }
 
+impl<'data, T> From<Vec<T>> for Buffer<'data, T> {
+    fn from(value: Vec<T>) -> Self {
+        Buffer::Owned(value.into_boxed_slice())
+    }
+}
+
 pub struct QueryBuffers<'data, C> {
     pub data: Buffer<'data, C>,
     pub cell_offsets: Option<Buffer<'data, u64>>,

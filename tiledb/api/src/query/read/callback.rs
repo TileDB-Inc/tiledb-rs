@@ -442,11 +442,15 @@ macro_rules! query_read_callback {
 
                         let [< l_ $U:snake >] = self.[< arg_ $U:snake >].location.borrow();
                         let [< input_ $U:snake >] = [< l_ $U:snake >].as_shared();
+                            /*
+                             * TODO: if it is the final result, enable moving out of
+                             * this so that we can avoid a copy
+                             */
 
                         let [< arg_ $U:snake >] = RawReadOutput {
                             nvalues: [< nvalues_ $U:snake >],
                             nbytes: [< nbytes_ $U:snake >],
-                            input: &[< input_ $U:snake >]
+                            input: [< input_ $U:snake >]
                         };
                     )+
                 }
@@ -766,7 +770,7 @@ mod tests {
             let arg = RawReadOutput {
                 nvalues: ncells,
                 nbytes: ncells * std::mem::size_of::<u64>(),
-                input: &input_data,
+                input: input_data,
             };
 
             let prev_len = unitdst.len();
@@ -891,7 +895,7 @@ mod tests {
             let arg = RawReadOutput {
                 nvalues,
                 nbytes,
-                input: &input,
+                input,
             };
             stringdst
                 .intermediate_result(arg)

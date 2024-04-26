@@ -3,6 +3,7 @@ use std::iter::FusedIterator;
 use std::num::NonZeroUsize;
 
 use anyhow::anyhow;
+use serde_json::json;
 
 use crate::array::CellValNum;
 use crate::convert::CAPISameRepr;
@@ -10,18 +11,88 @@ use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
     BufferMut, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
 };
+use crate::typed_query_buffers_go;
 use crate::Result as TileDBResult;
+
+#[cfg(feature = "arrow")]
+pub mod arrow;
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
 
 pub struct RawReadOutput<'data, C> {
     pub nvalues: usize,
     pub nbytes: usize,
-    pub input: &'data QueryBuffers<'data, C>,
+    pub input: QueryBuffers<'data, C>,
+}
+
+impl<C> Debug for RawReadOutput<'_, C>
+where
+    C: Debug,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let nvalues = self.nbytes / std::mem::size_of::<C>();
+
+        write!(
+            f,
+            "{}",
+            json!({
+                "data": {
+                    "capacity": self.input.data.len(),
+                    "defined": nvalues,
+                    "values": format!("{:?}", &self.input.data.as_ref()[0.. nvalues])
+                },
+                "offsets": match self.input.cell_offsets.as_ref() {
+                    None => None,
+                    Some(offsets) => Some(json!({
+                        "capacity": offsets.len(),
+                        "defined": self.nvalues,
+                        "values": format!("{:?}", &offsets.as_ref()[0.. self.nvalues])
+                    }))
+                },
+                "validity": match self.input.validity.as_ref() {
+                    None => None,
+                    Some(validity) => Some(json!({
+                        "capacity": validity.len(),
+                        "defined": self.nvalues,
+                        "values": format!("{:?}", &validity.as_ref()[0.. self.nvalues])
+                    }))
+                }
+            })
+            .to_string()
+        )
+    }
 }
 
 pub struct TypedRawReadOutput<'data> {
     pub nvalues: usize,
     pub nbytes: usize,
     pub buffers: TypedQueryBuffers<'data>,
+}
+
+impl Debug for TypedRawReadOutput<'_> {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        typed_query_buffers_go!(self.buffers, _DT, ref qb, {
+            RawReadOutput {
+                nvalues: self.nvalues,
+                nbytes: self.nbytes,
+                input: qb.borrow(),
+            }
+            .fmt(f)
+        })
+    }
+}
+
+impl<'data, C> From<RawReadOutput<'data, C>> for TypedRawReadOutput<'data>
+where
+    TypedQueryBuffers<'data>: From<QueryBuffers<'data, C>>,
+{
+    fn from(value: RawReadOutput<'data, C>) -> Self {
+        TypedRawReadOutput {
+            nvalues: value.nvalues,
+            nbytes: value.nbytes,
+            buffers: value.input.into(),
+        }
+    }
 }
 
 pub struct ScratchSpace<C>(
@@ -341,7 +412,8 @@ where
 }
 
 pub struct FixedDataIterator<'data, C> {
-    fixed: std::slice::Iter<'data, C>,
+    location: QueryBuffers<'data, C>,
+    index: usize,
 }
 
 impl<'data, C> Iterator for FixedDataIterator<'data, C>
@@ -350,7 +422,12 @@ where
 {
     type Item = C;
     fn next(&mut self) -> Option<Self::Item> {
-        self.fixed.next().copied()
+        if self.index < self.location.data.len() {
+            self.index += 1;
+            Some(self.location.data[self.index - 1])
+        } else {
+            None
+        }
     }
 }
 
@@ -365,7 +442,8 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
             Err(Error::Datatype(DatatypeErrorKind::ExpectedFixedSize(None)))
         } else {
             Ok(FixedDataIterator {
-                fixed: value.input.data.as_ref()[0..value.nvalues].iter(),
+                location: value.input,
+                index: 0,
             })
         }
     }
@@ -383,10 +461,8 @@ impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
         nvalues: usize,
         nbytes: usize,
-        location: &'data QueryBuffers<'data, C>,
+        location: QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
-        let location = location.borrow();
-
         if location.cell_offsets.is_none() {
             Err(Error::Datatype(DatatypeErrorKind::ExpectedVarSize(
                 None, None,
@@ -423,13 +499,18 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let data_buffer: &'data [C] = unsafe {
-            // `self.location.data.borrow()` borrows self, so even though the method
-            // nominally returns a 'data lifetime, it is shortened to 'this.
-            // And if `self.location.data` were a `Buffer::Owned`, then the returned
-            // item actually would be invalid due to dropping self.
-            // But the construction of the iterator via `new` removes the possibility
-            // of `Buffer::Owned`, so this transmutation to the longer 'data lifetime
-            // is safe.
+            /*
+             * If `self.location.data` is `Buffer::Owned`, then the underlying
+             * data will be dropped when `self` is.
+             * TODO: try to poke at this and see if it is not safe in practice.
+             * By creating a 'data Buffer, transforming it into Owned,
+             * moving it into an iterator, getting an item, dropping the iterator,
+             * then using the Item.
+             *
+             * If `self.location.data` is `Buffer::Borrowed`, then the underlying
+             * data will be dropped when 'data expires, are returned items
+             * are guaranteed to live at least that long.  Hence this is safe.
+             */
             &*(self.location.data.as_ref() as *const [C]) as &'data [C]
         };
         let offset_buffer =

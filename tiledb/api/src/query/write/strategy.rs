@@ -84,7 +84,7 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
             let rr = RawReadOutput {
                 nvalues: value.nvalues,
                 nbytes: value.nbytes,
-                input: handle,
+                input: handle.borrow(),
             };
             if rr.input.cell_offsets.is_some() {
                 Self::from(
