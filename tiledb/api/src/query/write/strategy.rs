@@ -104,8 +104,10 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
     }
 }
 
+#[macro_export]
 macro_rules! typed_field_data_go {
-    ($field:expr, $DT:ident, $data:pat, $then:expr) => {
+    ($field:expr, $DT:ident, $data:pat, $then:expr) => {{
+        use $crate::query::write::strategy::FieldData;
         match $field {
             FieldData::UInt8($data) => {
                 type $DT = Vec<u8>;
@@ -188,8 +190,9 @@ macro_rules! typed_field_data_go {
                 $then
             }
         }
-    };
-    ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {
+    }};
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
+        use $crate::query::write::strategy::FieldData;
         match ($lexpr, $rexpr) {
             (FieldData::UInt8($lpat), FieldData::UInt8($rpat)) => {
                 type $DT = Vec<u8>;
@@ -273,7 +276,7 @@ macro_rules! typed_field_data_go {
             }
             _ => $else,
         }
-    };
+    }};
 }
 
 impl FieldData {
@@ -334,7 +337,7 @@ impl ReadCallbackVarArg for RawResultCallback {
 
 #[derive(Clone, Debug)]
 pub struct WriteQueryData {
-    fields: HashMap<String, FieldData>,
+    pub fields: HashMap<String, FieldData>,
 }
 
 impl WriteQueryData {
