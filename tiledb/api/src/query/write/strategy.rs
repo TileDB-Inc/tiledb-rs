@@ -313,7 +313,7 @@ impl ReadCallbackVarArg for RawResultCallback {
 
     fn intermediate_result(
         &mut self,
-        args: &[TypedRawReadOutput],
+        args: Vec<TypedRawReadOutput>,
     ) -> Result<Self::Intermediate, Self::Error> {
         Ok(RawReadQueryResult(
             self.field_order
@@ -326,7 +326,7 @@ impl ReadCallbackVarArg for RawResultCallback {
 
     fn final_result(
         mut self,
-        args: &[TypedRawReadOutput],
+        args: Vec<TypedRawReadOutput>,
     ) -> Result<Self::Intermediate, Self::Error> {
         self.intermediate_result(args)
     }

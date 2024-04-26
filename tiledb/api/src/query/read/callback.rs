@@ -60,12 +60,12 @@ pub trait ReadCallbackVarArg: Sized {
 
     fn intermediate_result(
         &mut self,
-        args: &[TypedRawReadOutput],
+        args: Vec<TypedRawReadOutput>,
     ) -> Result<Self::Intermediate, Self::Error>;
 
     fn final_result(
         self,
-        args: &[TypedRawReadOutput],
+        args: Vec<TypedRawReadOutput>,
     ) -> Result<Self::Final, Self::Error>;
 
     /// Optionally produce a blank instance of this callback to be run
@@ -632,7 +632,7 @@ where
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 
-                let ir = callback.intermediate_result(&args).map_err(|e| {
+                let ir = callback.intermediate_result(args).map_err(|e| {
                     let fields = self
                         .base
                         .raw_read_output
@@ -668,7 +668,7 @@ where
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 
-                let ir = callback_final.final_result(&args).map_err(|e| {
+                let ir = callback_final.final_result(args).map_err(|e| {
                     let fields = self
                         .base
                         .raw_read_output
