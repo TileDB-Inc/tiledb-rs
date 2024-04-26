@@ -94,79 +94,7 @@ where
             strategy_validity_buffer,
         )
             .prop_flat_map(|(data, offsets_capacity, validity)| {
-                if let Some(o) = offsets_capacity {
-                    let max_values = data.len();
-                    let max_offsets = if let Some(v) = validity.as_ref() {
-                        std::cmp::min(o, v.len())
-                    } else {
-                        o
-                    };
-                    (
-                        0..=max_values,
-                        Just(max_offsets),
-                        Just(data),
-                        Just(validity),
-                    )
-                        .prop_flat_map(
-                            |(nvalues, max_offsets, data, validity)| {
-                                (
-                                    Just(data),
-                                    proptest::collection::vec(
-                                        0u64..=(nvalues as u64),
-                                        0..=max_offsets,
-                                    ),
-                                    Just(validity),
-                                )
-                                    .prop_map(
-                                        |(data, mut offsets, validity)| {
-                                            offsets = offsets
-                                                .into_iter()
-                                                .map(|o| {
-                                                    o * std::mem::size_of::<C>()
-                                                        as u64
-                                                })
-                                                .collect::<Vec<u64>>();
-                                            offsets.sort();
-                                            RawReadOutput {
-                                                nvalues: offsets.len(),
-                                                nbytes: data.len()
-                                                    * std::mem::size_of::<C>(),
-                                                input: QueryBuffers {
-                                                    data: data.into(),
-                                                    cell_offsets: Some(
-                                                        offsets.into(),
-                                                    ),
-                                                    validity: validity
-                                                        .map(|v| v.into()),
-                                                },
-                                            }
-                                        },
-                                    )
-                            },
-                        )
-                        .boxed()
-                } else {
-                    let max_values = if let Some(v) = validity.as_ref() {
-                        std::cmp::min(data.len(), v.len())
-                    } else {
-                        data.len()
-                    };
-
-                    (0..=max_values, Just(data), Just(validity))
-                        .prop_map(|(nvalues, data, validity)| {
-                            let nbytes = nvalues * std::mem::size_of::<C>();
-                            RawReadOutput {
-                                nvalues,
-                                nbytes,
-                                input: QueryBuffers {
-                                    data: data.into(),
-                                    cell_offsets: None,
-                                    validity: validity.map(|v| v.into()),
-                                },
-                            }
-                        })
-                        .boxed()
-                }
+                prop_raw_read_output_for(data, offsets_capacity, validity)
             })
             .boxed()
     }
@@ -198,6 +126,99 @@ impl<'data> Arbitrary for TypedRawReadOutput<'data> {
             })
             .boxed()
     }
+}
+
+fn prop_raw_read_output_for<'data, C>(
+    data: Vec<C>,
+    offsets_capacity: Option<usize>,
+    validity: Option<Vec<u8>>,
+) -> BoxedStrategy<RawReadOutput<'data, C>>
+where
+    C: Clone + Debug + 'static,
+{
+    if let Some(o) = offsets_capacity {
+        prop_raw_read_output_with_cell_offsets::<'data, C>(data, o, validity)
+    } else {
+        prop_raw_read_output_without_cell_offsets::<'data, C>(data, validity)
+    }
+}
+
+fn prop_raw_read_output_with_cell_offsets<'data, C>(
+    data: Vec<C>,
+    offsets_capacity: usize,
+    validity: Option<Vec<u8>>,
+) -> BoxedStrategy<RawReadOutput<'data, C>>
+where
+    C: Clone + Debug + 'static,
+{
+    let max_values = data.len();
+    let max_offsets = if let Some(v) = validity.as_ref() {
+        std::cmp::min(offsets_capacity, v.len())
+    } else {
+        offsets_capacity
+    };
+    (
+        0..=max_values,
+        Just(max_offsets),
+        Just(data),
+        Just(validity),
+    )
+        .prop_flat_map(|(nvalues, max_offsets, data, validity)| {
+            (
+                Just(data),
+                proptest::collection::vec(
+                    0u64..=(nvalues as u64),
+                    0..=max_offsets,
+                ),
+                Just(validity),
+            )
+                .prop_map(|(data, mut offsets, validity)| {
+                    offsets = offsets
+                        .into_iter()
+                        .map(|o| o * std::mem::size_of::<C>() as u64)
+                        .collect::<Vec<u64>>();
+                    offsets.sort();
+                    RawReadOutput {
+                        nvalues: offsets.len(),
+                        nbytes: data.len() * std::mem::size_of::<C>(),
+                        input: QueryBuffers {
+                            data: data.into(),
+                            cell_offsets: Some(offsets.into()),
+                            validity: validity.map(|v| v.into()),
+                        },
+                    }
+                })
+        })
+        .boxed()
+}
+
+fn prop_raw_read_output_without_cell_offsets<'data, C>(
+    data: Vec<C>,
+    validity: Option<Vec<u8>>,
+) -> BoxedStrategy<RawReadOutput<'data, C>>
+where
+    C: Clone + Debug + 'static,
+{
+    let max_values = if let Some(v) = validity.as_ref() {
+        std::cmp::min(data.len(), v.len())
+    } else {
+        data.len()
+    };
+
+    (0..=max_values, Just(data), Just(validity))
+        .prop_map(|(nvalues, data, validity)| {
+            let nbytes = nvalues * std::mem::size_of::<C>();
+            RawReadOutput {
+                nvalues,
+                nbytes,
+                input: QueryBuffers {
+                    data: data.into(),
+                    cell_offsets: None,
+                    validity: validity.map(|v| v.into()),
+                },
+            }
+        })
+        .boxed()
 }
 
 #[cfg(test)]
