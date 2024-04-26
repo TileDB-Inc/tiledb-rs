@@ -32,6 +32,22 @@ where
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let nvalues = self.nbytes / std::mem::size_of::<C>();
 
+        let offsets_json = self.input.cell_offsets.as_ref().map(|offsets| {
+            json!({
+                "capacity": offsets.len(),
+                "defined": self.nvalues,
+                "values": format!("{:?}", &offsets.as_ref()[0.. self.nvalues])
+            })
+        });
+
+        let validity_json = self.input.validity.as_ref().map(|validity| {
+            json!({
+                "capacity": validity.len(),
+                "defined": self.nvalues,
+                "values": format!("{:?}", &validity.as_ref()[0.. self.nvalues])
+            })
+        });
+
         write!(
             f,
             "{}",
@@ -41,24 +57,9 @@ where
                     "defined": nvalues,
                     "values": format!("{:?}", &self.input.data.as_ref()[0.. nvalues])
                 },
-                "offsets": match self.input.cell_offsets.as_ref() {
-                    None => None,
-                    Some(offsets) => Some(json!({
-                        "capacity": offsets.len(),
-                        "defined": self.nvalues,
-                        "values": format!("{:?}", &offsets.as_ref()[0.. self.nvalues])
-                    }))
-                },
-                "validity": match self.input.validity.as_ref() {
-                    None => None,
-                    Some(validity) => Some(json!({
-                        "capacity": validity.len(),
-                        "defined": self.nvalues,
-                        "values": format!("{:?}", &validity.as_ref()[0.. self.nvalues])
-                    }))
-                }
+                "offsets": offsets_json,
+                "validity": validity_json,
             })
-            .to_string()
         )
     }
 }
