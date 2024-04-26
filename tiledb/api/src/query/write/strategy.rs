@@ -106,91 +106,94 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
 
 #[macro_export]
 macro_rules! typed_field_data_go {
-    ($field:expr, $DT:ident, $data:pat, $then:expr) => {{
+    ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {{
         use $crate::query::write::strategy::FieldData;
         match $field {
             FieldData::UInt8($data) => {
                 type $DT = Vec<u8>;
-                $then
+                $fixed
             }
             FieldData::UInt16($data) => {
                 type $DT = Vec<u16>;
-                $then
+                $fixed
             }
             FieldData::UInt32($data) => {
                 type $DT = Vec<u32>;
-                $then
+                $fixed
             }
             FieldData::UInt64($data) => {
                 type $DT = Vec<u64>;
-                $then
+                $fixed
             }
             FieldData::Int8($data) => {
                 type $DT = Vec<i8>;
-                $then
+                $fixed
             }
             FieldData::Int16($data) => {
                 type $DT = Vec<i16>;
-                $then
+                $fixed
             }
             FieldData::Int32($data) => {
                 type $DT = Vec<i32>;
-                $then
+                $fixed
             }
             FieldData::Int64($data) => {
                 type $DT = Vec<i64>;
-                $then
+                $fixed
             }
             FieldData::Float32($data) => {
                 type $DT = Vec<f32>;
-                $then
+                $fixed
             }
             FieldData::Float64($data) => {
                 type $DT = Vec<f64>;
-                $then
+                $fixed
             }
             FieldData::VecUInt8($data) => {
                 type $DT = Vec<Vec<u8>>;
-                $then
+                $var
             }
             FieldData::VecUInt16($data) => {
                 type $DT = Vec<Vec<u16>>;
-                $then
+                $var
             }
             FieldData::VecUInt32($data) => {
                 type $DT = Vec<Vec<u32>>;
-                $then
+                $var
             }
             FieldData::VecUInt64($data) => {
                 type $DT = Vec<Vec<u64>>;
-                $then
+                $var
             }
             FieldData::VecInt8($data) => {
                 type $DT = Vec<Vec<i8>>;
-                $then
+                $var
             }
             FieldData::VecInt16($data) => {
                 type $DT = Vec<Vec<i16>>;
-                $then
+                $var
             }
             FieldData::VecInt32($data) => {
                 type $DT = Vec<Vec<i32>>;
-                $then
+                $var
             }
             FieldData::VecInt64($data) => {
                 type $DT = Vec<Vec<i64>>;
-                $then
+                $var
             }
             FieldData::VecFloat32($data) => {
                 type $DT = Vec<Vec<f32>>;
-                $then
+                $var
             }
             FieldData::VecFloat64($data) => {
                 type $DT = Vec<Vec<f64>>;
-                $then
+                $var
             }
         }
     }};
+    ($field:expr, $DT:ident, $data:pat, $then:expr) => {
+        typed_field_data_go!($field, $DT, $data, $then, $then)
+    };
     ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
         use $crate::query::write::strategy::FieldData;
         match ($lexpr, $rexpr) {
