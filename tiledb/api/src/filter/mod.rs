@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
@@ -133,10 +132,7 @@ pub enum FilterData {
 }
 
 impl FilterData {
-    pub fn construct<'ctx>(
-        &self,
-        context: &'ctx Context,
-    ) -> TileDBResult<Filter<'ctx>> {
+    pub fn construct(&self, context: &Context) -> TileDBResult<Filter> {
         Filter::create(context, self)
     }
 
@@ -278,26 +274,26 @@ impl FilterData {
     }
 }
 
-impl<'ctx> TryFrom<&Filter<'ctx>> for FilterData {
+impl TryFrom<&Filter> for FilterData {
     type Error = crate::error::Error;
 
-    fn try_from(filter: &Filter<'ctx>) -> TileDBResult<Self> {
+    fn try_from(filter: &Filter) -> TileDBResult<Self> {
         filter.filter_data()
     }
 }
 
-impl<'ctx> TryFrom<Filter<'ctx>> for FilterData {
+impl TryFrom<Filter> for FilterData {
     type Error = crate::error::Error;
 
-    fn try_from(filter: Filter<'ctx>) -> TileDBResult<Self> {
+    fn try_from(filter: Filter) -> TileDBResult<Self> {
         Self::try_from(&filter)
     }
 }
 
-impl<'ctx> crate::Factory<'ctx> for FilterData {
-    type Item = Filter<'ctx>;
+impl crate::Factory for FilterData {
+    type Item = Filter;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         Filter::create(context, self)
     }
 }
@@ -322,30 +318,33 @@ impl Drop for RawFilter {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Filter<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct Filter {
+    context: Context,
     pub(crate) raw: RawFilter,
 }
 
-impl<'ctx> Filter<'ctx> {
+impl ContextBound for Filter {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl Filter {
     pub fn capi(&self) -> *mut ffi::tiledb_filter_t {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawFilter) -> Self {
-        Filter { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawFilter) -> Self {
+        Filter {
+            context: context.clone(),
+            raw,
+        }
     }
 
-    pub fn create<F>(
-        context: &'ctx Context,
-        filter_data: F,
-    ) -> TileDBResult<Self>
-    where
-        F: Borrow<FilterData>,
-    {
-        let filter_data = filter_data.borrow();
+    pub fn create(
+        context: &Context,
+        filter_data: &FilterData,
+    ) -> TileDBResult<Self> {
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         let ftype = filter_data.get_type().capi_enum();
         context.capi_call(|ctx| unsafe {
@@ -488,7 +487,10 @@ impl<'ctx> Filter<'ctx> {
             FilterData::Xor => (),
         };
 
-        Ok(Filter { context, raw })
+        Ok(Filter {
+            context: context.clone(),
+            raw,
+        })
     }
 
     pub fn filter_data(&self) -> TileDBResult<FilterData> {
@@ -620,7 +622,7 @@ impl<'ctx> Filter<'ctx> {
     }
 }
 
-impl<'ctx> Debug for Filter<'ctx> {
+impl Debug for Filter {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self.filter_data() {
             Ok(data) => write!(f, "{:?}", data),
@@ -629,8 +631,8 @@ impl<'ctx> Debug for Filter<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<Filter<'c2>> for Filter<'c1> {
-    fn eq(&self, other: &Filter<'c2>) -> bool {
+impl PartialEq<Filter> for Filter {
+    fn eq(&self, other: &Filter) -> bool {
         match (self.filter_data(), other.filter_data()) {
             (Ok(mine), Ok(theirs)) => mine == theirs,
             _ => false,
@@ -657,7 +659,7 @@ mod tests {
         {
             let f = Filter::create(
                 &ctx,
-                FilterData::BitWidthReduction { max_window: None },
+                &FilterData::BitWidthReduction { max_window: None },
             )
             .expect("Error creating bit width filter");
             assert!(matches!(
@@ -670,7 +672,7 @@ mod tests {
         {
             let f = Filter::create(
                 &ctx,
-                FilterData::Compression(CompressionData::new(
+                &FilterData::Compression(CompressionData::new(
                     CompressionType::Lz4,
                 )),
             )
@@ -689,7 +691,7 @@ mod tests {
         {
             let f = Filter::create(
                 &ctx,
-                FilterData::PositiveDelta { max_window: None },
+                &FilterData::PositiveDelta { max_window: None },
             )
             .expect("Error creating positive delta filter");
 
@@ -703,7 +705,7 @@ mod tests {
         {
             let f = Filter::create(
                 &ctx,
-                FilterData::ScaleFloat {
+                &FilterData::ScaleFloat {
                     byte_width: None,
                     factor: None,
                     offset: None,
@@ -721,7 +723,7 @@ mod tests {
         {
             let f = Filter::create(
                 &ctx,
-                FilterData::WebP {
+                &FilterData::WebP {
                     input_format: WebPFilterInputFormat::Rgba,
                     lossless: None,
                     quality: None,
@@ -741,7 +743,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context instance.");
         let f = Filter::create(
             &ctx,
-            FilterData::Compression(CompressionData {
+            &FilterData::Compression(CompressionData {
                 kind: CompressionType::Lz4,
                 level: Some(23),
             }),
@@ -774,7 +776,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context instance.");
         let f = Filter::create(
             &ctx,
-            FilterData::BitWidthReduction {
+            &FilterData::BitWidthReduction {
                 max_window: Some(75),
             },
         )
@@ -793,7 +795,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context instance.");
         let f = Filter::create(
             &ctx,
-            FilterData::PositiveDelta {
+            &FilterData::PositiveDelta {
                 max_window: Some(75),
             },
         )
@@ -812,7 +814,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context instance.");
         let f = Filter::create(
             &ctx,
-            FilterData::ScaleFloat {
+            &FilterData::ScaleFloat {
                 byte_width: Some(ScaleFloatByteWidth::I16),
                 factor: Some(0.643),
                 offset: Some(0.24),
@@ -839,7 +841,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context instance.");
         let f = Filter::create(
             &ctx,
-            FilterData::WebP {
+            &FilterData::WebP {
                 input_format: WebPFilterInputFormat::Bgra,
                 lossless: Some(true),
                 quality: Some(0.712),

@@ -46,9 +46,7 @@ impl SchemaMetadata {
     }
 }
 
-pub fn arrow_schema<'ctx>(
-    tiledb: &'ctx Schema<'ctx>,
-) -> TileDBResult<Option<ArrowSchema>> {
+pub fn arrow_schema(tiledb: &Schema) -> TileDBResult<Option<ArrowSchema>> {
     let mut builder =
         arrow_schema::SchemaBuilder::with_capacity(tiledb.nattributes()?);
 
@@ -87,10 +85,10 @@ pub fn arrow_schema<'ctx>(
 /// A TileDB schema must have domain and dimension details.
 /// These are expected to be in the schema `metadata` beneath the key `tiledb`.
 /// This metadata is expected to be a JSON object with the following fields:
-pub fn tiledb_schema<'ctx>(
-    context: &'ctx Context,
+pub fn tiledb_schema(
+    context: &Context,
     schema: &ArrowSchema,
-) -> TileDBResult<Option<SchemaBuilder<'ctx>>> {
+) -> TileDBResult<Option<SchemaBuilder>> {
     let metadata = match schema.metadata().get("tiledb") {
         Some(metadata) => serde_json::from_str::<SchemaMetadata>(metadata)
             .map_err(|e| {

@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
@@ -29,16 +28,27 @@ impl Drop for RawFilterList {
     }
 }
 
-#[derive(ContextBound)]
-pub struct FilterList<'ctx> {
-    #[context]
-    pub(crate) context: &'ctx Context,
+pub struct FilterList {
+    pub(crate) context: Context,
     pub(crate) raw: RawFilterList,
 }
 
-impl<'ctx> FilterList<'ctx> {
-    pub fn capi(&self) -> *mut ffi::tiledb_filter_list_t {
+impl ContextBound for FilterList {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl FilterList {
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_filter_list_t {
         *self.raw
+    }
+
+    pub(crate) fn new(context: &Context, raw: RawFilterList) -> Self {
+        Self {
+            context: context.clone(),
+            raw,
+        }
     }
 
     pub fn get_num_filters(&self) -> TileDBResult<u32> {
@@ -50,7 +60,7 @@ impl<'ctx> FilterList<'ctx> {
         Ok(num)
     }
 
-    pub fn get_filter(&self, index: u32) -> TileDBResult<Filter<'ctx>> {
+    pub fn get_filter(&self, index: u32) -> TileDBResult<Filter> {
         let c_flist = self.capi();
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
@@ -61,10 +71,10 @@ impl<'ctx> FilterList<'ctx> {
                 &mut c_filter,
             )
         })?;
-        Ok(Filter::new(self.context, RawFilter::Owned(c_filter)))
+        Ok(Filter::new(&self.context, RawFilter::Owned(c_filter)))
     }
 
-    pub fn to_vec(&self) -> TileDBResult<Vec<Filter<'ctx>>> {
+    pub fn to_vec(&self) -> TileDBResult<Vec<Filter>> {
         (0..self.get_num_filters()?)
             .map(|f| self.get_filter(f))
             .collect()
@@ -80,7 +90,7 @@ impl<'ctx> FilterList<'ctx> {
     }
 }
 
-impl<'ctx> Debug for FilterList<'ctx> {
+impl Debug for FilterList {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let nfilters = match self.get_num_filters() {
             Ok(n) => n,
@@ -102,8 +112,8 @@ impl<'ctx> Debug for FilterList<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<FilterList<'c2>> for FilterList<'c1> {
-    fn eq(&self, other: &FilterList<'c2>) -> bool {
+impl PartialEq<FilterList> for FilterList {
+    fn eq(&self, other: &FilterList) -> bool {
         let size_match = match (self.get_num_filters(), other.get_num_filters())
         {
             (Ok(mine), Ok(theirs)) => mine == theirs,
@@ -126,23 +136,27 @@ impl<'c1, 'c2> PartialEq<FilterList<'c2>> for FilterList<'c1> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Builder<'ctx> {
-    #[base(ContextBound)]
-    filter_list: FilterList<'ctx>,
+pub struct Builder {
+    filter_list: FilterList,
 }
 
-impl<'ctx> Builder<'ctx> {
-    pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
+impl ContextBound for Builder {
+    fn context(&self) -> &Context {
+        self.filter_list.context()
+    }
+}
+
+impl Builder {
+    pub fn new(context: &Context) -> TileDBResult<Self> {
         let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_filter_list_alloc(ctx, &mut c_flist)
         })?;
         Ok(Builder {
-            filter_list: FilterList {
+            filter_list: FilterList::new(
                 context,
-                raw: RawFilterList::Owned(c_flist),
-            },
+                RawFilterList::Owned(c_flist),
+            ),
         })
     }
 
@@ -154,7 +168,7 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn add_filter(self, filter: Filter<'ctx>) -> TileDBResult<Self> {
+    pub fn add_filter(self, filter: Filter) -> TileDBResult<Self> {
         let c_flist = self.filter_list.capi();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_filter_list_add_filter(ctx, c_flist, filter.capi())
@@ -162,15 +176,12 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn add_filter_data<F>(self, filter: F) -> TileDBResult<Self>
-    where
-        F: Borrow<FilterData>,
-    {
-        let ctx = self.filter_list.context;
-        self.add_filter(Filter::create(ctx, filter)?)
+    pub fn add_filter_data(self, filter: &FilterData) -> TileDBResult<Self> {
+        let filter = Filter::create(self.context(), filter)?;
+        self.add_filter(filter)
     }
 
-    pub fn build(self) -> FilterList<'ctx> {
+    pub fn build(self) -> FilterList {
         self.filter_list
     }
 }
@@ -197,7 +208,7 @@ impl FromIterator<FilterData> for FilterListData {
     }
 }
 
-impl<'ctx> TryFrom<&FilterList<'ctx>> for FilterListData {
+impl TryFrom<&FilterList> for FilterListData {
     type Error = crate::error::Error;
     fn try_from(filters: &FilterList) -> TileDBResult<Self> {
         filters
@@ -208,18 +219,18 @@ impl<'ctx> TryFrom<&FilterList<'ctx>> for FilterListData {
     }
 }
 
-impl<'ctx> TryFrom<FilterList<'ctx>> for FilterListData {
+impl TryFrom<FilterList> for FilterListData {
     type Error = crate::error::Error;
 
-    fn try_from(filters: FilterList<'ctx>) -> TileDBResult<Self> {
+    fn try_from(filters: FilterList) -> TileDBResult<Self> {
         Self::try_from(&filters)
     }
 }
 
-impl<'ctx> crate::Factory<'ctx> for FilterListData {
-    type Item = FilterList<'ctx>;
+impl crate::Factory for FilterListData {
+    type Item = FilterList;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         Ok(self
             .iter()
             .fold(Builder::new(context), |b, filter| {
@@ -255,7 +266,7 @@ mod test {
             .expect("Error creating filter list instance.")
             .add_filter(Filter::create(
                 &ctx,
-                FilterData::Compression(CompressionData::new(
+                &FilterData::Compression(CompressionData::new(
                     CompressionType::Zstd,
                 )),
             )?)?
@@ -273,16 +284,16 @@ mod test {
     fn filter_list_get_filter() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context instance.");
         let flist = Builder::new(&ctx)?
-            .add_filter(Filter::create(&ctx, FilterData::None)?)?
+            .add_filter(Filter::create(&ctx, &FilterData::None)?)?
             .add_filter(Filter::create(
                 &ctx,
-                FilterData::Compression(CompressionData::new(
+                &FilterData::Compression(CompressionData::new(
                     CompressionType::Dictionary,
                 )),
             )?)?
             .add_filter(Filter::create(
                 &ctx,
-                FilterData::Compression(CompressionData::new(
+                &FilterData::Compression(CompressionData::new(
                     CompressionType::Zstd,
                 )),
             )?)?

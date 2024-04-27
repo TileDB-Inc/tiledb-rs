@@ -32,14 +32,18 @@ impl Drop for RawEnumeration {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Enumeration<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct Enumeration {
+    context: Context,
     raw: RawEnumeration,
 }
 
-impl<'ctx> Enumeration<'ctx> {
+impl ContextBound for Enumeration {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl Enumeration {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_enumeration_t {
         *self.raw
     }
@@ -148,7 +152,7 @@ impl<'ctx> Enumeration<'ctx> {
         &self,
         data: &[T],
         offsets: Option<&[u64]>,
-    ) -> TileDBResult<Enumeration<'ctx>> {
+    ) -> TileDBResult<Enumeration> {
         let c_enmr = self.capi();
         let mut c_new_enmr: *mut ffi::tiledb_enumeration_t = out_ptr!();
 
@@ -181,13 +185,13 @@ impl<'ctx> Enumeration<'ctx> {
         })?;
 
         Ok(Enumeration {
-            context: self.context,
+            context: self.context.clone(),
             raw: RawEnumeration::Owned(c_new_enmr),
         })
     }
 }
 
-impl<'ctx> Debug for Enumeration<'ctx> {
+impl Debug for Enumeration {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let name = self.name().map_err(|_| fmt::Error)?;
         let dtype = self.datatype().map_err(|_| fmt::Error)?;
@@ -208,8 +212,8 @@ impl<'ctx> Debug for Enumeration<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<Enumeration<'c2>> for Enumeration<'c1> {
-    fn eq(&self, other: &Enumeration<'c2>) -> bool {
+impl PartialEq<Enumeration> for Enumeration {
+    fn eq(&self, other: &Enumeration) -> bool {
         eq_helper!(self.name(), other.name());
         eq_helper!(self.datatype(), other.datatype());
         eq_helper!(self.cell_val_num(), other.cell_val_num());
@@ -231,16 +235,20 @@ impl<'c1, 'c2> PartialEq<Enumeration<'c2>> for Enumeration<'c1> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Builder<'ctx, 'data, 'offsets> {
-    #[context]
-    context: &'ctx Context,
+pub struct Builder<'data, 'offsets> {
+    context: Context,
     name: String,
     dtype: Datatype,
     cell_val_num: u32,
     ordered: bool,
     data: &'data [u8],
     offsets: Option<&'offsets [u64]>,
+}
+
+impl<'data, 'offsets> ContextBound for Builder<'data, 'offsets> {
+    fn context(&self) -> &Context {
+        &self.context
+    }
 }
 
 pub trait EnumerationBuilderData {}
@@ -255,9 +263,9 @@ impl EnumerationBuilderData for i64 {}
 impl EnumerationBuilderData for f32 {}
 impl EnumerationBuilderData for f64 {}
 
-impl<'ctx, 'data, 'offsets> Builder<'ctx, 'data, 'offsets> {
+impl<'data, 'offsets> Builder<'data, 'offsets> {
     pub fn new<T: EnumerationBuilderData + 'static>(
-        context: &'ctx Context,
+        context: &Context,
         name: &str,
         dtype: Datatype,
         data: &'data [T],
@@ -271,7 +279,7 @@ impl<'ctx, 'data, 'offsets> Builder<'ctx, 'data, 'offsets> {
         };
 
         Builder {
-            context,
+            context: context.clone(),
             name: name.to_owned(),
             dtype,
             cell_val_num: 1,
@@ -299,7 +307,7 @@ impl<'ctx, 'data, 'offsets> Builder<'ctx, 'data, 'offsets> {
         Self { ordered, ..self }
     }
 
-    pub fn build(self) -> TileDBResult<Enumeration<'ctx>> {
+    pub fn build(self) -> TileDBResult<Enumeration> {
         let mut c_enmr: *mut ffi::tiledb_enumeration_t = out_ptr!();
         let name_bytes = self.name.as_bytes();
         let c_name = cstring!(name_bytes);
@@ -354,10 +362,10 @@ pub struct EnumerationData {
     pub offsets: Option<Box<[u64]>>,
 }
 
-impl<'ctx> TryFrom<&Enumeration<'ctx>> for EnumerationData {
+impl TryFrom<&Enumeration> for EnumerationData {
     type Error = crate::error::Error;
 
-    fn try_from(enmr: &Enumeration<'ctx>) -> TileDBResult<Self> {
+    fn try_from(enmr: &Enumeration) -> TileDBResult<Self> {
         let datatype = enmr.datatype()?;
         let cell_val_num = enmr.cell_val_num()?;
         let data = Box::from(enmr.data()?);
@@ -374,10 +382,10 @@ impl<'ctx> TryFrom<&Enumeration<'ctx>> for EnumerationData {
     }
 }
 
-impl<'ctx> Factory<'ctx> for EnumerationData {
-    type Item = Enumeration<'ctx>;
+impl Factory for EnumerationData {
+    type Item = Enumeration;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         let mut b = Builder::new(
             context,
             &self.name,

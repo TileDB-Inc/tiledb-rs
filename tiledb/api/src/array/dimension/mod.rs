@@ -33,21 +33,28 @@ impl Drop for RawDimension {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Dimension<'ctx> {
-    #[context]
-    pub(crate) context: &'ctx Context,
+pub struct Dimension {
+    pub(crate) context: Context,
     pub(crate) raw: RawDimension,
 }
 
-impl<'ctx> Dimension<'ctx> {
+impl ContextBound for Dimension {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl Dimension {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_dimension_t {
         *self.raw
     }
 
     /// Read from the C API whatever we need to use this dimension from Rust
-    pub(crate) fn new(context: &'ctx Context, raw: RawDimension) -> Self {
-        Dimension { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawDimension) -> Self {
+        Dimension {
+            context: context.clone(),
+            raw,
+        }
     }
 
     pub fn name(&self) -> TileDBResult<String> {
@@ -123,14 +130,11 @@ impl<'ctx> Dimension<'ctx> {
             ffi::tiledb_dimension_get_filter_list(ctx, c_dimension, &mut c_fl)
         })?;
 
-        Ok(FilterList {
-            context: self.context,
-            raw: RawFilterList::Owned(c_fl),
-        })
+        Ok(FilterList::new(&self.context, RawFilterList::Owned(c_fl)))
     }
 }
 
-impl<'ctx> Debug for Dimension<'ctx> {
+impl Debug for Dimension {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let data =
             DimensionData::try_from(self).map_err(|_| std::fmt::Error)?;
@@ -141,8 +145,8 @@ impl<'ctx> Debug for Dimension<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
-    fn eq(&self, other: &Dimension<'c2>) -> bool {
+impl PartialEq<Dimension> for Dimension {
+    fn eq(&self, other: &Dimension) -> bool {
         eq_helper!(self.name(), other.name());
         eq_helper!(self.datatype(), other.datatype());
         eq_helper!(self.cell_val_num(), other.cell_val_num());
@@ -160,17 +164,21 @@ impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Builder<'ctx> {
-    #[base(ContextBound)]
-    dim: Dimension<'ctx>,
+pub struct Builder {
+    dim: Dimension,
 }
 
-impl<'ctx> Builder<'ctx> {
+impl ContextBound for Builder {
+    fn context(&self) -> &Context {
+        self.dim.context()
+    }
+}
+
+impl Builder {
     // TODO: extent might be optional?
     // and it
     pub fn new<Conv: CAPIConverter>(
-        context: &'ctx Context,
+        context: &Context,
         name: &str,
         datatype: Datatype,
         domain: &[Conv; 2],
@@ -198,15 +206,12 @@ impl<'ctx> Builder<'ctx> {
             )
         })?;
         Ok(Builder {
-            dim: Dimension {
-                context,
-                raw: RawDimension::Owned(c_dimension),
-            },
+            dim: Dimension::new(context, RawDimension::Owned(c_dimension)),
         })
     }
 
     pub fn new_string(
-        context: &'ctx Context,
+        context: &Context,
         name: &str,
         datatype: Datatype,
     ) -> TileDBResult<Self> {
@@ -226,15 +231,8 @@ impl<'ctx> Builder<'ctx> {
             )
         })?;
         Ok(Builder {
-            dim: Dimension {
-                context,
-                raw: RawDimension::Owned(c_dimension),
-            },
+            dim: Dimension::new(context, RawDimension::Owned(c_dimension)),
         })
-    }
-
-    pub fn context(&self) -> &'ctx Context {
-        self.dim.context
     }
 
     pub fn name(&self) -> TileDBResult<String> {
@@ -259,13 +257,13 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn build(self) -> Dimension<'ctx> {
+    pub fn build(self) -> Dimension {
         self.dim
     }
 }
 
-impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
-    fn from(builder: Builder<'ctx>) -> Dimension<'ctx> {
+impl From<Builder> for Dimension {
+    fn from(builder: Builder) -> Dimension {
         builder.build()
     }
 }
@@ -293,10 +291,10 @@ impl Display for DimensionData {
     }
 }
 
-impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
+impl TryFrom<&Dimension> for DimensionData {
     type Error = crate::error::Error;
 
-    fn try_from(dim: &Dimension<'ctx>) -> TileDBResult<Self> {
+    fn try_from(dim: &Dimension) -> TileDBResult<Self> {
         let datatype = dim.datatype()?;
         let (domain, extent) = fn_typed!(datatype, DT, {
             let domain = dim.domain::<DT>()?;
@@ -323,18 +321,18 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
     }
 }
 
-impl<'ctx> TryFrom<Dimension<'ctx>> for DimensionData {
+impl TryFrom<Dimension> for DimensionData {
     type Error = crate::error::Error;
 
-    fn try_from(dim: Dimension<'ctx>) -> TileDBResult<Self> {
+    fn try_from(dim: Dimension) -> TileDBResult<Self> {
         Self::try_from(&dim)
     }
 }
 
-impl<'ctx> Factory<'ctx> for DimensionData {
-    type Item = Dimension<'ctx>;
+impl Factory for DimensionData {
+    type Item = Dimension;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         let mut b = if self.datatype == Datatype::StringAscii {
             Builder::new_string(context, &self.name, self.datatype)?
         } else {
@@ -560,7 +558,7 @@ mod tests {
             let fl = FilterListBuilder::new(&context)?
                 .add_filter(Filter::create(
                     &context,
-                    FilterData::Compression(CompressionData::new(
+                    &FilterData::Compression(CompressionData::new(
                         CompressionType::Lz4,
                     )),
                 )?)?
@@ -681,7 +679,7 @@ mod tests {
             .filters(
                 FilterListBuilder::new(&context)
                     .unwrap()
-                    .add_filter_data(FilterData::Compression(
+                    .add_filter_data(&FilterData::Compression(
                         CompressionData::new(CompressionType::Lz4),
                     ))
                     .unwrap()

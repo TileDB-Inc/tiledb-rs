@@ -3,6 +3,7 @@ use super::*;
 use std::collections::HashMap;
 use std::pin::Pin;
 
+use crate::context::Context;
 use crate::query::buffer::{QueryBuffers, TypedQueryBuffers};
 use crate::query::write::input::DataProvider;
 
@@ -17,32 +18,36 @@ struct RawWriteInput<'data> {
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 
-#[derive(ContextBound, Query)]
-pub struct WriteQuery<'ctx, 'data> {
-    #[base(ContextBound, Query)]
-    base: QueryBase<'ctx>,
+#[derive(Query)]
+pub struct WriteQuery<'data> {
+    #[base(Query)]
+    base: QueryBase,
 
     /// Hold on to query inputs to ensure they live long enough
     _inputs: InputMap<'data>,
 }
 
-impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
+impl<'data> WriteQuery<'data> {
     pub fn submit(&self) -> TileDBResult<()> {
         self.base.do_submit()
     }
 }
 
-#[derive(ContextBound)]
-pub struct WriteBuilder<'ctx, 'data> {
-    #[base(ContextBound)]
-    base: BuilderBase<'ctx>,
+pub struct WriteBuilder<'data> {
+    base: BuilderBase,
     inputs: InputMap<'data>,
 }
 
-impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
-    type Query = WriteQuery<'ctx, 'data>;
+impl<'data> ContextBound for WriteBuilder<'data> {
+    fn context(&self) -> &Context {
+        self.base.context()
+    }
+}
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+impl<'data> QueryBuilder for WriteBuilder<'data> {
+    type Query = WriteQuery<'data>;
+
+    fn base(&self) -> &BuilderBase {
         &self.base
     }
 
@@ -54,8 +59,8 @@ impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
     }
 }
 
-impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
-    pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
+impl<'data> WriteBuilder<'data> {
+    pub fn new(array: Array) -> TileDBResult<Self> {
         Ok(WriteBuilder {
             base: BuilderBase::new(array, QueryType::Write)?,
             inputs: HashMap::new(),

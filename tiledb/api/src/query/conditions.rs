@@ -255,19 +255,13 @@ pub struct EqualityPredicate {
 }
 
 impl EqualityPredicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<QueryCondition> {
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_query_condition_alloc(ctx, &mut c_cond)
         })?;
 
-        let cond = QueryCondition {
-            context: ctx,
-            raw: RawQueryCondition::Owned(c_cond),
-        };
+        let cond = QueryCondition::new(ctx, RawQueryCondition::Owned(c_cond));
 
         let c_cond = cond.capi();
         let c_name = cstring!(self.field.as_str());
@@ -298,10 +292,7 @@ pub struct SetMembershipPredicate {
 }
 
 impl SetMembershipPredicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<QueryCondition> {
         // First things first, sets require a non-zero length vector. I would
         // prefer if we couldn't even create SetMemberValues with zero length
         // vectors, but that would make creation fallible which would make the
@@ -394,10 +385,7 @@ impl SetMembershipPredicate {
             })?;
         }
 
-        Ok(QueryCondition {
-            context: ctx,
-            raw: RawQueryCondition::Owned(c_cond),
-        })
+        Ok(QueryCondition::new(ctx, RawQueryCondition::Owned(c_cond)))
     }
 }
 
@@ -408,19 +396,13 @@ pub struct NullnessPredicate {
 }
 
 impl NullnessPredicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<QueryCondition> {
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_query_condition_alloc(ctx, &mut c_cond)
         })?;
 
-        let cond = QueryCondition {
-            context: ctx,
-            raw: RawQueryCondition::Owned(c_cond),
-        };
+        let cond = QueryCondition::new(ctx, RawQueryCondition::Owned(c_cond));
 
         let c_cond = cond.capi();
         let c_name = cstring!(self.field.as_str());
@@ -448,10 +430,7 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<QueryCondition> {
         match self {
             Self::Equality(pred) => pred.build(ctx),
             Self::SetMembership(pred) => pred.build(ctx),
@@ -567,10 +546,7 @@ impl QueryConditionExpr {
         }
     }
 
-    pub fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    pub fn build(&self, ctx: &Context) -> TileDBResult<QueryCondition> {
         match self {
             Self::Cond(cond) => cond.build(ctx),
             Self::Comb { lhs, rhs, op } => {
@@ -591,10 +567,7 @@ impl QueryConditionExpr {
                     )
                 })?;
 
-                Ok(QueryCondition {
-                    context: ctx,
-                    raw: RawQueryCondition::Owned(c_cond),
-                })
+                Ok(QueryCondition::new(ctx, RawQueryCondition::Owned(c_cond)))
             }
             Self::Negate(expr) => {
                 let cond = expr.build(ctx)?;
@@ -609,10 +582,7 @@ impl QueryConditionExpr {
                     )
                 })?;
 
-                Ok(QueryCondition {
-                    context: ctx,
-                    raw: RawQueryCondition::Owned(c_neg_cond),
-                })
+                Ok(QueryCondition::new(ctx, RawQueryCondition::Owned(c_cond)))
             }
         }
     }
@@ -668,16 +638,27 @@ impl Drop for RawQueryCondition {
     }
 }
 
-#[derive(ContextBound)]
-pub struct QueryCondition<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct QueryCondition {
+    context: Context,
     raw: RawQueryCondition,
 }
 
-impl<'ctx> QueryCondition<'ctx> {
+impl ContextBound for QueryCondition {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl QueryCondition {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_query_condition_t {
         *self.raw
+    }
+
+    pub(crate) fn new(context: &Context, raw: RawQueryCondition) -> Self {
+        Self {
+            context: context.clone(),
+            raw,
+        }
     }
 }
 

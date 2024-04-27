@@ -176,20 +176,24 @@ impl Drop for RawArray {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Array<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct Array {
+    context: Context,
     pub(crate) raw: RawArray,
 }
 
-impl<'ctx> Array<'ctx> {
+impl ContextBound for Array {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl Array {
     pub(crate) fn capi(&self) -> &RawArray {
         &self.raw
     }
 
     pub fn create<S>(
-        context: &'ctx Context,
+        context: &Context,
         name: S,
         schema: Schema,
     ) -> TileDBResult<()>
@@ -204,7 +208,7 @@ impl<'ctx> Array<'ctx> {
         Ok(())
     }
 
-    pub fn exists<S>(context: &'ctx Context, uri: S) -> TileDBResult<bool>
+    pub fn exists<S>(context: &Context, uri: S) -> TileDBResult<bool>
     where
         S: AsRef<str>,
     {
@@ -214,11 +218,7 @@ impl<'ctx> Array<'ctx> {
         ))
     }
 
-    pub fn open<S>(
-        context: &'ctx Context,
-        uri: S,
-        mode: Mode,
-    ) -> TileDBResult<Self>
+    pub fn open<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
     where
         S: AsRef<str>,
     {
@@ -235,7 +235,7 @@ impl<'ctx> Array<'ctx> {
         })?;
 
         Ok(Array {
-            context,
+            context: context.clone(),
             raw: RawArray::Owned(array_raw),
         })
     }
@@ -252,11 +252,11 @@ impl<'ctx> Array<'ctx> {
             )
         })?;
 
-        Ok(Schema::new(self.context, RawSchema::Owned(c_schema)))
+        Ok(Schema::new(&self.context, RawSchema::Owned(c_schema)))
     }
 }
 
-impl Drop for Array<'_> {
+impl Drop for Array {
     fn drop(&mut self) {
         let c_array = *self.raw;
         self.capi_call(|ctx| unsafe { ffi::tiledb_array_close(ctx, c_array) })

@@ -32,27 +32,31 @@ impl Drop for RawSubarray {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Subarray<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct Subarray {
+    context: Context,
     raw: RawSubarray,
 }
 
-impl<'ctx> Subarray<'ctx> {
+impl ContextBound for Subarray {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl Subarray {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_subarray_t {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawSubarray) -> Self {
-        Subarray { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawSubarray) -> Self {
+        Subarray {
+            context: context.clone(),
+            raw,
+        }
     }
 
     /// Return all dimension ranges set on the query.
-    pub fn ranges(
-        &self,
-        schema: &'ctx Schema,
-    ) -> TileDBResult<Vec<Vec<Range>>> {
+    pub fn ranges(&self, schema: &Schema) -> TileDBResult<Vec<Vec<Range>>> {
         let ctx = self.context();
         let ndims = schema.domain()?.ndim()? as u32;
 
@@ -153,19 +157,23 @@ impl<'ctx> Subarray<'ctx> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Builder<'ctx, Q> {
+pub struct Builder<Q> {
     query: Q,
-    #[base(ContextBound)]
-    subarray: Subarray<'ctx>,
+    subarray: Subarray,
 }
 
-impl<'ctx, Q> Builder<'ctx, Q>
+impl<Q> ContextBound for Builder<Q> {
+    fn context(&self) -> &Context {
+        self.subarray.context()
+    }
+}
+
+impl<Q> Builder<Q>
 where
-    Q: QueryBuilder<'ctx> + Sized,
+    Q: QueryBuilder + Sized,
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
-        let context = query.base().context();
+        let context = query.base().context().clone();
         let c_array = **query.base().carray();
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
 
@@ -175,10 +183,7 @@ where
 
         Ok(Builder {
             query,
-            subarray: Subarray {
-                context,
-                raw: RawSubarray::Owned(c_subarray),
-            },
+            subarray: Subarray::new(&context, RawSubarray::Owned(c_subarray)),
         })
     }
 
@@ -295,10 +300,9 @@ where
             )));
         }
 
-        let ctx = self.subarray.context;
         let c_subarray = self.subarray.capi();
 
-        ctx.capi_call(|ctx| unsafe {
+        self.context().capi_call(|ctx| unsafe {
             ffi::tiledb_subarray_add_point_ranges(
                 ctx,
                 c_subarray,

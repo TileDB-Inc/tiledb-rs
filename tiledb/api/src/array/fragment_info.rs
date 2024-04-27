@@ -38,16 +38,27 @@ impl Drop for RawFragmentInfo {
     }
 }
 
-#[derive(ContextBound)]
-struct FragmentInfoInternal<'ctx> {
-    #[context]
-    context: &'ctx Context,
+struct FragmentInfoInternal {
+    context: Context,
     raw: RawFragmentInfo,
 }
 
-impl<'ctx> FragmentInfoInternal<'ctx> {
+impl ContextBound for FragmentInfoInternal {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl FragmentInfoInternal {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_fragment_info_t {
         *self.raw
+    }
+
+    pub(crate) fn new(context: &Context, raw: RawFragmentInfo) -> Self {
+        Self {
+            context: context.clone(),
+            raw,
+        }
     }
 
     pub fn config(&self) -> TileDBResult<Config> {
@@ -146,7 +157,7 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         Ok(version)
     }
 
-    pub fn schema(&self, frag_idx: u32) -> TileDBResult<Schema<'ctx>> {
+    pub fn schema(&self, frag_idx: u32) -> TileDBResult<Schema> {
         let c_frag = self.capi();
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
@@ -158,7 +169,7 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
             )
         })?;
 
-        Ok(Schema::new(self.context, RawSchema::Owned(c_schema)))
+        Ok(Schema::new(&self.context, RawSchema::Owned(c_schema)))
     }
 
     pub fn schema_name(&self, frag_idx: u32) -> TileDBResult<String> {
@@ -499,12 +510,12 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 }
 
-pub struct FragmentInfo<'ctx, 'info> {
-    info: &'info FragmentInfoInternal<'ctx>,
+pub struct FragmentInfo<'info> {
+    info: &'info FragmentInfoInternal,
     index: u32,
 }
 
-impl<'ctx, 'info> FragmentInfo<'ctx, 'info> {
+impl<'info> FragmentInfo<'info> {
     pub fn name(&self) -> TileDBResult<String> {
         self.info.fragment_name(self.index)
     }
@@ -533,7 +544,7 @@ impl<'ctx, 'info> FragmentInfo<'ctx, 'info> {
         self.info.schema_name(self.index)
     }
 
-    pub fn schema(&self) -> TileDBResult<Schema<'ctx>> {
+    pub fn schema(&self) -> TileDBResult<Schema> {
         self.info.schema(self.index)
     }
 
@@ -580,13 +591,11 @@ impl<'ctx, 'info> FragmentInfo<'ctx, 'info> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct FragmentInfoList<'ctx> {
-    #[base(ContextBound)]
-    info: FragmentInfoInternal<'ctx>,
+pub struct FragmentInfoList {
+    info: FragmentInfoInternal,
 }
 
-impl<'ctx> FragmentInfoList<'ctx> {
+impl FragmentInfoList {
     pub fn config(&self) -> TileDBResult<Config> {
         self.info.config()
     }
@@ -622,23 +631,19 @@ impl<'ctx> FragmentInfoList<'ctx> {
         })
     }
 
-    pub fn iter<'info: 'ctx>(
-        &'info self,
-    ) -> TileDBResult<FragmentInfoListIterator<'ctx, 'info>> {
+    pub fn iter(&self) -> TileDBResult<FragmentInfoListIterator> {
         FragmentInfoListIterator::try_from(self)
     }
 }
 
-#[derive(ContextBound)]
-pub struct FragmentInfoListIterator<'ctx, 'info> {
-    #[base(ContextBound)]
-    info: &'info FragmentInfoList<'ctx>,
+pub struct FragmentInfoListIterator<'info> {
+    info: &'info FragmentInfoList,
     num_fragments: u32,
     index: u32,
 }
 
-impl<'ctx, 'info: 'ctx> Iterator for FragmentInfoListIterator<'ctx, 'info> {
-    type Item = FragmentInfo<'ctx, 'info>;
+impl<'info> Iterator for FragmentInfoListIterator<'info> {
+    type Item = FragmentInfo<'info>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.index >= self.num_fragments {
@@ -655,17 +660,14 @@ impl<'ctx, 'info: 'ctx> Iterator for FragmentInfoListIterator<'ctx, 'info> {
     }
 }
 
-impl<'ctx, 'info: 'ctx> FusedIterator
-    for FragmentInfoListIterator<'ctx, 'info>
-{
-}
+impl<'info> FusedIterator for FragmentInfoListIterator<'info> {}
 
-impl<'ctx, 'info: 'ctx> TryFrom<&'info FragmentInfoList<'ctx>>
-    for FragmentInfoListIterator<'ctx, 'info>
+impl<'info> TryFrom<&'info FragmentInfoList>
+    for FragmentInfoListIterator<'info>
 {
     type Error = crate::error::Error;
 
-    fn try_from(info: &'ctx FragmentInfoList) -> TileDBResult<Self> {
+    fn try_from(info: &'info FragmentInfoList) -> TileDBResult<Self> {
         Ok(FragmentInfoListIterator {
             info,
             num_fragments: info.num_fragments()?,
@@ -674,14 +676,18 @@ impl<'ctx, 'info: 'ctx> TryFrom<&'info FragmentInfoList<'ctx>>
     }
 }
 
-#[derive(ContextBound)]
-pub struct Builder<'ctx> {
-    #[base(ContextBound)]
-    info: FragmentInfoInternal<'ctx>,
+pub struct Builder {
+    info: FragmentInfoInternal,
 }
 
-impl<'ctx> Builder<'ctx> {
-    pub fn new<T>(context: &'ctx Context, uri: T) -> TileDBResult<Self>
+impl ContextBound for Builder {
+    fn context(&self) -> &Context {
+        self.info.context()
+    }
+}
+
+impl Builder {
+    pub fn new<T>(context: &Context, uri: T) -> TileDBResult<Self>
     where
         T: AsRef<str>,
     {
@@ -697,10 +703,10 @@ impl<'ctx> Builder<'ctx> {
         })?;
 
         Ok(Builder {
-            info: FragmentInfoInternal {
+            info: FragmentInfoInternal::new(
                 context,
-                raw: RawFragmentInfo::Owned(c_frag_info),
-            },
+                RawFragmentInfo::Owned(c_frag_info),
+            ),
         })
     }
 
@@ -713,13 +719,13 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn build(self) -> TileDBResult<FragmentInfoList<'ctx>> {
+    pub fn build(self) -> TileDBResult<FragmentInfoList> {
         let ret = FragmentInfoList { info: self.info };
         ret.load()?;
         Ok(ret)
     }
 
-    pub fn build_without_loading(self) -> FragmentInfoList<'ctx> {
+    pub fn build_without_loading(self) -> FragmentInfoList {
         FragmentInfoList { info: self.info }
     }
 }
@@ -742,7 +748,7 @@ pub mod tests {
 
         let config = Config::new()?;
         let frag_infos =
-            Builder::new(&ctx, &array_uri)?.config(&config)?.build();
+            Builder::new(&ctx, array_uri)?.config(&config)?.build();
 
         assert!(frag_infos.is_ok());
 
@@ -754,7 +760,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.config().is_ok());
 
@@ -766,8 +772,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos =
-            Builder::new(&ctx, &array_uri)?.build_without_loading();
+        let frag_infos = Builder::new(&ctx, array_uri)?.build_without_loading();
 
         assert!(frag_infos.load().is_ok());
 
@@ -779,7 +784,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.unconsolidated_metadata_num().is_ok());
 
@@ -791,7 +796,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.num_to_vacuum().is_ok());
 
@@ -803,7 +808,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         let cell_count = frag_infos.total_cell_count()?;
         assert!(cell_count > 0);
@@ -816,7 +821,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         let num_frags = frag_infos.num_fragments()?;
         assert_eq!(num_frags, 2);
@@ -829,7 +834,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.get_fragment(0).is_ok());
 
@@ -841,7 +846,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.get_fragment(3).is_err());
 
@@ -853,7 +858,7 @@ pub mod tests {
         let ctx = Context::new().unwrap();
         let tmp_dir = TempDir::new().unwrap();
         let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let frag_infos = Builder::new(&ctx, &array_uri)?.build()?;
+        let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         let mut num_frags = 0;
         for _ in frag_infos.iter()? {

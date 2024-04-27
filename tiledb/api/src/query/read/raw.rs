@@ -399,16 +399,25 @@ typed_read_handle!(Float32: f32, Float64: f64);
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
 /// the buffers between each step to process intermediate results.
-#[derive(ContextBound, Query)]
+#[derive(Query)]
 pub struct RawReadQuery<'data, Q> {
     pub(crate) raw_read_output: TypedReadHandle<'data>,
-    #[base(ContextBound, Query)]
+    #[base(Query)]
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, Q> ReadQuery<'ctx> for RawReadQuery<'data, Q>
+impl<'data, Q> ContextBound for RawReadQuery<'data, Q>
 where
-    Q: ReadQuery<'ctx>,
+    Q: Query,
+{
+    fn context(&self) -> &Context {
+        self.base().context()
+    }
+}
+
+impl<'data, Q> ReadQuery for RawReadQuery<'data, Q>
+where
+    Q: ReadQuery,
 {
     type Intermediate = (usize, usize, Q::Intermediate);
     type Final = (usize, usize, Q::Final);
@@ -417,8 +426,9 @@ where
         &mut self,
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
+        let ctx = self.base().context().clone();
         self.raw_read_output
-            .attach_query(self.base().context(), **self.base().cquery())?;
+            .attach_query(&ctx, **self.base().cquery())?;
 
         /* then execute */
         let base_result = {
@@ -463,20 +473,18 @@ where
     }
 }
 
-#[derive(ContextBound)]
 pub struct RawReadBuilder<'data, B> {
     pub(crate) raw_read_output: TypedReadHandle<'data>,
-    #[base(ContextBound)]
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, B> QueryBuilder<'ctx> for RawReadBuilder<'data, B>
+impl<'data, B> QueryBuilder for RawReadBuilder<'data, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
     type Query = RawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -488,8 +496,8 @@ where
     }
 }
 
-impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data> for RawReadBuilder<'data, B> where
-    B: ReadQueryBuilder<'ctx, 'data>
+impl<'data, B> ReadQueryBuilder<'data> for RawReadBuilder<'data, B> where
+    B: ReadQueryBuilder<'data>
 {
 }
 
@@ -497,16 +505,16 @@ impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data> for RawReadBuilder<'data, B> 
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
 /// the buffers between each step to process intermediate results.
-#[derive(ContextBound, Query)]
+#[derive(Query)]
 pub struct VarRawReadQuery<'data, Q> {
     pub(crate) raw_read_output: Vec<TypedReadHandle<'data>>,
     #[base(ContextBound, Query)]
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, Q> ReadQuery<'ctx> for VarRawReadQuery<'data, Q>
+impl<'data, Q> ReadQuery for VarRawReadQuery<'data, Q>
 where
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery,
 {
     type Intermediate = (Vec<(usize, usize)>, Q::Intermediate);
     type Final = (Vec<(usize, usize)>, Q::Final);
@@ -516,10 +524,10 @@ where
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
         {
-            let context = self.base().context();
+            let context = self.base().context().clone();
             let cquery = **self.base().cquery();
             for handle in self.raw_read_output.iter_mut() {
-                handle.attach_query(context, cquery)?;
+                handle.attach_query(&context, cquery)?;
             }
         }
 
@@ -577,20 +585,18 @@ where
     }
 }
 
-#[derive(ContextBound)]
 pub struct VarRawReadBuilder<'data, B> {
     pub(crate) raw_read_output: Vec<TypedReadHandle<'data>>,
-    #[base(ContextBound)]
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, B> QueryBuilder<'ctx> for VarRawReadBuilder<'data, B>
+impl<'data, B> QueryBuilder for VarRawReadBuilder<'data, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
     type Query = VarRawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -602,9 +608,7 @@ where
     }
 }
 
-impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data>
-    for VarRawReadBuilder<'data, B>
-where
-    B: ReadQueryBuilder<'ctx, 'data>,
+impl<'data, B> ReadQueryBuilder<'data> for VarRawReadBuilder<'data, B> where
+    B: ReadQueryBuilder<'data>
 {
 }

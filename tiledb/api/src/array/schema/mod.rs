@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::ops::Deref;
@@ -147,13 +146,12 @@ impl Drop for RawSchema {
 }
 
 /// Holds a field of the schema, which may be either a dimension or an attribute.
-#[derive(ContextBound)]
-pub enum Field<'ctx> {
-    Dimension(Dimension<'ctx>),
-    Attribute(Attribute<'ctx>),
+pub enum Field {
+    Dimension(Dimension),
+    Attribute(Attribute),
 }
 
-impl<'ctx> Field<'ctx> {
+impl Field {
     pub fn name(&self) -> TileDBResult<String> {
         match self {
             Field::Dimension(ref d) => d.name(),
@@ -247,10 +245,10 @@ impl From<&DimensionData> for FieldData {
     }
 }
 
-impl<'ctx> TryFrom<&Field<'ctx>> for FieldData {
+impl TryFrom<&Field> for FieldData {
     type Error = crate::error::Error;
 
-    fn try_from(field: &Field<'ctx>) -> TileDBResult<Self> {
+    fn try_from(field: &Field) -> TileDBResult<Self> {
         Ok(FieldData {
             name: field.name()?,
             cell_val_num: Some(field.cell_val_num()?),
@@ -260,22 +258,22 @@ impl<'ctx> TryFrom<&Field<'ctx>> for FieldData {
     }
 }
 
-impl<'ctx> TryFrom<Field<'ctx>> for FieldData {
+impl TryFrom<Field> for FieldData {
     type Error = crate::error::Error;
 
-    fn try_from(field: Field<'ctx>) -> TileDBResult<Self> {
+    fn try_from(field: Field) -> TileDBResult<Self> {
         Self::try_from(&field)
     }
 }
 
-impl<'ctx> From<Dimension<'ctx>> for Field<'ctx> {
-    fn from(dim: Dimension<'ctx>) -> Field<'ctx> {
+impl From<Dimension> for Field {
+    fn from(dim: Dimension) -> Field {
         Field::Dimension(dim)
     }
 }
 
-impl<'ctx> From<Attribute<'ctx>> for Field<'ctx> {
-    fn from(attr: Attribute<'ctx>) -> Field<'ctx> {
+impl From<Attribute> for Field {
+    fn from(attr: Attribute) -> Field {
         Field::Attribute(attr)
     }
 }
@@ -286,34 +284,41 @@ type FnFilterListGet = unsafe extern "C" fn(
     *mut *mut ffi::tiledb_filter_list_t,
 ) -> i32;
 
-#[derive(ContextBound)]
-pub struct Schema<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct Schema {
+    context: Context,
     raw: RawSchema,
 }
 
-impl<'ctx> Schema<'ctx> {
+impl ContextBound for Schema {
+    fn context(&self) -> &Context {
+        &self.context
+    }
+}
+
+impl Schema {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_schema_t {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawSchema) -> Self {
-        Schema { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawSchema) -> Self {
+        Schema {
+            context: context.clone(),
+            raw,
+        }
     }
 
-    pub fn domain(&self) -> TileDBResult<Domain<'ctx>> {
+    pub fn domain(&self) -> TileDBResult<Domain> {
         let c_schema = *self.raw;
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_get_domain(ctx, c_schema, &mut c_domain)
         })?;
 
-        Ok(Domain::new(self.context, RawDomain::Owned(c_domain)))
+        Ok(Domain::new(&self.context, RawDomain::Owned(c_domain)))
     }
 
     /// Retrieve the schema of an array from storage
-    pub fn load<S>(context: &'ctx Context, uri: S) -> TileDBResult<Self>
+    pub fn load<S>(context: &Context, uri: S) -> TileDBResult<Self>
     where
         S: AsRef<str>,
     {
@@ -422,7 +427,7 @@ impl<'ctx> Schema<'ctx> {
     pub fn attribute<K: Into<LookupKey>>(
         &self,
         key: K,
-    ) -> TileDBResult<Attribute<'ctx>> {
+    ) -> TileDBResult<Attribute> {
         let c_schema = *self.raw;
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
 
@@ -455,17 +460,14 @@ impl<'ctx> Schema<'ctx> {
             }
         }
 
-        Ok(Attribute::new(self.context, RawAttribute::Owned(c_attr)))
+        Ok(Attribute::new(&self.context, RawAttribute::Owned(c_attr)))
     }
 
     /// Returns a reference to a field (dimension or attribute) in this schema.
     /// If the key is an index, then values `[0.. ndimensions]` will look
     /// up a dimension, and values outside that range will be adjusted by `ndimensions`
     /// to look up an attribute.
-    pub fn field<K: Into<LookupKey>>(
-        &self,
-        key: K,
-    ) -> TileDBResult<Field<'ctx>> {
+    pub fn field<K: Into<LookupKey>>(&self, key: K) -> TileDBResult<Field> {
         let domain = self.domain()?;
         match key.into() {
             LookupKey::Index(idx) => {
@@ -496,10 +498,10 @@ impl<'ctx> Schema<'ctx> {
         self.capi_call(|ctx| unsafe {
             ffi_function(ctx, c_schema, &mut c_filters)
         })?;
-        Ok(FilterList {
-            context: self.context,
-            raw: RawFilterList::Owned(c_filters),
-        })
+        Ok(FilterList::new(
+            &self.context,
+            RawFilterList::Owned(c_filters),
+        ))
     }
 
     pub fn coordinate_filters(&self) -> TileDBResult<FilterList> {
@@ -515,7 +517,7 @@ impl<'ctx> Schema<'ctx> {
     }
 }
 
-impl<'ctx> Debug for Schema<'ctx> {
+impl Debug for Schema {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let data = SchemaData::try_from(self).map_err(|_| std::fmt::Error)?;
         let mut json = json!(data);
@@ -526,8 +528,8 @@ impl<'ctx> Debug for Schema<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<Schema<'c2>> for Schema<'c1> {
-    fn eq(&self, other: &Schema<'c2>) -> bool {
+impl PartialEq<Schema> for Schema {
+    fn eq(&self, other: &Schema) -> bool {
         eq_helper!(self.nattributes(), other.nattributes());
         eq_helper!(self.version(), other.version());
         eq_helper!(self.array_type(), other.array_type());
@@ -555,17 +557,21 @@ type FnFilterListSet = unsafe extern "C" fn(
     *mut ffi::tiledb_filter_list_t,
 ) -> i32;
 
-#[derive(ContextBound)]
-pub struct Builder<'ctx> {
-    #[base(ContextBound)]
-    schema: Schema<'ctx>,
+pub struct Builder {
+    schema: Schema,
 }
 
-impl<'ctx> Builder<'ctx> {
+impl ContextBound for Builder {
+    fn context(&self) -> &Context {
+        self.schema.context()
+    }
+}
+
+impl Builder {
     pub fn new(
-        context: &'ctx Context,
+        context: &Context,
         array_type: ArrayType,
-        domain: Domain<'ctx>,
+        domain: Domain,
     ) -> TileDBResult<Self> {
         let c_array_type = array_type.capi_enum();
         let mut c_schema: *mut ffi::tiledb_array_schema_t =
@@ -580,10 +586,7 @@ impl<'ctx> Builder<'ctx> {
         })?;
 
         Ok(Builder {
-            schema: Schema {
-                context,
-                raw: RawSchema::Owned(c_schema),
-            },
+            schema: Schema::new(context, RawSchema::Owned(c_schema)),
         })
     }
 
@@ -630,53 +633,44 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    fn filter_list<FL>(
+    fn filter_list(
         self,
-        filters: FL,
+        filters: &FilterList,
         ffi_function: FnFilterListSet,
-    ) -> TileDBResult<Self>
-    where
-        FL: Borrow<FilterList<'ctx>>,
-    {
+    ) -> TileDBResult<Self> {
         let c_schema = self.schema.capi();
-        let filters = filters.borrow();
+        let c_filters = filters.capi();
         self.capi_call(|ctx| unsafe {
-            ffi_function(ctx, c_schema, filters.capi())
+            ffi_function(ctx, c_schema, c_filters)
         })?;
         Ok(self)
     }
 
-    pub fn coordinate_filters<FL>(self, filters: FL) -> TileDBResult<Self>
-    where
-        FL: Borrow<FilterList<'ctx>>,
-    {
+    pub fn coordinate_filters(
+        self,
+        filters: &FilterList,
+    ) -> TileDBResult<Self> {
         self.filter_list(
             filters,
             ffi::tiledb_array_schema_set_coords_filter_list,
         )
     }
 
-    pub fn offsets_filters<FL>(self, filters: FL) -> TileDBResult<Self>
-    where
-        FL: Borrow<FilterList<'ctx>>,
-    {
+    pub fn offsets_filters(self, filters: &FilterList) -> TileDBResult<Self> {
         self.filter_list(
             filters,
             ffi::tiledb_array_schema_set_offsets_filter_list,
         )
     }
 
-    pub fn nullity_filters<FL>(self, filters: FL) -> TileDBResult<Self>
-    where
-        FL: Borrow<FilterList<'ctx>>,
-    {
+    pub fn nullity_filters(self, filters: &FilterList) -> TileDBResult<Self> {
         self.filter_list(
             filters,
             ffi::tiledb_array_schema_set_validity_filter_list,
         )
     }
 
-    pub fn build(self) -> TileDBResult<Schema<'ctx>> {
+    pub fn build(self) -> TileDBResult<Schema> {
         let c_schema = *self.schema.raw;
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_check(ctx, c_schema)
@@ -685,10 +679,10 @@ impl<'ctx> Builder<'ctx> {
     }
 }
 
-impl<'ctx> TryFrom<Builder<'ctx>> for Schema<'ctx> {
+impl TryFrom<Builder> for Schema {
     type Error = crate::error::Error;
 
-    fn try_from(builder: Builder<'ctx>) -> TileDBResult<Schema<'ctx>> {
+    fn try_from(builder: Builder) -> TileDBResult<Schema> {
         builder.build()
     }
 }
@@ -726,10 +720,10 @@ impl Display for SchemaData {
     }
 }
 
-impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {
+impl TryFrom<&Schema> for SchemaData {
     type Error = crate::error::Error;
 
-    fn try_from(schema: &Schema<'ctx>) -> TileDBResult<Self> {
+    fn try_from(schema: &Schema) -> TileDBResult<Self> {
         Ok(SchemaData {
             array_type: schema.array_type()?,
             domain: DomainData::try_from(&schema.domain()?)?,
@@ -753,27 +747,27 @@ impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {
     }
 }
 
-impl<'ctx> TryFrom<Schema<'ctx>> for SchemaData {
+impl TryFrom<Schema> for SchemaData {
     type Error = crate::error::Error;
 
-    fn try_from(schema: Schema<'ctx>) -> TileDBResult<Self> {
+    fn try_from(schema: Schema) -> TileDBResult<Self> {
         Self::try_from(&schema)
     }
 }
 
-impl<'ctx> Factory<'ctx> for SchemaData {
-    type Item = Schema<'ctx>;
+impl Factory for SchemaData {
+    type Item = Schema;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         let mut b = self.attributes.iter().try_fold(
             Builder::new(
                 context,
                 self.array_type,
                 self.domain.create(context)?,
             )?
-            .coordinate_filters(self.coordinate_filters.create(context)?)?
-            .offsets_filters(self.offsets_filters.create(context)?)?
-            .nullity_filters(self.nullity_filters.create(context)?)?,
+            .coordinate_filters(&self.coordinate_filters.create(context)?)?
+            .offsets_filters(&self.offsets_filters.create(context)?)?
+            .nullity_filters(&self.nullity_filters.create(context)?)?,
             |b, a| b.add_attribute(a.create(context)?),
         )?;
         if let Some(c) = self.capacity {
@@ -818,10 +812,7 @@ mod tests {
     }
 
     // helper function since schemata must have at least one attribute to be valid
-    fn with_attribute<'ctx>(
-        c: &'ctx Context,
-        b: Builder<'ctx>,
-    ) -> Builder<'ctx> {
+    fn with_attribute(c: &Context, b: Builder) -> Builder {
         b.add_attribute(sample_attribute(c)).unwrap()
     }
 
@@ -968,7 +959,7 @@ mod tests {
         let r = create_quickstart_dense(&tmp_dir, &c);
         assert!(r.is_ok());
 
-        let schema = Schema::load(&c, &r.unwrap())
+        let schema = Schema::load(&c, r.unwrap())
             .expect("Could not open quickstart_dense schema");
 
         let domain = schema.domain().expect("Error reading domain");
@@ -1172,23 +1163,23 @@ mod tests {
 
         // default filter lists for the schema - see tiledb/sm/misc/constants.cc
         let coordinates_default = FilterListBuilder::new(&c)?
-            .add_filter_data(FilterData::Compression(CompressionData::new(
+            .add_filter_data(&FilterData::Compression(CompressionData::new(
                 CompressionType::Zstd,
             )))?
             .build();
         let offsets_default = FilterListBuilder::new(&c)?
-            .add_filter_data(FilterData::Compression(CompressionData::new(
+            .add_filter_data(&FilterData::Compression(CompressionData::new(
                 CompressionType::Zstd,
             )))?
             .build();
         let nullity_default = FilterListBuilder::new(&c)?
-            .add_filter_data(FilterData::Compression(CompressionData::new(
+            .add_filter_data(&FilterData::Compression(CompressionData::new(
                 CompressionType::Rle,
             )))?
             .build();
 
         let target = FilterListBuilder::new(&c)?
-            .add_filter_data(FilterData::Compression(CompressionData::new(
+            .add_filter_data(&FilterData::Compression(CompressionData::new(
                 CompressionType::Lz4,
             )))?
             .build();
