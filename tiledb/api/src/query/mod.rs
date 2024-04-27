@@ -1,9 +1,10 @@
 use std::ops::Deref;
 
+use crate::array::Array;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::range::Range;
-use crate::{array::RawArray, Array, Result as TileDBResult};
+use crate::Result as TileDBResult;
 
 pub mod buffer;
 pub mod conditions;
@@ -30,8 +31,9 @@ pub enum RawQuery {
 impl Deref for RawQuery {
     type Target = *mut ffi::tiledb_query_t;
     fn deref(&self) -> &Self::Target {
-        let RawQuery::Owned(ref ffi) = self;
-        ffi
+        match *self {
+            RawQuery::Owned(ref ffi) => ffi,
+        }
     }
 }
 
@@ -79,13 +81,13 @@ impl ContextBound for QueryBase {
 }
 
 impl QueryBase {
-    fn cquery(&self) -> &RawQuery {
-        &self.raw
+    fn capi(&self) -> *mut ffi::tiledb_query_t {
+        *self.raw
     }
 
-    /// Executes a single step of the query.
+    /// Execute the query
     fn do_submit(&self) -> TileDBResult<()> {
-        let c_query = **self.cquery();
+        let c_query = self.capi();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_submit(ctx, c_query)
         })?;
@@ -94,7 +96,7 @@ impl QueryBase {
 
     /// Returns the ffi status of the last submit()
     fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
-        let c_query = **self.cquery();
+        let c_query = self.capi();
         let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_get_status(ctx, c_query, &mut c_status)
@@ -113,7 +115,7 @@ impl Query for QueryBase {
     }
 
     fn finalize(self) -> TileDBResult<Array> {
-        let c_query = **self.base().cquery();
+        let c_query = self.base().capi();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_finalize(ctx, c_query)
         })?;
@@ -122,53 +124,8 @@ impl Query for QueryBase {
     }
 }
 
-impl ReadQuery for QueryBase {
-    type Intermediate = ();
-    type Final = ();
-
-    fn step(
-        &mut self,
-    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
-        self.do_submit()?;
-
-        match self.capi_status()? {
-            ffi::tiledb_query_status_t_TILEDB_FAILED => {
-                Err(self.context().expect_last_error())
-            }
-            ffi::tiledb_query_status_t_TILEDB_COMPLETED => {
-                Ok(ReadStepOutput::Final(()))
-            }
-            ffi::tiledb_query_status_t_TILEDB_INPROGRESS => unreachable!(),
-            ffi::tiledb_query_status_t_TILEDB_INCOMPLETE => {
-                /*
-                 * Note: the returned status itself is not enough to distinguish between
-                 * "no results, allocate more space plz" and "there are more results after you consume these".
-                 * The API tiledb_query_get_status_details exists but is experimental,
-                 * so we will worry about it later.
-                 * For now: it's a fair assumption that the user requested data, and that is
-                 * where we will catch the difference. See RawReadQuery.
-                 * We also assume that the same number of records are filled in for all
-                 * queried data - if a result is empty for one attribute then it will be so
-                 * for all attributes.
-                 */
-                Ok(ReadStepOutput::Intermediate(()))
-            }
-            ffi::tiledb_query_status_t_TILEDB_UNINITIALIZED => {
-                unreachable!()
-            }
-            ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
-            unrecognized => Err(Error::Internal(format!(
-                "Unrecognized query status: {}",
-                unrecognized
-            ))),
-        }
-    }
-}
-
-pub trait QueryBuilder: Sized {
-    type Query: Query;
-
-    fn base(&self) -> &BuilderBase;
+pub trait QueryBuilder {
+    fn base(&self) -> &Builder;
 
     fn layout(self, layout: QueryLayout) -> TileDBResult<Self>
     where
@@ -189,7 +146,10 @@ pub trait QueryBuilder: Sized {
         SubarrayBuilder::for_query(self)
     }
 
-    fn query_condition(self, qc: QueryCondition) -> TileDBResult<Self> {
+    fn query_condition(self, qc: QueryCondition) -> TileDBResult<Self>
+    where
+        Self: Sized,
+    {
         let c_query = **self.base().cquery();
         let c_cond = qc.capi();
         self.base().capi_call(|ctx| unsafe {
@@ -197,54 +157,27 @@ pub trait QueryBuilder: Sized {
         })?;
         Ok(self)
     }
-
-    fn build(self) -> Self::Query;
 }
 
-pub struct BuilderBase {
+pub struct Builder {
     query: QueryBase,
 }
 
-impl ContextBound for BuilderBase {
+impl ContextBound for Builder {
     fn context(&self) -> &Context {
         self.query.context()
     }
 }
 
-impl BuilderBase {
-    fn carray(&self) -> &RawArray {
-        self.query.array.capi()
-    }
-    fn cquery(&self) -> &RawQuery {
-        &self.query.raw
-    }
-
-    pub fn array(&self) -> &Array {
-        &self.query.array
-    }
-}
-
-impl QueryBuilder for BuilderBase {
-    type Query = QueryBase;
-
-    fn base(&self) -> &BuilderBase {
-        self
-    }
-
-    fn build(self) -> Self::Query {
-        self.query
-    }
-}
-
-impl BuilderBase {
+impl Builder {
     fn new(array: Array, query_type: QueryType) -> TileDBResult<Self> {
-        let c_array = **array.capi();
+        let c_array = array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
         array.capi_call(|ctx| unsafe {
             ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
         })?;
-        Ok(BuilderBase {
+        Ok(Builder {
             query: QueryBase {
                 array,
                 raw: RawQuery::Owned(c_query),

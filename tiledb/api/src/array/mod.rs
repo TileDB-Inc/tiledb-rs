@@ -82,13 +82,7 @@ impl Display for Mode {
     }
 }
 
-#[derive(
-    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-#[cfg_attr(
-    any(test, feature = "proptest-strategies"),
-    derive(proptest_derive::Arbitrary)
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum TileOrder {
     RowMajor,
     ColumnMajor,
@@ -164,8 +158,9 @@ pub enum RawArray {
 impl Deref for RawArray {
     type Target = *mut ffi::tiledb_array_t;
     fn deref(&self) -> &Self::Target {
-        let RawArray::Owned(ffi) = self;
-        ffi
+        match *self {
+            RawArray::Owned(ref ffi) => ffi,
+        }
     }
 }
 
@@ -188,8 +183,8 @@ impl ContextBound for Array {
 }
 
 impl Array {
-    pub(crate) fn capi(&self) -> &RawArray {
-        &self.raw
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_t {
+        *self.raw
     }
 
     pub fn create<S>(
