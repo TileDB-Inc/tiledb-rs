@@ -2,12 +2,12 @@ use std::ops::Deref;
 
 use anyhow::anyhow;
 
+use super::traits::{Query, QueryBuilder};
 use crate::array::{CellValNum, Schema};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPISameRepr;
 use crate::error::Error;
 use crate::key::LookupKey;
-use crate::query::QueryBuilder;
 use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
 use crate::Result as TileDBResult;
 use crate::{single_value_range_go, var_value_range_go};
@@ -173,8 +173,8 @@ where
     Q: QueryBuilder + Sized,
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
-        let context = query.base().context().clone();
-        let c_array = **query.base().carray();
+        let context = query.context().clone();
+        let c_array = query.array().capi();
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
 
         context.capi_call(|ctx| unsafe {
@@ -195,7 +195,7 @@ where
         range: IntoRange,
     ) -> TileDBResult<Self> {
         // Get the dimension so that we can assert the correct Range type.
-        let schema = self.query.base().query.array.schema()?;
+        let schema = self.query.array().schema()?;
         let dim = schema.domain()?.dimension(key.clone())?;
 
         let range = range.into();
@@ -207,7 +207,7 @@ where
                 )
             })?;
 
-        let ctx = self.query.base().context();
+        let ctx = self.context();
         let c_subarray = self.subarray.capi();
 
         match range {
@@ -291,7 +291,7 @@ where
         key: Key,
         points: &[T],
     ) -> TileDBResult<Self> {
-        let schema = self.query.base().query.array.schema()?;
+        let schema = self.query.array().schema()?;
         let dim_idx = schema.domain()?.dimension_index(key)?;
 
         if points.is_empty() {
@@ -317,7 +317,7 @@ where
 
     /// Apply the subarray to the query, returning the query builder.
     pub fn finish_subarray(self) -> TileDBResult<Q> {
-        let c_query = **self.query.base().cquery();
+        let c_query = self.query.capi();
         let c_subarray = *self.subarray.raw;
 
         self.capi_call(|ctx| unsafe {

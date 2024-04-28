@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroU32;
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -15,24 +15,11 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::key::LookupKey;
-use crate::query::read::output::FieldScratchAllocator;
 use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
 
 #[derive(
-    Clone,
-    Default,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    OptionSubset,
-    PartialEq,
-    Serialize,
-)]
-#[cfg_attr(
-    any(test, feature = "proptest-strategies"),
-    derive(proptest_derive::Arbitrary)
+    Clone, Default, Copy, Debug, Deserialize, Eq, PartialEq, Serialize,
 )]
 pub enum ArrayType {
     #[default]
@@ -179,12 +166,6 @@ impl Field {
             Field::Attribute(ref a) => a.cell_val_num(),
         }
     }
-
-    pub fn query_scratch_allocator(
-        &self,
-    ) -> TileDBResult<crate::query::read::output::FieldScratchAllocator> {
-        Ok(FieldData::try_from(self)?.query_scratch_allocator())
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
@@ -193,28 +174,6 @@ pub struct FieldData {
     pub datatype: Datatype,
     pub nullability: Option<bool>,
     pub cell_val_num: Option<CellValNum>,
-}
-
-impl FieldData {
-    pub fn query_scratch_allocator(
-        &self,
-    ) -> crate::query::read::output::FieldScratchAllocator {
-        /*
-         * TODO: a hint from the schema would be good to use in some way,
-         * this number is super made up and should be improved
-         * (especially if there is a large fixed cell val num).
-         * The user can use a custom allocator if they want, of course,
-         * but they probably aren't going to, so we ought to come up
-         * with something good by default.
-         */
-        let record_capacity = 1024 * 1024;
-
-        FieldScratchAllocator {
-            cell_val_num: self.cell_val_num.unwrap_or_default(),
-            record_capacity: NonZeroUsize::new(record_capacity).unwrap(),
-            is_nullable: self.nullability.unwrap_or(true),
-        }
-    }
 }
 
 impl Display for FieldData {
@@ -688,9 +647,7 @@ impl TryFrom<Builder> for Schema {
 }
 
 /// Encapsulation of data needed to construct a Schema
-#[derive(
-    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
+#[derive(Clone, Default, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SchemaData {
     pub array_type: ArrayType,
     pub domain: DomainData,
@@ -786,12 +743,6 @@ impl Factory for SchemaData {
         b.build()
     }
 }
-
-#[cfg(feature = "arrow")]
-pub mod arrow;
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
 
 #[cfg(test)]
 mod tests {

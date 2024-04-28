@@ -1,318 +1,210 @@
-use std::cell::Ref;
-use std::ops::{Deref, DerefMut};
+use std::collections::HashSet;
 
-pub enum Buffer<'data, T = u8> {
-    Empty,
-    Borrowed(&'data [T]),
-    Owned(Box<[T]>),
+use anyhow::anyhow;
+
+use crate::convert::CAPISameRepr;
+use crate::error::Error;
+use crate::Result as TileDBResult;
+
+/// A write buffer is used by WriterQuery to pass data to TileDB. As such
+/// it's name is a bit of an oxymoron as we only ever read from a WriteBuffer
+/// which references data stored somewhere provided by the user.
+pub struct WriteBuffer<'data, T: CAPISameRepr> {
+    data: &'data [T],
+    offsets: Option<&'data [u64]>,
+    validity: Option<&'data [u8]>,
 }
 
-impl<'data, T> Buffer<'data, T> {
-    pub fn size(&self) -> usize {
-        std::mem::size_of_val(self.as_ref())
-    }
-}
-
-impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
-    fn as_ref(&self) -> &[T] {
-        match self {
-            Buffer::Empty => unsafe {
-                std::slice::from_raw_parts(
-                    std::ptr::NonNull::dangling().as_ptr(),
-                    0,
-                )
-            },
-            Buffer::Borrowed(data) => data,
-            Buffer::Owned(data) => data,
+impl<'data, T: CAPISameRepr> From<&'data [T]> for WriteBuffer<'data, T> {
+    fn from(value: &'data [T]) -> WriteBuffer<'data, T> {
+        WriteBuffer {
+            data: value,
+            offsets: None,
+            validity: None,
         }
     }
 }
 
-impl<'data, T> Deref for Buffer<'data, T> {
-    type Target = [T];
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
-}
-
-pub struct QueryBuffers<'data, C> {
-    pub data: Buffer<'data, C>,
-    pub cell_offsets: Option<Buffer<'data, u64>>,
-    pub validity: Option<Buffer<'data, u8>>,
-}
-
-impl<'data, C> QueryBuffers<'data, C> {
-    pub fn borrow<'this>(&'this self) -> QueryBuffers<'data, C>
-    where
-        'this: 'data,
-    {
-        QueryBuffers {
-            data: Buffer::Borrowed(self.data.as_ref()),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
-            validity: Option::map(self.validity.as_ref(), |v| {
-                Buffer::Borrowed(v.as_ref())
-            }),
+impl<'data, T: CAPISameRepr> From<(&'data [T], &'data [u64])>
+    for WriteBuffer<'data, T>
+{
+    fn from(value: (&'data [T], &'data [u64])) -> WriteBuffer<'data, T> {
+        WriteBuffer {
+            data: value.0,
+            offsets: Some(value.1),
+            validity: None,
         }
     }
 }
 
-pub enum BufferMut<'data, C> {
-    Empty,
-    Borrowed(&'data mut [C]),
-    Owned(Box<[C]>),
-}
-
-impl<'data, T> BufferMut<'data, T> {
-    pub fn size(&self) -> usize {
-        std::mem::size_of_val(self.as_ref())
-    }
-}
-
-impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
-    fn as_ref(&self) -> &[T] {
-        match self {
-            BufferMut::Empty => unsafe {
-                std::slice::from_raw_parts(
-                    std::ptr::NonNull::dangling().as_ptr(),
-                    0,
-                )
-            },
-            BufferMut::Borrowed(data) => data,
-            BufferMut::Owned(data) => data,
+impl<'data, T: CAPISameRepr> From<(&'data [T], &'data [u8])>
+    for WriteBuffer<'data, T>
+{
+    fn from(value: (&'data [T], &'data [u8])) -> WriteBuffer<'data, T> {
+        WriteBuffer {
+            data: value.0,
+            offsets: None,
+            validity: Some(value.1),
         }
     }
 }
 
-impl<'data, T> AsMut<[T]> for BufferMut<'data, T> {
-    fn as_mut(&mut self) -> &mut [T] {
-        match self {
-            BufferMut::Empty => unsafe {
-                std::slice::from_raw_parts_mut(
-                    std::ptr::NonNull::dangling().as_ptr(),
-                    0,
-                )
-            },
-            BufferMut::Borrowed(data) => data,
-            BufferMut::Owned(data) => &mut *data,
+impl<'data, T: CAPISameRepr> From<(&'data [T], &'data [u64], &'data [u8])>
+    for WriteBuffer<'data, T>
+{
+    fn from(
+        value: (&'data [T], &'data [u64], &'data [u8]),
+    ) -> WriteBuffer<'data, T> {
+        WriteBuffer {
+            data: value.0,
+            offsets: Some(value.1),
+            validity: Some(value.2),
         }
     }
 }
 
-impl<'data, T> Deref for BufferMut<'data, T> {
-    type Target = [T];
-    fn deref(&self) -> &Self::Target {
-        self.as_ref()
-    }
-}
-
-impl<'data, T> DerefMut for BufferMut<'data, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.as_mut()
-    }
-}
-
-pub struct QueryBuffersMut<'data, T = u8> {
-    pub data: BufferMut<'data, T>,
-    pub cell_offsets: Option<BufferMut<'data, u64>>,
-    pub validity: Option<BufferMut<'data, u8>>,
-}
-
-impl<'data, T> QueryBuffersMut<'data, T> {
-    /// Borrows this QueryBuffersMut to use as input data.
-    pub fn as_shared<'this>(&'this self) -> QueryBuffers<'data, T>
-    where
-        'this: 'data,
-    {
-        QueryBuffers {
-            data: Buffer::Borrowed(self.data.as_ref()),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
-            validity: Option::map(self.validity.as_ref(), |v| {
-                Buffer::Borrowed(v.as_ref())
-            }),
+impl<'data> From<&'data AllocatedWriteBuffer> for WriteBuffer<'data, u8> {
+    fn from(wbuf: &'data AllocatedWriteBuffer) -> WriteBuffer<'data, u8> {
+        WriteBuffer {
+            data: wbuf.data.as_ref(),
+            offsets: wbuf.offsets.as_ref().map(|o| o.as_ref()),
+            validity: wbuf.validity.as_ref().map(|v| v.as_ref()),
         }
     }
 }
 
-pub enum TypedQueryBuffers<'data> {
-    UInt8(QueryBuffers<'data, u8>),
-    UInt16(QueryBuffers<'data, u16>),
-    UInt32(QueryBuffers<'data, u32>),
-    UInt64(QueryBuffers<'data, u64>),
-    Int8(QueryBuffers<'data, i8>),
-    Int16(QueryBuffers<'data, i16>),
-    Int32(QueryBuffers<'data, i32>),
-    Int64(QueryBuffers<'data, i64>),
-    Float32(QueryBuffers<'data, f32>),
-    Float64(QueryBuffers<'data, f64>),
+/// An AllocatedWriteBuffer is used to create a valid WriteBuffer from data
+/// sources that don't provide a native interface. This is mainly used as
+/// a syntax helper for creating WriteBuffer instances from vectors of strings
+/// or other variable length sources that are not already in a single
+/// contiguous buffer required by TileDB.
+pub struct AllocatedWriteBuffer {
+    data: Box<[u8]>,
+    offsets: Option<Box<[u64]>>,
+    validity: Option<Box<[u8]>>,
 }
 
-pub enum RefTypedQueryBuffersMut<'cell, 'data> {
-    UInt8(Ref<'cell, QueryBuffersMut<'data, u8>>),
-    UInt16(Ref<'cell, QueryBuffersMut<'data, u16>>),
-    UInt32(Ref<'cell, QueryBuffersMut<'data, u32>>),
-    UInt64(Ref<'cell, QueryBuffersMut<'data, u64>>),
-    Int8(Ref<'cell, QueryBuffersMut<'data, i8>>),
-    Int16(Ref<'cell, QueryBuffersMut<'data, i16>>),
-    Int32(Ref<'cell, QueryBuffersMut<'data, i32>>),
-    Int64(Ref<'cell, QueryBuffersMut<'data, i64>>),
-    Float32(Ref<'cell, QueryBuffersMut<'data, f32>>),
-    Float64(Ref<'cell, QueryBuffersMut<'data, f64>>),
+impl From<&Vec<&str>> for AllocatedWriteBuffer {
+    fn from(value: &Vec<&str>) -> AllocatedWriteBuffer {
+        // Create and calculate our offsets
+        let mut offsets: Vec<u64> = Vec::with_capacity(value.len());
+        let mut curr_offset = 0u64;
+        for val in value {
+            offsets.push(curr_offset);
+            curr_offset += val.len() as u64;
+        }
+
+        // Create our linearized data vector
+        let mut data: Vec<u8> = Vec::with_capacity(curr_offset as usize);
+        for (idx, val) in value.iter().enumerate() {
+            let start = offsets[idx] as usize;
+            let len = if idx < value.len() - 1 {
+                offsets[idx + 1] - offsets[idx]
+            } else {
+                curr_offset - offsets[idx]
+            } as usize;
+            data[start..(start + len)].copy_from_slice(val.as_bytes())
+        }
+
+        AllocatedWriteBuffer {
+            data: data.into_boxed_slice(),
+            offsets: Some(offsets.into_boxed_slice()),
+            validity: None,
+        }
+    }
 }
 
-macro_rules! typed_query_buffers {
-    ($($V:ident : $U:ty),+) => {
+impl From<&Vec<String>> for AllocatedWriteBuffer {
+    fn from(value: &Vec<String>) -> AllocatedWriteBuffer {
+        let refs = value.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
+        AllocatedWriteBuffer::from(&refs)
+    }
+}
+
+pub enum WriteBufferCollectionEntry<'data> {
+    UInt8(WriteBuffer<'data, u8>),
+    UInt16(WriteBuffer<'data, u16>),
+    UInt32(WriteBuffer<'data, u32>),
+    UInt64(WriteBuffer<'data, u64>),
+    Int8(WriteBuffer<'data, i8>),
+    Int16(WriteBuffer<'data, i16>),
+    Int32(WriteBuffer<'data, i32>),
+    Int64(WriteBuffer<'data, i64>),
+    Float32(WriteBuffer<'data, f32>),
+    Float64(WriteBuffer<'data, f64>),
+}
+
+macro_rules! wb_entry_create_impl {
+    ($($variant:ident : $ty:ty),+) => {
         $(
-            impl<'data> From<QueryBuffers<'data, $U>> for TypedQueryBuffers<'data> {
-                fn from(value: QueryBuffers<'data, $U>) -> Self {
-                    TypedQueryBuffers::$V(value)
-                }
-            }
-
-            impl<'data> TryFrom<TypedQueryBuffers<'data>> for QueryBuffers<'data, $U> {
-                type Error = ();
-                fn try_from(value: TypedQueryBuffers<'data>) -> std::result::Result<Self, Self::Error> {
-                    if let TypedQueryBuffers::$V(value) = value {
-                        Ok(value)
-                    } else {
-                        Err(())
-                    }
-                }
-            }
-
-            impl<'cell, 'data> From<Ref<'cell, QueryBuffersMut<'data, $U>>> for RefTypedQueryBuffersMut<'cell, 'data> {
-                fn from(value: Ref<'cell, QueryBuffersMut<'data, $U>>) -> Self {
-                    RefTypedQueryBuffersMut::$V(value)
+            impl<'data> From<WriteBuffer<'data, $ty>>
+                for WriteBufferCollectionEntry<'data>
+            {
+                fn from(
+                    value: WriteBuffer<'data, $ty>,
+                ) -> WriteBufferCollectionEntry<'data> {
+                    WriteBufferCollectionEntry::$variant(value)
                 }
             }
         )+
     }
 }
 
-typed_query_buffers!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-typed_query_buffers!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-typed_query_buffers!(Float32: f32, Float64: f64);
+wb_entry_create_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+wb_entry_create_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+wb_entry_create_impl!(Float32: f32, Float64: f64);
 
-#[macro_export]
-macro_rules! typed_query_buffers_go {
-    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
-        match $expr {
-            TypedQueryBuffers::UInt8($inner) => {
-                type $DT = u8;
-                $then
-            }
-            TypedQueryBuffers::UInt16($inner) => {
-                type $DT = u16;
-                $then
-            }
-            TypedQueryBuffers::UInt32($inner) => {
-                type $DT = u32;
-                $then
-            }
-            TypedQueryBuffers::UInt64($inner) => {
-                type $DT = u64;
-                $then
-            }
-            TypedQueryBuffers::Int8($inner) => {
-                type $DT = i8;
-                $then
-            }
-            TypedQueryBuffers::Int16($inner) => {
-                type $DT = i16;
-                $then
-            }
-            TypedQueryBuffers::Int32($inner) => {
-                type $DT = i32;
-                $then
-            }
-            TypedQueryBuffers::Int64($inner) => {
-                type $DT = i64;
-                $then
-            }
-            TypedQueryBuffers::Float32($inner) => {
-                type $DT = f32;
-                $then
-            }
-            TypedQueryBuffers::Float64($inner) => {
-                type $DT = f64;
-                $then
-            }
-        }
-    };
+pub struct WriteBufferCollectionItem<'data> {
+    field: String,
+    entry: WriteBufferCollectionEntry<'data>,
+    next: Option<Box<WriteBufferCollectionItem<'data>>>,
 }
 
-macro_rules! ref_typed_query_buffers_go {
-    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
-        match $expr {
-            RefTypedQueryBuffersMut::UInt8($inner) => {
-                type $DT = u8;
-                $then
-            }
-            RefTypedQueryBuffersMut::UInt16($inner) => {
-                type $DT = u16;
-                $then
-            }
-            RefTypedQueryBuffersMut::UInt32($inner) => {
-                type $DT = u32;
-                $then
-            }
-            RefTypedQueryBuffersMut::UInt64($inner) => {
-                type $DT = u64;
-                $then
-            }
-            RefTypedQueryBuffersMut::Int8($inner) => {
-                type $DT = i8;
-                $then
-            }
-            RefTypedQueryBuffersMut::Int16($inner) => {
-                type $DT = i16;
-                $then
-            }
-            RefTypedQueryBuffersMut::Int32($inner) => {
-                type $DT = i32;
-                $then
-            }
-            RefTypedQueryBuffersMut::Int64($inner) => {
-                type $DT = i64;
-                $then
-            }
-            RefTypedQueryBuffersMut::Float32($inner) => {
-                type $DT = f32;
-                $then
-            }
-            RefTypedQueryBuffersMut::Float64($inner) => {
-                type $DT = f64;
-                $then
-            }
-        }
-    };
+/// A WriteBufferCollection is passed to the WriteQuery::submit method to send
+/// data to TileDB.
+pub struct WriteBufferCollection<'data> {
+    buffers: Option<Box<WriteBufferCollectionItem<'data>>>,
+    fields: HashSet<String>,
 }
 
-impl<'cell, 'data> RefTypedQueryBuffersMut<'cell, 'data> {
-    pub fn as_shared(&'cell self) -> TypedQueryBuffers<'cell> {
-        ref_typed_query_buffers_go!(self, _DT, qb, {
-            TypedQueryBuffers::from(qb.as_shared())
-        })
+impl<'data> WriteBufferCollection<'data> {
+    pub fn new() -> Self {
+        Self {
+            buffers: None,
+            fields: HashSet::new(),
+        }
+    }
+
+    pub fn with_buffer<T: CAPISameRepr>(
+        mut self,
+        field: &str,
+        buffer: T,
+    ) -> TileDBResult<Self>
+    where
+        T: Into<WriteBufferCollectionEntry<'data>>,
+    {
+        if self.fields.contains(field) {
+            return Err(Error::InvalidArgument(anyhow!(
+                "Duplicate values for field: {}",
+                field
+            )));
+        }
+
+        let old_buffers = self.buffers.take();
+
+        self.fields.insert(field.to_owned());
+        self.buffers = Some(Box::new(WriteBufferCollectionItem {
+            field: field.to_owned(),
+            entry: buffer.into(),
+            next: old_buffers,
+        }));
+
+        Ok(self)
     }
 }
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy {
-    use proptest::collection::vec;
-    use proptest::prelude::*;
-
-    pub fn prop_string_vec(
-        range: proptest::collection::SizeRange,
-    ) -> impl Strategy<Value = Vec<String>> {
-        vec(vec(1u8..127, 0..64), range)
-            .prop_map(move |mut v| {
-                v.iter_mut()
-                    .map(|s| String::from_utf8(s.clone()).unwrap())
-                    .collect::<Vec<_>>()
-            })
-            .boxed()
+impl<'data> Default for WriteBufferCollection<'data> {
+    fn default() -> WriteBufferCollection<'data> {
+        WriteBufferCollection::new()
     }
 }
