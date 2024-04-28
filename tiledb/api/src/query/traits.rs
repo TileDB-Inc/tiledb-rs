@@ -1,8 +1,11 @@
 use super::conditions::QueryCondition;
+use super::read::ReadQueryBuilder;
 use super::subarray::RawSubarray;
-use super::{QueryLayout, Subarray, SubarrayBuilder};
+use super::write::WriteQueryBuilder;
+use super::{QueryLayout, QueryType, RawQuery, Subarray, SubarrayBuilder};
+
 use crate::array::Array;
-use crate::context::Context;
+use crate::context::{CApiInterface, Context, ContextBound};
 use crate::range::Range;
 use crate::Result as TileDBResult;
 
@@ -69,6 +72,16 @@ where
     fn context(&self) -> &Context;
     fn array(&self) -> &Array;
     fn capi(&self) -> *mut ffi::tiledb_query_t;
+
+    fn new_reader(array: Array) -> TileDBResult<ReadQueryBuilder> {
+        let c_array = array.capi();
+        let c_query_type = QueryType::Read.capi_enum();
+        let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
+        array.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
+        })?;
+        Ok(ReadQueryBuilder::new(array, RawQuery::Owned(c_query)))
+    }
 
     fn layout(self, layout: QueryLayout) -> TileDBResult<Self> {
         let c_query = self.capi();

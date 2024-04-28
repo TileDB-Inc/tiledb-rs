@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::iter::FusedIterator;
 
 use anyhow::anyhow;
 
@@ -13,6 +14,32 @@ pub struct WriteBuffer<'data, T: CAPISameRepr> {
     data: &'data [T],
     offsets: Option<&'data [u64]>,
     validity: Option<&'data [u8]>,
+}
+
+impl<'data, T: CAPISameRepr> WriteBuffer<'data, T> {
+    pub fn data_ptr(&self) -> *const std::ffi::c_void {
+        self.data.as_ptr() as *const std::ffi::c_void
+    }
+
+    pub fn data_size(&self) -> u64 {
+        std::mem::size_of_val(self.data) as u64
+    }
+
+    pub fn offsets_ptr(&self) -> Option<*const std::ffi::c_void> {
+        self.offsets.map(|o| o.as_ptr() as *const std::ffi::c_void)
+    }
+
+    pub fn offsets_size(&self) -> Option<u64> {
+        self.offsets.map(|o| std::mem::size_of_val(o) as u64)
+    }
+
+    pub fn validity_ptr(&self) -> Option<*const std::ffi::c_void> {
+        self.validity.map(|v| v.as_ptr() as *const std::ffi::c_void)
+    }
+
+    pub fn validity_size(&self) -> Option<u64> {
+        self.validity.map(|v| std::mem::size_of_val(v) as u64)
+    }
 }
 
 impl<'data, T: CAPISameRepr> From<&'data [T]> for WriteBuffer<'data, T> {
@@ -63,12 +90,28 @@ impl<'data, T: CAPISameRepr> From<(&'data [T], &'data [u64], &'data [u8])>
     }
 }
 
-impl<'data> From<&'data AllocatedWriteBuffer> for WriteBuffer<'data, u8> {
-    fn from(wbuf: &'data AllocatedWriteBuffer) -> WriteBuffer<'data, u8> {
+impl<'data, T: CAPISameRepr> From<&'data AllocatedWriteBuffer<T>>
+    for WriteBuffer<'data, T>
+{
+    fn from(wbuf: &'data AllocatedWriteBuffer<T>) -> WriteBuffer<'data, T> {
         WriteBuffer {
             data: wbuf.data.as_ref(),
             offsets: wbuf.offsets.as_ref().map(|o| o.as_ref()),
-            validity: wbuf.validity.as_ref().map(|v| v.as_ref()),
+            validity: None,
+        }
+    }
+}
+
+impl<'data, T: CAPISameRepr> From<(&'data AllocatedWriteBuffer<T>, &'data [u8])>
+    for WriteBuffer<'data, T>
+{
+    fn from(
+        value: (&'data AllocatedWriteBuffer<T>, &'data [u8]),
+    ) -> WriteBuffer<'data, T> {
+        WriteBuffer {
+            data: value.0.data.as_ref(),
+            offsets: value.0.offsets.as_ref().map(|o| o.as_ref()),
+            validity: Some(value.1),
         }
     }
 }
@@ -78,14 +121,13 @@ impl<'data> From<&'data AllocatedWriteBuffer> for WriteBuffer<'data, u8> {
 /// a syntax helper for creating WriteBuffer instances from vectors of strings
 /// or other variable length sources that are not already in a single
 /// contiguous buffer required by TileDB.
-pub struct AllocatedWriteBuffer {
-    data: Box<[u8]>,
+pub struct AllocatedWriteBuffer<T: CAPISameRepr> {
+    data: Box<[T]>,
     offsets: Option<Box<[u64]>>,
-    validity: Option<Box<[u8]>>,
 }
 
-impl From<&Vec<&str>> for AllocatedWriteBuffer {
-    fn from(value: &Vec<&str>) -> AllocatedWriteBuffer {
+impl From<&Vec<&str>> for AllocatedWriteBuffer<u8> {
+    fn from(value: &Vec<&str>) -> AllocatedWriteBuffer<u8> {
         // Create and calculate our offsets
         let mut offsets: Vec<u64> = Vec::with_capacity(value.len());
         let mut curr_offset = 0u64;
@@ -98,25 +140,59 @@ impl From<&Vec<&str>> for AllocatedWriteBuffer {
         let mut data: Vec<u8> = Vec::with_capacity(curr_offset as usize);
         for (idx, val) in value.iter().enumerate() {
             let start = offsets[idx] as usize;
-            let len = if idx < value.len() - 1 {
-                offsets[idx + 1] - offsets[idx]
-            } else {
-                curr_offset - offsets[idx]
-            } as usize;
+            let len = val.len();
             data[start..(start + len)].copy_from_slice(val.as_bytes())
         }
 
         AllocatedWriteBuffer {
             data: data.into_boxed_slice(),
             offsets: Some(offsets.into_boxed_slice()),
-            validity: None,
         }
     }
 }
 
-impl From<&Vec<String>> for AllocatedWriteBuffer {
-    fn from(value: &Vec<String>) -> AllocatedWriteBuffer {
-        let refs = value.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
+impl From<&Vec<String>> for AllocatedWriteBuffer<u8> {
+    fn from(value: &Vec<String>) -> AllocatedWriteBuffer<u8> {
+        let refs: Vec<&str> =
+            value.iter().map(|v| v.as_ref()).collect::<Vec<_>>();
+        AllocatedWriteBuffer::from(&refs)
+    }
+}
+
+impl<T: CAPISameRepr> From<&Vec<&[T]>> for AllocatedWriteBuffer<T> {
+    fn from(value: &Vec<&[T]>) -> AllocatedWriteBuffer<T> {
+        // Calculate our offsets and required capacity. Its important to note
+        // that offsets are the byte offsets which is different than the
+        // array offsets for anything except u8/i8.
+        let mut offsets: Vec<u64> = Vec::with_capacity(value.len());
+        let mut curr_offset = 0u64;
+        let mut capacity = 0usize;
+        for val in value {
+            offsets.push(curr_offset);
+            curr_offset += std::mem::size_of_val(val) as u64;
+            capacity += val.len();
+        }
+
+        // Create an fill the linearized buffer
+        let mut data: Vec<T> = Vec::with_capacity(capacity);
+        let mut curr_offset = 0usize;
+        for val in value {
+            let start = curr_offset;
+            let len = val.len();
+            data[start..(start + len)].copy_from_slice(val);
+            curr_offset += val.len();
+        }
+
+        AllocatedWriteBuffer {
+            data: data.into_boxed_slice(),
+            offsets: Some(offsets.into_boxed_slice()),
+        }
+    }
+}
+
+impl<T: CAPISameRepr> From<&Vec<&Vec<T>>> for AllocatedWriteBuffer<T> {
+    fn from(value: &Vec<&Vec<T>>) -> AllocatedWriteBuffer<T> {
+        let refs: Vec<&[T]> = value.iter().map(|v| v.as_slice()).collect();
         AllocatedWriteBuffer::from(&refs)
     }
 }
@@ -154,10 +230,68 @@ wb_entry_create_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 wb_entry_create_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 wb_entry_create_impl!(Float32: f32, Float64: f64);
 
+#[macro_export]
+macro_rules! wb_collection_entry_go {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
+        match $expr {
+            WriteBufferCollectionEntry::UInt8($inner) => {
+                type $DT = u8;
+                $then
+            }
+            WriteBufferCollectionEntry::UInt16($inner) => {
+                type $DT = u16;
+                $then
+            }
+            WriteBufferCollectionEntry::UInt32($inner) => {
+                type $DT = u32;
+                $then
+            }
+            WriteBufferCollectionEntry::UInt64($inner) => {
+                type $DT = u64;
+                $then
+            }
+            WriteBufferCollectionEntry::Int8($inner) => {
+                type $DT = i8;
+                $then
+            }
+            WriteBufferCollectionEntry::Int16($inner) => {
+                type $DT = i16;
+                $then
+            }
+            WriteBufferCollectionEntry::Int32($inner) => {
+                type $DT = i32;
+                $then
+            }
+            WriteBufferCollectionEntry::Int64($inner) => {
+                type $DT = i64;
+                $then
+            }
+            WriteBufferCollectionEntry::Float32($inner) => {
+                type $DT = f32;
+                $then
+            }
+            WriteBufferCollectionEntry::Float64($inner) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    };
+}
+
 pub struct WriteBufferCollectionItem<'data> {
-    field: String,
+    name: String,
     entry: WriteBufferCollectionEntry<'data>,
     next: Option<Box<WriteBufferCollectionItem<'data>>>,
+}
+
+impl<'data> WriteBufferCollectionItem<'data> {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn entry(&self) -> &WriteBufferCollectionEntry<'data> {
+        &self.entry
+    }
 }
 
 /// A WriteBufferCollection is passed to the WriteQuery::submit method to send
@@ -175,31 +309,39 @@ impl<'data> WriteBufferCollection<'data> {
         }
     }
 
-    pub fn with_buffer<T: CAPISameRepr>(
+    pub fn add_buffer<T: CAPISameRepr>(
         mut self,
-        field: &str,
+        name: &str,
         buffer: T,
     ) -> TileDBResult<Self>
     where
         T: Into<WriteBufferCollectionEntry<'data>>,
     {
-        if self.fields.contains(field) {
+        if self.fields.contains(name) {
             return Err(Error::InvalidArgument(anyhow!(
                 "Duplicate values for field: {}",
-                field
+                name
             )));
         }
 
         let old_buffers = self.buffers.take();
 
-        self.fields.insert(field.to_owned());
+        self.fields.insert(name.to_owned());
         self.buffers = Some(Box::new(WriteBufferCollectionItem {
-            field: field.to_owned(),
+            name: name.to_owned(),
             entry: buffer.into(),
             next: old_buffers,
         }));
 
         Ok(self)
+    }
+
+    pub fn iter<'this: 'data>(
+        &'this self,
+    ) -> WriteBufferCollectionIterator<'this, 'data> {
+        WriteBufferCollectionIterator {
+            curr_item: self.buffers.as_ref().map(|b| b.as_ref()),
+        }
     }
 }
 
@@ -207,4 +349,36 @@ impl<'data> Default for WriteBufferCollection<'data> {
     fn default() -> WriteBufferCollection<'data> {
         WriteBufferCollection::new()
     }
+}
+
+pub struct WriteBufferCollectionIterator<'this, 'data> {
+    curr_item: Option<&'this WriteBufferCollectionItem<'data>>,
+}
+
+impl<'data, 'this: 'data> Iterator
+    for WriteBufferCollectionIterator<'this, 'data>
+{
+    type Item = &'this WriteBufferCollectionItem<'data>;
+
+    // This is a bit gnarly to get all of the Option<&T> things lined up
+    // correctly, but otherwise this is pretty straightforward. First, if
+    // curr_item is None, return None. Otherwise, extract an Option<&T> to
+    // curr_item.next, assign that to self.curr_item and return the previous
+    // contents of self.curr_item.
+    //
+    // This is standard walk over a singly linked list, popping nodes off
+    // the stack.
+    fn next(&mut self) -> Option<Self::Item> {
+        // Return None if we're out of buffers.
+        self.curr_item?;
+        let curr_item = self.curr_item;
+        self.curr_item =
+            curr_item.map(|item| item.next.as_ref().map(|b| b.as_ref()))?;
+        curr_item
+    }
+}
+
+impl<'data, 'this: 'data> FusedIterator
+    for WriteBufferCollectionIterator<'this, 'data>
+{
 }

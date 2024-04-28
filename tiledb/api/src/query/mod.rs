@@ -7,6 +7,7 @@ use crate::Result as TileDBResult;
 pub mod buffer;
 pub mod conditions;
 pub mod read;
+pub mod sizeinfo;
 pub mod subarray;
 pub mod traits;
 pub mod write;
@@ -36,19 +37,5 @@ impl Drop for RawQuery {
     fn drop(&mut self) {
         let RawQuery::Owned(ref mut ffi) = *self;
         unsafe { ffi::tiledb_query_free(ffi) }
-    }
-}
-
-pub struct Builder {}
-
-impl Builder {
-    fn new_reader(array: Array) -> TileDBResult<ReadQueryBuilder> {
-        let c_array = array.capi();
-        let c_query_type = QueryType::Read.capi_enum();
-        let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
-        array.capi_call(|ctx| unsafe {
-            ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
-        })?;
-        Ok(ReadQueryBuilder::new(array, RawQuery::Owned(c_query)))
     }
 }
