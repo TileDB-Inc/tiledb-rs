@@ -3,38 +3,38 @@ use std::iter::FusedIterator;
 
 use anyhow::anyhow;
 
-use crate::convert::CAPISameRepr;
+use super::BufferCollectionItem;
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
 /// A write buffer is used by WriterQuery to pass data to TileDB. As such
 /// it's name is a bit of an oxymoron as we only ever read from a WriteBuffer
 /// which references data stored somewhere provided by the user.
-pub struct WriteBuffer<'data, T: CAPISameRepr> {
+pub struct WriteBuffer<'data, T> {
     data: &'data [T],
     offsets: Option<&'data [u64]>,
     validity: Option<&'data [u8]>,
 }
 
-impl<'data, T: CAPISameRepr> WriteBuffer<'data, T> {
-    pub fn data_ptr(&self) -> *const std::ffi::c_void {
-        self.data.as_ptr() as *const std::ffi::c_void
+impl<'data, T> WriteBuffer<'data, T> {
+    pub fn data_ptr(&self) -> *mut std::ffi::c_void {
+        self.data.as_ptr() as *mut std::ffi::c_void
     }
 
     pub fn data_size(&self) -> u64 {
         std::mem::size_of_val(self.data) as u64
     }
 
-    pub fn offsets_ptr(&self) -> Option<*const std::ffi::c_void> {
-        self.offsets.map(|o| o.as_ptr() as *const std::ffi::c_void)
+    pub fn offsets_ptr(&self) -> Option<*mut u64> {
+        self.offsets.map(|o| o.as_ptr() as *mut u64)
     }
 
     pub fn offsets_size(&self) -> Option<u64> {
         self.offsets.map(|o| std::mem::size_of_val(o) as u64)
     }
 
-    pub fn validity_ptr(&self) -> Option<*const std::ffi::c_void> {
-        self.validity.map(|v| v.as_ptr() as *const std::ffi::c_void)
+    pub fn validity_ptr(&self) -> Option<*mut u8> {
+        self.validity.map(|v| v.as_ptr() as *mut u8)
     }
 
     pub fn validity_size(&self) -> Option<u64> {
@@ -42,57 +42,61 @@ impl<'data, T: CAPISameRepr> WriteBuffer<'data, T> {
     }
 }
 
-impl<'data, T: CAPISameRepr> From<&'data [T]> for WriteBuffer<'data, T> {
-    fn from(value: &'data [T]) -> WriteBuffer<'data, T> {
-        WriteBuffer {
-            data: value,
-            offsets: None,
-            validity: None,
-        }
+macro_rules! wb_entry_create_impl {
+    ($($ty:ty),+) => {
+        $(
+            impl<'data> From<&'data [$ty]> for WriteBuffer<'data, $ty> {
+                fn from(value: &'data [$ty]) -> WriteBuffer<'data, $ty> {
+                    WriteBuffer {
+                        data: value,
+                        offsets: None,
+                        validity: None,
+                    }
+                }
+            }
+
+            impl<'data> From<(&'data [$ty], &'data [u64])> for WriteBuffer<'data, $ty> {
+                fn from(value: (&'data [$ty], &'data [u64])) -> WriteBuffer<'data, $ty> {
+                    WriteBuffer {
+                        data: value.0,
+                        offsets: Some(value.1),
+                        validity: None,
+                    }
+                }
+            }
+
+            impl<'data> From<(&'data [$ty], &'data [u8])> for WriteBuffer<'data, $ty> {
+                fn from(value: (&'data [$ty], &'data [u8])) -> WriteBuffer<'data, $ty> {
+                    WriteBuffer {
+                        data: value.0,
+                        offsets: None,
+                        validity: Some(value.1),
+                    }
+                }
+            }
+
+            impl<'data> From<(&'data [$ty], &'data [u64], &'data [u8])>
+                for WriteBuffer<'data, $ty>
+            {
+                fn from(
+                    value: (&'data [$ty], &'data [u64], &'data [u8]),
+                ) -> WriteBuffer<'data, $ty> {
+                    WriteBuffer {
+                        data: value.0,
+                        offsets: Some(value.1),
+                        validity: Some(value.2),
+                    }
+                }
+            }
+        )+
     }
 }
 
-impl<'data, T: CAPISameRepr> From<(&'data [T], &'data [u64])>
-    for WriteBuffer<'data, T>
-{
-    fn from(value: (&'data [T], &'data [u64])) -> WriteBuffer<'data, T> {
-        WriteBuffer {
-            data: value.0,
-            offsets: Some(value.1),
-            validity: None,
-        }
-    }
-}
+wb_entry_create_impl!(u8, u16, u32, u64);
+wb_entry_create_impl!(i8, i16, i32, i64);
+wb_entry_create_impl!(f32, f64);
 
-impl<'data, T: CAPISameRepr> From<(&'data [T], &'data [u8])>
-    for WriteBuffer<'data, T>
-{
-    fn from(value: (&'data [T], &'data [u8])) -> WriteBuffer<'data, T> {
-        WriteBuffer {
-            data: value.0,
-            offsets: None,
-            validity: Some(value.1),
-        }
-    }
-}
-
-impl<'data, T: CAPISameRepr> From<(&'data [T], &'data [u64], &'data [u8])>
-    for WriteBuffer<'data, T>
-{
-    fn from(
-        value: (&'data [T], &'data [u64], &'data [u8]),
-    ) -> WriteBuffer<'data, T> {
-        WriteBuffer {
-            data: value.0,
-            offsets: Some(value.1),
-            validity: Some(value.2),
-        }
-    }
-}
-
-impl<'data, T: CAPISameRepr> From<&'data AllocatedWriteBuffer<T>>
-    for WriteBuffer<'data, T>
-{
+impl<'data, T> From<&'data AllocatedWriteBuffer<T>> for WriteBuffer<'data, T> {
     fn from(wbuf: &'data AllocatedWriteBuffer<T>) -> WriteBuffer<'data, T> {
         WriteBuffer {
             data: wbuf.data.as_ref(),
@@ -102,7 +106,7 @@ impl<'data, T: CAPISameRepr> From<&'data AllocatedWriteBuffer<T>>
     }
 }
 
-impl<'data, T: CAPISameRepr> From<(&'data AllocatedWriteBuffer<T>, &'data [u8])>
+impl<'data, T> From<(&'data AllocatedWriteBuffer<T>, &'data [u8])>
     for WriteBuffer<'data, T>
 {
     fn from(
@@ -121,7 +125,7 @@ impl<'data, T: CAPISameRepr> From<(&'data AllocatedWriteBuffer<T>, &'data [u8])>
 /// a syntax helper for creating WriteBuffer instances from vectors of strings
 /// or other variable length sources that are not already in a single
 /// contiguous buffer required by TileDB.
-pub struct AllocatedWriteBuffer<T: CAPISameRepr> {
+pub struct AllocatedWriteBuffer<T> {
     data: Box<[T]>,
     offsets: Option<Box<[u64]>>,
 }
@@ -159,7 +163,7 @@ impl From<&Vec<String>> for AllocatedWriteBuffer<u8> {
     }
 }
 
-impl<T: CAPISameRepr> From<&Vec<&[T]>> for AllocatedWriteBuffer<T> {
+impl<T: Copy> From<&Vec<&[T]>> for AllocatedWriteBuffer<T> {
     fn from(value: &Vec<&[T]>) -> AllocatedWriteBuffer<T> {
         // Calculate our offsets and required capacity. Its important to note
         // that offsets are the byte offsets which is different than the
@@ -169,7 +173,7 @@ impl<T: CAPISameRepr> From<&Vec<&[T]>> for AllocatedWriteBuffer<T> {
         let mut capacity = 0usize;
         for val in value {
             offsets.push(curr_offset);
-            curr_offset += std::mem::size_of_val(val) as u64;
+            curr_offset += std::mem::size_of_val(*val) as u64;
             capacity += val.len();
         }
 
@@ -190,7 +194,7 @@ impl<T: CAPISameRepr> From<&Vec<&[T]>> for AllocatedWriteBuffer<T> {
     }
 }
 
-impl<T: CAPISameRepr> From<&Vec<&Vec<T>>> for AllocatedWriteBuffer<T> {
+impl<T: Copy> From<&Vec<&Vec<T>>> for AllocatedWriteBuffer<T> {
     fn from(value: &Vec<&Vec<T>>) -> AllocatedWriteBuffer<T> {
         let refs: Vec<&[T]> = value.iter().map(|v| v.as_slice()).collect();
         AllocatedWriteBuffer::from(&refs)
@@ -222,6 +226,13 @@ macro_rules! wb_entry_create_impl {
                     WriteBufferCollectionEntry::$variant(value)
                 }
             }
+
+            impl<'data> From<&'data [$ty]> for WriteBufferCollectionEntry<'data> {
+                fn from(value: &'data [$ty]) -> WriteBufferCollectionEntry<'data> {
+                    let buffer = WriteBuffer::from(value);
+                    WriteBufferCollectionEntry::from(buffer)
+                }
+            }
         )+
     }
 }
@@ -230,8 +241,7 @@ wb_entry_create_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 wb_entry_create_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 wb_entry_create_impl!(Float32: f32, Float64: f64);
 
-#[macro_export]
-macro_rules! wb_collection_entry_go {
+macro_rules! write_collection_entry_go {
     ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
         match $expr {
             WriteBufferCollectionEntry::UInt8($inner) => {
@@ -292,6 +302,60 @@ impl<'data> WriteBufferCollectionItem<'data> {
     pub fn entry(&self) -> &WriteBufferCollectionEntry<'data> {
         &self.entry
     }
+
+    pub fn data_ptr(&self) -> *mut std::ffi::c_void {
+        write_collection_entry_go!(&self.entry, _DT, buf, buf.data_ptr())
+    }
+
+    pub fn data_size(&self) -> u64 {
+        write_collection_entry_go!(&self.entry, _DT, buf, buf.data_size())
+    }
+
+    pub fn offsets_ptr(&self) -> Option<*mut u64> {
+        write_collection_entry_go!(&self.entry, _DT, buf, buf.offsets_ptr())
+    }
+
+    pub fn offsets_size(&self) -> Option<u64> {
+        write_collection_entry_go!(&self.entry, _DT, buf, buf.offsets_size())
+    }
+
+    pub fn validity_ptr(&self) -> Option<*mut u8> {
+        write_collection_entry_go!(&self.entry, _DT, buf, buf.validity_ptr())
+    }
+
+    pub fn validity_size(&self) -> Option<u64> {
+        write_collection_entry_go!(&self.entry, _DT, buf, buf.validity_size())
+    }
+}
+
+impl<'data> BufferCollectionItem for WriteBufferCollectionItem<'data> {
+    fn name(&self) -> &str {
+        self.name()
+    }
+
+    fn data_ptr(&self) -> *mut std::ffi::c_void {
+        self.data_ptr()
+    }
+
+    fn data_size(&self) -> u64 {
+        self.data_size()
+    }
+
+    fn offsets_ptr(&self) -> Option<*mut u64> {
+        self.offsets_ptr()
+    }
+
+    fn offsets_size(&self) -> Option<u64> {
+        self.offsets_size()
+    }
+
+    fn validity_ptr(&self) -> Option<*mut u8> {
+        self.validity_ptr()
+    }
+
+    fn validity_size(&self) -> Option<u64> {
+        self.validity_size()
+    }
 }
 
 /// A WriteBufferCollection is passed to the WriteQuery::submit method to send
@@ -309,11 +373,7 @@ impl<'data> WriteBufferCollection<'data> {
         }
     }
 
-    pub fn add_buffer<T: CAPISameRepr>(
-        mut self,
-        name: &str,
-        buffer: T,
-    ) -> TileDBResult<Self>
+    pub fn add_buffer<T>(mut self, name: &str, buffer: T) -> TileDBResult<Self>
     where
         T: Into<WriteBufferCollectionEntry<'data>>,
     {

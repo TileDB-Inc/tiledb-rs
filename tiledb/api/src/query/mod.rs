@@ -1,9 +1,5 @@
 use std::ops::Deref;
 
-use crate::array::Array;
-use crate::context::CApiInterface;
-use crate::Result as TileDBResult;
-
 pub mod buffer;
 pub mod conditions;
 pub mod read;

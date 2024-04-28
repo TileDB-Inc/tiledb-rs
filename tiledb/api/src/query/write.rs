@@ -1,20 +1,15 @@
 use std::collections::HashMap;
-use std::pin::Pin;
 
 use anyhow::anyhow;
 
 use super::sizeinfo::SizeEntry;
-use super::traits::{Query, QueryBuilder};
+use super::traits::{Query, QueryBuilder, QueryInternal};
 use super::RawQuery;
 use crate::array::Array;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
-use crate::query::buffer::{
-    WriteBufferCollection, WriteBufferCollectionEntry,
-    WriteBufferCollectionItem,
-};
+use crate::query::buffer::WriteBufferCollection;
 use crate::query::QueryType;
-use crate::wb_collection_entry_go;
 use crate::Result as TileDBResult;
 
 pub struct WriteQuery {
@@ -41,6 +36,24 @@ impl Query for WriteQuery {
 
     fn capi(&self) -> *mut ffi::tiledb_query_t {
         *self.raw
+    }
+}
+
+impl QueryInternal for WriteQuery {
+    fn context(&self) -> &Context {
+        self.array.context()
+    }
+
+    fn capi(&self) -> *mut ffi::tiledb_query_t {
+        *self.raw
+    }
+
+    fn buffer_info(&self, name: &str) -> Option<(bool, bool)> {
+        self.buffers.get(name).copied()
+    }
+
+    fn submitted(&self) -> bool {
+        self.submitted
     }
 }
 
@@ -94,112 +107,9 @@ impl WriteQuery {
         Ok(ret)
     }
 
-    fn attach_buffer(
-        &self,
-        buffer: &WriteBufferCollectionItem,
-    ) -> TileDBResult<SizeEntry> {
-        let field = buffer.name();
-        let entry = buffer.entry();
-
-        let c_query = self.capi();
-        let c_name = cstring!(field);
-
-        wb_collection_entry_go!(entry, _DT, buf, {
-            // If this is a query resubmission we need to check that the buffers
-            // being provided exactly match the previous submission. That doesn't
-            // mean the pointers need to be set, just that a buffer either exists
-            // or doesn't matching the previous submissions.
-            if self.submitted {
-                if let Some((had_offsets, had_validity)) =
-                    self.buffers.get(field)
-                {
-                    if *had_offsets != buf.offsets_ptr().is_some() {
-                        if *had_offsets {
-                            return Err(Error::InvalidArgument(anyhow!(
-                                "Missing offsets buffer for field: {}",
-                                field
-                            )));
-                        } else {
-                            return Err(Error::InvalidArgument(anyhow!(
-                                "Offsets buffer was not previously set for: {}",
-                                field
-                            )));
-                        }
-                    }
-
-                    if *had_validity != buf.validity_ptr().is_some() {
-                        if *had_validity {
-                            return Err(Error::InvalidArgument(anyhow!(
-                                "Missing validity buffer for field: {}",
-                                field
-                            )));
-                        } else {
-                            return Err(Error::InvalidArgument(anyhow!(
-                                "Validity buffer was not previously set for: {}",
-                                field
-                            )));
-                        }
-                    }
-                } else {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Field was not previously part of this query: {}",
-                        field
-                    )));
-                }
-            }
-
-            // Set the data buffer, then the offset and validity if they're
-            // present on the WriteBuffer.
-            let mut data_size = Box::pin(buf.data_size());
-            let c_data_size = data_size.as_mut().get_mut() as *mut u64;
-            self.capi_call(|ctx| unsafe {
-                ffi::tiledb_query_set_data_buffer(
-                    ctx,
-                    c_query,
-                    c_name.as_ptr(),
-                    buf.data_ptr() as *mut std::ffi::c_void,
-                    c_data_size,
-                )
-            })?;
-
-            let mut offsets_size: Option<Pin<Box<u64>>> = None;
-            if let Some(c_offsets) = buf.offsets_ptr() {
-                let mut tmp_size = Box::pin(buf.offsets_size().unwrap());
-                let c_offsets_size = tmp_size.as_mut().get_mut() as *mut u64;
-                self.capi_call(|ctx| unsafe {
-                    ffi::tiledb_query_set_offsets_buffer(
-                        ctx,
-                        c_query,
-                        c_name.as_ptr(),
-                        c_offsets as *mut u64,
-                        c_offsets_size,
-                    )
-                })?;
-                offsets_size = Some(tmp_size);
-            }
-
-            let mut validity_size: Option<Pin<Box<u64>>> = None;
-            if let Some(c_validity) = buf.validity_ptr() {
-                let mut tmp_size = Box::pin(buf.validity_size().unwrap());
-                let c_validity_size = tmp_size.as_mut().get_mut() as *mut u64;
-                self.capi_call(|ctx| unsafe {
-                    ffi::tiledb_query_set_validity_buffer(
-                        ctx,
-                        c_query,
-                        c_name.as_ptr(),
-                        c_validity as *mut u8,
-                        c_validity_size,
-                    )
-                })?;
-                validity_size = Some(tmp_size);
-            }
-
-            Ok(SizeEntry {
-                data_size,
-                offsets_size,
-                validity_size,
-            })
-        })
+    pub fn finalize(self) -> TileDBResult<Array> {
+        self.do_finalize()?;
+        Ok(self.array)
     }
 }
 
@@ -230,7 +140,7 @@ impl QueryBuilder for WriteQueryBuilder {
 impl WriteQueryBuilder {
     pub fn new(array: Array) -> TileDBResult<Self> {
         let c_array = array.capi();
-        let c_query_type = QueryType::Read.capi_enum();
+        let c_query_type = QueryType::Write.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
         array.capi_call(|ctx| unsafe {
             ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
@@ -247,7 +157,7 @@ impl WriteQueryBuilder {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use tempfile::TempDir;
 
@@ -263,35 +173,39 @@ mod tests {
     #[test]
     fn basic_write() -> TileDBResult<()> {
         let ctx = Context::new()?;
-
-        // Create a temp array uri
         let dir =
             TempDir::new().map_err(|e| Error::InvalidArgument(anyhow!(e)))?;
         let array_dir = dir.path().join("fragment_info_test_dense");
         let array_uri = String::from(array_dir.to_str().unwrap());
 
-        create_dense_array(&ctx, &array_uri);
+        create_sparse_array(&ctx, &array_uri)?;
+        write_sparse_data(&ctx, &array_uri)?;
 
+        Ok(())
+    }
+
+    pub fn write_sparse_data(ctx: &Context, uri: &str) -> TileDBResult<()> {
         // A basic write of some data to the array.
         let id_data = vec![1u32, 2, 3, 4, 5, 6, 7, 8, 9, 10];
         let attr_data = vec![1u64, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-        let mut buffers = WriteBufferCollection::new()
+        let buffers = WriteBufferCollection::new()
             .add_buffer("id", id_data.as_slice())?
             .add_buffer("attr", attr_data.as_slice())?;
 
-        let array = Array::open(&ctx, array_uri, Mode::Write)?;
+        let array = Array::open(ctx, uri, Mode::Write)?;
         let mut query = WriteQueryBuilder::new(array)?
-            .layout(QueryLayout::RowMajor)?
+            .layout(QueryLayout::Unordered)?
             .build();
 
-        query.submit()?;
+        query.submit(&buffers)?;
+        query.finalize()?;
 
         Ok(())
     }
 
     /// Create a simple dense test array
-    pub fn create_dense_array(ctx: &Context, uri: &str) -> TileDBResult<()> {
+    pub fn create_sparse_array(ctx: &Context, uri: &str) -> TileDBResult<()> {
         let domain = {
             let rows = DimensionBuilder::new::<i32>(
                 ctx,
@@ -305,7 +219,7 @@ mod tests {
             DomainBuilder::new(ctx)?.add_dimension(rows)?.build()
         };
 
-        let schema = SchemaBuilder::new(ctx, ArrayType::Dense, domain)?
+        let schema = SchemaBuilder::new(ctx, ArrayType::Sparse, domain)?
             .add_attribute(
                 AttributeBuilder::new(ctx, "attr", Datatype::UInt64)?.build(),
             )?
