@@ -648,15 +648,47 @@ impl ValueTree for WriteQueryDataValueTree {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct WriteQueryDataParameters {
+    pub schema: Option<Rc<SchemaData>>,
+    pub min_records: usize,
+    pub max_records: usize,
+    pub value_min_var_size: usize,
+    pub value_max_var_size: usize,
+}
+
+impl Default for WriteQueryDataParameters {
+    fn default() -> Self {
+        const WRITE_QUERY_MIN_RECORDS: usize = 0;
+        const WRITE_QUERY_MAX_RECORDS: usize = 1024 * 1024;
+
+        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
+        const WRITE_QUERY_MAX_VAR_SIZE: usize = 1024 * 128;
+
+        WriteQueryDataParameters {
+            schema: None,
+            min_records: WRITE_QUERY_MIN_RECORDS,
+            max_records: WRITE_QUERY_MAX_RECORDS,
+            value_min_var_size: WRITE_QUERY_MIN_VAR_SIZE,
+            value_max_var_size: WRITE_QUERY_MAX_VAR_SIZE,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct WriteQueryDataStrategy {
     schema: Rc<SchemaData>,
+    params: WriteQueryDataParameters,
 }
 
 impl WriteQueryDataStrategy {
-    pub fn new(schema: &Rc<SchemaData>) -> Self {
+    pub fn new(
+        schema: &Rc<SchemaData>,
+        params: WriteQueryDataParameters,
+    ) -> Self {
         WriteQueryDataStrategy {
             schema: Rc::clone(schema),
+            params,
         }
     }
 }
@@ -666,14 +698,8 @@ impl Strategy for WriteQueryDataStrategy {
     type Value = WriteQueryData;
 
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
-        const WRITE_QUERY_MIN_RECORDS: usize = 0;
-        const WRITE_QUERY_MAX_RECORDS: usize = 1024 * 1024;
-
-        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
-        const WRITE_QUERY_MAX_VAR_SIZE: usize = 1024 * 128;
-
         /* Choose the maximum number of records */
-        let nrecords = (WRITE_QUERY_MIN_RECORDS..=WRITE_QUERY_MAX_RECORDS)
+        let nrecords = (self.params.min_records..=self.params.max_records)
             .new_tree(runner)?
             .current();
 
@@ -728,7 +754,10 @@ impl Strategy for WriteQueryDataStrategy {
                         }))
                     } else {
                         let (min, max) = if cell_val_num.is_var_sized() {
-                            (WRITE_QUERY_MIN_VAR_SIZE, WRITE_QUERY_MAX_VAR_SIZE)
+                            (
+                                self.params.value_min_var_size,
+                                self.params.value_max_var_size,
+                            )
                         } else {
                             let fixed_bound =
                                 Into::<u32>::into(cell_val_num) as usize;
@@ -765,16 +794,16 @@ impl Strategy for WriteQueryDataStrategy {
 }
 
 impl Arbitrary for WriteQueryData {
-    type Parameters = Option<Rc<SchemaData>>;
+    type Parameters = WriteQueryDataParameters;
     type Strategy = BoxedStrategy<WriteQueryData>;
 
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = args {
-            WriteQueryDataStrategy::new(&schema).boxed()
+    fn arbitrary_with(mut args: Self::Parameters) -> Self::Strategy {
+        if let Some(schema) = args.schema.take() {
+            WriteQueryDataStrategy::new(&schema, args).boxed()
         } else {
             any::<SchemaData>()
-                .prop_flat_map(|schema| {
-                    WriteQueryDataStrategy::new(&Rc::new(schema))
+                .prop_flat_map(move |schema| {
+                    WriteQueryDataStrategy::new(&Rc::new(schema), args.clone())
                 })
                 .boxed()
         }
@@ -815,7 +844,10 @@ pub fn prop_write_sequence(
 ) -> impl Strategy<Value = WriteSequence> {
     const MAX_WRITES: usize = 8;
     proptest::collection::vec(
-        any_with::<WriteQueryData>(Some(Rc::clone(schema))),
+        any_with::<WriteQueryData>(WriteQueryDataParameters {
+            schema: Some(Rc::clone(schema)),
+            ..Default::default()
+        }),
         0..MAX_WRITES,
     )
     .prop_map(|writes| WriteSequence { writes })
