@@ -2,6 +2,8 @@
 // lint on nightly.
 #![cfg_attr(ci_nightly, allow(non_local_definitions))]
 
+use std::convert::TryFrom;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +11,7 @@ use util::option::OptionSubset;
 
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
+use crate::error::ModeErrorKind;
 use crate::Result as TileDBResult;
 
 pub mod attribute;
@@ -29,11 +32,13 @@ pub use schema::{
     ArrayType, Builder as SchemaBuilder, CellValNum, Schema, SchemaData,
 };
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum Mode {
     Read,
     Write,
     Delete,
     Update,
+    ModifyExclusive,
 }
 
 impl Mode {
@@ -43,7 +48,37 @@ impl Mode {
             Mode::Write => ffi::tiledb_query_type_t_TILEDB_WRITE,
             Mode::Delete => ffi::tiledb_query_type_t_TILEDB_DELETE,
             Mode::Update => ffi::tiledb_query_type_t_TILEDB_UPDATE,
+            Mode::ModifyExclusive => {
+                ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE
+            }
         }
+    }
+}
+
+impl TryFrom<ffi::tiledb_query_type_t> for Mode {
+    type Error = crate::error::Error;
+
+    fn try_from(value: ffi::tiledb_query_type_t) -> TileDBResult<Self> {
+        Ok(match value {
+            ffi::tiledb_query_type_t_TILEDB_READ => Mode::Read,
+            ffi::tiledb_query_type_t_TILEDB_WRITE => Mode::Write,
+            ffi::tiledb_query_type_t_TILEDB_DELETE => Mode::Delete,
+            ffi::tiledb_query_type_t_TILEDB_UPDATE => Mode::Update,
+            ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE => {
+                Mode::ModifyExclusive
+            }
+            _ => {
+                return Err(crate::error::Error::ModeType(
+                    ModeErrorKind::InvalidDiscriminant(value as u64),
+                ))
+            }
+        })
+    }
+}
+
+impl Display for Mode {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        <Self as Debug>::fmt(self, f)
     }
 }
 

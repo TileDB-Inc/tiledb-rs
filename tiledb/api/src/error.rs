@@ -3,9 +3,8 @@ extern crate tiledb_sys as ffi;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use serde::{Serialize, Serializer};
-
 use crate::Datatype;
+use serde::{Serialize, Serializer};
 
 pub(crate) enum RawError {
     Owned(*mut ffi::tiledb_error_t),
@@ -84,6 +83,36 @@ impl Display for DatatypeErrorKind {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ObjectTypeErrorKind {
+    InvalidDiscriminant(u64),
+}
+
+impl Display for ObjectTypeErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            ObjectTypeErrorKind::InvalidDiscriminant(value) => {
+                write!(f, "Invalid object type: {}", value)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ModeErrorKind {
+    InvalidDiscriminant(u64),
+}
+
+impl Display for ModeErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            ModeErrorKind::InvalidDiscriminant(value) => {
+                write!(f, "Invalid mode type: {}", value)
+            }
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Internal error due to bugs in tiledb.
@@ -102,6 +131,12 @@ pub enum Error {
     /// Error with datatype handling
     #[error("Datatype error: {0}")]
     Datatype(DatatypeErrorKind),
+    /// Error with ObjectType handling
+    #[error("Object type error: {0}")]
+    ObjectType(ObjectTypeErrorKind),
+    /// Error with Mode handling
+    #[error("Mode type error: {0}")]
+    ModeType(ModeErrorKind),
     /// Error serializing data
     #[error("Serialization error: {0}: {1}")]
     Serialization(String, #[source] anyhow::Error),
