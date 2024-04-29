@@ -21,10 +21,6 @@ use crate::query::read::{
 };
 use crate::{fn_typed, typed_query_buffers_go};
 
-trait WriteFieldInput<C>: DataProvider<Unit = C> + Debug {}
-
-impl<T, C> WriteFieldInput<C> for T where T: DataProvider<Unit = C> + Debug {}
-
 /// Represents the write query input for a single field.
 /// For each variant, the outer Vec is the collection of records, and the interior is value in the
 /// cell for the record. Fields with cell val num of 1 are flat, and other cell values use the
@@ -574,13 +570,10 @@ impl ValueTree for WriteQueryDataValueTree {
         let record_mask = match self.search {
             None => VarBitSet::saturated(self.nrecords),
             Some(ShrinkSearchStep::Explore(c)) => {
-                let nchunks = std::cmp::max(
-                    1,
-                    std::cmp::min(
-                        self.records_included.len(),
-                        WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES,
-                    ),
-                );
+                let nchunks = self
+                    .records_included
+                    .len()
+                    .clamp(1, WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES);
 
                 let approx_chunk_len = self.records_included.len() / nchunks;
 
