@@ -78,6 +78,17 @@ typed_field_data!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 typed_field_data!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 typed_field_data!(Float32: f32, Float64: f64);
 
+impl From<Vec<String>> for FieldData {
+    fn from(value: Vec<String>) -> Self {
+        FieldData::from(
+            value
+                .into_iter()
+                .map(|s| s.into_bytes())
+                .collect::<Vec<Vec<u8>>>(),
+        )
+    }
+}
+
 impl From<&TypedRawReadOutput<'_>> for FieldData {
     fn from(value: &TypedRawReadOutput) -> Self {
         typed_query_buffers_go!(value.buffers, DT, ref handle, {
