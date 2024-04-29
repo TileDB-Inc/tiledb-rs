@@ -1,4 +1,4 @@
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum QueryStatus {
     Failed,
     Completed,
@@ -33,7 +33,7 @@ impl From<ffi::tiledb_query_status_t> for QueryStatus {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum QueryStatusDetails {
     None,
     UserBufferSize,

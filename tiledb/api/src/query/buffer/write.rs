@@ -141,11 +141,11 @@ impl From<&Vec<&str>> for AllocatedWriteBuffer<u8> {
         }
 
         // Create our linearized data vector
-        let mut data: Vec<u8> = Vec::with_capacity(curr_offset as usize);
+        let mut data: Vec<u8> = vec![0u8; curr_offset as usize];
         for (idx, val) in value.iter().enumerate() {
             let start = offsets[idx] as usize;
             let len = val.len();
-            data[start..(start + len)].copy_from_slice(val.as_bytes())
+            data[start..(start + len)].copy_from_slice(val.as_bytes());
         }
 
         AllocatedWriteBuffer {
@@ -223,6 +223,17 @@ macro_rules! wb_entry_create_impl {
                 fn from(
                     value: WriteBuffer<'data, $ty>,
                 ) -> WriteBufferCollectionEntry<'data> {
+                    WriteBufferCollectionEntry::$variant(value)
+                }
+            }
+
+            impl<'data> From<&'data AllocatedWriteBuffer<$ty>>
+                for WriteBufferCollectionEntry<'data>
+            {
+                fn from(
+                    value: &'data AllocatedWriteBuffer<$ty>,
+                ) -> WriteBufferCollectionEntry<'data> {
+                    let value = WriteBuffer::from(value);
                     WriteBufferCollectionEntry::$variant(value)
                 }
             }

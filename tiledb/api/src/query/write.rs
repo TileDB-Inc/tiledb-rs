@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::anyhow;
 
-use super::sizeinfo::SizeEntry;
+use super::sizeinfo::{SizeEntry, SizeInfo};
 use super::traits::{Query, QueryBuilder, QueryInternal};
 use super::RawQuery;
 use crate::array::Array;
@@ -70,18 +70,18 @@ impl WriteQuery {
     pub fn submit(
         &mut self,
         buffers: &WriteBufferCollection,
-    ) -> TileDBResult<HashMap<String, SizeEntry>> {
-        let mut ret: HashMap<String, SizeEntry> = HashMap::new();
+    ) -> TileDBResult<HashMap<String, SizeInfo>> {
+        let mut sizes: HashMap<String, SizeEntry> = HashMap::new();
 
         for buffer in buffers.iter() {
             let entry = self.attach_buffer(buffer)?;
-            ret.insert(buffer.name().to_owned(), entry);
+            sizes.insert(buffer.name().to_owned(), entry);
         }
 
         // Ensure that all buffers were provided if this is a resubmission.
         if self.submitted {
             for (field, _) in self.buffers.iter() {
-                if !ret.contains_key(field) {
+                if !sizes.contains_key(field) {
                     return Err(Error::InvalidArgument(anyhow!(
                         "Missing buffer for field: {}",
                         field
@@ -92,7 +92,7 @@ impl WriteQuery {
 
         // Set our buffer info for possible resubmission.
         if !self.submitted {
-            for (field, sizes) in ret.iter() {
+            for (field, sizes) in sizes.iter() {
                 let has_offsets = sizes.offsets_size.is_some();
                 let has_validity = sizes.validity_size.is_some();
                 self.buffers
@@ -104,7 +104,15 @@ impl WriteQuery {
         // providing the same exact buffers for subsequent submissions.
         self.submitted = true;
 
-        Ok(ret)
+        self.do_submit()?;
+
+        // Swap out of our SizeEntry into raw types.
+        let mut new_sizes = HashMap::new();
+        for (name, sizes) in sizes.iter() {
+            new_sizes.insert(name.clone(), SizeInfo::from(sizes));
+        }
+
+        Ok(new_sizes)
     }
 
     pub fn finalize(self) -> TileDBResult<Array> {

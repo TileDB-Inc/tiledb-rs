@@ -9,19 +9,13 @@ use super::BufferCollectionItem;
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
-// Pull a slice out of a buffer collection eventually.
-pub trait ExtractSlice {
-    type Item;
-    fn extract_slice(&self, len: u64) -> &[Self::Item];
-}
-
 /// A write buffer is used by WriterQuery to pass data to TileDB. As such
 /// it's name is a bit of an oxymoron as we only ever read from a WriteBuffer
 /// which references data stored somewhere provided by the user.
 pub struct ReadBuffer<T> {
-    data: Box<[T]>,
-    offsets: Option<Box<[u64]>>,
-    validity: Option<Box<[u8]>>,
+    pub data: Box<[T]>,
+    pub offsets: Option<Box<[u64]>>,
+    pub validity: Option<Box<[u8]>>,
 }
 
 impl<T> ReadBuffer<T> {
@@ -54,7 +48,7 @@ impl<T> ReadBuffer<T> {
     }
 }
 
-macro_rules! wb_entry_create_impl {
+macro_rules! rb_entry_impl {
     ($($ty:ty),+) => {
         $(
             impl From<Box<[$ty]>> for ReadBuffer<$ty> {
@@ -98,17 +92,13 @@ macro_rules! wb_entry_create_impl {
                     }
                 }
             }
-
-            impl ExtractSlice for ReadBuffer<$ty> {
-
-            }
         )+
     }
 }
 
-wb_entry_create_impl!(u8, u16, u32, u64);
-wb_entry_create_impl!(i8, i16, i32, i64);
-wb_entry_create_impl!(f32, f64);
+rb_entry_impl!(u8, u16, u32, u64);
+rb_entry_impl!(i8, i16, i32, i64);
+rb_entry_impl!(f32, f64);
 
 impl From<&Vec<&str>> for ReadBuffer<u8> {
     fn from(value: &Vec<&str>) -> ReadBuffer<u8> {
@@ -196,10 +186,10 @@ pub enum ReadBufferCollectionEntry {
     Float64(ReadBuffer<f64>),
 }
 
-macro_rules! wb_entry_create_impl {
+macro_rules! rb_entry_create_impl {
     ($($variant:ident : $ty:ty),+) => {
         $(
-            impl From<ReadBuffer< $ty>>
+            impl From<ReadBuffer<$ty>>
                 for ReadBufferCollectionEntry
             {
                 fn from(
@@ -215,13 +205,34 @@ macro_rules! wb_entry_create_impl {
                     ReadBufferCollectionEntry::from(buffer)
                 }
             }
+
+            impl<'data> From<(Box<[$ty]>, Box<[u64]>)> for ReadBufferCollectionEntry {
+                fn from(value: (Box<[$ty]>, Box<[u64]>)) -> ReadBufferCollectionEntry {
+                    let buffer = ReadBuffer::from(value);
+                    ReadBufferCollectionEntry::from(buffer)
+                }
+            }
+
+            impl<'data> From<(Box<[$ty]>, Box<[u8]>)> for ReadBufferCollectionEntry {
+                fn from(value: (Box<[$ty]>, Box<[u8]>)) -> ReadBufferCollectionEntry {
+                    let buffer = ReadBuffer::from(value);
+                    ReadBufferCollectionEntry::from(buffer)
+                }
+            }
+
+            impl<'data> From<(Box<[$ty]>, Box<[u64]>, Box<[u8]>)> for ReadBufferCollectionEntry {
+                fn from(value: (Box<[$ty]>, Box<[u64]>, Box<[u8]>)) -> ReadBufferCollectionEntry {
+                    let buffer = ReadBuffer::from(value);
+                    ReadBufferCollectionEntry::from(buffer)
+                }
+            }
         )+
     }
 }
 
-wb_entry_create_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-wb_entry_create_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-wb_entry_create_impl!(Float32: f32, Float64: f64);
+rb_entry_create_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+rb_entry_create_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+rb_entry_create_impl!(Float32: f32, Float64: f64);
 
 macro_rules! read_collection_entry_go {
     ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
@@ -422,3 +433,32 @@ impl<'data, 'this: 'data> FusedIterator
     for ReadBufferCollectionIterator<'this>
 {
 }
+
+pub trait ReadBufferGetter<T> {
+    fn get_buffer(&self) -> TileDBResult<&ReadBuffer<T>>;
+}
+
+macro_rules! buffer_getter_impl {
+    ($($variant:ident : $ty:ty),+) => {
+        $(
+            impl ReadBufferGetter<$ty> for ReadBufferCollectionEntry {
+                fn get_buffer(&self) -> TileDBResult<&ReadBuffer<$ty>> {
+                    match self {
+                        ReadBufferCollectionEntry::$variant(buffer) => Ok(&buffer),
+                        _ => Err(Error::InvalidArgument(anyhow!("Wrong field type."))),
+                    }
+                }
+            }
+
+            impl ReadBufferGetter<$ty> for ReadBufferCollectionItem {
+                fn get_buffer(&self) -> TileDBResult<&ReadBuffer<$ty>> {
+                    self.entry.get_buffer()
+                }
+            }
+        )+
+    }
+}
+
+buffer_getter_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+buffer_getter_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+buffer_getter_impl!(Float32: f32, Float64: f64);

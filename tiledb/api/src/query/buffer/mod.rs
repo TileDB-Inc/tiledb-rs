@@ -19,6 +19,6 @@ pub use read::{
     ReadBufferCollectionItem,
 };
 pub use write::{
-    WriteBuffer, WriteBufferCollection, WriteBufferCollectionEntry,
-    WriteBufferCollectionItem,
+    AllocatedWriteBuffer, WriteBuffer, WriteBufferCollection,
+    WriteBufferCollectionEntry, WriteBufferCollectionItem,
 };
