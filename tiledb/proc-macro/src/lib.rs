@@ -9,14 +9,7 @@ use proc_macro::TokenStream;
 use syn::DeriveInput;
 
 mod option_subset;
-mod query;
 mod ty;
-
-#[proc_macro_derive(Query, attributes(base))]
-pub fn derive_query_capi_interface(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    query::expand(&input)
-}
 
 #[proc_macro_derive(OptionSubset)]
 pub fn derive_option_subset(input: TokenStream) -> TokenStream {
