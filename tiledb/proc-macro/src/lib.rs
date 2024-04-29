@@ -9,7 +9,6 @@ use proc_macro::TokenStream;
 use syn::DeriveInput;
 
 mod option_subset;
-mod ty;
 
 #[proc_macro_derive(OptionSubset)]
 pub fn derive_option_subset(input: TokenStream) -> TokenStream {
