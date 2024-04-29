@@ -674,9 +674,8 @@ mod tests {
             .build();
 
         // Create our buffer collection
-        let mut curr_capacity = 1;
-        let id_data = vec![0i32; curr_capacity].into_boxed_slice();
-        let attr_data = vec![0u64; curr_capacity].into_boxed_slice();
+        let id_data = vec![0i32; 10].into_boxed_slice();
+        let attr_data = vec![0u64; 10].into_boxed_slice();
 
         let buffers = ReadBufferCollection::new();
         buffers
@@ -684,33 +683,14 @@ mod tests {
             .add_buffer("id", id_data)?
             .add_buffer("attr", attr_data)?;
 
-        loop {
-            let result = query.submit(&buffers)?;
-            if result.nresults()? == 0 && result.details().user_buffer_size() {
-                // Not enough space in our buffers to make progress so we have
-                // to reallocate them with larger storage capacity.
-                curr_capacity *= 2;
-                let id_data = vec![0i32; curr_capacity].into_boxed_slice();
-                let attr_data = vec![0u64; curr_capacity].into_boxed_slice();
-                buffers
-                    .borrow_mut()
-                    .clear()
-                    .add_buffer("id", id_data)?
-                    .add_buffer("attr", attr_data)?;
-                continue;
-            }
+        let result = query.submit(&buffers)?;
+        assert!(result.completed());
 
-            println!("Getting slices: {}", result.nresults()?);
-            let slices = result.slices()?;
-            let ids: RQField<i32> = slices.field("id")?;
-            let attrs: RQField<u64> = slices.field("attr")?;
-            for (id, attr) in izip!(ids.iter(), attrs.iter()) {
-                println!("Id: {} Attr: {}", id, attr);
-            }
-
-            if result.completed() {
-                break;
-            }
+        let slices = result.slices()?;
+        let ids: RQField<i32> = slices.field("id")?;
+        let attrs: RQField<u64> = slices.field("attr")?;
+        for (id, attr) in izip!(ids.iter()?, attrs.iter()?) {
+            println!("Id: {} Attr: {}", id, attr);
         }
 
         Ok(())

@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use anyhow::anyhow;
 
-use super::traits::{Query, QueryBuilder};
+use super::traits::QueryBuilder;
 use crate::array::{CellValNum, Schema};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::convert::CAPISameRepr;
