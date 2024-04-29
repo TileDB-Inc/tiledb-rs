@@ -1,14 +1,17 @@
+use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use anyhow::anyhow;
 
 use super::buffer::ReadBufferCollection;
 use super::sizeinfo::SizeEntry;
+use super::status::{QueryStatus, QueryStatusDetails};
 use super::traits::{Query, QueryBuilder, QueryInternal};
 use super::{QueryType, RawQuery};
-use crate::array::Array;
+use crate::array::{Array, CellValNum, Schema};
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::error::Error;
+use crate::error::{DatatypeErrorKind, Error};
 use crate::Result as TileDBResult;
 
 pub struct ReadQuery {
@@ -62,19 +65,25 @@ impl ReadQuery {
 
     pub fn submit(
         &mut self,
-        buffers: &ReadBufferCollection,
-    ) -> TileDBResult<HashMap<String, SizeEntry>> {
-        let mut ret: HashMap<String, SizeEntry> = HashMap::new();
+        buffers: Rc<RefCell<ReadBufferCollection>>,
+    ) -> TileDBResult<ReadQueryResult> {
+        let mut sizes: HashMap<String, SizeEntry> = HashMap::new();
 
-        for buffer in buffers.iter() {
+        let bufref = buffers.try_borrow_mut().map_err(|e| {
+            Error::InvalidArgument(
+                anyhow!("The buffers argument is not borrowable.").context(e),
+            )
+        })?;
+
+        for buffer in bufref.iter() {
             let entry = self.attach_buffer(buffer)?;
-            ret.insert(buffer.name().to_owned(), entry);
+            sizes.insert(buffer.name().to_owned(), entry);
         }
 
         // Ensure that all buffers were provided if this is a resubmission.
         if self.submitted {
             for (field, _) in self.buffers.iter() {
-                if !ret.contains_key(field) {
+                if !sizes.contains_key(field) {
                     return Err(Error::InvalidArgument(anyhow!(
                         "Missing buffer for field: {}",
                         field
@@ -85,7 +94,7 @@ impl ReadQuery {
 
         // Set our buffer info for possible resubmission.
         if !self.submitted {
-            for (field, sizes) in ret.iter() {
+            for (field, sizes) in sizes.iter() {
                 let has_offsets = sizes.offsets_size.is_some();
                 let has_validity = sizes.validity_size.is_some();
                 self.buffers
@@ -97,7 +106,16 @@ impl ReadQuery {
         // providing the same exact buffers for subsequent submissions.
         self.submitted = true;
 
-        Ok(ret)
+        let schema = self.array.schema()?;
+        let status = self.capi_status()?;
+        let details = self.capi_status_details()?;
+        Ok(ReadQueryResult::new(
+            schema,
+            sizes,
+            status,
+            details,
+            buffers.clone(),
+        ))
     }
 
     pub fn finalize(self) -> TileDBResult<Array> {
@@ -149,9 +167,125 @@ impl ReadQueryBuilder {
     }
 }
 
+pub struct ReadQueryResult {
+    schema: Schema,
+    sizes: HashMap<String, SizeEntry>,
+    status: QueryStatus,
+    details: QueryStatusDetails,
+    buffers: Rc<RefCell<ReadBufferCollection>>,
+}
+
+impl ReadQueryResult {
+    pub fn new(
+        schema: Schema,
+        sizes: HashMap<String, SizeEntry>,
+        status: ffi::tiledb_query_status_t,
+        details: ffi::tiledb_query_status_details_reason_t,
+        buffers: Rc<RefCell<ReadBufferCollection>>,
+    ) -> Self {
+        Self {
+            schema,
+            sizes,
+            status: QueryStatus::from(status),
+            details: QueryStatusDetails::from(details),
+            buffers,
+        }
+    }
+
+    pub fn nresults(&self) -> TileDBResult<u64> {
+        if let Some((name, sizes)) = self.sizes.iter().next() {
+            let field = self.schema.field(name)?;
+            if matches!(field.cell_val_num()?, CellValNum::Var) {
+                // Unwrap guaranteed given that the query returned results.
+                let nbytes =
+                    sizes.offsets_size.as_ref().unwrap().as_ref().get_ref();
+                Ok(nbytes / std::mem::size_of::<u64>() as u64)
+            } else {
+                let nbytes = sizes.data_size.as_ref().get_ref();
+                let cvn = u32::from(field.cell_val_num()?);
+                let bytes_per = field.datatype()?.size() * cvn as u64;
+                Ok(nbytes / bytes_per)
+            }
+        } else {
+            Ok(0)
+        }
+    }
+
+    pub fn details(&self) -> QueryStatusDetails {
+        self.details.clone()
+    }
+
+    pub fn completed(&self) -> bool {
+        matches!(self.status, QueryStatus::Completed)
+    }
+
+    pub fn slices(&mut self) -> TileDBResult<ReadQueryResultSlices> {
+        Ok(ReadQueryResultSlices::new(
+            &self.schema,
+            self.sizes.clone(),
+            self.buffers.as_ref().borrow(),
+        ))
+    }
+}
+
+pub struct ReadQueryResultSlices<'result> {
+    schema: &'result Schema,
+    sizes: HashMap<String, SizeEntry>,
+    buffers: Ref<'result, ReadBufferCollection>,
+}
+
+impl<'result> ReadQueryResultSlices<'result> {
+    pub fn new(
+        schema: &'result Schema,
+        sizes: HashMap<String, SizeEntry>,
+        buffers: Ref<'result, ReadBufferCollection>,
+    ) -> Self {
+        Self {
+            schema,
+            sizes,
+            buffers,
+        }
+    }
+
+    pub fn field<T>(&self, name: &str) -> TileDBResult<&'result [T]> {
+        let field = self.schema.field(name)?;
+        let dtype = field.datatype()?;
+        if dtype.is_compatible_type::<T>() {
+            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
+                user_type: std::any::type_name::<T>(),
+                tiledb_type: dtype,
+            }));
+        }
+
+        let size = self.sizes.get(name);
+        if size.is_none() {
+            return Err(Error::InvalidArgument(anyhow!(
+                "No buffer present for name: {}",
+                name
+            )));
+        }
+
+        let iter_len = *size.unwrap().data_size.as_ref().get_ref();
+
+        for buffer in self.buffers.iter() {
+            if buffer.name() == name {
+                return Ok(buffer.as_slice(iter_len));
+            }
+        }
+
+        // This should be an internal error because we've violated internal
+        // constraints if we've gotten this far.
+        Err(Error::InvalidArgument(anyhow!(
+            "No buffer found for field: {}",
+            name
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use itertools::izip;
     use tempfile::TempDir;
 
     use crate::array::Mode;
@@ -171,22 +305,50 @@ mod tests {
         super::super::write::tests::create_sparse_array(&ctx, &array_uri)?;
         super::super::write::tests::write_sparse_data(&ctx, &array_uri)?;
 
-        // A basic write of some data to the array.
-        let id_data = vec![0i32; 10].into_boxed_slice();
-        let attr_data = vec![0u64; 10].into_boxed_slice();
-
-        let buffers = ReadBufferCollection::new()
-            .add_buffer("id", id_data)?
-            .add_buffer("attr", attr_data)?;
-
+        // Create our query
         let array = Array::open(&ctx, array_uri, Mode::Read)?;
         let mut query = ReadQueryBuilder::new(array)?
             .layout(QueryLayout::Unordered)?
             .build();
 
-        let result = query.submit(&buffers)?;
+        // Create our buffer collection
+        let mut curr_capacity = 1;
+        let id_data = vec![0i32; curr_capacity].into_boxed_slice();
+        let attr_data = vec![0u64; curr_capacity].into_boxed_slice();
 
-        println!("Result: {:?}", result);
+        let buffers = ReadBufferCollection::new();
+        buffers
+            .borrow_mut()
+            .add_buffer("id", id_data)?
+            .add_buffer("attr", attr_data)?;
+
+        loop {
+            let result = query.submit(buffers.clone())?;
+            if result.nresults()? == 0 && result.details().user_buffer_size() {
+                // Not enough space in our buffers to make progress so we have
+                // to reallocate them with larger storage capacity.
+                curr_capacity *= 2;
+                let id_data = vec![0i32; curr_capacity].into_boxed_slice();
+                let attr_data = vec![0u64; curr_capacity].into_boxed_slice();
+                buffers
+                    .borrow_mut()
+                    .clear()
+                    .add_buffer("id", id_data)?
+                    .add_buffer("attr", attr_data)?;
+                continue;
+            }
+
+            let slices = result.slices()?;
+            let ids = slices.field::<i32>("id")?;
+            let attrs = slices.field::<u64>("attr")?;
+            for (id, attr) in izip!(ids, attrs) {
+                println!("Id: {} Attr: {}", id, attr);
+            }
+
+            if result.completed() {
+                break;
+            }
+        }
 
         Ok(())
     }

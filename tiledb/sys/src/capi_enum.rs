@@ -168,6 +168,21 @@ pub const tiledb_query_condition_op_t_TILEDB_NOT_IN:
     tiledb_query_condition_op_t = 7;
 pub type tiledb_query_condition_op_t = ::std::os::raw::c_uint;
 
+pub const tiledb_query_status_details_reason_t_TILEDB_REASON_NONE:
+    tiledb_query_status_details_reason_t = 0;
+pub const tiledb_query_status_details_reason_t_TILEDB_REASON_USER_BUFFER_SIZE:
+    tiledb_query_status_details_reason_t = 1 ;
+pub const tiledb_query_status_details_reason_t_TILEDB_REASON_MEMORY_BUDGET:
+    tiledb_query_status_details_reason_t = 2;
+pub type tiledb_query_status_details_reason_t = ::std::os::raw::c_uint;
+
+#[repr(C)]
+pub struct tiledb_experimental_query_status_details_t {
+    pub incomplete_reason: tiledb_query_status_details_reason_t,
+}
+pub type tiledb_query_status_details_t =
+    tiledb_experimental_query_status_details_t;
+
 pub const tiledb_query_status_t_TILEDB_FAILED: tiledb_query_status_t = 0;
 pub const tiledb_query_status_t_TILEDB_COMPLETED: tiledb_query_status_t = 1;
 pub const tiledb_query_status_t_TILEDB_INPROGRESS: tiledb_query_status_t = 2;

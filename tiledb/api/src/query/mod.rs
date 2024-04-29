@@ -4,12 +4,14 @@ pub mod buffer;
 pub mod conditions;
 pub mod read;
 pub mod sizeinfo;
+pub mod status;
 pub mod subarray;
 pub mod traits;
 pub mod write;
 
 pub use self::conditions::{QueryCondition, QueryConditionExpr};
 pub use self::read::{ReadQuery, ReadQueryBuilder};
+pub use self::status::{QueryStatus, QueryStatusDetails};
 pub use self::subarray::{Builder as SubarrayBuilder, Subarray};
 pub use self::write::{WriteQuery, WriteQueryBuilder};
 

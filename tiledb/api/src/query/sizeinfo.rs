@@ -1,6 +1,6 @@
 use std::pin::Pin;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SizeEntry {
     pub data_size: Pin<Box<u64>>,
     pub offsets_size: Option<Pin<Box<u64>>>,

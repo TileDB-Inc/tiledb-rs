@@ -1,11 +1,19 @@
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::iter::FusedIterator;
+use std::rc::Rc;
 
 use anyhow::anyhow;
 
 use super::BufferCollectionItem;
 use crate::error::Error;
 use crate::Result as TileDBResult;
+
+// Pull a slice out of a buffer collection eventually.
+pub trait ExtractSlice {
+    type Item;
+    fn extract_slice(&self, len: u64) -> &[Self::Item];
+}
 
 /// A write buffer is used by WriterQuery to pass data to TileDB. As such
 /// it's name is a bit of an oxymoron as we only ever read from a WriteBuffer
@@ -89,6 +97,10 @@ macro_rules! wb_entry_create_impl {
                         validity: Some(value.2),
                     }
                 }
+            }
+
+            impl ExtractSlice for ReadBuffer<$ty> {
+
             }
         )+
     }
@@ -332,14 +344,24 @@ pub struct ReadBufferCollection {
 }
 
 impl ReadBufferCollection {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Rc<RefCell<Self>> {
+        Rc::new(RefCell::new(Self {
             buffers: None,
             fields: HashSet::new(),
-        }
+        }))
     }
 
-    pub fn add_buffer<T>(mut self, name: &str, buffer: T) -> TileDBResult<Self>
+    pub fn clear(&mut self) -> &mut Self {
+        self.buffers = None;
+        self.fields = HashSet::new();
+        self
+    }
+
+    pub fn add_buffer<T>(
+        &mut self,
+        name: &str,
+        buffer: T,
+    ) -> TileDBResult<&mut Self>
     where
         T: Into<ReadBufferCollectionEntry>,
     {
@@ -364,18 +386,14 @@ impl ReadBufferCollection {
 
     pub fn iter(&self) -> ReadBufferCollectionIterator {
         ReadBufferCollectionIterator {
+            _collection: self,
             curr_item: self.buffers.as_ref().map(|b| b.as_ref()),
         }
     }
 }
 
-impl Default for ReadBufferCollection {
-    fn default() -> ReadBufferCollection {
-        ReadBufferCollection::new()
-    }
-}
-
 pub struct ReadBufferCollectionIterator<'this> {
+    _collection: &'this ReadBufferCollection,
     curr_item: Option<&'this ReadBufferCollectionItem>,
 }
 

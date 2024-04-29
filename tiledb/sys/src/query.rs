@@ -1,5 +1,6 @@
 use crate::capi_enum::{
-    tiledb_layout_t, tiledb_query_status_t, tiledb_query_type_t,
+    tiledb_layout_t, tiledb_query_status_details_t, tiledb_query_status_t,
+    tiledb_query_type_t,
 };
 use crate::types::{
     tiledb_array_t, tiledb_config_t, tiledb_ctx_t, tiledb_query_condition_t,
@@ -208,5 +209,11 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         query: *const tiledb_query_t,
         subarray: *mut *mut tiledb_subarray_t,
+    ) -> i32;
+
+    pub fn tiledb_query_get_status_details(
+        ctx: *mut tiledb_ctx_t,
+        query: *mut tiledb_query_t,
+        status_details: *mut tiledb_query_status_details_t,
     ) -> i32;
 }

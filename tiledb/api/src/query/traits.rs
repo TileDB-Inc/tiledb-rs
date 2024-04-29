@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::pin::Pin;
 
 use anyhow::anyhow;
@@ -8,7 +9,7 @@ use super::sizeinfo::SizeEntry;
 use super::subarray::RawSubarray;
 use super::{QueryLayout, Subarray, SubarrayBuilder};
 use crate::array::Array;
-use crate::context::{CApiInterface, Context};
+use crate::context::Context;
 use crate::error::Error;
 use crate::range::Range;
 use crate::Result as TileDBResult;
@@ -33,17 +34,6 @@ pub trait Query: Sized {
         let schema = self.array().schema()?;
         let subarray = self.subarray()?;
         subarray.ranges(&schema)
-    }
-
-    /// Returns the ffi status of the last submit()
-    fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
-        let c_query = self.capi();
-        let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
-        self.context()
-            .capi_call(|ctx| unsafe {
-                ffi::tiledb_query_get_status(ctx, c_query, &mut c_status)
-            })
-            .map(|_| c_status)
     }
 }
 
@@ -171,6 +161,34 @@ pub(crate) trait QueryInternal {
             ffi::tiledb_query_finalize(ctx, c_query)
         })?;
         Ok(())
+    }
+
+    /// Returns the ffi status of the last submit()
+    fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
+        let c_query = self.capi();
+        let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
+        self.context()
+            .capi_call(|ctx| unsafe {
+                ffi::tiledb_query_get_status(ctx, c_query, &mut c_status)
+            })
+            .map(|_| c_status)
+    }
+
+    /// Get a possible more specific reason for the error
+    fn capi_status_details(
+        &self,
+    ) -> TileDBResult<ffi::tiledb_query_status_details_reason_t> {
+        let c_query = self.capi();
+        let mut c_details: ffi::tiledb_query_status_details_t = out_ptr!();
+        self.context()
+            .capi_call(|ctx| unsafe {
+                ffi::tiledb_query_get_status_details(
+                    ctx,
+                    c_query,
+                    &mut c_details,
+                )
+            })
+            .map(|_| c_details.incomplete_reason)
     }
 }
 
