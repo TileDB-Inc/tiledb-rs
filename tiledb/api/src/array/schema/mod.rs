@@ -86,7 +86,7 @@ impl PartialEq<u32> for CellValNum {
     fn eq(&self, other: &u32) -> bool {
         match self {
             CellValNum::Fixed(val) => val.get() == *other,
-            CellValNum::Var => *other == std::u32::MAX,
+            CellValNum::Var => *other == u32::MAX,
         }
     }
 }
