@@ -124,7 +124,6 @@ impl ReadQuery {
         let schema = self.array.schema()?;
         let status = self.capi_status()?;
         let details = self.capi_status_details()?;
-        println!("Status: {:?} Details: {:?}", status, details);
         Ok(ReadQueryResult::new(
             schema,
             new_sizes,
@@ -331,7 +330,7 @@ impl<'result, T> ReadQueryField<'result, T> {
     }
 
     pub fn as_validity_slice(&self) -> Option<&[u8]> {
-        let nbytes = self.sizes.offsets_size? as usize;
+        let nbytes = self.sizes.validity_size? as usize;
         self.buffer.validity.as_ref().map(|v| &v[..nbytes])
     }
 

@@ -238,8 +238,37 @@ macro_rules! wb_entry_create_impl {
                 }
             }
 
-            impl<'data> From<&'data [$ty]> for WriteBufferCollectionEntry<'data> {
-                fn from(value: &'data [$ty]) -> WriteBufferCollectionEntry<'data> {
+            impl<'data> From<&'data [$ty]> for
+                    WriteBufferCollectionEntry<'data> {
+                fn from(value: &'data [$ty]) ->
+                        WriteBufferCollectionEntry<'data> {
+                    let buffer = WriteBuffer::from(value);
+                    WriteBufferCollectionEntry::from(buffer)
+                }
+            }
+
+            impl<'data> From<(&'data [$ty], &'data [u64])>
+                    for WriteBufferCollectionEntry<'data> {
+                fn from(value: (&'data [$ty], &'data [u64])) ->
+                        WriteBufferCollectionEntry<'data> {
+                    let buffer = WriteBuffer::from(value);
+                    WriteBufferCollectionEntry::from(buffer)
+                }
+            }
+
+            impl<'data> From<(&'data [$ty], &'data [u8])> for
+                    WriteBufferCollectionEntry<'data> {
+                fn from(value: (&'data [$ty], &'data [u8])) ->
+                        WriteBufferCollectionEntry<'data> {
+                    let buffer = WriteBuffer::from(value);
+                    WriteBufferCollectionEntry::from(buffer)
+                }
+            }
+
+            impl<'data> From<(&'data [$ty], &'data [u64], &'data [u8])> for
+                    WriteBufferCollectionEntry<'data> {
+                fn from(value: (&'data [$ty], &'data [u64], &'data [u8])) ->
+                        WriteBufferCollectionEntry<'data> {
                     let buffer = WriteBuffer::from(value);
                     WriteBufferCollectionEntry::from(buffer)
                 }

@@ -632,7 +632,6 @@ impl Deref for RawQueryCondition {
 impl Drop for RawQueryCondition {
     fn drop(&mut self) {
         let RawQueryCondition::Owned(ref mut ffi) = *self;
-        println!("DESTROY QC: {:p}", *ffi);
         unsafe {
             ffi::tiledb_query_condition_free(ffi);
         }
@@ -656,12 +655,6 @@ impl QueryCondition {
     }
 
     pub(crate) fn new(context: &Context, raw: RawQueryCondition) -> Self {
-        match raw {
-            RawQueryCondition::Owned(ffi) => {
-                println!("CREATE QC: {:p}", ffi);
-            }
-        }
-
         Self {
             context: context.clone(),
             raw,
