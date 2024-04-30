@@ -1,6 +1,5 @@
 use std::convert::From;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
 use crate::error::{Error, ObjectTypeErrorKind, RawError};
