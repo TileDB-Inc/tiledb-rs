@@ -51,32 +51,31 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn config(&self) -> TileDBResult<Config> {
+        let c_frag = self.capi();
         let mut c_config: *mut ffi::tiledb_config_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_fragment_info_get_config(
-                self.context.capi(),
-                self.capi(),
-                &mut c_config,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_fragment_info_get_config(ctx, c_frag, &mut c_config)
         })?;
 
         Ok(Config::from_raw(RawConfig::Owned(c_config)))
     }
 
     pub fn load(&self) -> TileDBResult<()> {
-        self.capi_return(unsafe {
-            ffi::tiledb_fragment_info_load(self.context.capi(), self.capi())
+        let c_frag = self.capi();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_fragment_info_load(ctx, c_frag)
         })?;
 
         Ok(())
     }
 
     pub fn unconsolidated_metadata_num(&self) -> TileDBResult<u32> {
+        let c_frag = self.capi();
         let mut result: u32 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_unconsolidated_metadata_num(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_frag,
                 &mut result,
             )
         })?;
@@ -85,11 +84,12 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn num_to_vacuum(&self) -> TileDBResult<u32> {
+        let c_frag = self.capi();
         let mut result: u32 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_to_vacuum_num(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_frag,
                 &mut result,
             )
         })?;
@@ -98,12 +98,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn total_cell_count(&self) -> TileDBResult<u64> {
+        let c_frag = self.capi();
         let mut count: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_total_cell_num(
-                self.context.capi(),
-                self.capi(),
-                &mut count,
+                ctx, c_frag, &mut count,
             )
         })?;
 
@@ -111,26 +110,21 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn num_fragments(&self) -> TileDBResult<u32> {
+        let c_frag = self.capi();
         let mut ret: u32 = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_fragment_info_get_fragment_num(
-                self.context.capi(),
-                self.capi(),
-                &mut ret,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_fragment_info_get_fragment_num(ctx, c_frag, &mut ret)
         })?;
 
         Ok(ret)
     }
 
     pub fn num_cells(&self, frag_idx: u32) -> TileDBResult<u64> {
+        let c_frag = self.capi();
         let mut cells: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_cell_num(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut cells,
+                ctx, c_frag, frag_idx, &mut cells,
             )
         })?;
 
@@ -138,11 +132,12 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn version(&self, frag_idx: u32) -> TileDBResult<u32> {
+        let c_frag = self.capi();
         let mut version: u32 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_version(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_frag,
                 frag_idx,
                 &mut version,
             )
@@ -152,11 +147,12 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn schema(&self, frag_idx: u32) -> TileDBResult<Schema<'ctx>> {
+        let c_frag = self.capi();
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_array_schema(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_frag,
                 frag_idx,
                 &mut c_schema,
             )
@@ -166,13 +162,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn schema_name(&self, frag_idx: u32) -> TileDBResult<String> {
+        let c_frag = self.capi();
         let mut c_str: *const std::ffi::c_char = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_array_schema_name(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut c_str,
+                ctx, c_frag, frag_idx, &mut c_str,
             )
         })?;
 
@@ -183,13 +177,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn fragment_name(&self, frag_idx: u32) -> TileDBResult<String> {
+        let c_frag = self.capi();
         let mut c_str: *mut ffi::tiledb_string_t = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_fragment_name_v2(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut c_str,
+                ctx, c_frag, frag_idx, &mut c_str,
             )
         })?;
 
@@ -198,13 +190,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn fragment_uri(&self, frag_idx: u32) -> TileDBResult<String> {
+        let c_frag = self.capi();
         let mut c_str: *const std::ffi::c_char = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_fragment_uri(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut c_str,
+                ctx, c_frag, frag_idx, &mut c_str,
             )
         })?;
 
@@ -215,13 +205,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn fragment_size(&self, frag_idx: u32) -> TileDBResult<u64> {
+        let c_frag = self.capi();
         let mut size: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_fragment_size(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut size,
+                ctx, c_frag, frag_idx, &mut size,
             )
         })?;
 
@@ -229,13 +217,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn fragment_type(&self, frag_idx: u32) -> TileDBResult<FragmentType> {
+        let c_frag = self.capi();
         let mut dense: i32 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_dense(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut dense,
+                ctx, c_frag, frag_idx, &mut dense,
             )
         })?;
 
@@ -247,15 +233,12 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn timestamp_range(&self, frag_idx: u32) -> TileDBResult<[u64; 2]> {
+        let c_frag = self.capi();
         let mut start: u64 = 0;
         let mut end: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_timestamp_range(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut start,
-                &mut end,
+                ctx, c_frag, frag_idx, &mut start, &mut end,
             )
         })?;
 
@@ -266,11 +249,12 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         &self,
         frag_idx: u32,
     ) -> TileDBResult<bool> {
+        let c_frag = self.capi();
         let mut result: i32 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_has_consolidated_metadata(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_frag,
                 frag_idx,
                 &mut result,
             )
@@ -280,13 +264,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn to_vacuum_uri(&self, frag_idx: u32) -> TileDBResult<String> {
+        let c_frag = self.capi();
         let mut c_str: *const std::ffi::c_char = out_ptr!();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_to_vacuum_uri(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut c_str,
+                ctx, c_frag, frag_idx, &mut c_str,
             )
         })?;
 
@@ -317,12 +299,13 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
         fn_typed!(datatype, DT, {
+            let c_frag = self.capi();
             let mut range = [DT::default(), DT::default()];
             let c_range = range.as_mut_ptr();
-            self.capi_return(unsafe {
+            self.capi_call(|ctx| unsafe {
                 ffi::tiledb_fragment_info_get_non_empty_domain_from_index(
-                    self.context.capi(),
-                    self.capi(),
+                    ctx,
+                    c_frag,
                     frag_idx,
                     dim_idx,
                     c_range as *mut std::ffi::c_void,
@@ -341,12 +324,13 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         frag_idx: u32,
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
+        let c_frag = self.capi();
         let mut start_size: u64 = 0;
         let mut end_size: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_non_empty_domain_var_size_from_index(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_frag,
                 frag_idx,
                 dim_idx,
                 &mut start_size,
@@ -378,10 +362,10 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
             let mut end: Box<[DT]> =
                 vec![Default::default(); end_elems as usize].into_boxed_slice();
 
-            self.capi_return(unsafe {
+            self.capi_call(|ctx| unsafe {
                 ffi::tiledb_fragment_info_get_non_empty_domain_var_from_index(
-                    self.context.capi(),
-                    self.capi(),
+                    ctx,
+                    c_frag,
                     frag_idx,
                     dim_idx,
                     start.as_mut_ptr() as *mut std::ffi::c_void,
@@ -394,13 +378,11 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
     }
 
     pub fn num_mbrs(&self, frag_idx: u32) -> TileDBResult<u64> {
+        let c_frag = self.capi();
         let mut num: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_mbr_num(
-                self.context.capi(),
-                self.capi(),
-                frag_idx,
-                &mut num,
+                ctx, c_frag, frag_idx, &mut num,
             )
         })?;
 
@@ -429,13 +411,14 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         mbr_idx: u32,
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
+        let c_frag = self.capi();
         fn_typed!(datatype, DT, {
             let mut range = [DT::default(), DT::default()];
             let c_range = range.as_mut_ptr();
-            self.capi_return(unsafe {
+            self.capi_call(|ctx| unsafe {
                 ffi::tiledb_fragment_info_get_mbr_from_index(
-                    self.context.capi(),
-                    self.capi(),
+                    ctx,
+                    c_frag,
                     frag_idx,
                     mbr_idx,
                     dim_idx,
@@ -457,12 +440,13 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         mbr_idx: u32,
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
+        let c_frag = self.capi();
         let mut start_size: u64 = 0;
         let mut end_size: u64 = 0;
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_get_mbr_var_size_from_index(
-                self.context.capi(),
-                self.capi(),
+                ctx,
+                c_frag,
                 frag_idx,
                 mbr_idx,
                 dim_idx,
@@ -495,10 +479,10 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
             let mut end: Box<[DT]> =
                 vec![Default::default(); end_elems as usize].into_boxed_slice();
 
-            self.capi_return(unsafe {
+            self.capi_call(|ctx| unsafe {
                 ffi::tiledb_fragment_info_get_mbr_var_from_index(
-                    self.context.capi(),
-                    self.capi(),
+                    ctx,
+                    c_frag,
                     frag_idx,
                     mbr_idx,
                     dim_idx,
@@ -701,13 +685,12 @@ impl<'ctx> Builder<'ctx> {
     where
         T: AsRef<str>,
     {
-        let c_context = context.capi();
         let c_uri = std::ffi::CString::new(uri.as_ref())
             .map_err(|e| Error::InvalidArgument(anyhow!(e)))?;
         let mut c_frag_info: *mut ffi::tiledb_fragment_info_t = out_ptr!();
-        context.capi_return(unsafe {
+        context.capi_call(|ctx| unsafe {
             ffi::tiledb_fragment_info_alloc(
-                c_context,
+                ctx,
                 c_uri.as_c_str().as_ptr(),
                 &mut c_frag_info,
             )
@@ -722,12 +705,10 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn config(self, config: &Config) -> TileDBResult<Self> {
-        self.capi_return(unsafe {
-            ffi::tiledb_fragment_info_set_config(
-                self.context().capi(),
-                self.info.capi(),
-                config.capi(),
-            )
+        let c_frag = self.info.capi();
+        let c_cfg = config.capi();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_fragment_info_set_config(ctx, c_frag, c_cfg)
         })?;
         Ok(self)
     }

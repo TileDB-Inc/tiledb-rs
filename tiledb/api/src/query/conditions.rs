@@ -259,10 +259,9 @@ impl EqualityPredicate {
         &self,
         ctx: &'ctx Context,
     ) -> TileDBResult<QueryCondition<'ctx>> {
-        let c_ctx = ctx.capi();
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
-        ctx.capi_return(unsafe {
-            ffi::tiledb_query_condition_alloc(c_ctx, &mut c_cond)
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_condition_alloc(ctx, &mut c_cond)
         })?;
 
         let cond = QueryCondition {
@@ -270,16 +269,15 @@ impl EqualityPredicate {
             raw: RawQueryCondition::Owned(c_cond),
         };
 
-        let c_ctx = ctx.capi();
         let c_cond = cond.capi();
         let c_name = cstring!(self.field.as_str());
         let val = self.value.to_bytes();
         let c_ptr = val.as_ptr() as *const std::ffi::c_void;
         let c_size = val.len() as u64;
         let c_op = self.op.capi_enum();
-        ctx.capi_return(unsafe {
+        ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_query_condition_init(
-                c_ctx,
+                ctx,
                 c_cond,
                 c_name.as_ptr(),
                 c_ptr,
@@ -338,12 +336,11 @@ impl SetMembershipPredicate {
             let c_offsets_size = std::mem::size_of_val(&offsets) as u64;
 
             // Create the query condition
-            let c_ctx = ctx.capi();
             let c_name = cstring!(self.field.as_str());
             let c_op = self.op.capi_enum();
-            ctx.capi_return(unsafe {
+            ctx.capi_call(|ctx| unsafe {
                 ffi::tiledb_query_condition_alloc_set_membership(
-                    c_ctx,
+                    ctx,
                     c_name.as_ptr(),
                     c_data,
                     c_data_size,
@@ -381,12 +378,11 @@ impl SetMembershipPredicate {
             let c_offsets_size = std::mem::size_of_val(&offsets) as u64;
 
             // And create the query condition
-            let c_ctx = ctx.capi();
             let c_name = cstring!(self.field.as_str());
             let c_op = self.op.capi_enum();
-            ctx.capi_return(unsafe {
+            ctx.capi_call(|ctx| unsafe {
                 ffi::tiledb_query_condition_alloc_set_membership(
-                    c_ctx,
+                    ctx,
                     c_name.as_ptr(),
                     c_data,
                     c_data_size,
@@ -417,8 +413,8 @@ impl NullnessPredicate {
         ctx: &'ctx Context,
     ) -> TileDBResult<QueryCondition<'ctx>> {
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
-        ctx.capi_return(unsafe {
-            ffi::tiledb_query_condition_alloc(ctx.capi(), &mut c_cond)
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_condition_alloc(ctx, &mut c_cond)
         })?;
 
         let cond = QueryCondition {
@@ -426,13 +422,12 @@ impl NullnessPredicate {
             raw: RawQueryCondition::Owned(c_cond),
         };
 
-        let c_ctx = ctx.capi();
         let c_cond = cond.capi();
         let c_name = cstring!(self.field.as_str());
         let c_op = self.op.capi_enum();
-        ctx.capi_return(unsafe {
+        ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_query_condition_init(
-                c_ctx,
+                ctx,
                 c_cond,
                 c_name.as_ptr(),
                 std::ptr::null(),
@@ -582,14 +577,13 @@ impl QueryConditionExpr {
                 let lhs = lhs.build(ctx)?;
                 let rhs = rhs.build(ctx)?;
 
-                let c_ctx = ctx.capi();
                 let c_lhs = lhs.capi();
                 let c_rhs = rhs.capi();
                 let c_op = op.capi_enum();
                 let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
-                ctx.capi_return(unsafe {
+                ctx.capi_call(|ctx| unsafe {
                     ffi::tiledb_query_condition_combine(
-                        c_ctx,
+                        ctx,
                         c_lhs,
                         c_rhs,
                         c_op,
@@ -604,13 +598,12 @@ impl QueryConditionExpr {
             }
             Self::Negate(expr) => {
                 let cond = expr.build(ctx)?;
-                let c_ctx = ctx.capi();
                 let c_cond = cond.capi();
                 let mut c_neg_cond: *mut ffi::tiledb_query_condition_t =
                     out_ptr!();
-                ctx.capi_return(unsafe {
+                ctx.capi_call(|ctx| unsafe {
                     ffi::tiledb_query_condition_negate(
-                        c_ctx,
+                        ctx,
                         c_cond,
                         &mut c_neg_cond,
                     )

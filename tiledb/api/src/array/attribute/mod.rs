@@ -55,47 +55,35 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn name(&self) -> TileDBResult<String> {
-        let c_context = self.context.capi();
         let mut c_name = std::ptr::null::<std::ffi::c_char>();
-        self.capi_return(unsafe {
-            ffi::tiledb_attribute_get_name(c_context, *self.raw, &mut c_name)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_get_name(ctx, *self.raw, &mut c_name)
         })?;
         let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
         Ok(String::from(c_name.to_string_lossy()))
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
-        let c_context = self.context.capi();
         let mut c_dtype: std::ffi::c_uint = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_attribute_get_type(c_context, *self.raw, &mut c_dtype)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_get_type(ctx, *self.raw, &mut c_dtype)
         })?;
         Datatype::try_from(c_dtype)
     }
 
-    pub fn is_nullable(&self) -> bool {
-        let c_context = self.context.capi();
+    pub fn is_nullable(&self) -> TileDBResult<bool> {
         let mut c_nullable: std::ffi::c_uchar = 0;
-        let c_ret = unsafe {
-            ffi::tiledb_attribute_get_nullable(
-                c_context,
-                *self.raw,
-                &mut c_nullable,
-            )
-        };
-        assert_eq!(ffi::TILEDB_OK, c_ret); // Rust API should prevent sanity check failure
-        c_nullable == 1
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_get_nullable(ctx, *self.raw, &mut c_nullable)
+        })?;
+
+        Ok(c_nullable == 1)
     }
 
     pub fn filter_list(&self) -> TileDBResult<FilterList<'ctx>> {
-        let c_context = self.context.capi();
         let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_attribute_get_filter_list(
-                c_context,
-                *self.raw,
-                &mut c_flist,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_get_filter_list(ctx, *self.raw, &mut c_flist)
         })?;
         Ok(FilterList {
             context: self.context,
@@ -104,12 +92,9 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
-        let c_context = self.context.capi();
         let mut c_num: std::ffi::c_uint = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_attribute_get_cell_val_num(
-                c_context, *self.raw, &mut c_num,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_get_cell_val_num(ctx, *self.raw, &mut c_num)
         })?;
         CellValNum::try_from(c_num)
     }
@@ -119,27 +104,21 @@ impl<'ctx> Attribute<'ctx> {
     }
 
     pub fn cell_size(&self) -> TileDBResult<u64> {
-        let c_context = self.context.capi();
         let mut c_size: std::ffi::c_ulonglong = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_attribute_get_cell_size(
-                c_context,
-                *self.raw,
-                &mut c_size,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_get_cell_size(ctx, *self.raw, &mut c_size)
         })?;
         Ok(c_size as u64)
     }
 
     pub fn fill_value<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
-        let c_context = self.context.capi();
         let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
 
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_get_fill_value(
-                c_context,
+                ctx,
                 c_attr,
                 &mut c_ptr,
                 &mut c_size,
@@ -161,20 +140,19 @@ impl<'ctx> Attribute<'ctx> {
     pub fn fill_value_nullable<Conv: CAPIConverter>(
         &self,
     ) -> TileDBResult<(Conv, bool)> {
-        if !self.is_nullable() {
+        if !self.is_nullable()? {
             /* see comment in Builder::fill_value_nullability */
             return Ok((self.fill_value()?, false));
         }
 
-        let c_context = self.context.capi();
         let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
         let mut c_validity: u8 = 0;
 
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_get_fill_value_nullable(
-                c_context,
+                ctx,
                 c_attr,
                 &mut c_ptr,
                 &mut c_size,
@@ -224,7 +202,10 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
             return false;
         }
 
-        let nullable_match = self.is_nullable() == other.is_nullable();
+        let nullable_match = match (self.is_nullable(), other.is_nullable()) {
+            (Ok(mine), Ok(theirs)) => mine == theirs,
+            _ => false,
+        };
         if !nullable_match {
             return false;
         }
@@ -245,7 +226,7 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
             return false;
         }
 
-        let fill_value_match = if self.is_nullable() {
+        let fill_value_match = if self.is_nullable().unwrap() {
             fn_typed!(self.datatype().unwrap(), DT, {
                 match (
                     self.fill_value_nullable::<DT>(),
@@ -283,12 +264,11 @@ impl<'ctx> Builder<'ctx> {
         name: &str,
         datatype: Datatype,
     ) -> TileDBResult<Self> {
-        let c_context = context.capi();
         let mut c_attr: *mut ffi::tiledb_attribute_t = out_ptr!();
         let c_name = cstring!(name);
-        context.capi_return(unsafe {
+        context.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_alloc(
-                c_context,
+                ctx,
                 c_name.as_c_str().as_ptr(),
                 datatype as u32,
                 &mut c_attr,
@@ -311,14 +291,9 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn cell_val_num(self, num: CellValNum) -> TileDBResult<Self> {
-        let c_context = self.attr.context.capi();
         let c_num = num.capi() as std::ffi::c_uint;
-        self.capi_return(unsafe {
-            ffi::tiledb_attribute_set_cell_val_num(
-                c_context,
-                *self.attr.raw,
-                c_num,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_set_cell_val_num(ctx, *self.attr.raw, c_num)
         })?;
         Ok(self)
     }
@@ -327,19 +302,14 @@ impl<'ctx> Builder<'ctx> {
         self.cell_val_num(CellValNum::Var)
     }
 
-    pub fn is_nullable(&self) -> bool {
+    pub fn is_nullable(&self) -> TileDBResult<bool> {
         self.attr.is_nullable()
     }
 
     pub fn nullability(self, nullable: bool) -> TileDBResult<Self> {
-        let c_context = self.attr.context.capi();
         let c_nullable: u8 = if nullable { 1 } else { 0 };
-        self.capi_return(unsafe {
-            ffi::tiledb_attribute_set_nullable(
-                c_context,
-                *self.attr.raw,
-                c_nullable,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_set_nullable(ctx, *self.attr.raw, c_nullable)
         })?;
         Ok(self)
     }
@@ -356,13 +326,12 @@ impl<'ctx> Builder<'ctx> {
             }));
         }
 
-        let c_context = self.attr.context.capi();
         let c_attr = *self.attr.raw;
         let c_val: Conv::CAPIType = value.to_capi();
 
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_set_fill_value(
-                c_context,
+                ctx,
                 c_attr,
                 &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
                 std::mem::size_of::<Conv::CAPIType>() as u64,
@@ -378,7 +347,7 @@ impl<'ctx> Builder<'ctx> {
         value: Conv,
         nullable: bool,
     ) -> TileDBResult<Self> {
-        if !self.attr.is_nullable() && !nullable {
+        if !self.attr.is_nullable()? && !nullable {
             /*
              * This should probably be embedded in the C API, but here's the deal:
              * If the attribute is not nullable, then the fill value cannot be null.
@@ -396,14 +365,13 @@ impl<'ctx> Builder<'ctx> {
             }));
         }
 
-        let c_context = self.attr.context.capi();
         let c_attr = *self.attr.raw;
         let c_val: Conv::CAPIType = value.to_capi();
         let c_nullable: u8 = if nullable { 1 } else { 0 };
 
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_set_fill_value_nullable(
-                c_context,
+                ctx,
                 c_attr,
                 &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
                 std::mem::size_of::<Conv::CAPIType>() as u64,
@@ -419,10 +387,9 @@ impl<'ctx> Builder<'ctx> {
         FL: Borrow<FilterList<'ctx>>,
     {
         let filter_list = filter_list.borrow();
-        let c_context = self.attr.context.capi();
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_set_filter_list(
-                c_context,
+                ctx,
                 *self.attr.raw,
                 // TODO: does the C API copy this? Or alias the pointer? Safety is not obvious
                 filter_list.capi(),
@@ -477,7 +444,7 @@ impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {
         Ok(AttributeData {
             name: attr.name()?,
             datatype,
-            nullability: Some(attr.is_nullable()),
+            nullability: Some(attr.is_nullable()?),
             cell_val_num: Some(attr.cell_val_num()?),
             fill: Some(fill),
             filters: FilterListData::try_from(&attr.filter_list()?)?,
@@ -564,7 +531,7 @@ mod test {
                 .expect("Error creating attribute instance.")
                 .build();
 
-            let nullable = attr.is_nullable();
+            let nullable = attr.is_nullable().unwrap();
             assert!(!nullable);
         }
         {
@@ -574,7 +541,7 @@ mod test {
                 .expect("Error setting attribute nullability.")
                 .build();
 
-            let nullable = attr.is_nullable();
+            let nullable = attr.is_nullable().unwrap();
             assert!(nullable);
         }
     }
