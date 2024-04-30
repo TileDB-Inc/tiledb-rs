@@ -125,7 +125,7 @@ impl<'ctx> Attribute<'ctx> {
             )
         })?;
 
-        if c_size != std::mem::size_of::<T>() as u64 {
+        if !self.datatype()?.is_compatible_type::<T>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
                 user_type: std::any::type_name::<T>(),
                 tiledb_type: self.datatype()?,
@@ -158,7 +158,7 @@ impl<'ctx> Attribute<'ctx> {
             )
         })?;
 
-        if c_size != std::mem::size_of::<T>() as u64 {
+        if !self.datatype()?.is_compatible_type::<T>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
                 user_type: std::any::type_name::<T>(),
                 tiledb_type: self.datatype()?,

@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use arrow_schema::Schema as ArrowSchema;
+use arrow::datatypes::Schema as ArrowSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::array::{
@@ -50,26 +50,18 @@ pub fn arrow_schema<'ctx>(
     tiledb: &'ctx Schema<'ctx>,
 ) -> TileDBResult<Option<ArrowSchema>> {
     let mut builder =
-        arrow_schema::SchemaBuilder::with_capacity(tiledb.nattributes()?);
+        arrow::datatypes::SchemaBuilder::with_capacity(tiledb.nattributes()?);
 
     for d in 0..tiledb.domain()?.ndim()? {
         let dim = tiledb.domain()?.dimension(d)?;
-        if let Some(field) = crate::array::dimension::arrow::arrow_field(&dim)?
-        {
-            builder.push(field)
-        } else {
-            return Ok(None);
-        }
+        let field = crate::array::dimension::arrow::arrow_field(&dim)?;
+        builder.push(field);
     }
 
     for a in 0..tiledb.nattributes()? {
         let attr = tiledb.attribute(a)?;
-        if let Some(field) = crate::array::attribute::arrow::arrow_field(&attr)?
-        {
-            builder.push(field)
-        } else {
-            return Ok(None);
-        }
+        let field = crate::array::attribute::arrow::arrow_field(&attr)?;
+        builder.push(field);
     }
 
     let metadata = serde_json::ser::to_string(&SchemaMetadata::new(tiledb)?)

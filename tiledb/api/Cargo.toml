@@ -10,7 +10,6 @@ path = "src/lib.rs"
 [dependencies]
 anyhow = { workspace = true }
 arrow = { version = "50.0.0", features = ["prettyprint"], optional = true }
-arrow-schema = { version = "50.0.0", default-features = false, optional = true }
 itertools = "0"
 num-traits = { version = "0.2", optional = true }
 paste = "1.0"
@@ -32,4 +31,4 @@ tempfile = "3"
 [features]
 default = []
 proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:proptest-derive"]
-arrow = ["dep:arrow", "dep:arrow-schema"]
+arrow = ["dep:arrow"]
