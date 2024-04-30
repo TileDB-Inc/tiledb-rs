@@ -46,12 +46,11 @@ where
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
         let context = query.base().context();
-        let c_context = context.capi();
         let c_array = **query.base().carray();
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
 
-        context.capi_return(unsafe {
-            ffi::tiledb_subarray_alloc(c_context, c_array, &mut c_subarray)
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_subarray_alloc(ctx, c_array, &mut c_subarray)
         })?;
 
         Ok(Builder {
@@ -68,7 +67,6 @@ where
         key: K,
         range: &[Conv; 2],
     ) -> TileDBResult<Self> {
-        let c_context = self.subarray.context.capi();
         let c_subarray = *self.subarray.raw;
 
         let c_start = &range[0] as *const Conv as *const std::ffi::c_void;
@@ -77,9 +75,9 @@ where
         match key.into() {
             LookupKey::Index(idx) => {
                 let c_idx = idx.try_into().unwrap();
-                self.capi_return(unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_subarray_add_range(
-                        c_context,
+                        ctx,
                         c_subarray,
                         c_idx,
                         c_start,
@@ -90,9 +88,9 @@ where
             }
             LookupKey::Name(name) => {
                 let c_name = cstring!(name);
-                self.capi_return(unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_subarray_add_range_by_name(
-                        c_context,
+                        ctx,
                         c_subarray,
                         c_name.as_ptr(),
                         c_start,
@@ -107,12 +105,11 @@ where
 
     /// Apply the subarray to the query, returning the query builder.
     pub fn finish_subarray(self) -> TileDBResult<Q> {
-        let c_context = self.subarray.context.capi();
         let c_query = **self.query.base().cquery();
         let c_subarray = *self.subarray.raw;
 
-        self.capi_return(unsafe {
-            ffi::tiledb_query_set_subarray_t(c_context, c_query, c_subarray)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_set_subarray_t(ctx, c_query, c_subarray)
         })?;
         Ok(self.query)
     }

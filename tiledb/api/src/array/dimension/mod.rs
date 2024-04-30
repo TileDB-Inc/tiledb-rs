@@ -51,37 +51,28 @@ impl<'ctx> Dimension<'ctx> {
     }
 
     pub fn name(&self) -> TileDBResult<String> {
-        let c_context = self.context.capi();
         let mut c_name = std::ptr::null::<std::ffi::c_char>();
-        self.capi_return(unsafe {
-            ffi::tiledb_dimension_get_name(c_context, *self.raw, &mut c_name)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_get_name(ctx, *self.raw, &mut c_name)
         })?;
         let c_name = unsafe { std::ffi::CStr::from_ptr(c_name) };
         Ok(String::from(c_name.to_string_lossy()))
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
-        let c_context = self.context.capi();
         let c_dimension = self.capi();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
-        self.capi_return(unsafe {
-            ffi::tiledb_dimension_get_type(
-                c_context,
-                c_dimension,
-                &mut c_datatype,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_get_type(ctx, c_dimension, &mut c_datatype)
         })?;
 
         Datatype::try_from(c_datatype)
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
-        let c_context = self.context.capi();
         let mut c_num: std::ffi::c_uint = 0;
-        self.capi_return(unsafe {
-            ffi::tiledb_dimension_get_cell_val_num(
-                c_context, *self.raw, &mut c_num,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_get_cell_val_num(ctx, *self.raw, &mut c_num)
         })?;
         CellValNum::try_from(c_num)
     }
@@ -91,13 +82,12 @@ impl<'ctx> Dimension<'ctx> {
     }
 
     pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
-        let c_context = self.context.capi();
         let c_dimension = self.capi();
         let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
 
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_dimension_get_domain(
-                c_context,
+                ctx,
                 c_dimension,
                 &mut c_domain_ptr,
             )
@@ -111,13 +101,12 @@ impl<'ctx> Dimension<'ctx> {
 
     /// Returns the tile extent of this dimension.
     pub fn extent<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
-        let c_context = self.context.capi();
         let c_dimension = self.capi();
         let mut c_extent_ptr: *const ::std::ffi::c_void = out_ptr!();
 
-        self.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_dimension_get_tile_extent(
-                c_context,
+                ctx,
                 c_dimension,
                 &mut c_extent_ptr,
             )
@@ -129,14 +118,9 @@ impl<'ctx> Dimension<'ctx> {
     pub fn filters(&self) -> TileDBResult<FilterList> {
         let mut c_fl: *mut ffi::tiledb_filter_list_t = out_ptr!();
 
-        let c_context = self.context.capi();
         let c_dimension = self.capi();
-        self.capi_return(unsafe {
-            ffi::tiledb_dimension_get_filter_list(
-                c_context,
-                c_dimension,
-                &mut c_fl,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_get_filter_list(ctx, c_dimension, &mut c_fl)
         })?;
 
         Ok(FilterList {
@@ -192,7 +176,6 @@ impl<'ctx> Builder<'ctx> {
         domain: &[Conv; 2],
         extent: &Conv,
     ) -> TileDBResult<Self> {
-        let c_context = context.capi();
         let c_datatype = datatype.capi_enum();
 
         let c_name = cstring!(name);
@@ -204,9 +187,9 @@ impl<'ctx> Builder<'ctx> {
         let mut c_dimension: *mut ffi::tiledb_dimension_t =
             std::ptr::null_mut();
 
-        context.capi_return(unsafe {
+        context.capi_call(|ctx| unsafe {
             ffi::tiledb_dimension_alloc(
-                c_context,
+                ctx,
                 c_name.as_ptr(),
                 c_datatype,
                 &c_domain[0] as *const <Conv>::CAPIType
@@ -232,25 +215,19 @@ impl<'ctx> Builder<'ctx> {
     }
 
     pub fn cell_val_num(self, num: CellValNum) -> TileDBResult<Self> {
-        let c_context = self.dim.context.capi();
         let c_num = num.capi() as std::ffi::c_uint;
-        self.capi_return(unsafe {
-            ffi::tiledb_dimension_set_cell_val_num(
-                c_context,
-                *self.dim.raw,
-                c_num,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_set_cell_val_num(ctx, *self.dim.raw, c_num)
         })?;
         Ok(self)
     }
 
     pub fn filters(self, filters: FilterList) -> TileDBResult<Self> {
-        let c_context = self.dim.context.capi();
         let c_dimension = self.dim.capi();
         let c_fl = filters.capi();
 
-        self.capi_return(unsafe {
-            ffi::tiledb_dimension_set_filter_list(c_context, c_dimension, c_fl)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_set_filter_list(ctx, c_dimension, c_fl)
         })?;
         Ok(self)
     }

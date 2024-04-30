@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
-use crate::context::{ContextBound, ObjectType};
+use crate::context::{CApiInterface, ContextBound, ObjectType};
 use crate::error::Error;
 use crate::key::LookupKey;
 use crate::{Context, Datatype};
@@ -63,8 +63,8 @@ impl<'ctx> Group<'ctx> {
         S: AsRef<str>,
     {
         let c_name = cstring!(name.as_ref());
-        context.capi_return(unsafe {
-            ffi::tiledb_group_create(context.capi(), c_name.as_ptr())
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_create(ctx, c_name.as_ptr())
         })
     }
 
@@ -77,34 +77,31 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = context.capi();
         let mut group_raw: *mut ffi::tiledb_group_t = out_ptr!();
 
         let c_uri = cstring!(uri.as_ref());
 
-        context.capi_return(unsafe {
-            ffi::tiledb_group_alloc(c_context, c_uri.as_ptr(), &mut group_raw)
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_alloc(ctx, c_uri.as_ptr(), &mut group_raw)
         })?;
 
         if let Some(cfg) = config {
             let c_cfg = cfg.capi();
-            context.capi_return(unsafe {
-                ffi::tiledb_group_set_config(c_context, group_raw, c_cfg)
+            context.capi_call(|ctx| unsafe {
+                ffi::tiledb_group_set_config(ctx, group_raw, c_cfg)
             })?;
         }
 
         let raw_group = RawGroup::new(group_raw);
         let query_type_raw = query_type.capi_enum();
-        context.capi_return(unsafe {
-            ffi::tiledb_group_open(c_context, group_raw, query_type_raw)
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_open(ctx, group_raw, query_type_raw)
         })?;
 
         let mut c_open: i32 = out_ptr!();
-        context
-            .capi_return(unsafe {
-                ffi::tiledb_group_is_open(c_context, raw_group.ffi, &mut c_open)
-            })
-            .expect("TileDB internal error when checking for open group.");
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_is_open(ctx, raw_group.ffi, &mut c_open)
+        })?;
 
         if c_open < 0 {
             return Err(Error::LibTileDB(
@@ -117,24 +114,19 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn uri(&self) -> TileDBResult<String> {
-        let c_context = self.context.capi();
         let mut c_uri: *const std::ffi::c_char = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_uri(c_context, Self::capi(self), &mut c_uri)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_get_uri(ctx, Self::capi(self), &mut c_uri)
         })?;
         let uri = unsafe { std::ffi::CStr::from_ptr(c_uri) };
         Ok(String::from(uri.to_string_lossy()))
     }
 
     pub fn query_type(&self) -> TileDBResult<QueryType> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut c_type: ffi::tiledb_query_type_t = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_query_type(
-                c_context,
-                Self::capi(self),
-                &mut c_type,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_get_query_type(ctx, c_group, &mut c_type)
         })?;
         QueryType::try_from(c_type)
     }
@@ -144,13 +136,13 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let c_uri = cstring!(uri.as_ref());
         let c_recursive: u8 = if recursive { 1 } else { 0 };
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_delete_group(
-                c_context,
-                Self::capi(&self),
+                ctx,
+                c_group,
                 c_uri.as_ptr(),
                 c_recursive,
             )
@@ -168,7 +160,7 @@ impl<'ctx> Group<'ctx> {
         S: AsRef<str>,
         T: AsRef<str>,
     {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let c_uri = cstring!(uri.as_ref());
         let c_name = match name.as_ref() {
             None => None,
@@ -179,10 +171,10 @@ impl<'ctx> Group<'ctx> {
             Some(s) => s.as_ptr(),
         };
         let c_relative: u8 = if relative { 1 } else { 0 };
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_add_member(
-                c_context,
-                Self::capi(self),
+                ctx,
+                c_group,
                 c_uri.as_ptr(),
                 c_relative,
                 c_ptr,
@@ -196,12 +188,12 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let c_name_or_uri = cstring!(name_or_uri.as_ref());
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_remove_member(
-                c_context,
-                Self::capi(self),
+                ctx,
+                c_group,
                 c_name_or_uri.as_ptr(),
             )
         })?;
@@ -209,30 +201,26 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn num_members(&self) -> TileDBResult<u64> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut c_count: u64 = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_member_count(
-                c_context,
-                Self::capi(self),
-                &mut c_count,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_get_member_count(ctx, c_group, &mut c_count)
         })?;
         Ok(c_count)
     }
 
     pub fn member(&self, key: LookupKey) -> TileDBResult<GroupInfo> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut tiledb_uri: *mut ffi::tiledb_string_t = out_ptr!();
         let mut tiledb_type: ffi::tiledb_object_t = out_ptr!();
         let name: String = match key {
             LookupKey::Index(index) => {
                 let mut tiledb_name: *mut ffi::tiledb_string_t = out_ptr!();
-                self.context.capi_return(unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_group_get_member_by_index_v2(
-                        c_context,
-                        Self::capi(self),
-                        index.try_into().unwrap(),
+                        ctx,
+                        c_group,
+                        index as u64,
                         &mut tiledb_uri as *mut *mut ffi::tiledb_string_t,
                         &mut tiledb_type,
                         &mut tiledb_name as *mut *mut ffi::tiledb_string_t,
@@ -247,10 +235,10 @@ impl<'ctx> Group<'ctx> {
             }
             LookupKey::Name(name) => {
                 let c_name = cstring!(name.as_ref() as &str);
-                self.context.capi_return(unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_group_get_member_by_name_v2(
-                        c_context,
-                        Self::capi(self),
+                        ctx,
+                        c_group,
                         c_name.as_ptr(),
                         &mut tiledb_uri as *mut *mut ffi::tiledb_string_t,
                         &mut tiledb_type,
@@ -278,13 +266,13 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut c_relative: u8 = out_ptr!();
         let c_name = cstring!(name.as_ref());
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_get_is_relative_uri_by_name(
-                c_context,
-                Self::capi(self),
+                ctx,
+                c_group,
                 c_name.as_ptr(),
                 &mut c_relative,
             )
@@ -293,22 +281,22 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn is_open(&self) -> TileDBResult<bool> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut c_open: i32 = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_is_open(c_context, Self::capi(self), &mut c_open)
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_is_open(ctx, c_group, &mut c_open)
         })?;
         Ok(c_open > 0)
     }
 
     pub fn dump(&self, recursive: bool) -> TileDBResult<String> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut c_str: *mut std::ffi::c_char = out_ptr!();
         let c_recursive = if recursive { 1 } else { 0 };
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_dump_str(
-                c_context,
-                Self::capi(self),
+                ctx,
+                c_group,
                 &mut c_str as *mut *mut std::ffi::c_char,
                 c_recursive,
             )
@@ -320,14 +308,10 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn config(&self) -> TileDBResult<Config> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_config(
-                c_context,
-                Self::capi(self),
-                &mut c_cfg,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_get_config(ctx, c_group, &mut c_cfg)
         })?;
 
         Ok(Config {
@@ -336,16 +320,16 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let (vec_size, vec_ptr, datatype) = metadata.c_data();
         let c_key = cstring!(metadata.key);
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_put_metadata(
-                c_context,
-                Self::capi(self),
+                ctx,
+                c_group,
                 c_key.as_ptr(),
                 datatype,
-                vec_size.try_into().unwrap(),
+                vec_size as u32,
                 vec_ptr,
             )
         })?;
@@ -356,33 +340,25 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let c_name = cstring!(name.as_ref());
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_delete_metadata(
-                c_context,
-                Self::capi(self),
-                c_name.as_ptr(),
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_delete_metadata(ctx, c_group, c_name.as_ptr())
         })?;
         Ok(())
     }
 
     pub fn num_metadata(&self) -> TileDBResult<u64> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut num: u64 = out_ptr!();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_get_metadata_num(
-                c_context,
-                Self::capi(self),
-                &mut num,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_get_metadata_num(ctx, c_group, &mut num)
         })?;
         Ok(num)
     }
 
     pub fn metadata(&self, key: LookupKey) -> TileDBResult<Metadata> {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let mut vec_size: u32 = out_ptr!();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
@@ -391,11 +367,11 @@ impl<'ctx> Group<'ctx> {
             LookupKey::Index(index) => {
                 let mut key_ptr: *const std::ffi::c_char = out_ptr!();
                 let mut key_len: u32 = out_ptr!();
-                self.context.capi_return(unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_group_get_metadata_from_index(
-                        c_context,
-                        Self::capi(self),
-                        index.try_into().unwrap(),
+                        ctx,
+                        c_group,
+                        index as u64,
                         &mut key_ptr,
                         &mut key_len,
                         &mut c_datatype,
@@ -408,10 +384,10 @@ impl<'ctx> Group<'ctx> {
             }
             LookupKey::Name(name) => {
                 let c_name = cstring!(name.as_ref() as &str);
-                self.context.capi_return(unsafe {
+                self.capi_call(|ctx| unsafe {
                     ffi::tiledb_group_get_metadata(
-                        c_context,
-                        Self::capi(self),
+                        ctx,
+                        c_group,
                         c_name.as_ptr(),
                         &mut c_datatype,
                         &mut vec_size,
@@ -429,14 +405,14 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = self.context.capi();
+        let c_group = self.capi();
         let c_name = cstring!(name.as_ref());
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let mut exists: i32 = out_ptr!();
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_has_metadata_key(
-                c_context,
-                Self::capi(self),
+                ctx,
+                c_group,
                 c_name.as_ptr(),
                 &mut c_datatype,
                 &mut exists,
@@ -458,12 +434,11 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = self.context.capi();
         let c_group_uri = cstring!(group_uri.as_ref());
         let cfg = config.capi();
-        self.context.capi_return(unsafe {
+        self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_consolidate_metadata(
-                c_context,
+                ctx,
                 c_group_uri.as_ptr(),
                 cfg,
             )
@@ -479,15 +454,10 @@ impl<'ctx> Group<'ctx> {
     where
         S: AsRef<str>,
     {
-        let c_context = self.context.capi();
         let c_group_uri = cstring!(group_uri.as_ref());
         let cfg = config.capi();
-        self.context.capi_return(unsafe {
-            ffi::tiledb_group_vacuum_metadata(
-                c_context,
-                c_group_uri.as_ptr(),
-                cfg,
-            )
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_vacuum_metadata(ctx, c_group_uri.as_ptr(), cfg)
         })?;
         Ok(())
     }
@@ -495,24 +465,20 @@ impl<'ctx> Group<'ctx> {
 
 impl Drop for Group<'_> {
     fn drop(&mut self) {
-        let c_context = self.context.capi();
-        let c_group = Self::capi(self);
-
+        let c_group = self.capi();
         let mut c_open: i32 = out_ptr!();
-        self.context
-            .capi_return(unsafe {
-                ffi::tiledb_group_is_open(c_context, c_group, &mut c_open)
-            })
-            .expect("TileDB internal error when checking for open group.");
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_group_is_open(ctx, c_group, &mut c_open)
+        })
+        .expect("TileDB internal error when checking for open group.");
 
         // We check if the group is open, and only delete when the group is open, because
         // if delete_group is called, then we should not close the group.
         if c_open > 0 {
-            self.context
-                .capi_return(unsafe {
-                    ffi::tiledb_group_close(c_context, c_group)
-                })
-                .expect("TileDB internal error when closing group");
+            self.capi_call(|ctx| unsafe {
+                ffi::tiledb_group_close(ctx, c_group)
+            })
+            .expect("TileDB internal error when closing group");
         }
     }
 }
