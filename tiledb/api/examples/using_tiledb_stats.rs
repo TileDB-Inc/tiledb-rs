@@ -1,12 +1,19 @@
 extern crate tiledb;
-use tiledb::config::Config;
-use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
-use tiledb::vfs::VFS;
-use tiledb::Datatype;
-use tiledb::{Array, Result as TileDBResult};
 
-const ARRAY_NAME: &str = "stats_array";
-const ATTRIBUTE_NAME: &str = "a";
+use tiledb::array::{
+    Array, ArrayType, AttributeBuilder, DimensionBuilder, DomainBuilder, Mode,
+    SchemaBuilder,
+};
+use tiledb::context::Context;
+use tiledb::datatype::Datatype;
+use tiledb::query::buffer::{ReadBufferCollection, WriteBufferCollection};
+use tiledb::query::read::ReadQueryBuilder;
+use tiledb::query::traits::QueryBuilder;
+use tiledb::query::write::WriteQueryBuilder;
+use tiledb::vfs::VFS;
+use tiledb::Result as TileDBResult;
+
+const ARRAY_URI: &str = "stats_array";
 
 /// Function that takes a vector of tiledb::stats::Metrics struct and prints
 /// the data. The Metrics struct has two public fields: a HashMap<String, f64>
@@ -33,61 +40,48 @@ pub fn print_metrics(metrics: &[tiledb::stats::Metrics]) {
 /// Hence, we have 144,000,000 elements in the array. There are
 /// 144,000,000/(row_tile_extent * col_tile_extent) tiles in this array.
 pub fn create_array(
+    ctx: &Context,
     row_tile_extent: u32,
     col_tile_extent: u32,
 ) -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
-    let config: Config = tiledb::config::Config::new()?;
-    let vfs: VFS = tiledb::vfs::VFS::new(&tdb, &config)?;
+    let vfs: VFS = VFS::new(ctx)?;
 
-    let is_cur_dir = vfs.is_dir(ARRAY_NAME)?;
-    if is_cur_dir {
-        vfs.remove_dir(ARRAY_NAME)?;
+    if vfs.is_dir(ARRAY_URI)? {
+        vfs.remove_dir(ARRAY_URI)?;
     }
 
     let domain = {
-        let rows: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<u32>(
-                &tdb,
-                "row",
-                Datatype::UInt32,
-                &[1, 12000],
-                &row_tile_extent,
-            )?
-            .build();
+        let rows = DimensionBuilder::new::<u32>(
+            ctx,
+            "rows",
+            Datatype::UInt32,
+            &[1, 12000],
+            &row_tile_extent,
+        )?
+        .build();
 
-        let cols: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<u32>(
-                &tdb,
-                "col",
-                Datatype::UInt32,
-                &[1, 12000],
-                &col_tile_extent,
-            )?
-            .build();
+        let cols = DimensionBuilder::new::<u32>(
+            ctx,
+            "cols",
+            Datatype::UInt32,
+            &[1, 12000],
+            &col_tile_extent,
+        )?
+        .build();
 
-        tiledb::array::DomainBuilder::new(&tdb)?
+        DomainBuilder::new(ctx)?
             .add_dimension(rows)?
             .add_dimension(cols)?
             .build()
     };
 
-    let attribute_a = tiledb::array::AttributeBuilder::new(
-        &tdb,
-        ATTRIBUTE_NAME,
-        tiledb::Datatype::Int32,
-    )?
-    .build();
+    let attr = AttributeBuilder::new(ctx, "attr", Datatype::Int32)?.build();
 
-    let schema = tiledb::array::SchemaBuilder::new(
-        &tdb,
-        tiledb::array::ArrayType::Dense,
-        domain,
-    )?
-    .add_attribute(attribute_a)?
-    .build()?;
+    let schema = SchemaBuilder::new(ctx, ArrayType::Dense, domain)?
+        .add_attribute(attr)?
+        .build()?;
 
-    tiledb::Array::create(&tdb, ARRAY_NAME, schema)
+    tiledb::Array::create(ctx, ARRAY_URI, schema)
 }
 
 /// Writes data into the array in row-major order from a 1D-array buffer.
@@ -96,18 +90,19 @@ pub fn create_array(
 ///  [ 12000, 12001, ... 23999],
 ///  ...
 ///  [143988000, 143988001 ... 143999999]]
-pub fn write_array() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
-    let array: Array =
-        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
-    let data: Vec<i32> = Vec::from_iter(0..12000 * 12000);
+pub fn write_array(ctx: &Context) -> TileDBResult<()> {
+    let array = Array::open(ctx, ARRAY_URI, Mode::Write)?;
+    let attr_data = Vec::from_iter(0i32..12000 * 12000);
 
-    let query = tiledb::query::WriteBuilder::new(array)?
+    let mut query = WriteQueryBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .data_typed(ATTRIBUTE_NAME, &data)?
         .build();
 
-    query.submit()?;
+    let buffers = WriteBufferCollection::new()
+        .add_buffer("attr", attr_data.as_slice())?;
+
+    let _ = query.submit(&buffers)?;
+    query.finalize()?;
     Ok(())
 }
 
@@ -124,26 +119,32 @@ pub fn write_array() -> TileDBResult<()> {
 ///  [_, _, ... , _],
 /// ...
 /// [_, _, ... , _]]
-pub fn read_array(json: bool) -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
+pub fn read_array(ctx: &Context, json: bool) -> TileDBResult<()> {
+    let array = Array::open(ctx, ARRAY_URI, Mode::Read)?;
 
-    let array =
-        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
-
-    let mut query = tiledb::query::ReadBuilder::new(array)?
+    let mut query = ReadQueryBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .register_constructor::<_, Vec<i32>>(
-            ATTRIBUTE_NAME,
-            Default::default(),
-        )?
         .start_subarray()?
-        .add_range(0, &[1u32, 3000])?
-        .add_range(1, &[1u32, 12000])?
+        .add_range("rows", &[1u32, 12000])?
+        .add_range("cols", &[1u32, 3000])?
         .finish_subarray()?
         .build();
 
+    let row_data = vec![0u32; 12000 * 3000].into_boxed_slice();
+    let col_data = vec![0u32; 12000 * 3000].into_boxed_slice();
+    let attr_data = vec![0i32; 12000 * 3000].into_boxed_slice();
+
+    let buffers = ReadBufferCollection::new();
+    buffers
+        .borrow_mut()
+        .add_buffer("rows", row_data)?
+        .add_buffer("cols", col_data)?
+        .add_buffer("attr", attr_data)?;
+
     tiledb::stats::enable()?;
-    let (_results, _) = query.execute()?;
+
+    let result = query.submit(&buffers)?;
+    assert!(result.completed());
 
     if json {
         let stats = tiledb::stats::dump_json()?;
@@ -163,9 +164,10 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
 }
 
 fn main() -> TileDBResult<()> {
-    create_array(1, 12000)?;
-    write_array()?;
-    read_array(false)?;
-    read_array(true)?;
+    let ctx = Context::new()?;
+    create_array(&ctx, 1, 12000)?;
+    write_array(&ctx)?;
+    read_array(&ctx, false)?;
+    read_array(&ctx, true)?;
     Ok(())
 }

@@ -107,7 +107,12 @@ impl ContextBound for VFSHandle {
 }
 
 impl VFS {
-    pub fn new(ctx: &Context, config: &Config) -> TileDBResult<VFS> {
+    pub fn new(ctx: &Context) -> TileDBResult<VFS> {
+        let config = ctx.get_config()?;
+        VFS::with_config(ctx, &config)
+    }
+
+    pub fn with_config(ctx: &Context, config: &Config) -> TileDBResult<VFS> {
         let c_config = config.capi();
         let mut c_vfs: *mut ffi::tiledb_vfs_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
