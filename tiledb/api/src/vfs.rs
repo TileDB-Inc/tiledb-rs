@@ -553,16 +553,22 @@ mod tests {
     #[test]
     fn vfs_alloc() -> TileDBResult<()> {
         let ctx = Context::new()?;
+        VFS::new(&ctx)?;
+        Ok(())
+    }
+
+    #[test]
+    fn vfs_alloc_with_config() -> TileDBResult<()> {
+        let ctx = Context::new()?;
         let cfg = Config::new()?;
-        VFS::new(&ctx, &cfg)?;
+        VFS::with_config(&ctx, &cfg)?;
         Ok(())
     }
 
     #[test]
     fn vfs_directory_operations() -> TileDBResult<()> {
         let ctx = Context::new()?;
-        let cfg = Config::new()?;
-        let vfs = VFS::new(&ctx, &cfg)?;
+        let vfs = VFS::new(&ctx)?;
 
         let tmp_dir = TempDir::new().unwrap();
 
@@ -638,8 +644,7 @@ mod tests {
     #[test]
     fn vfs_file_operations() -> TileDBResult<()> {
         let ctx = Context::new()?;
-        let cfg = Config::new()?;
-        let vfs = VFS::new(&ctx, &cfg)?;
+        let vfs = VFS::new(&ctx)?;
 
         let tmp_dir = TempDir::new().unwrap();
 
@@ -758,8 +763,7 @@ mod tests {
     #[test]
     fn vfs_ls() -> TileDBResult<()> {
         let ctx = Context::new()?;
-        let cfg = Config::new()?;
-        let vfs = VFS::new(&ctx, &cfg)?;
+        let vfs = VFS::new(&ctx)?;
 
         let tmp_dir = TempDir::new().unwrap();
 
@@ -789,8 +793,7 @@ mod tests {
         }
 
         let ctx = Context::new()?;
-        let cfg = Config::new()?;
-        let vfs = VFS::new(&ctx, &cfg)?;
+        let vfs = VFS::new(&ctx)?;
 
         let tmp_dir = TempDir::new().unwrap();
 
@@ -815,8 +818,7 @@ mod tests {
         }
 
         let ctx = Context::new()?;
-        let cfg = Config::new()?;
-        let vfs = VFS::new(&ctx, &cfg)?;
+        let vfs = VFS::new(&ctx)?;
 
         let tmp_dir = TempDir::new().unwrap();
 

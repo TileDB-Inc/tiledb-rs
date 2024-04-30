@@ -80,8 +80,7 @@ fn create_arrays_groups() -> TileDBResult<()> {
     Group::create(&tdb, "my_group/sparse_arrays")?;
 
     // Create dense_arrays folder
-    let cfg = tiledb::config::Config::new()?;
-    let vfs = VFS::new(&tdb, &cfg)?;
+    let vfs = VFS::new(&tdb)?;
     vfs.create_dir("my_group/dense_arrays")?;
 
     // Create arrays
