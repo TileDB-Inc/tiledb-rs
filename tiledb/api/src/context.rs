@@ -36,8 +36,8 @@ impl Display for ObjectType {
     }
 }
 
-pub(crate) enum RawContext {
-    Owned(*mut ffi::tiledb_ctx_t),
+pub(crate) struct RawContext {
+    raw: *mut ffi::tiledb_ctx_t,
 }
 
 impl Drop for RawContext {
