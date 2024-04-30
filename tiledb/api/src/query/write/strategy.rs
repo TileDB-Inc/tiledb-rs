@@ -74,13 +74,24 @@ typed_field_data!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 typed_field_data!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 typed_field_data!(Float32: f32, Float64: f64);
 
+impl From<Vec<String>> for FieldData {
+    fn from(value: Vec<String>) -> Self {
+        FieldData::from(
+            value
+                .into_iter()
+                .map(|s| s.into_bytes())
+                .collect::<Vec<Vec<u8>>>(),
+        )
+    }
+}
+
 impl From<&TypedRawReadOutput<'_>> for FieldData {
     fn from(value: &TypedRawReadOutput) -> Self {
         typed_query_buffers_go!(value.buffers, DT, ref handle, {
             let rr = RawReadOutput {
                 nvalues: value.nvalues,
                 nbytes: value.nbytes,
-                input: handle,
+                input: handle.borrow(),
             };
             if rr.input.cell_offsets.is_some() {
                 Self::from(
@@ -100,189 +111,195 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
     }
 }
 
+#[macro_export]
 macro_rules! typed_field_data_go {
-    ($field:expr, $DT:ident, $data:pat, $then:expr) => {
+    ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {{
+        use $crate::query::write::strategy::FieldData;
         match $field {
             FieldData::UInt8($data) => {
-                type $DT = Vec<u8>;
-                $then
+                type $DT = u8;
+                $fixed
             }
             FieldData::UInt16($data) => {
-                type $DT = Vec<u16>;
-                $then
+                type $DT = u16;
+                $fixed
             }
             FieldData::UInt32($data) => {
-                type $DT = Vec<u32>;
-                $then
+                type $DT = u32;
+                $fixed
             }
             FieldData::UInt64($data) => {
-                type $DT = Vec<u64>;
-                $then
+                type $DT = u64;
+                $fixed
             }
             FieldData::Int8($data) => {
-                type $DT = Vec<i8>;
-                $then
+                type $DT = i8;
+                $fixed
             }
             FieldData::Int16($data) => {
-                type $DT = Vec<i16>;
-                $then
+                type $DT = i16;
+                $fixed
             }
             FieldData::Int32($data) => {
-                type $DT = Vec<i32>;
-                $then
+                type $DT = i32;
+                $fixed
             }
             FieldData::Int64($data) => {
-                type $DT = Vec<i64>;
-                $then
+                type $DT = i64;
+                $fixed
             }
             FieldData::Float32($data) => {
-                type $DT = Vec<f32>;
-                $then
+                type $DT = f32;
+                $fixed
             }
             FieldData::Float64($data) => {
-                type $DT = Vec<f64>;
-                $then
+                type $DT = f64;
+                $fixed
             }
             FieldData::VecUInt8($data) => {
-                type $DT = Vec<Vec<u8>>;
-                $then
+                type $DT = u8;
+                $var
             }
             FieldData::VecUInt16($data) => {
-                type $DT = Vec<Vec<u16>>;
-                $then
+                type $DT = u16;
+                $var
             }
             FieldData::VecUInt32($data) => {
-                type $DT = Vec<Vec<u32>>;
-                $then
+                type $DT = u32;
+                $var
             }
             FieldData::VecUInt64($data) => {
-                type $DT = Vec<Vec<u64>>;
-                $then
+                type $DT = u64;
+                $var
             }
             FieldData::VecInt8($data) => {
-                type $DT = Vec<Vec<i8>>;
-                $then
+                type $DT = i8;
+                $var
             }
             FieldData::VecInt16($data) => {
-                type $DT = Vec<Vec<i16>>;
-                $then
+                type $DT = i16;
+                $var
             }
             FieldData::VecInt32($data) => {
-                type $DT = Vec<Vec<i32>>;
-                $then
+                type $DT = i32;
+                $var
             }
             FieldData::VecInt64($data) => {
-                type $DT = Vec<Vec<i64>>;
-                $then
+                type $DT = i64;
+                $var
             }
             FieldData::VecFloat32($data) => {
-                type $DT = Vec<Vec<f32>>;
-                $then
+                type $DT = f32;
+                $var
             }
             FieldData::VecFloat64($data) => {
-                type $DT = Vec<Vec<f64>>;
-                $then
+                type $DT = f64;
+                $var
             }
         }
+    }};
+    ($field:expr, $data:pat, $then:expr) => {
+        typed_field_data_go!($field, _DT, $data, $then, $then)
     };
-    ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
+        use $crate::query::write::strategy::FieldData;
         match ($lexpr, $rexpr) {
             (FieldData::UInt8($lpat), FieldData::UInt8($rpat)) => {
-                type $DT = Vec<u8>;
+                type $DT = u8;
                 $same_type
             }
             (FieldData::UInt16($lpat), FieldData::UInt16($rpat)) => {
-                type $DT = Vec<u16>;
+                type $DT = u16;
                 $same_type
             }
             (FieldData::UInt32($lpat), FieldData::UInt32($rpat)) => {
-                type $DT = Vec<u32>;
+                type $DT = u32;
                 $same_type
             }
             (FieldData::UInt64($lpat), FieldData::UInt64($rpat)) => {
-                type $DT = Vec<u64>;
+                type $DT = u64;
                 $same_type
             }
             (FieldData::Int8($lpat), FieldData::Int8($rpat)) => {
-                type $DT = Vec<i8>;
+                type $DT = i8;
                 $same_type
             }
             (FieldData::Int16($lpat), FieldData::Int16($rpat)) => {
-                type $DT = Vec<i16>;
+                type $DT = i16;
                 $same_type
             }
             (FieldData::Int32($lpat), FieldData::Int32($rpat)) => {
-                type $DT = Vec<i32>;
+                type $DT = i32;
                 $same_type
             }
             (FieldData::Int64($lpat), FieldData::Int64($rpat)) => {
-                type $DT = Vec<i64>;
+                type $DT = i64;
                 $same_type
             }
             (FieldData::Float32($lpat), FieldData::Float32($rpat)) => {
-                type $DT = Vec<f32>;
+                type $DT = f32;
                 $same_type
             }
             (FieldData::Float64($lpat), FieldData::Float64($rpat)) => {
-                type $DT = Vec<f64>;
+                type $DT = f64;
                 $same_type
             }
             (FieldData::VecUInt8($lpat), FieldData::VecUInt8($rpat)) => {
-                type $DT = Vec<Vec<u8>>;
+                type $DT = u8;
                 $same_type
             }
             (FieldData::VecUInt16($lpat), FieldData::VecUInt16($rpat)) => {
-                type $DT = Vec<Vec<u16>>;
+                type $DT = u16;
                 $same_type
             }
             (FieldData::VecUInt32($lpat), FieldData::VecUInt32($rpat)) => {
-                type $DT = Vec<Vec<u32>>;
+                type $DT = u32;
                 $same_type
             }
             (FieldData::VecUInt64($lpat), FieldData::VecUInt64($rpat)) => {
-                type $DT = Vec<Vec<u64>>;
+                type $DT = u64;
                 $same_type
             }
             (FieldData::VecInt8($lpat), FieldData::VecInt8($rpat)) => {
-                type $DT = Vec<Vec<i8>>;
+                type $DT = i8;
                 $same_type
             }
             (FieldData::VecInt16($lpat), FieldData::VecInt16($rpat)) => {
-                type $DT = Vec<Vec<i16>>;
+                type $DT = i16;
                 $same_type
             }
             (FieldData::VecInt32($lpat), FieldData::VecInt32($rpat)) => {
-                type $DT = Vec<Vec<i32>>;
+                type $DT = i32;
                 $same_type
             }
             (FieldData::VecInt64($lpat), FieldData::VecInt64($rpat)) => {
-                type $DT = Vec<Vec<i64>>;
+                type $DT = i64;
                 $same_type
             }
             (FieldData::VecFloat32($lpat), FieldData::VecFloat32($rpat)) => {
-                type $DT = Vec<Vec<f32>>;
+                type $DT = f32;
                 $same_type
             }
             (FieldData::VecFloat64($lpat), FieldData::VecFloat64($rpat)) => {
-                type $DT = Vec<Vec<f64>>;
+                type $DT = f64;
                 $same_type
             }
             _ => $else,
         }
-    };
+    }};
 }
 
 impl FieldData {
     pub fn is_empty(&self) -> bool {
-        typed_field_data_go!(self, _DT, v, v.is_empty())
+        typed_field_data_go!(self, v, v.is_empty())
     }
 
     pub fn len(&self) -> usize {
-        typed_field_data_go!(self, _DT, v, v.len())
+        typed_field_data_go!(self, v, v.len())
     }
 
     pub fn filter(&self, set: &VarBitSet) -> FieldData {
-        typed_field_data_go!(self, _DT, ref values, {
+        typed_field_data_go!(self, ref values, {
             FieldData::from(
                 values
                     .clone()
@@ -309,7 +326,7 @@ impl ReadCallbackVarArg for RawResultCallback {
 
     fn intermediate_result(
         &mut self,
-        args: &[TypedRawReadOutput],
+        args: Vec<TypedRawReadOutput>,
     ) -> Result<Self::Intermediate, Self::Error> {
         Ok(RawReadQueryResult(
             self.field_order
@@ -322,7 +339,7 @@ impl ReadCallbackVarArg for RawResultCallback {
 
     fn final_result(
         mut self,
-        args: &[TypedRawReadOutput],
+        args: Vec<TypedRawReadOutput>,
     ) -> Result<Self::Intermediate, Self::Error> {
         self.intermediate_result(args)
     }
@@ -330,7 +347,7 @@ impl ReadCallbackVarArg for RawResultCallback {
 
 #[derive(Clone, Debug)]
 pub struct WriteQueryData {
-    fields: HashMap<String, FieldData>,
+    pub fields: HashMap<String, FieldData>,
 }
 
 impl WriteQueryData {
@@ -340,12 +357,7 @@ impl WriteQueryData {
     ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
         let mut b = b;
         for f in self.fields.iter() {
-            b = typed_field_data_go!(
-                f.1,
-                DT,
-                data,
-                b.data_typed::<_, DT>(f.0, data)
-            )?;
+            b = typed_field_data_go!(f.1, data, b.data_typed(f.0, data))?;
         }
         Ok(b)
     }
@@ -640,15 +652,47 @@ impl ValueTree for WriteQueryDataValueTree {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct WriteQueryDataParameters {
+    pub schema: Option<Rc<SchemaData>>,
+    pub min_records: usize,
+    pub max_records: usize,
+    pub value_min_var_size: usize,
+    pub value_max_var_size: usize,
+}
+
+impl Default for WriteQueryDataParameters {
+    fn default() -> Self {
+        const WRITE_QUERY_MIN_RECORDS: usize = 0;
+        const WRITE_QUERY_MAX_RECORDS: usize = 1024 * 1024;
+
+        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
+        const WRITE_QUERY_MAX_VAR_SIZE: usize = 1024 * 128;
+
+        WriteQueryDataParameters {
+            schema: None,
+            min_records: WRITE_QUERY_MIN_RECORDS,
+            max_records: WRITE_QUERY_MAX_RECORDS,
+            value_min_var_size: WRITE_QUERY_MIN_VAR_SIZE,
+            value_max_var_size: WRITE_QUERY_MAX_VAR_SIZE,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct WriteQueryDataStrategy {
     schema: Rc<SchemaData>,
+    params: WriteQueryDataParameters,
 }
 
 impl WriteQueryDataStrategy {
-    pub fn new(schema: &Rc<SchemaData>) -> Self {
+    pub fn new(
+        schema: &Rc<SchemaData>,
+        params: WriteQueryDataParameters,
+    ) -> Self {
         WriteQueryDataStrategy {
             schema: Rc::clone(schema),
+            params,
         }
     }
 }
@@ -658,14 +702,8 @@ impl Strategy for WriteQueryDataStrategy {
     type Value = WriteQueryData;
 
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
-        const WRITE_QUERY_MIN_RECORDS: usize = 0;
-        const WRITE_QUERY_MAX_RECORDS: usize = 1024 * 1024;
-
-        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
-        const WRITE_QUERY_MAX_VAR_SIZE: usize = 1024 * 128;
-
         /* Choose the maximum number of records */
-        let nrecords = (WRITE_QUERY_MIN_RECORDS..=WRITE_QUERY_MAX_RECORDS)
+        let nrecords = (self.params.min_records..=self.params.max_records)
             .new_tree(runner)?
             .current();
 
@@ -720,7 +758,10 @@ impl Strategy for WriteQueryDataStrategy {
                         }))
                     } else {
                         let (min, max) = if cell_val_num.is_var_sized() {
-                            (WRITE_QUERY_MIN_VAR_SIZE, WRITE_QUERY_MAX_VAR_SIZE)
+                            (
+                                self.params.value_min_var_size,
+                                self.params.value_max_var_size,
+                            )
                         } else {
                             let fixed_bound =
                                 Into::<u32>::into(cell_val_num) as usize;
@@ -757,16 +798,16 @@ impl Strategy for WriteQueryDataStrategy {
 }
 
 impl Arbitrary for WriteQueryData {
-    type Parameters = Option<Rc<SchemaData>>;
+    type Parameters = WriteQueryDataParameters;
     type Strategy = BoxedStrategy<WriteQueryData>;
 
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = args {
-            WriteQueryDataStrategy::new(&schema).boxed()
+    fn arbitrary_with(mut args: Self::Parameters) -> Self::Strategy {
+        if let Some(schema) = args.schema.take() {
+            WriteQueryDataStrategy::new(&schema, args).boxed()
         } else {
             any::<SchemaData>()
-                .prop_flat_map(|schema| {
-                    WriteQueryDataStrategy::new(&Rc::new(schema))
+                .prop_flat_map(move |schema| {
+                    WriteQueryDataStrategy::new(&Rc::new(schema), args.clone())
                 })
                 .boxed()
         }
@@ -807,7 +848,10 @@ pub fn prop_write_sequence(
 ) -> impl Strategy<Value = WriteSequence> {
     const MAX_WRITES: usize = 8;
     proptest::collection::vec(
-        any_with::<WriteQueryData>(Some(Rc::clone(schema))),
+        any_with::<WriteQueryData>(WriteQueryDataParameters {
+            schema: Some(Rc::clone(schema)),
+            ..Default::default()
+        }),
         0..MAX_WRITES,
     )
     .prop_map(|writes| WriteSequence { writes })
@@ -898,7 +942,7 @@ mod tests {
                                 };
 
                                 let wdata =
-                                    typed_field_data_go!(wdata, _DT, wdata, {
+                                    typed_field_data_go!(wdata, wdata, {
                                         FieldData::from(
                                             wdata[cursors[key]
                                                 ..cursors[key] + nv]

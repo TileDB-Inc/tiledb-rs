@@ -75,3 +75,26 @@ pub fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
         |dt| dt.is_allowed_dimension_type_dense(),
     )
 }
+
+#[derive(Clone, Debug, Default)]
+pub enum DatatypeContext {
+    #[default]
+    Any,
+    DenseDimension,
+    Implemented,
+}
+
+impl Arbitrary for Datatype {
+    type Parameters = DatatypeContext;
+    type Strategy = BoxedStrategy<Datatype>;
+
+    fn arbitrary_with(p: Self::Parameters) -> Self::Strategy {
+        match p {
+            DatatypeContext::Any => prop_datatype().boxed(),
+            DatatypeContext::DenseDimension => {
+                prop_datatype_for_dense_dimension().boxed()
+            }
+            DatatypeContext::Implemented => prop_datatype_implemented().boxed(),
+        }
+    }
+}
