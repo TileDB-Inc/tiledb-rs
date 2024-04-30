@@ -1,24 +1,29 @@
-use std::cell::RefCell;
-
 use itertools::izip;
 
 use tiledb::array::{
     Array, ArrayType, AttributeBuilder, CellOrder, DimensionBuilder,
     DomainBuilder, SchemaBuilder,
 };
-use tiledb::query::buffer::{BufferMut, QueryBuffersMut};
-use tiledb::query::conditions::QueryConditionExpr as QC;
-use tiledb::query::{
-    Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
+use tiledb::context::Context;
+use tiledb::datatype::Datatype;
+use tiledb::query::buffer::{
+    AllocatedWriteBuffer, ReadBufferCollection, WriteBufferCollection,
 };
-use tiledb::{Context, Datatype, Result as TileDBResult};
+use tiledb::query::conditions::QueryConditionExpr as QC;
+use tiledb::query::read::{
+    ReadQueryBuilder, ReadQueryField as RQField, ReadQueryFieldAccessor,
+    ReadQueryFieldAsIterator, ReadQueryFieldAsStringIterator,
+};
+use tiledb::query::traits::QueryBuilder;
+use tiledb::query::write::WriteQueryBuilder;
+use tiledb::Result as TileDBResult;
 
-const ARRAY_URI: &str = "example_query_condition_sparse";
+const ARRAY_URI: &str = "example_query_condition_dense";
 const NUM_ELEMS: i32 = 10;
 const C_FILL_VALUE: i32 = -1;
 const D_FILL_VALUE: f32 = 0.0;
 
-/// Demonstrate reading sparse arrays with query conditions.
+/// Demonstrate reading dense arrays with query conditions.
 fn main() -> TileDBResult<()> {
     let ctx = Context::new()?;
     if !Array::exists(&ctx, ARRAY_URI)? {
@@ -59,16 +64,8 @@ fn main() -> TileDBResult<()> {
 /// to stdout.
 fn read_array(ctx: &Context, qc: Option<&QC>) -> TileDBResult<()> {
     let array = tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
-    let mut query = ReadBuilder::new(array)?
+    let mut query = ReadQueryBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .register_constructor::<_, Vec<i32>>("index", Default::default())?
-        .register_constructor::<_, (Vec<i32>, Vec<u8>)>(
-            "a",
-            Default::default(),
-        )?
-        .register_constructor::<_, Vec<String>>("b", Default::default())?
-        .register_constructor::<_, Vec<i32>>("c", Default::default())?
-        .register_constructor::<_, Vec<f32>>("d", Default::default())?
         .start_subarray()?
         .add_range("index", &[0i32, NUM_ELEMS - 1])?
         .finish_subarray()?;
@@ -81,15 +78,47 @@ fn read_array(ctx: &Context, qc: Option<&QC>) -> TileDBResult<()> {
 
     let mut query = query.build();
 
-    let (d, (c, (b, ((a, a_validity), (index, ()))))) = query.execute()?;
+    let index_data = vec![0i32; 10].into_boxed_slice();
+    let a_data = vec![0i32; 10].into_boxed_slice();
+    let a_validity = vec![0u8; 10].into_boxed_slice();
+    let b_data = vec![0u8; 44].into_boxed_slice();
+    let b_offsets = vec![0u64; 10].into_boxed_slice();
+    let c_data = vec![0i32; 10].into_boxed_slice();
+    let d_data = vec![0.0f32; 10].into_boxed_slice();
 
-    for (index, a, a_valid, b, c, d) in izip!(index, a, a_validity, b, c, d) {
-        if a_valid == 1 {
-            println!("{}: '{}' '{}' '{}', '{}'", index, a, b, c, d)
+    let buffers = ReadBufferCollection::new();
+    buffers
+        .borrow_mut()
+        .add_buffer("index", index_data)?
+        .add_buffer("a", (a_data, a_validity))?
+        .add_buffer("b", (b_data, b_offsets))?
+        .add_buffer("c", c_data)?
+        .add_buffer("d", d_data)?;
+
+    let result = query.submit(&buffers)?;
+    assert!(result.completed());
+
+    let slices = result.slices()?;
+    let index_values: RQField<i32> = slices.field("index")?;
+    let a_values: RQField<i32> = slices.field("a")?;
+    let b_values: RQField<u8> = slices.field("b")?;
+    let c_values: RQField<i32> = slices.field("c")?;
+    let d_values: RQField<f32> = slices.field("d")?;
+
+    for (index, (a, a_valid), b, c, d) in izip!(
+        index_values.iter()?,
+        a_values.nullable_iter()?,
+        b_values.lossy_str_iter()?,
+        c_values.iter()?,
+        d_values.iter()?
+    ) {
+        if *a_valid == 1 {
+            println!("{}: '{}' '{}' '{}' '{}'", index, a, b, c, d);
         } else {
-            println!("{}: null '{}', '{}', '{}'", index, b, c, d)
+            println!("{}: null '{}' '{}' '{}'", index, b, c, d);
         }
     }
+
     println!();
     Ok(())
 }
@@ -134,7 +163,6 @@ fn create_array(ctx: &Context) -> TileDBResult<()> {
         .build();
 
     let schema = SchemaBuilder::new(ctx, ArrayType::Sparse, domain)?
-        .cell_order(CellOrder::RowMajor)?
         .add_attribute(attr_a)?
         .add_attribute(attr_b)?
         .add_attribute(attr_c)?
@@ -159,38 +187,33 @@ fn create_array(ctx: &Context) -> TileDBResult<()> {
 ///   8   | null | ivan  | 3 | 3.2
 ///   9   | 10   | judy  | 4 | 3.1
 fn write_array(ctx: &Context) -> TileDBResult<()> {
-    let index_input = vec![0u32, 1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let a_data = RefCell::new(QueryBuffersMut {
-        data: BufferMut::Owned(
-            vec![0u32, 2, 0, 4, 0, 6, 0, 8, 0, 10].into_boxed_slice(),
-        ),
-        cell_offsets: None,
-        validity: Some(BufferMut::Owned(
-            vec![0u8, 1, 0, 1, 0, 1, 0, 1, 0, 1].into_boxed_slice(),
-        )),
-    });
-    let a_borrowed = a_data.borrow();
-    let a_input = a_borrowed.as_shared();
-    let b_input = vec![
+    let index_data = vec![0u32, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+    let a_data = vec![0u32, 2, 0, 4, 0, 6, 0, 8, 0, 10];
+    let a_validity = vec![0u8, 1, 0, 1, 0, 1, 0, 1, 0, 1];
+    let b_data = vec![
         "alice", "bob", "craig", "dave", "erin", "frank", "grace", "heidi",
         "ivan", "judy",
     ];
-    let c_input = vec![0i32, 0, 0, 0, 0, 0, 1, 2, 3, 4];
-    let d_input = vec![4.1f32, 3.4, 5.6, 3.7, 2.3, 1.7, 3.8, 4.9, 3.2, 3.1];
+    let b_data = AllocatedWriteBuffer::from(&b_data);
+    let c_data = vec![0i32, 0, 0, 0, 0, 0, 1, 2, 3, 4];
+    let d_data = vec![4.1f32, 3.4, 5.6, 3.7, 2.3, 1.7, 3.8, 4.9, 3.2, 3.1];
 
     let array =
         tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Write)?;
 
-    let query = WriteBuilder::new(array)?
+    let mut query = WriteQueryBuilder::new(array)?
         .layout(CellOrder::Unordered)?
-        .data_typed("index", &index_input)?
-        .data_typed("a", &a_input)?
-        .data_typed("b", &b_input)?
-        .data_typed("c", &c_input)?
-        .data_typed("d", &d_input)?
         .build();
 
-    query.submit().and_then(|_| query.finalize())?;
+    let buffers = WriteBufferCollection::new()
+        .add_buffer("index", index_data.as_slice())?
+        .add_buffer("a", (a_data.as_slice(), a_validity.as_slice()))?
+        .add_buffer("b", &b_data)?
+        .add_buffer("c", c_data.as_slice())?
+        .add_buffer("d", d_data.as_slice())?;
+
+    let _ = query.submit(&buffers)?;
+    query.finalize()?;
 
     Ok(())
 }
