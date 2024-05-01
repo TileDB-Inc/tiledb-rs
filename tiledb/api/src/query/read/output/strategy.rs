@@ -44,7 +44,7 @@ impl Default for RawReadOutputParameters {
 
 /// Produces an arbitrary raw read output.
 /// Buffer capacities are not correlated with each other,
-/// but `nvalues` and `nbytes` are valid for each of the buffers.
+/// but `ncells` and `nbytes` are valid for each of the buffers.
 /// Unused capacity for all buffers is essentially random.
 /// Cell offsets are sorted and valid indices into the `data` buffer.
 /// Validity is random - null values have no guaranteed representation
@@ -210,7 +210,7 @@ where
                         .collect::<Vec<u64>>();
                     offsets.sort();
                     RawReadOutput {
-                        nvalues: offsets.len(),
+                        ncells: offsets.len(),
                         nbytes: data.len() * std::mem::size_of::<C>(),
                         input: QueryBuffers {
                             data: data.into(),
@@ -243,7 +243,7 @@ where
 
     (0..=max_cells, Just(data), Just(validity))
         .prop_map(move |(ncells, mut data, mut validity)| {
-            data.truncate(ncells * ncells);
+            data.truncate(ncells * cell_val_num.get() as usize);
 
             validity.iter_mut().for_each(|v| {
                 v.iter_mut().take(ncells).for_each(|v: &mut u8| {
@@ -253,10 +253,9 @@ where
                 })
             });
 
-            let nvalues = ncells * cell_val_num.get() as usize;
-            let nbytes = nvalues * std::mem::size_of::<C>();
+            let nbytes = data.len() * std::mem::size_of::<C>();
             RawReadOutput {
-                nvalues,
+                ncells,
                 nbytes,
                 input: QueryBuffers {
                     data: data.into(),
@@ -285,9 +284,9 @@ mod tests {
 
                 let offsets = offsets.as_ref().to_vec();
                 assert!(
-                    rr.nvalues <= offsets.len(),
-                    "nvalues = {}, offsets.len() = {}",
-                    rr.nvalues,
+                    rr.ncells <= offsets.len(),
+                    "ncells = {}, offsets.len() = {}",
+                    rr.ncells,
                     offsets.len()
                 );
 
@@ -300,8 +299,8 @@ mod tests {
                 }
 
                 // offsets must be valid into `data`
-                if rr.nvalues > 0 {
-                    let last_offset = offsets[rr.nvalues - 1];
+                if rr.ncells > 0 {
+                    let last_offset = offsets[rr.ncells - 1];
                     let byte_bound =
                         std::mem::size_of_val(rr.input.data.as_ref()) as u64;
                     assert!(
@@ -319,33 +318,25 @@ mod tests {
                 }
             }
             CellStructure::Fixed(nz) => {
+                let nvalues = rr.ncells * nz.get() as usize;
                 assert!(
-                    rr.nvalues <= rr.input.data.len(),
-                    "nvalues = {}, data.len() = {}",
-                    rr.nvalues,
+                    nvalues <= rr.input.data.len(),
+                    "ncells = {}, cell_val_num = {}, data.len() = {}",
+                    rr.ncells,
+                    nz.get(),
                     rr.input.data.len()
                 );
 
-                let cvn = nz.get() as usize;
-
-                assert_eq!(0, rr.nvalues % cvn);
-
                 if let Some(validity) = rr.input.validity {
-                    let ncells = rr.nvalues / cvn;
-                    /* TODO: this is why we want rr.ncells instead of nvalues, multiplication
-                     * is much more comfortable than division */
-
                     let validity = validity.as_ref().to_vec();
                     assert!(
-                        ncells <= validity.len(),
-                        "nvalues = {}, validity.len() = {}",
-                        rr.nvalues,
+                        rr.ncells <= validity.len(),
+                        "ncells = {}, validity.len() = {}",
+                        rr.ncells,
                         validity.len()
                     );
 
-                    assert_eq!(0, rr.nvalues % nz.get() as usize);
-
-                    for v in validity[0..ncells].iter() {
+                    for v in validity[0..rr.ncells].iter() {
                         assert!(*v == 0 || *v == 1);
                     }
                 }

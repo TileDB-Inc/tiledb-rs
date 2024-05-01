@@ -89,7 +89,7 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
     fn from(value: &TypedRawReadOutput) -> Self {
         typed_query_buffers_go!(value.buffers, DT, ref handle, {
             let rr = RawReadOutput {
-                nvalues: value.nvalues,
+                ncells: value.ncells,
                 nbytes: value.nbytes,
                 input: handle.borrow(),
             };
@@ -930,15 +930,15 @@ mod tests {
                         None => unimplemented!(), /* TODO: allocate more */
                         Some((raw, _)) => {
                             let raw = &raw.0;
-                            let mut nvalues = None;
+                            let mut ncells = None;
                             for (key, rdata) in raw.iter() {
                                 let wdata = &accumulated_write.fields[key];
 
-                                let nv = if let Some(nv) = nvalues {
+                                let nv = if let Some(nv) = ncells {
                                     assert_eq!(nv, rdata.len());
                                     nv
                                 } else {
-                                    nvalues = Some(rdata.len());
+                                    ncells = Some(rdata.len());
                                     rdata.len()
                                 };
 

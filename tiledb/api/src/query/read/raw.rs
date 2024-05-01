@@ -249,18 +249,24 @@ impl<'data, C> RawReadHandle<'data, C> {
         Ok(())
     }
 
-    /// Returns the number of records and bytes produced by the last read,
+    /// Returns the number of cells and bytes produced by the last read,
     /// or the capacity of the destination buffers if no read has occurred.
     pub fn last_read_size(&self) -> (usize, usize) {
-        let nvalues = match self.offsets_size.as_ref() {
-            Some(offsets_size) => {
+        let ncells = match self.field.cell_val_num {
+            CellValNum::Fixed(nz) => {
+                assert!(self.offsets_size.is_none());
+                let data_size = *self.data_size as usize;
+                assert_eq!(0, data_size % nz.get() as usize);
+                data_size / nz.get() as usize
+            }
+            CellValNum::Var => {
+                let offsets_size = self.offsets_size.as_ref().unwrap();
                 **offsets_size as usize / std::mem::size_of::<u64>()
             }
-            None => *self.data_size as usize / std::mem::size_of::<C>(),
         };
-        let nbytes = *self.data_size as usize;
 
-        (nvalues, nbytes)
+        let nbytes = *self.data_size as usize;
+        (ncells, nbytes)
     }
 
     pub fn realloc_if_managed(&mut self) {
@@ -438,7 +444,7 @@ where
             self.base.step()?
         };
 
-        let (nvalues, nbytes) = self.raw_read_output.last_read_size();
+        let (ncells, nbytes) = self.raw_read_output.last_read_size();
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
@@ -449,7 +455,7 @@ where
                 ReadStepOutput::NotEnoughSpace
             }
             ReadStepOutput::Intermediate(base_result) => {
-                if nvalues == 0 && nbytes == 0 {
+                if ncells == 0 && nbytes == 0 {
                     /*
                      * The input produced no data.
                      * The returned status itself is not enough to distinguish between
@@ -459,17 +465,17 @@ where
                      * raw read and it is our responsibility to signal NotEnoughSpace.
                      */
                     ReadStepOutput::NotEnoughSpace
-                } else if nvalues == 0 {
+                } else if ncells == 0 {
                     return Err(Error::Internal(format!(
                         "Invalid read: returned {} offsets but {} bytes",
-                        nvalues, nbytes
+                        ncells, nbytes
                     )));
                 } else {
-                    ReadStepOutput::Intermediate((nvalues, nbytes, base_result))
+                    ReadStepOutput::Intermediate((ncells, nbytes, base_result))
                 }
             }
             ReadStepOutput::Final(base_result) => {
-                ReadStepOutput::Final((nvalues, nbytes, base_result))
+                ReadStepOutput::Final((ncells, nbytes, base_result))
             }
         })
     }

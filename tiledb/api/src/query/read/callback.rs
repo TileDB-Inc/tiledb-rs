@@ -226,7 +226,9 @@ mod impls {
             &mut self,
             arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            self.extend_from_slice(&arg.input.data.as_ref()[0..arg.nvalues]);
+            let nvalues = arg.ncells
+                * arg.input.cell_structure.fixed().unwrap().get() as usize;
+            self.extend_from_slice(&arg.input.data.as_ref()[0..nvalues]);
             Ok(())
         }
 
@@ -251,13 +253,15 @@ mod impls {
             &mut self,
             arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
+            let nvalues = arg.ncells
+                * arg.input.cell_structure.fixed().unwrap().get() as usize;
             self.0
-                .extend_from_slice(&arg.input.data.as_ref()[0..arg.nvalues]);
+                .extend_from_slice(&arg.input.data.as_ref()[0..nvalues]);
             // TileDB Core currently ensures that all buffers are properly set
             // as required. Thus, this unwrap should never fail as its only
             // called after submit has returned successfully.
             self.1.extend_from_slice(
-                &arg.input.validity.as_ref().unwrap().as_ref()[0..arg.nvalues],
+                &arg.input.validity.as_ref().unwrap().as_ref()[0..arg.ncells],
             );
             Ok(())
         }
@@ -347,7 +351,7 @@ mod impls {
         ) -> Result<Self::Intermediate, Self::Error> {
             // Copy validity before VarDataIter consumes arg.
             self.1.extend_from_slice(
-                &arg.input.validity.as_ref().unwrap().as_ref()[0..arg.nvalues],
+                &arg.input.validity.as_ref().unwrap().as_ref()[0..arg.ncells],
             );
 
             // TileDB Core currently ensures that all buffers are properly set
@@ -424,7 +428,7 @@ macro_rules! query_read_callback {
 
                 paste! {
                     $(
-                        let ([< nvalues_ $U:snake >], [< nbytes_ $U:snake >]) = {
+                        let ([< ncells_ $U:snake >], [< nbytes_ $U:snake >]) = {
                             let (nvalues, nbytes) = self.[< arg_ $U:snake >].last_read_size();
                             if !base_result.is_final() {
                                 if nvalues == 0 && nbytes == 0 {
@@ -448,7 +452,7 @@ macro_rules! query_read_callback {
                              */
 
                         let [< arg_ $U:snake >] = RawReadOutput {
-                            nvalues: [< nvalues_ $U:snake >],
+                            ncells: [< ncells_ $U:snake >],
                             nbytes: [< nbytes_ $U:snake >],
                             input: [< input_ $U:snake >]
                         };
@@ -626,9 +630,9 @@ where
                 let args = sizes
                     .iter()
                     .zip(buffers.iter())
-                    .map(|(&(nvalues, nbytes), (field, buffers))| {
+                    .map(|(&(ncells, nbytes), (field, buffers))| {
                         TypedRawReadOutput {
-                            nvalues,
+                            ncells,
                             nbytes,
                             buffers: buffers.as_shared(),
                             datatype: field.datatype,
@@ -666,9 +670,9 @@ where
                 let args = sizes
                     .iter()
                     .zip(buffers.iter())
-                    .map(|(&(nvalues, nbytes), (field, buffers))| {
+                    .map(|(&(ncells, nbytes), (field, buffers))| {
                         TypedRawReadOutput {
-                            nvalues,
+                            ncells,
                             nbytes,
                             buffers: buffers.as_shared(),
                             datatype: field.datatype,
@@ -783,7 +787,7 @@ mod tests {
             };
 
             let arg = RawReadOutput {
-                nvalues: ncells,
+                ncells,
                 nbytes: ncells * std::mem::size_of::<u64>(),
                 input: input_data,
             };
@@ -848,9 +852,9 @@ mod tests {
 
         while stringdst.len() < stringsrc.len() {
             /* copy from stringsrc to scratch data */
-            let (nvalues, nbytes) = {
+            let (ncells, nbytes) = {
                 /* write the offsets first */
-                let (nvalues, nbytes) = {
+                let (ncells, nbytes) = {
                     let scratch_offsets =
                         scratch_space.1.offsets_mut().unwrap();
                     let mut i = 0;
@@ -875,7 +879,7 @@ mod tests {
                     }
                 };
 
-                if nvalues == 0 {
+                if ncells == 0 {
                     assert_eq!(0, nbytes);
                     scratch_space = alloc.realloc(scratch_space);
                     continue;
@@ -884,10 +888,10 @@ mod tests {
                 let scratch_offsets = scratch_space.1.offsets_ref().unwrap();
 
                 /* then transfer contents */
-                for i in 0..nvalues {
+                for i in 0..ncells {
                     let s = &stringsrc[stringdst.len() + i];
                     let start = scratch_offsets[i] as usize;
-                    let end = if i + 1 < nvalues {
+                    let end = if i + 1 < ncells {
                         scratch_offsets[i + 1] as usize
                     } else {
                         nbytes
@@ -895,7 +899,7 @@ mod tests {
                     scratch_space.0[start..end].copy_from_slice(s.as_bytes())
                 }
 
-                (nvalues, nbytes)
+                (ncells, nbytes)
             };
 
             /* then copy from scratch data to stringdst */
@@ -911,7 +915,7 @@ mod tests {
                 validity: scratch_space.2.as_ref().map(|v| Buffer::Borrowed(v)),
             };
             let arg = RawReadOutput {
-                nvalues,
+                ncells,
                 nbytes,
                 input,
             };
@@ -919,7 +923,7 @@ mod tests {
                 .intermediate_result(arg)
                 .expect("Error aggregating Vec<String>");
 
-            assert_eq!(nvalues, stringdst.len() - prev_len);
+            assert_eq!(ncells, stringdst.len() - prev_len);
             assert_eq!(stringsrc[0..stringdst.len()], stringdst);
         }
     }

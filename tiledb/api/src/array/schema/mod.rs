@@ -85,6 +85,15 @@ impl CellValNum {
     pub fn is_var_sized(&self) -> bool {
         matches!(self, CellValNum::Var)
     }
+
+    /// Return the fixed number of values per cell, if not variable.
+    pub fn fixed(&self) -> Option<NonZeroU32> {
+        if let CellValNum::Fixed(nz) = self {
+            Some(*nz)
+        } else {
+            None
+        }
+    }
 }
 
 impl Default for CellValNum {
