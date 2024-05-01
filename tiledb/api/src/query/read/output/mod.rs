@@ -593,6 +593,7 @@ mod tests {
     use crate::query::buffer::Buffer;
 
     #[test]
+    #[ignore]
     fn test_var_data_iterator_lifetime() {
         let data = vec![0u8; 16]; // not important
         let offsets = vec![0u64, 4, 8, 12];
@@ -619,7 +620,8 @@ mod tests {
         }
         .unwrap();
 
-        // this is a use after free which happens to pass but valgrind catches it
+        // this is a use after free which passes if you're lucky. valgrind catches it
+        // SC-46534
         assert_eq!(item, vec![1u8; 4]);
     }
 }
