@@ -99,6 +99,9 @@ where
     }
 }
 
+/// Represents either a fixed number of values per cell,
+/// or the scratch space needed to write the offsets needed to determine
+/// the variable number of values per cell.
 pub enum ScratchCellStructure {
     Fixed(NonZeroU32),
     Var(Box<[u64]>),
@@ -111,18 +114,22 @@ impl From<NonZeroU32> for ScratchCellStructure {
 }
 
 impl ScratchCellStructure {
+    /// Returns `ScratchCellStructure::Fixed(1)`, where each value is its own cell.
     pub fn single() -> Self {
         ScratchCellStructure::Fixed(NonZeroU32::new(1).unwrap())
     }
 
+    /// Returns whether the cells contain a fixed number of records.
     pub fn is_fixed(&self) -> bool {
         matches!(self, Self::Fixed(_))
     }
 
+    /// Returns whether the cells contain a variable number of records.
     pub fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
     }
 
+    /// Returns a reference to the offsets buffer, if any.
     pub fn offsets_ref(&self) -> Option<&[u64]> {
         if let Self::Var(ref offsets) = self {
             Some(offsets.as_ref())
@@ -131,6 +138,7 @@ impl ScratchCellStructure {
         }
     }
 
+    /// Returns a mutable reference to the offsets buffer, if any.
     pub fn offsets_mut(&mut self) -> Option<&mut [u64]> {
         if let Self::Var(ref mut offsets) = self {
             Some(offsets.as_mut())
@@ -141,6 +149,7 @@ impl ScratchCellStructure {
 }
 
 impl Default for ScratchCellStructure {
+    /// Returns `ScratchCellStructure::single()`.
     fn default() -> Self {
         Self::single()
     }

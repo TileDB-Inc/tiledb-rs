@@ -55,11 +55,18 @@ impl TryFrom<ffi::tiledb_array_type_t> for ArrayType {
     }
 }
 
+/// Represents the number of values carried within a single cell of an attribute or dimension.
 #[derive(
     Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
 )]
 pub enum CellValNum {
+    /// The number of values per cell is a specific fixed number.
     Fixed(std::num::NonZeroU32),
+    /// The number of values per cell varies.
+    /// When this option is used for a dimension or attribute, queries must allocate additional
+    /// space to hold structural information about each cell. The values will be concatenated
+    /// together in a single buffer, and the structural data buffer contains the offset
+    /// of each record into the values buffer.
     Var,
 }
 
