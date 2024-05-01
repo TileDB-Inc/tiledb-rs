@@ -66,8 +66,8 @@ where
         let strategy_cell_offsets_capacity = {
             let strategy_capacity =
                 (p.min_offset_capacity..=p.max_offset_capacity).prop_map(Ok);
-            let strategy_fixed_cvn =
-                (1..u32::MAX).prop_map(|nz| Err(NonZeroU32::new(nz).unwrap()));
+            let strategy_fixed_cvn = (1..i32::MAX)
+                .prop_map(|nz| Err(NonZeroU32::new(nz as u32).unwrap()));
 
             if let Some(CellValNum::Var) = p.cell_val_num {
                 strategy_capacity.boxed()
@@ -226,22 +226,29 @@ fn prop_raw_read_output_without_cell_offsets<'data, C>(
 where
     C: Clone + Debug + 'static,
 {
-    let max_values = if let Some(v) = validity.as_ref() {
-        std::cmp::min(data.len(), v.len())
-    } else {
-        data.len()
+    let max_cells = {
+        let data_bound = data.len() / cell_val_num.get() as usize;
+        if let Some(v) = validity.as_ref() {
+            let validity_bound = v.len();
+            std::cmp::min(data_bound, validity_bound)
+        } else {
+            data_bound
+        }
     };
 
-    (0..=max_values, Just(data), Just(validity))
-        .prop_map(move |(nvalues, data, mut validity)| {
+    (0..=max_cells, Just(data), Just(validity))
+        .prop_map(move |(ncells, mut data, mut validity)| {
+            data.truncate(ncells * ncells);
+
             validity.iter_mut().for_each(|v| {
-                v.iter_mut().take(nvalues).for_each(|v: &mut u8| {
+                v.iter_mut().take(ncells).for_each(|v: &mut u8| {
                     if *v != 0 {
                         *v = 1
                     }
                 })
             });
 
+            let nvalues = ncells * cell_val_num.get() as usize;
             let nbytes = nvalues * std::mem::size_of::<C>();
             RawReadOutput {
                 nvalues,
@@ -262,68 +269,81 @@ mod tests {
     use proptest::proptest;
 
     fn arbitrary_raw_read_handle<C>(rr: RawReadOutput<C>) {
-        if let CellStructure::Var(offsets) = rr.input.cell_structure {
-            assert!(
-                rr.nbytes <= std::mem::size_of_val(rr.input.data.as_ref()),
-                "nbytes = {}, data.bytelen() = {}",
-                rr.nbytes,
-                std::mem::size_of_val(rr.input.data.as_ref())
-            );
-
-            let offsets = offsets.as_ref().to_vec();
-            assert!(
-                rr.nvalues <= offsets.len(),
-                "nvalues = {}, offsets.len() = {}",
-                rr.nvalues,
-                offsets.len()
-            );
-
-            // offsets are in bytes and are sorted
-            for w in offsets.windows(2) {
-                assert!(w[0] <= w[1]);
-
-                let delta = w[1] - w[0];
-                assert_eq!(0, delta % std::mem::size_of::<C>() as u64);
-            }
-
-            // offsets must be valid into `data`
-            if rr.nvalues > 0 {
-                let last_offset = offsets[rr.nvalues - 1];
-                let byte_bound =
-                    std::mem::size_of_val(rr.input.data.as_ref()) as u64;
+        match rr.input.cell_structure {
+            CellStructure::Var(offsets) => {
                 assert!(
-                    last_offset <= rr.nbytes as u64,
-                    "last_offset = {}, nbytes = {}",
-                    last_offset,
-                    rr.nbytes
+                    rr.nbytes <= std::mem::size_of_val(rr.input.data.as_ref()),
+                    "nbytes = {}, data.bytelen() = {}",
+                    rr.nbytes,
+                    std::mem::size_of_val(rr.input.data.as_ref())
                 );
+
+                let offsets = offsets.as_ref().to_vec();
                 assert!(
-                    last_offset <= byte_bound,
-                    "last_offset = {}, byte_bound = {}",
-                    last_offset,
-                    byte_bound
+                    rr.nvalues <= offsets.len(),
+                    "nvalues = {}, offsets.len() = {}",
+                    rr.nvalues,
+                    offsets.len()
                 );
+
+                // offsets are in bytes and are sorted
+                for w in offsets.windows(2) {
+                    assert!(w[0] <= w[1]);
+
+                    let delta = w[1] - w[0];
+                    assert_eq!(0, delta % std::mem::size_of::<C>() as u64);
+                }
+
+                // offsets must be valid into `data`
+                if rr.nvalues > 0 {
+                    let last_offset = offsets[rr.nvalues - 1];
+                    let byte_bound =
+                        std::mem::size_of_val(rr.input.data.as_ref()) as u64;
+                    assert!(
+                        last_offset <= rr.nbytes as u64,
+                        "last_offset = {}, nbytes = {}",
+                        last_offset,
+                        rr.nbytes
+                    );
+                    assert!(
+                        last_offset <= byte_bound,
+                        "last_offset = {}, byte_bound = {}",
+                        last_offset,
+                        byte_bound
+                    );
+                }
             }
-        } else {
-            assert!(
-                rr.nvalues <= rr.input.data.len(),
-                "nvalues = {}, data.len() = {}",
-                rr.nvalues,
-                rr.input.data.len()
-            );
-        }
+            CellStructure::Fixed(nz) => {
+                assert!(
+                    rr.nvalues <= rr.input.data.len(),
+                    "nvalues = {}, data.len() = {}",
+                    rr.nvalues,
+                    rr.input.data.len()
+                );
 
-        if let Some(validity) = rr.input.validity {
-            let validity = validity.as_ref().to_vec();
-            assert!(
-                rr.nvalues <= validity.len(),
-                "nvalues = {}, validity.len() = {}",
-                rr.nvalues,
-                validity.len()
-            );
+                let cvn = nz.get() as usize;
 
-            for v in validity[0..rr.nvalues].iter() {
-                assert!(*v == 0 || *v == 1);
+                assert_eq!(0, rr.nvalues % cvn);
+
+                if let Some(validity) = rr.input.validity {
+                    let ncells = rr.nvalues / cvn;
+                    /* TODO: this is why we want rr.ncells instead of nvalues, multiplication
+                     * is much more comfortable than division */
+
+                    let validity = validity.as_ref().to_vec();
+                    assert!(
+                        ncells <= validity.len(),
+                        "nvalues = {}, validity.len() = {}",
+                        rr.nvalues,
+                        validity.len()
+                    );
+
+                    assert_eq!(0, rr.nvalues % nz.get() as usize);
+
+                    for v in validity[0..ncells].iter() {
+                        assert!(*v == 0 || *v == 1);
+                    }
+                }
             }
         }
     }
