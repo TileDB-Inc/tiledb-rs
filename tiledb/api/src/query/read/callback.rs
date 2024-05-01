@@ -226,9 +226,7 @@ mod impls {
             &mut self,
             arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            let nvalues = arg.ncells
-                * arg.input.cell_structure.fixed().unwrap().get() as usize;
-            self.extend_from_slice(&arg.input.data.as_ref()[0..nvalues]);
+            self.extend_from_slice(&arg.input.data.as_ref()[0..arg.nvalues()]);
             Ok(())
         }
 
@@ -253,10 +251,8 @@ mod impls {
             &mut self,
             arg: RawReadOutput<Self::Unit>,
         ) -> Result<Self::Intermediate, Self::Error> {
-            let nvalues = arg.ncells
-                * arg.input.cell_structure.fixed().unwrap().get() as usize;
             self.0
-                .extend_from_slice(&arg.input.data.as_ref()[0..nvalues]);
+                .extend_from_slice(&arg.input.data.as_ref()[0..arg.nvalues()]);
             // TileDB Core currently ensures that all buffers are properly set
             // as required. Thus, this unwrap should never fail as its only
             // called after submit has returned successfully.

@@ -318,9 +318,8 @@ mod tests {
                 }
             }
             CellStructure::Fixed(nz) => {
-                let nvalues = rr.ncells * nz.get() as usize;
                 assert!(
-                    nvalues <= rr.input.data.len(),
+                    rr.nvalues() <= rr.input.data.len(),
                     "ncells = {}, cell_val_num = {}, data.len() = {}",
                     rr.ncells,
                     nz.get(),

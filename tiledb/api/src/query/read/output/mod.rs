@@ -27,15 +27,17 @@ pub struct RawReadOutput<'data, C> {
 }
 
 impl<C> RawReadOutput<'_, C> {
+    pub fn nvalues(&self) -> usize {
+        match self.input.cell_structure {
+            CellStructure::Fixed(nz) => self.ncells * nz.get() as usize,
+            CellStructure::Var(_) => self.nbytes / std::mem::size_of::<C>(),
+        }
+    }
+
     fn to_json(&self) -> serde_json::value::Value
     where
         C: Debug,
     {
-        let nvalues = match self.input.cell_structure {
-            CellStructure::Var(_) => self.nbytes / std::mem::size_of::<C>(),
-            CellStructure::Fixed(nz) => self.ncells * nz.get() as usize,
-        };
-
         let cell_json = match self.input.cell_structure {
             CellStructure::Fixed(nz) => json!({"cell_val_num": nz}),
             CellStructure::Var(ref offsets) => json!({
@@ -58,8 +60,8 @@ impl<C> RawReadOutput<'_, C> {
             "nbytes": self.nbytes,
             "data": {
                 "capacity": self.input.data.len(),
-                "defined": nvalues,
-                "values": format!("{:?}", &self.input.data.as_ref()[0.. nvalues])
+                "defined": self.nvalues(),
+                "values": format!("{:?}", &self.input.data.as_ref()[0.. self.nvalues()])
             },
             "cell_structure": cell_json,
             "validity": validity_json,
@@ -94,6 +96,17 @@ impl<'data> TypedRawReadOutput<'data> {
             nbytes: rr.nbytes,
             buffers: rr.input.into(),
         }
+    }
+
+    pub fn nvalues(&self) -> usize {
+        typed_query_buffers_go!(self.buffers, _DT, ref qb, {
+            RawReadOutput {
+                ncells: self.ncells,
+                nbytes: self.nbytes,
+                input: qb.borrow(),
+            }
+            .nvalues()
+        })
     }
 
     pub fn is_nullable(&self) -> bool {
