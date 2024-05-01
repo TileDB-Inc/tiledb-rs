@@ -4,7 +4,9 @@ use std::cell::{Ref, RefCell};
 
 use itertools::izip;
 use tiledb::array::{CellOrder, TileOrder};
-use tiledb::query::buffer::{BufferMut, QueryBuffers, QueryBuffersMut};
+use tiledb::query::buffer::{
+    BufferMut, CellStructureMut, QueryBuffers, QueryBuffersMut,
+};
 use tiledb::query::read::output::{NonVarSized, VarDataIterator, VarSized};
 use tiledb::query::read::{FnMutAdapter, ReadStepOutput, ScratchStrategy};
 use tiledb::query::{
@@ -165,22 +167,22 @@ fn read_array_step() -> TileDBResult<()> {
 
     let rows_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
-        cell_offsets: None,
+        cell_structure: Default::default(),
         validity: None,
     });
     let cols_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
-        cell_offsets: None,
+        cell_structure: Default::default(),
         validity: None,
     });
     let int32_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
-        cell_offsets: None,
+        cell_structure: Default::default(),
         validity: None,
     });
     let char_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
-        cell_offsets: Some(BufferMut::Owned(
+        cell_structure: CellStructureMut::Var(BufferMut::Owned(
             vec![0u64; init_capacity].into_boxed_slice(),
         )),
         validity: None,
@@ -225,7 +227,11 @@ fn read_array_step() -> TileDBResult<()> {
             grow_buffer(&mut int32_output.borrow_mut().data);
             grow_buffer(&mut char_output.borrow_mut().data);
             grow_buffer(
-                char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
+                char_output
+                    .borrow_mut()
+                    .cell_structure
+                    .offsets_mut()
+                    .unwrap(),
             );
         }
 
@@ -251,18 +257,21 @@ fn read_array_collect() -> TileDBResult<()> {
             "rows",
             ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
                 capacity: 1,
+                ..Default::default()
             })),
         )?
         .register_constructor::<_, Vec<i32>>(
             "columns",
             ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
                 capacity: 1,
+                ..Default::default()
             })),
         )?
         .register_constructor::<_, Vec<i32>>(
             INT32_ATTRIBUTE_NAME,
             ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
                 capacity: 1,
+                ..Default::default()
             })),
         )?
         .register_constructor::<_, Vec<String>>(
@@ -300,22 +309,22 @@ fn read_array_callback() -> TileDBResult<()> {
 
     let rows_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
-        cell_offsets: None,
+        cell_structure: Default::default(),
         validity: None,
     });
     let cols_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
-        cell_offsets: None,
+        cell_structure: Default::default(),
         validity: None,
     });
     let int32_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0i32; init_capacity].into_boxed_slice()),
-        cell_offsets: None,
+        cell_structure: Default::default(),
         validity: None,
     });
     let char_output = RefCell::new(QueryBuffersMut {
         data: BufferMut::Owned(vec![0u8; init_capacity].into_boxed_slice()),
-        cell_offsets: Some(BufferMut::Owned(
+        cell_structure: CellStructureMut::Var(BufferMut::Owned(
             vec![0u64; init_capacity].into_boxed_slice(),
         )),
         validity: None,
@@ -347,7 +356,11 @@ fn read_array_callback() -> TileDBResult<()> {
                 grow_buffer(&mut int32_output.borrow_mut().data);
                 grow_buffer(&mut char_output.borrow_mut().data);
                 grow_buffer(
-                    char_output.borrow_mut().cell_offsets.as_mut().unwrap(),
+                    char_output
+                        .borrow_mut()
+                        .cell_structure
+                        .offsets_mut()
+                        .unwrap(),
                 );
             }
             ReadStepOutput::Intermediate(_) => {}

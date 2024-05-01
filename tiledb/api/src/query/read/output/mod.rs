@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::iter::FusedIterator;
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 
 use anyhow::anyhow;
 use serde_json::json;
@@ -9,7 +9,8 @@ use crate::array::CellValNum;
 use crate::convert::CAPISameRepr;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
-    BufferMut, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
+    Buffer, BufferMut, CellStructure, CellStructureMut, QueryBuffers,
+    QueryBuffersMut, TypedQueryBuffers,
 };
 use crate::typed_query_buffers_go;
 use crate::Result as TileDBResult;
@@ -33,13 +34,14 @@ where
         let nrecords = self.nvalues;
         let nvalues = self.nbytes / std::mem::size_of::<C>();
 
-        let offsets_json = self.input.cell_offsets.as_ref().map(|offsets| {
-            json!({
+        let cell_json = match self.input.cell_structure {
+            CellStructure::Fixed(nz) => json!({"cell_val_num": nz}),
+            CellStructure::Var(ref offsets) => json!({
                 "capacity": offsets.len(),
                 "defined": nrecords,
                 "values": format!("{:?}", &offsets.as_ref()[0.. nrecords])
-            })
-        });
+            }),
+        };
 
         let validity_json = self.input.validity.as_ref().map(|validity| {
             json!({
@@ -58,7 +60,7 @@ where
                     "defined": nvalues,
                     "values": format!("{:?}", &self.input.data.as_ref()[0.. nvalues])
                 },
-                "offsets": offsets_json,
+                "cells": cell_json,
                 "validity": validity_json,
             })
         )
@@ -97,9 +99,111 @@ where
     }
 }
 
+/// Represents either a fixed number of values per cell,
+/// or the scratch space needed to write the offsets needed to determine
+/// the variable number of values per cell.
+pub enum ScratchCellStructure {
+    Fixed(NonZeroU32),
+    Var(Box<[u64]>),
+}
+
+impl From<NonZeroU32> for ScratchCellStructure {
+    fn from(value: NonZeroU32) -> Self {
+        Self::Fixed(value)
+    }
+}
+
+impl ScratchCellStructure {
+    /// Returns `ScratchCellStructure::Fixed(1)`, where each value is its own cell.
+    pub fn single() -> Self {
+        ScratchCellStructure::Fixed(NonZeroU32::new(1).unwrap())
+    }
+
+    /// Returns whether the cells contain a fixed number of records.
+    pub fn is_fixed(&self) -> bool {
+        matches!(self, Self::Fixed(_))
+    }
+
+    /// Returns whether the cells contain a variable number of records.
+    pub fn is_var(&self) -> bool {
+        matches!(self, Self::Var(_))
+    }
+
+    /// Returns a reference to the offsets buffer, if any.
+    pub fn offsets_ref(&self) -> Option<&[u64]> {
+        if let Self::Var(ref offsets) = self {
+            Some(offsets.as_ref())
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable reference to the offsets buffer, if any.
+    pub fn offsets_mut(&mut self) -> Option<&mut [u64]> {
+        if let Self::Var(ref mut offsets) = self {
+            Some(offsets.as_mut())
+        } else {
+            None
+        }
+    }
+}
+
+impl Default for ScratchCellStructure {
+    /// Returns `ScratchCellStructure::single()`.
+    fn default() -> Self {
+        Self::single()
+    }
+}
+
+impl TryFrom<CellStructure<'_>> for ScratchCellStructure {
+    type Error = crate::error::Error;
+    fn try_from(value: CellStructure) -> TileDBResult<Self> {
+        match value {
+            CellStructure::Fixed(nz) => Ok(Self::Fixed(nz)),
+            CellStructure::Var(Buffer::Owned(offsets)) => Ok(Self::Var(offsets)),
+            CellStructure::Var(_) => Err(Error::InvalidArgument(anyhow!(
+                        "Cannot convert borrowed offsets buffer into owned scratch space")))
+        }
+    }
+}
+
+impl TryFrom<CellStructureMut<'_>> for ScratchCellStructure {
+    type Error = crate::error::Error;
+    fn try_from(value: CellStructureMut) -> TileDBResult<Self> {
+        match value {
+            CellStructureMut::Fixed(nz) => Ok(Self::Fixed(nz)),
+            CellStructureMut::Var(BufferMut::Owned(offsets)) => Ok(Self::Var(offsets)),
+            CellStructureMut::Var(_) => Err(Error::InvalidArgument(anyhow!(
+                        "Cannot convert borrowed offsets buffer into owned scratch space")))
+        }
+    }
+}
+
+impl<'data> From<ScratchCellStructure> for CellStructure<'data> {
+    fn from(value: ScratchCellStructure) -> Self {
+        match value {
+            ScratchCellStructure::Fixed(nz) => Self::Fixed(nz),
+            ScratchCellStructure::Var(offsets) => {
+                Self::Var(Buffer::Owned(offsets))
+            }
+        }
+    }
+}
+
+impl<'data> From<ScratchCellStructure> for CellStructureMut<'data> {
+    fn from(value: ScratchCellStructure) -> Self {
+        match value {
+            ScratchCellStructure::Fixed(nz) => Self::Fixed(nz),
+            ScratchCellStructure::Var(offsets) => {
+                Self::Var(BufferMut::Owned(offsets))
+            }
+        }
+    }
+}
+
 pub struct ScratchSpace<C>(
     pub Box<[C]>,
-    pub Option<Box<[u64]>>,
+    pub ScratchCellStructure,
     pub Option<Box<[u8]>>,
 );
 
@@ -117,16 +221,7 @@ impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
             BufferMut::Owned(d) => d,
         };
 
-        let cell_offsets = if let Some(cell_offsets) = value.cell_offsets {
-            Some(match cell_offsets {
-                BufferMut::Empty => vec![].into_boxed_slice(),
-                BufferMut::Borrowed(_) => return Err(Error::InvalidArgument(
-                        anyhow!("Cannot convert borrowed offsets buffer into owned scratch space"))),
-                BufferMut::Owned(d) => d,
-            })
-        } else {
-            None
-        };
+        let cell_structure = value.cell_structure.try_into()?;
 
         let validity = if let Some(validity) = value.validity {
             Some(match validity {
@@ -139,7 +234,17 @@ impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
             None
         };
 
-        Ok(ScratchSpace(data, cell_offsets, validity))
+        Ok(ScratchSpace(data, cell_structure, validity))
+    }
+}
+
+impl<'data, C> From<ScratchSpace<C>> for QueryBuffers<'data, C> {
+    fn from(value: ScratchSpace<C>) -> Self {
+        QueryBuffers {
+            data: Buffer::Owned(value.0),
+            cell_structure: CellStructure::from(value.1),
+            validity: value.2.map(Buffer::Owned),
+        }
     }
 }
 
@@ -147,7 +252,7 @@ impl<'data, C> From<ScratchSpace<C>> for QueryBuffersMut<'data, C> {
     fn from(value: ScratchSpace<C>) -> Self {
         QueryBuffersMut {
             data: BufferMut::Owned(value.0),
-            cell_offsets: value.1.map(BufferMut::Owned),
+            cell_structure: CellStructureMut::from(value.1),
             validity: value.2.map(BufferMut::Owned),
         }
     }
@@ -160,12 +265,14 @@ pub trait ScratchAllocator<C> {
 
 #[derive(Clone, Debug)]
 pub struct NonVarSized {
+    pub cell_val_num: NonZeroU32,
     pub capacity: usize,
 }
 
 impl Default for NonVarSized {
     fn default() -> Self {
         NonVarSized {
+            cell_val_num: NonZeroU32::new(1).unwrap(),
             capacity: 1024 * 1024,
         }
     }
@@ -178,7 +285,7 @@ where
     fn alloc(&self) -> ScratchSpace<C> {
         ScratchSpace(
             vec![C::default(); self.capacity].into_boxed_slice(),
-            None,
+            self.cell_val_num.into(),
             None,
         )
     }
@@ -195,12 +302,13 @@ where
             v.into_boxed_slice()
         };
 
-        ScratchSpace(new_data, None, None)
+        ScratchSpace(new_data, self.cell_val_num.into(), None)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct NullableNonVarSized {
+    pub cell_val_num: NonZeroU32,
     pub data_capacity: usize,
     pub validity_capacity: usize,
 }
@@ -208,6 +316,7 @@ pub struct NullableNonVarSized {
 impl Default for NullableNonVarSized {
     fn default() -> Self {
         NullableNonVarSized {
+            cell_val_num: NonZeroU32::new(1).unwrap(),
             data_capacity: 1024 * 1024,
             validity_capacity: 1024 * 1024,
         }
@@ -221,7 +330,7 @@ where
     fn alloc(&self) -> ScratchSpace<C> {
         ScratchSpace(
             vec![C::default(); self.data_capacity].into_boxed_slice(),
-            None,
+            ScratchCellStructure::Fixed(self.cell_val_num),
             Some(vec![0u8; self.validity_capacity].into_boxed_slice()),
         )
     }
@@ -241,7 +350,7 @@ where
             v.into_boxed_slice()
         };
 
-        ScratchSpace(new_data, None, Some(new_validity))
+        ScratchSpace(new_data, self.cell_val_num.into(), Some(new_validity))
     }
 }
 
@@ -270,11 +379,11 @@ where
     fn alloc(&self) -> ScratchSpace<C> {
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
         let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
-        ScratchSpace(data, Some(offsets), None)
+        ScratchSpace(data, ScratchCellStructure::Var(offsets), None)
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let ScratchSpace(old_data, old_offsets, _) = old;
+        let ScratchSpace(old_data, old_structure, _) = old;
 
         let new_data = {
             let mut v = old_data.to_vec();
@@ -282,13 +391,16 @@ where
             v.into_boxed_slice()
         };
 
-        let new_offsets = {
-            let mut v = old_offsets.unwrap().into_vec();
-            v.resize(2 * v.len() + 1, Default::default());
-            v.into_boxed_slice()
+        let new_structure = match old_structure {
+            ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
+            ScratchCellStructure::Var(old_offsets) => {
+                let mut v = old_offsets.into_vec();
+                v.resize(2 * v.len() + 1, Default::default());
+                ScratchCellStructure::Var(v.into_boxed_slice())
+            }
         };
 
-        ScratchSpace(new_data, Some(new_offsets), None)
+        ScratchSpace(new_data, new_structure, None)
     }
 }
 
@@ -320,11 +432,11 @@ where
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
         let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
         let validity = vec![0u8; self.validity_capacity].into_boxed_slice();
-        ScratchSpace(data, Some(offsets), Some(validity))
+        ScratchSpace(data, ScratchCellStructure::Var(offsets), Some(validity))
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let ScratchSpace(old_data, old_offsets, old_validity) = old;
+        let ScratchSpace(old_data, old_structure, old_validity) = old;
 
         let new_data = {
             let mut v = old_data.to_vec();
@@ -332,10 +444,13 @@ where
             v.into_boxed_slice()
         };
 
-        let new_offsets = {
-            let mut v = old_offsets.unwrap().into_vec();
-            v.resize(2 * v.len() + 1, Default::default());
-            v.into_boxed_slice()
+        let new_structure = match old_structure {
+            ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
+            ScratchCellStructure::Var(old_offsets) => {
+                let mut v = old_offsets.into_vec();
+                v.resize(2 * v.len() + 1, Default::default());
+                ScratchCellStructure::Var(v.into_boxed_slice())
+            }
         };
 
         let new_validity = {
@@ -344,7 +459,7 @@ where
             v.into_boxed_slice()
         };
 
-        ScratchSpace(new_data, Some(new_offsets), Some(new_validity))
+        ScratchSpace(new_data, new_structure, Some(new_validity))
     }
 }
 
@@ -362,34 +477,41 @@ where
     C: CAPISameRepr,
 {
     fn alloc(&self) -> ScratchSpace<C> {
-        let (byte_capacity, offset_capacity) = match self.cell_val_num {
+        let (byte_capacity, cell_structure) = match self.cell_val_num {
             CellValNum::Fixed(values_per_record) => {
                 let byte_capacity = self.record_capacity.get()
                     * values_per_record.get() as usize;
-                (byte_capacity, None)
+                (
+                    byte_capacity,
+                    ScratchCellStructure::Fixed(values_per_record),
+                )
             }
             CellValNum::Var => {
                 let values_per_record = 64; /* TODO: get some kind of hint from the schema */
                 let byte_capacity =
                     self.record_capacity.get() * values_per_record;
-                (byte_capacity, Some(self.record_capacity.get()))
+                (
+                    byte_capacity,
+                    ScratchCellStructure::Var(
+                        vec![0u64; self.record_capacity.get()]
+                            .into_boxed_slice(),
+                    ),
+                )
             }
         };
 
         let data = vec![C::default(); byte_capacity].into_boxed_slice();
-        let offsets = offset_capacity
-            .map(|capacity| vec![0u64; capacity].into_boxed_slice());
         let validity = if self.is_nullable {
             Some(vec![0u8; self.record_capacity.get()].into_boxed_slice())
         } else {
             None
         };
 
-        ScratchSpace(data, offsets, validity)
+        ScratchSpace(data, cell_structure, validity)
     }
 
     fn realloc(&self, old: ScratchSpace<C>) -> ScratchSpace<C> {
-        let ScratchSpace(old_data, old_offsets, old_validity) = old;
+        let ScratchSpace(old_data, old_structure, old_validity) = old;
 
         let new_data = {
             let mut v = old_data.to_vec();
@@ -397,11 +519,14 @@ where
             v.into_boxed_slice()
         };
 
-        let new_offsets = old_offsets.map(|old_offsets| {
-            let mut v = old_offsets.to_vec();
-            v.resize(2 * v.len(), Default::default());
-            v.into_boxed_slice()
-        });
+        let new_structure = match old_structure {
+            ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
+            ScratchCellStructure::Var(old_offsets) => {
+                let mut v = old_offsets.to_vec();
+                v.resize(2 * v.len(), Default::default());
+                ScratchCellStructure::Var(v.into_boxed_slice())
+            }
+        };
 
         let new_validity = old_validity.map(|old_validity| {
             let mut v = old_validity.to_vec();
@@ -409,7 +534,7 @@ where
             v.into_boxed_slice()
         });
 
-        ScratchSpace(new_data, new_offsets, new_validity)
+        ScratchSpace(new_data, new_structure, new_validity)
     }
 }
 
@@ -440,8 +565,14 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
 {
     type Error = crate::error::Error;
     fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
-        if value.input.cell_offsets.is_some() {
-            Err(Error::Datatype(DatatypeErrorKind::ExpectedFixedSize(None)))
+        if value.input.cell_structure.is_var() {
+            Err(Error::Datatype(
+                DatatypeErrorKind::UnexpectedCellStructure {
+                    context: None,
+                    expected: CellValNum::single(),
+                    found: CellValNum::Var,
+                },
+            ))
         } else {
             Ok(FixedDataIterator {
                 location: value.input,
@@ -465,10 +596,14 @@ impl<'data, C> VarDataIterator<'data, C> {
         nbytes: usize,
         location: QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
-        if location.cell_offsets.is_none() {
-            Err(Error::Datatype(DatatypeErrorKind::ExpectedVarSize(
-                None, None,
-            )))
+        if let CellStructure::Fixed(nz) = location.cell_structure {
+            Err(Error::Datatype(
+                DatatypeErrorKind::UnexpectedCellStructure {
+                    context: None,
+                    expected: CellValNum::Var,
+                    found: CellValNum::Fixed(nz),
+                },
+            ))
         } else {
             Ok(VarDataIterator {
                 nvalues,
@@ -489,7 +624,7 @@ where
             f,
             "VarDataIterator {{ cursor: {}, offsets: {:?}, bytes: {:?} }}",
             self.offset_cursor,
-            &self.location.cell_offsets.as_ref().unwrap().as_ref()
+            &self.location.cell_structure.offsets_ref().unwrap()
                 [0..self.nvalues],
             &self.location.data.as_ref()[0..self.nbytes]
         )
@@ -513,8 +648,7 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
              */
             &*(self.location.data.as_ref() as *const [C]) as &'data [C]
         };
-        let offset_buffer =
-            self.location.cell_offsets.as_ref().unwrap().as_ref();
+        let offset_buffer = self.location.cell_structure.offsets_ref().unwrap();
 
         let s = self.offset_cursor;
         self.offset_cursor += 1;
@@ -611,7 +745,7 @@ mod tests {
                 data.len(),
                 QueryBuffers {
                     data: databuf,
-                    cell_offsets: Some(offsets.into()),
+                    cell_structure: CellStructure::Var(offsets.into()),
                     validity: None,
                 },
             )

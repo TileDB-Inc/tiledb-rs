@@ -3,6 +3,7 @@ extern crate tiledb_sys as ffi;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use crate::array::CellValNum;
 use crate::Datatype;
 use serde::{Serialize, Serializer};
 
@@ -32,8 +33,11 @@ pub enum DatatypeErrorKind {
         user_type: &'static str,
         tiledb_type: Datatype,
     },
-    ExpectedFixedSize(Option<String>),
-    ExpectedVarSize(Option<String>, Option<u64>),
+    UnexpectedCellStructure {
+        context: Option<String>,
+        found: CellValNum,
+        expected: CellValNum,
+    },
 }
 
 impl Display for DatatypeErrorKind {
@@ -52,32 +56,24 @@ impl Display for DatatypeErrorKind {
                     user_type, tiledb_type
                 )
             }
-            DatatypeErrorKind::ExpectedFixedSize(ref field) => {
-                if let Some(field) = field.as_ref() {
-                    write!(f, "Expected fixed-size result for field {}, but found variable-sized", field)
+            DatatypeErrorKind::UnexpectedCellStructure {
+                ref context,
+                found,
+                expected,
+            } => {
+                if let Some(context) = context.as_ref() {
+                    write!(
+                        f,
+                        "Unexpected cell val num for {}: expected {}, found {}",
+                        context, expected, found
+                    )
                 } else {
                     write!(
                         f,
-                        "Expected fixed-size result, but found variable-sized"
+                        "Unexpected cell val num: expected {}, found {}",
+                        expected, found
                     )
                 }
-            }
-            DatatypeErrorKind::ExpectedVarSize(ref field, cell_val_num) => {
-                let field = if let Some(field) = field.as_ref() {
-                    format!(" for field {}", field)
-                } else {
-                    "".to_string()
-                };
-                let cell_val_num = if let Some(cvn) = cell_val_num {
-                    format!(" (cell val num: {})", cvn)
-                } else {
-                    "".to_string()
-                };
-                write!(
-                    f,
-                    "Expected var-size result{}, but found fixed-sized{}",
-                    field, cell_val_num
-                )
             }
         }
     }

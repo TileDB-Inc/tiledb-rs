@@ -1,5 +1,8 @@
 use std::cell::Ref;
+use std::num::NonZeroU32;
 use std::ops::{Deref, DerefMut};
+
+use crate::array::CellValNum;
 
 pub enum Buffer<'data, T = u8> {
     Empty,
@@ -10,6 +13,13 @@ pub enum Buffer<'data, T = u8> {
 impl<'data, T> Buffer<'data, T> {
     pub fn size(&self) -> usize {
         std::mem::size_of_val(self.as_ref())
+    }
+
+    pub fn borrow<'this>(&'this self) -> Buffer<'data, T>
+    where
+        'this: 'data,
+    {
+        Buffer::Borrowed(self.as_ref())
     }
 }
 
@@ -41,9 +51,102 @@ impl<'data, T> From<Vec<T>> for Buffer<'data, T> {
     }
 }
 
+/// Contains the structural information needed to interpret the values of a
+/// query buffer into distinct cells of an attribute or dimension.
+pub enum CellStructure<'data> {
+    /// The number of values per cell is a specific fixed number.
+    Fixed(NonZeroU32),
+    /// The number of values per cell varies.
+    /// The contained buffer indicates the offset of each cell into an accompanying
+    /// values buffer. The values contained within cell `x` are those within the
+    /// range `offsets[x].. offsets[x + 1]`, except for the last record which
+    /// begins at `offset[x]` and ends at the end of the values buffer.
+    Var(Buffer<'data, u64>),
+}
+
+impl<'data> CellStructure<'data> {
+    /// Returns `CellStructure::Fixed(1)`, where each value is its own cell.
+    pub fn single() -> Self {
+        CellStructure::Fixed(NonZeroU32::new(1).unwrap())
+    }
+
+    /// Returns whether the cells contain a fixed number of records.
+    pub fn is_fixed(&self) -> bool {
+        matches!(self, Self::Fixed(_))
+    }
+
+    /// Returns whether the cells contain a variable number of records.
+    pub fn is_var(&self) -> bool {
+        matches!(self, Self::Var(_))
+    }
+
+    /// Returns a corresponding `CellValNum` for this structure.
+    pub fn as_cell_val_num(&self) -> CellValNum {
+        match self {
+            Self::Fixed(nz) => CellValNum::Fixed(*nz),
+            Self::Var(_) => CellValNum::Var,
+        }
+    }
+
+    /// Consumes the `CellStructure` and returns the offsets if present.
+    pub fn unwrap(self) -> Option<Buffer<'data, u64>> {
+        if let Self::Var(offsets) = self {
+            Some(offsets)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the offsets buffer, if any.
+    pub fn offsets_ref(&self) -> Option<&[u64]> {
+        if let Self::Var(ref offsets) = self {
+            Some(offsets.as_ref())
+        } else {
+            None
+        }
+    }
+
+    /// Applies a function to the offsets buffer, if any, and returns the result.
+    pub fn map_offsets<U, F>(&self, func: F) -> Option<U>
+    where
+        F: FnOnce(&[u64]) -> U,
+    {
+        if let Self::Var(ref offsets) = self {
+            Some(func(offsets.as_ref()))
+        } else {
+            None
+        }
+    }
+
+    /// Returns a `CellStructure` with the same contents as this one, sharing the underlying
+    /// offsets buffer if any.
+    pub fn borrow<'this>(&'this self) -> CellStructure<'data>
+    where
+        'this: 'data,
+    {
+        match self {
+            Self::Fixed(ref nz) => Self::Fixed(*nz),
+            Self::Var(ref offsets) => Self::Var(offsets.borrow()),
+        }
+    }
+}
+
+impl Default for CellStructure<'_> {
+    /// Returns `CellStructure::single()`.
+    fn default() -> Self {
+        Self::single()
+    }
+}
+
+impl<'data> From<NonZeroU32> for CellStructure<'data> {
+    fn from(value: NonZeroU32) -> Self {
+        Self::Fixed(value)
+    }
+}
+
 pub struct QueryBuffers<'data, C> {
     pub data: Buffer<'data, C>,
-    pub cell_offsets: Option<Buffer<'data, u64>>,
+    pub cell_structure: CellStructure<'data>,
     pub validity: Option<Buffer<'data, u8>>,
 }
 
@@ -54,9 +157,7 @@ impl<'data, C> QueryBuffers<'data, C> {
     {
         QueryBuffers {
             data: Buffer::Borrowed(self.data.as_ref()),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
+            cell_structure: self.cell_structure.borrow(),
             validity: Option::map(self.validity.as_ref(), |v| {
                 Buffer::Borrowed(v.as_ref())
             }),
@@ -73,6 +174,20 @@ pub enum BufferMut<'data, C> {
 impl<'data, T> BufferMut<'data, T> {
     pub fn size(&self) -> usize {
         std::mem::size_of_val(self.as_ref())
+    }
+
+    pub fn borrow<'this>(&'this self) -> Buffer<'data, T>
+    where
+        'this: 'data,
+    {
+        Buffer::Borrowed(self.as_ref())
+    }
+
+    pub fn borrow_mut<'this>(&'this mut self) -> BufferMut<'data, T>
+    where
+        'this: 'data,
+    {
+        BufferMut::Borrowed(self.as_mut())
     }
 }
 
@@ -119,9 +234,128 @@ impl<'data, T> DerefMut for BufferMut<'data, T> {
     }
 }
 
+impl<'data, T> From<Vec<T>> for BufferMut<'data, T> {
+    fn from(value: Vec<T>) -> Self {
+        BufferMut::Owned(value.into_boxed_slice())
+    }
+}
+
+/// Contains the structural information needed to interpret the values of a
+/// query buffer into distinct cells of an attribute or dimension.
+pub enum CellStructureMut<'data> {
+    /// The number of values per cell is a specific fixed number.
+    Fixed(NonZeroU32),
+    /// The number of values per cell varies.
+    /// The contained buffer provides space to write offsets which
+    /// define the contents of each cell.  See `CellStructure::Var` for the
+    /// expected offset format.
+    Var(BufferMut<'data, u64>),
+}
+
+impl<'data> CellStructureMut<'data> {
+    /// Returns `CellStructure::Fixed(1)`, where each value is its own cell.
+    pub fn single() -> Self {
+        CellStructureMut::Fixed(NonZeroU32::new(1).unwrap())
+    }
+
+    /// Returns whether the cells contain a fixed number of records.
+    pub fn is_fixed(&self) -> bool {
+        matches!(self, Self::Fixed(_))
+    }
+
+    /// Returns whether the cells contain a variable number of records.
+    pub fn is_var(&self) -> bool {
+        matches!(self, Self::Var(_))
+    }
+
+    /// Returns a corresponding `CellValNum` for this structure.
+    pub fn as_cell_val_num(&self) -> CellValNum {
+        match self {
+            Self::Fixed(nz) => CellValNum::Fixed(*nz),
+            Self::Var(_) => CellValNum::Var,
+        }
+    }
+
+    /// Consumes the `CellStructure` and returns the offsets if present.
+    pub fn unwrap(self) -> Option<BufferMut<'data, u64>> {
+        if let Self::Var(offsets) = self {
+            Some(offsets)
+        } else {
+            None
+        }
+    }
+
+    /// Returns a reference to the offsets buffer, if any.
+    pub fn offsets_ref(&self) -> Option<&[u64]> {
+        if let Self::Var(ref offsets) = self {
+            Some(offsets.as_ref())
+        } else {
+            None
+        }
+    }
+
+    /// Returns a mutable reference to the offsets buffer, if any.
+    pub fn offsets_mut(&mut self) -> Option<&mut BufferMut<'data, u64>> {
+        if let Self::Var(ref mut offsets) = self {
+            Some(offsets)
+        } else {
+            None
+        }
+    }
+
+    /// Applies a function to the offsets buffer, if any, and returns the result.
+    pub fn map_offsets<U, F>(&self, func: F) -> Option<U>
+    where
+        F: FnOnce(&BufferMut<'data, u64>) -> U,
+    {
+        if let Self::Var(ref offsets) = self {
+            Some(func(offsets))
+        } else {
+            None
+        }
+    }
+
+    /// Returns a `CellStructure` with the same contents as this one, sharing the underlying
+    /// offsets buffer if any.
+    pub fn borrow<'this>(&'this self) -> CellStructure<'data>
+    where
+        'this: 'data,
+    {
+        match self {
+            Self::Fixed(ref nz) => CellStructure::Fixed(*nz),
+            Self::Var(ref offsets) => CellStructure::Var(offsets.borrow()),
+        }
+    }
+
+    /// Returns a `CellStructure` with the same contents as this one, with a mutable reference
+    /// to the same underlying offsets buffer if any.
+    pub fn borrow_mut<'this>(&'this mut self) -> CellStructureMut<'data>
+    where
+        'this: 'data,
+    {
+        match self {
+            Self::Fixed(ref nz) => Self::Fixed(*nz),
+            Self::Var(ref mut offsets) => Self::Var(offsets.borrow_mut()),
+        }
+    }
+}
+
+impl Default for CellStructureMut<'_> {
+    /// Returns `CellStructureMut::single()`.
+    fn default() -> Self {
+        Self::single()
+    }
+}
+
+impl<'data> From<NonZeroU32> for CellStructureMut<'data> {
+    fn from(value: NonZeroU32) -> Self {
+        Self::Fixed(value)
+    }
+}
+
 pub struct QueryBuffersMut<'data, T = u8> {
     pub data: BufferMut<'data, T>,
-    pub cell_offsets: Option<BufferMut<'data, u64>>,
+    pub cell_structure: CellStructureMut<'data>,
     pub validity: Option<BufferMut<'data, u8>>,
 }
 
@@ -133,9 +367,7 @@ impl<'data, T> QueryBuffersMut<'data, T> {
     {
         QueryBuffers {
             data: Buffer::Borrowed(self.data.as_ref()),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
+            cell_structure: self.cell_structure.borrow(),
             validity: Option::map(self.validity.as_ref(), |v| {
                 Buffer::Borrowed(v.as_ref())
             }),

@@ -620,7 +620,7 @@ where
                     .base
                     .raw_read_output
                     .iter()
-                    .map(|r| r.borrow())
+                    .map(|r| r.borrow_mut())
                     .collect::<Vec<RefTypedQueryBuffersMut>>();
                 let args = sizes
                     .iter()
@@ -656,7 +656,7 @@ where
                     .base
                     .raw_read_output
                     .iter()
-                    .map(|r| r.borrow())
+                    .map(|r| r.borrow_mut())
                     .collect::<Vec<RefTypedQueryBuffersMut>>();
                 let args = sizes
                     .iter()
@@ -718,12 +718,16 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
     use super::*;
     use proptest::collection::vec;
     use proptest::prelude::*;
 
-    use crate::query::buffer::{Buffer, QueryBuffers};
-    use crate::query::read::output::{NonVarSized, VarSized};
+    use crate::query::buffer::{Buffer, CellStructure, QueryBuffers};
+    use crate::query::read::output::{
+        NonVarSized, ScratchCellStructure, VarSized,
+    };
 
     const MIN_RECORDS: usize = 0;
     const MAX_RECORDS: usize = 1024;
@@ -737,6 +741,7 @@ mod tests {
     {
         let alloc = NonVarSized {
             capacity: dst_unit_capacity,
+            cell_val_num: NonZeroU32::new(1).unwrap(),
         };
 
         let mut scratch_space = alloc.alloc();
@@ -763,7 +768,9 @@ mod tests {
 
             let input_data = QueryBuffers {
                 data: Buffer::Borrowed(&scratch_space.0),
-                cell_offsets: None,
+                cell_structure: CellStructure::Fixed(
+                    NonZeroU32::new(1).unwrap(),
+                ),
                 validity: None,
             };
 
@@ -836,7 +843,8 @@ mod tests {
             let (nvalues, nbytes) = {
                 /* write the offsets first */
                 let (nvalues, nbytes) = {
-                    let scratch_offsets = scratch_space.1.as_mut().unwrap();
+                    let scratch_offsets =
+                        scratch_space.1.offsets_mut().unwrap();
                     let mut i = 0;
                     let mut off = 0;
                     let mut src =
@@ -865,7 +873,7 @@ mod tests {
                     continue;
                 }
 
-                let scratch_offsets = scratch_space.1.as_ref().unwrap();
+                let scratch_offsets = scratch_space.1.offsets_ref().unwrap();
 
                 /* then transfer contents */
                 for i in 0..nvalues {
@@ -886,10 +894,12 @@ mod tests {
             let prev_len = stringdst.len();
             let input = QueryBuffers {
                 data: Buffer::Borrowed(&scratch_space.0),
-                cell_offsets: scratch_space
-                    .1
-                    .as_ref()
-                    .map(|c| Buffer::Borrowed(c)),
+                cell_structure: match scratch_space.1 {
+                    ScratchCellStructure::Fixed(nz) => CellStructure::Fixed(nz),
+                    ScratchCellStructure::Var(ref offsets) => {
+                        CellStructure::Var(Buffer::Borrowed(offsets.as_ref()))
+                    }
+                },
                 validity: scratch_space.2.as_ref().map(|v| Buffer::Borrowed(v)),
             };
             let arg = RawReadOutput {

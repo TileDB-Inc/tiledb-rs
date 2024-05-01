@@ -1,12 +1,17 @@
 use std::sync::Arc;
 
-use arrow::array::{Array as ArrowArray, GenericListArray, PrimitiveArray};
+use arrow::array::{
+    Array as ArrowArray, FixedSizeListArray, GenericListArray, PrimitiveArray,
+};
 use arrow::buffer::{OffsetBuffer, ScalarBuffer};
 use arrow::datatypes::Field;
 
+use crate::array::CellValNum;
 use crate::datatype::arrow::ArrowPrimitiveTypeNative;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::query::buffer::{Buffer, QueryBuffers, TypedQueryBuffers};
+use crate::query::buffer::{
+    Buffer, CellStructure, QueryBuffers, TypedQueryBuffers,
+};
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
 use crate::{typed_query_buffers_go, Result as TileDBResult};
 
@@ -23,10 +28,17 @@ where
         type MyPrimitiveArray<C> =
             PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
 
-        if value.input.cell_offsets.is_some() {
-            return Err(Error::Datatype(DatatypeErrorKind::ExpectedFixedSize(
-                None,
-            )));
+        match value.input.cell_structure {
+            CellStructure::Fixed(nz) if nz.get() == 1 => {}
+            structure => {
+                return Err(Error::Datatype(
+                    DatatypeErrorKind::UnexpectedCellStructure {
+                        context: None,
+                        expected: CellValNum::single(),
+                        found: structure.as_cell_val_num(),
+                    },
+                ))
+            }
         }
 
         Ok(if let Some(validity) = value.input.validity {
@@ -72,84 +84,148 @@ where
     PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>:
         From<Vec<C>> + From<Vec<Option<C>>>,
 {
-    fn from(mut value: RawReadOutput<'data, C>) -> Self {
-        /* TODO: needs the cell val num to make the decision properly */
-
+    fn from(value: RawReadOutput<'data, C>) -> Self {
         type MyPrimitiveArray<C> =
             PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
 
-        let offsets = value.input.cell_offsets.take();
-
-        let mut v_offsets = if let Some(offsets) = offsets {
-            match offsets {
-                Buffer::Empty => vec![],
-                Buffer::Owned(offsets) => {
-                    let mut offsets = offsets.into_vec();
-                    offsets.truncate(value.nvalues);
-                    offsets
-                }
-                Buffer::Borrowed(offsets) => offsets[0..value.nvalues].to_vec(),
+        match value.input.cell_structure {
+            CellStructure::Fixed(nz) if nz.get() == 1 => {
+                let flat = MyPrimitiveArray::<C>::try_from(value).unwrap();
+                Arc::new(flat)
             }
-        } else {
-            let flat = MyPrimitiveArray::<C>::try_from(value).unwrap();
-            return Arc::new(flat);
-        };
+            CellStructure::Fixed(nz) => {
+                let flat = {
+                    let rr = RawReadOutput {
+                        nvalues: value.nbytes / std::mem::size_of::<C>(),
+                        nbytes: value.nbytes, // will not be used
+                        input: QueryBuffers {
+                            data: value.input.data,
+                            cell_structure: CellStructure::single(),
+                            validity: None, /* TODO */
+                        },
+                    };
+                    // the `unwrap` will succeed because the `Err` conditions are
+                    // on the cell val num
+                    MyPrimitiveArray::<C>::try_from(rr).unwrap()
+                };
+                let flat: Arc<dyn ArrowArray> = Arc::new(flat);
+                let field =
+                    Field::new_list_field(flat.data_type().clone(), false);
 
-        let arrow_values = {
-            let rr = RawReadOutput {
-                nvalues: value.nbytes / std::mem::size_of::<C>(),
-                nbytes: value.nbytes, // unused
-                input: QueryBuffers {
-                    data: value.input.data,
-                    cell_offsets: None,
-                    validity: None,
-                },
-            };
-            MyPrimitiveArray::<C>::try_from(rr).unwrap()
-        };
+                let fixed_len = match i32::try_from(nz.get()) {
+                    Ok(len) => len,
+                    Err(_) => {
+                        /*
+                         * What we probably want to do here is cry, I mean conjure up a
+                         * generic list array with some large offsets. Leaving it out
+                         * for now because we need more work from the Attribute/RecordBatch
+                         * to identify if that's actually true.
+                         */
+                        unimplemented!()
+                    }
+                };
 
-        v_offsets.push(value.nbytes as u64);
+                let arrow_validity =
+                    if let Some(validity) = value.input.validity {
+                        let validity: Vec<u8> = match validity {
+                            Buffer::Empty => vec![],
+                            Buffer::Owned(validity) => validity.into_vec(),
+                            Buffer::Borrowed(validity) => {
+                                validity[0..value.nvalues].to_vec()
+                            }
+                        };
+                        let arrow_validity = validity
+                            .into_iter()
+                            .take(value.nvalues)
+                            .map(|v: u8| v != 0)
+                            .collect::<arrow::buffer::NullBuffer>();
+                        Some(arrow_validity)
+                    } else {
+                        None
+                    };
 
-        let v_offsets = v_offsets
-            .into_iter()
-            .map(|o| (o / std::mem::size_of::<C>() as u64) as i64)
-            .collect::<Vec<i64>>();
+                let fixed = FixedSizeListArray::new(
+                    Arc::new(field),
+                    fixed_len,
+                    flat,
+                    arrow_validity,
+                );
+                Arc::new(fixed)
+            }
+            CellStructure::Var(offsets) => {
+                let flat = {
+                    let rr = RawReadOutput {
+                        nvalues: value.nbytes / std::mem::size_of::<C>(),
+                        nbytes: value.nbytes, // will not be used
+                        input: QueryBuffers {
+                            data: value.input.data,
+                            cell_structure: CellStructure::single(),
+                            validity: None,
+                        },
+                    };
+                    // the `unwrap` will succeed because the `Err` conditions are
+                    // on the cell val num
+                    MyPrimitiveArray::<C>::try_from(rr).unwrap()
+                };
+                let flat: Arc<dyn ArrowArray> = Arc::new(flat);
 
-        let field = Arc::new(Field::new_list_field(
-            arrow_values.data_type().clone(),
-            value.input.validity.is_some(),
-        ));
+                let mut offsets = match offsets {
+                    Buffer::Empty => vec![],
+                    Buffer::Borrowed(offsets) => {
+                        offsets[0..value.nvalues].to_vec()
+                    }
+                    Buffer::Owned(offsets) => {
+                        let mut offsets = offsets.into_vec();
+                        offsets.truncate(value.nvalues);
+                        offsets
+                    }
+                };
+                offsets.push(value.nbytes as u64);
 
-        let arrow_offsets =
-            OffsetBuffer::<i64>::new(ScalarBuffer::<i64>::from(v_offsets));
+                // convert u64 byte offsets to i64 element offsets
+                let offsets = offsets
+                    .into_iter()
+                    .map(|o| (o / std::mem::size_of::<C>() as u64) as i64)
+                    .collect::<Vec<i64>>();
 
-        let arrow_validity = if let Some(validity) = value.input.validity {
-            let validity: Vec<u8> = match validity {
-                Buffer::Empty => vec![],
-                Buffer::Owned(validity) => validity.into_vec(),
-                Buffer::Borrowed(validity) => {
-                    validity[0..value.nvalues].to_vec()
-                }
-            };
-            let arrow_validity = validity
-                .into_iter()
-                .take(value.nvalues)
-                .map(|v: u8| v != 0)
-                .collect::<arrow::buffer::NullBuffer>();
-            Some(arrow_validity)
-        } else {
-            None
-        };
+                let field = Arc::new(Field::new_list_field(
+                    flat.data_type().clone(),
+                    value.input.validity.is_some(),
+                ));
 
-        let list_array = GenericListArray::<i64>::try_new(
-            field,
-            arrow_offsets,
-            Arc::new(arrow_values),
-            arrow_validity,
-        )
-        .expect("TileDB internal error constructing Arrow buffers");
+                let arrow_offsets = OffsetBuffer::<i64>::new(
+                    ScalarBuffer::<i64>::from(offsets),
+                );
+                let arrow_validity =
+                    if let Some(validity) = value.input.validity {
+                        let validity: Vec<u8> = match validity {
+                            Buffer::Empty => vec![],
+                            Buffer::Owned(validity) => validity.into_vec(),
+                            Buffer::Borrowed(validity) => {
+                                validity[0..value.nvalues].to_vec()
+                            }
+                        };
+                        let arrow_validity = validity
+                            .into_iter()
+                            .take(value.nvalues)
+                            .map(|v: u8| v != 0)
+                            .collect::<arrow::buffer::NullBuffer>();
+                        Some(arrow_validity)
+                    } else {
+                        None
+                    };
 
-        Arc::new(list_array)
+                let list_array = GenericListArray::<i64>::try_new(
+                    field,
+                    arrow_offsets,
+                    Arc::new(flat),
+                    arrow_validity,
+                )
+                .expect("TileDB internal error constructing Arrow buffers");
+
+                Arc::new(list_array)
+            }
+        }
     }
 }
 
@@ -191,99 +267,163 @@ mod tests {
             Arc::<dyn ArrowArray>::from(rrborrow)
         };
 
-        if let Some(offsets) = rr.input.cell_offsets {
-            assert_eq!(
-                TypeId::of::<GenericListArray<i64>>(),
-                arrow.as_any().type_id()
-            );
-            let gl = arrow
-                .as_any()
-                .downcast_ref::<GenericListArray<i64>>()
-                .unwrap();
-
-            let arrow_offsets = gl.offsets();
-            assert!(arrow_offsets.len() <= offsets.len() + 1);
-            assert_eq!(arrow_offsets.len(), rr.nvalues + 1);
-
-            /* arrow offsets are value, tiledb offsets are bytes */
-            let offset_scale = std::mem::size_of::<C>() as i64;
-
-            /* check that offsets are mapped correctly */
-            for o in 0..rr.nvalues {
-                assert_eq!(arrow_offsets[o] * offset_scale, offsets[o] as i64);
-            }
-            assert_eq!(
-                arrow_offsets[rr.nvalues] * offset_scale,
-                rr.nbytes as i64
-            );
-
-            /* check that values match */
-            let primitive = {
+        match rr.input.cell_structure {
+            CellStructure::Fixed(nz) if nz.get() == 1 => {
                 assert_eq!(
                     TypeId::of::<MyPrimitiveArray<C>>(),
-                    gl.values().as_any().type_id()
+                    arrow.as_any().type_id()
                 );
-                gl.values()
+                let primitive = arrow
                     .as_any()
                     .downcast_ref::<MyPrimitiveArray<C>>()
-                    .unwrap()
-            };
-            assert_eq!(None, primitive.nulls());
+                    .unwrap();
 
-            assert_eq!(rr.nbytes, primitive.len() * std::mem::size_of::<C>());
-            for (arrow, tiledb) in primitive
-                .iter()
-                .zip(rr.input.data[0..primitive.len()].iter())
-            {
-                assert_eq!(Some(*tiledb), arrow);
-            }
+                assert_eq!(rr.nvalues, primitive.len());
 
-            /* check that validity matches */
-            if let Some(validity) = rr.input.validity {
-                assert!(gl.nulls().is_some());
-                let arrow_nulls = gl.nulls().unwrap();
-                assert_eq!(rr.nvalues, arrow_nulls.len());
-
-                let arrow_nulls = arrow_nulls
-                    .iter()
-                    .map(|b| if b { 1 } else { 0 })
-                    .collect::<Vec<u8>>();
-                assert_eq!(validity[0..arrow_nulls.len()], arrow_nulls);
-            } else {
-                assert_eq!(None, gl.nulls());
-            }
-        } else {
-            assert_eq!(
-                TypeId::of::<MyPrimitiveArray<C>>(),
-                arrow.as_any().type_id()
-            );
-            let primitive = arrow
-                .as_any()
-                .downcast_ref::<MyPrimitiveArray<C>>()
-                .unwrap();
-
-            assert_eq!(rr.nvalues, primitive.len());
-
-            /* ensure that neither or both has validity values */
-            if rr.input.validity.is_some() {
-                assert!(primitive.nulls().is_some());
-                assert_eq!(rr.nvalues, primitive.nulls().unwrap().len());
-            } else {
-                assert_eq!(None, primitive.nulls());
-            }
-
-            /* check validity and data in stride */
-            for i in 0..primitive.len() {
-                if let Some(v) = rr.input.validity.as_ref().map(|v| v[i]) {
-                    assert_eq!(
-                        Some(v == 0),
-                        primitive.nulls().map(|n| n.is_null(i))
-                    );
+                /* ensure that neither or both has validity values */
+                if rr.input.validity.is_some() {
+                    assert!(primitive.nulls().is_some());
+                    assert_eq!(rr.nvalues, primitive.nulls().unwrap().len());
                 } else {
-                    assert_eq!(rr.input.data[i], primitive.value(i));
+                    assert_eq!(None, primitive.nulls());
+                }
+
+                /* check validity and data in stride */
+                for i in 0..primitive.len() {
+                    if let Some(v) = rr.input.validity.as_ref().map(|v| v[i]) {
+                        assert_eq!(
+                            Some(v == 0),
+                            primitive.nulls().map(|n| n.is_null(i))
+                        );
+                    } else {
+                        assert_eq!(rr.input.data[i], primitive.value(i));
+                    }
                 }
             }
-        };
+            CellStructure::Fixed(nz) => {
+                assert_eq!(
+                    TypeId::of::<FixedSizeListArray>(),
+                    arrow.as_any().type_id()
+                );
+                let fl = arrow
+                    .as_any()
+                    .downcast_ref::<FixedSizeListArray>()
+                    .unwrap();
+
+                if let arrow::datatypes::DataType::FixedSizeList(_, flen) =
+                    fl.data_type()
+                {
+                    assert_eq!(*flen, nz.get() as i32);
+                } else {
+                    unreachable!(
+                        "Expected FixedSizeList(_, {}) but found {}",
+                        nz.get(),
+                        fl.data_type()
+                    )
+                }
+
+                /* check that the values match */
+                let primitive = {
+                    assert_eq!(
+                        TypeId::of::<MyPrimitiveArray<C>>(),
+                        fl.values().as_any().type_id()
+                    );
+                    fl.values()
+                        .as_any()
+                        .downcast_ref::<MyPrimitiveArray<C>>()
+                        .unwrap()
+                };
+                assert_eq!(None, primitive.nulls());
+
+                assert_eq!(
+                    rr.nbytes,
+                    primitive.len() * std::mem::size_of::<C>()
+                );
+
+                /* check that validity matches */
+                if let Some(validity) = rr.input.validity {
+                    assert!(fl.nulls().is_some());
+                    let arrow_nulls = fl.nulls().unwrap();
+                    assert_eq!(rr.nvalues, arrow_nulls.len());
+
+                    let arrow_nulls = arrow_nulls
+                        .iter()
+                        .map(|b| if b { 1 } else { 0 })
+                        .collect::<Vec<u8>>();
+                    assert_eq!(validity[0..arrow_nulls.len()], arrow_nulls);
+                } else {
+                    assert_eq!(None, fl.nulls());
+                }
+            }
+            CellStructure::Var(offsets) => {
+                assert_eq!(
+                    TypeId::of::<GenericListArray<i64>>(),
+                    arrow.as_any().type_id()
+                );
+                let gl = arrow
+                    .as_any()
+                    .downcast_ref::<GenericListArray<i64>>()
+                    .unwrap();
+
+                let arrow_offsets = gl.offsets();
+                assert!(arrow_offsets.len() <= offsets.len() + 1);
+                assert_eq!(arrow_offsets.len(), rr.nvalues + 1);
+
+                /* arrow offsets are value, tiledb offsets are bytes */
+                let offset_scale = std::mem::size_of::<C>() as i64;
+
+                /* check that offsets are mapped correctly */
+                for o in 0..rr.nvalues {
+                    assert_eq!(
+                        arrow_offsets[o] * offset_scale,
+                        offsets[o] as i64
+                    );
+                }
+                assert_eq!(
+                    arrow_offsets[rr.nvalues] * offset_scale,
+                    rr.nbytes as i64
+                );
+
+                /* check that values match */
+                let primitive = {
+                    assert_eq!(
+                        TypeId::of::<MyPrimitiveArray<C>>(),
+                        gl.values().as_any().type_id()
+                    );
+                    gl.values()
+                        .as_any()
+                        .downcast_ref::<MyPrimitiveArray<C>>()
+                        .unwrap()
+                };
+                assert_eq!(None, primitive.nulls());
+
+                assert_eq!(
+                    rr.nbytes,
+                    primitive.len() * std::mem::size_of::<C>()
+                );
+                for (arrow, tiledb) in primitive
+                    .iter()
+                    .zip(rr.input.data[0..primitive.len()].iter())
+                {
+                    assert_eq!(Some(*tiledb), arrow);
+                }
+
+                /* check that validity matches */
+                if let Some(validity) = rr.input.validity {
+                    assert!(gl.nulls().is_some());
+                    let arrow_nulls = gl.nulls().unwrap();
+                    assert_eq!(rr.nvalues, arrow_nulls.len());
+
+                    let arrow_nulls = arrow_nulls
+                        .iter()
+                        .map(|b| if b { 1 } else { 0 })
+                        .collect::<Vec<u8>>();
+                    assert_eq!(validity[0..arrow_nulls.len()], arrow_nulls);
+                } else {
+                    assert_eq!(None, gl.nulls());
+                }
+            }
+        }
     }
 
     proptest! {

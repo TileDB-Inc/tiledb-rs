@@ -93,7 +93,7 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
                 nbytes: value.nbytes,
                 input: handle.borrow(),
             };
-            if rr.input.cell_offsets.is_some() {
+            if rr.input.cell_structure.is_var() {
                 Self::from(
                     VarDataIterator::try_from(rr)
                         .unwrap()
