@@ -471,7 +471,7 @@ macro_rules! query_read_callback {
                                 .map_err(|e| {
                                     let fields = paste! {
                                         vec![$(
-                                            self.[< arg_ $U:snake >].field.clone()
+                                            self.[< arg_ $U:snake >].field.name.clone()
                                         ),+]
                                     };
                                     crate::error::Error::QueryCallback(fields, anyhow!(e))
@@ -496,7 +496,7 @@ macro_rules! query_read_callback {
                                 .map_err(|e| {
                                     let fields = paste! {
                                         vec![$(
-                                            self.[< arg_ $U:snake >].field.clone()
+                                            self.[< arg_ $U:snake >].field.name.clone()
                                         ),+]
                                     };
                                     crate::error::Error::QueryCallback(fields, anyhow!(e))
@@ -620,15 +620,19 @@ where
                     .base
                     .raw_read_output
                     .iter()
-                    .map(|r| r.borrow_mut())
-                    .collect::<Vec<RefTypedQueryBuffersMut>>();
+                    .map(|r| (r.field(), r.borrow_mut()))
+                    .collect::<Vec<(&FieldMetadata, RefTypedQueryBuffersMut)>>(
+                    );
                 let args = sizes
                     .iter()
                     .zip(buffers.iter())
-                    .map(|(&(nvalues, nbytes), buffers)| TypedRawReadOutput {
-                        nvalues,
-                        nbytes,
-                        buffers: buffers.as_shared(),
+                    .map(|(&(nvalues, nbytes), (field, buffers))| {
+                        TypedRawReadOutput {
+                            nvalues,
+                            nbytes,
+                            buffers: buffers.as_shared(),
+                            datatype: field.datatype,
+                        }
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 
@@ -637,7 +641,7 @@ where
                         .base
                         .raw_read_output
                         .iter()
-                        .map(|rh| rh.field().clone())
+                        .map(|rh| rh.field().name.clone())
                         .collect::<Vec<String>>();
                     crate::error::Error::QueryCallback(fields, anyhow!(e))
                 })?;
@@ -656,15 +660,19 @@ where
                     .base
                     .raw_read_output
                     .iter()
-                    .map(|r| r.borrow_mut())
-                    .collect::<Vec<RefTypedQueryBuffersMut>>();
+                    .map(|r| (r.field(), r.borrow_mut()))
+                    .collect::<Vec<(&FieldMetadata, RefTypedQueryBuffersMut)>>(
+                    );
                 let args = sizes
                     .iter()
                     .zip(buffers.iter())
-                    .map(|(&(nvalues, nbytes), buffers)| TypedRawReadOutput {
-                        nvalues,
-                        nbytes,
-                        buffers: buffers.as_shared(),
+                    .map(|(&(nvalues, nbytes), (field, buffers))| {
+                        TypedRawReadOutput {
+                            nvalues,
+                            nbytes,
+                            buffers: buffers.as_shared(),
+                            datatype: field.datatype,
+                        }
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 
@@ -673,7 +681,7 @@ where
                         .base
                         .raw_read_output
                         .iter()
-                        .map(|rh| rh.field().clone())
+                        .map(|rh| rh.field().name.clone())
                         .collect::<Vec<String>>();
                     crate::error::Error::QueryCallback(fields, anyhow!(e))
                 })?;

@@ -16,7 +16,7 @@ use crate::query::read::output::{
     FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
 };
 use crate::query::read::{
-    CallbackVarArgReadBuilder, ManagedBuffer, RawReadHandle,
+    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
     ReadCallbackVarArg, TypedReadHandle,
 };
 use crate::{fn_typed, typed_query_buffers_go};
@@ -381,7 +381,8 @@ impl WriteQueryData {
                         let managed: ManagedBuffer<DT> = ManagedBuffer::new(
                             field.query_scratch_allocator().unwrap(),
                         );
-                        let rr = RawReadHandle::managed(name, managed);
+                        let metadata = FieldMetadata::try_from(&field).unwrap();
+                        let rr = RawReadHandle::managed(metadata, managed);
                         TypedReadHandle::from(rr)
                     })
                 })

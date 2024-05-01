@@ -8,15 +8,16 @@ use crate::query::buffer::{CellStructure, QueryBuffers};
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
 use crate::{fn_typed, Datatype};
 
+#[derive(Clone, Debug)]
 pub struct RawReadOutputParameters {
-    cell_val_num: Option<CellValNum>,
-    is_nullable: Option<bool>,
-    min_values_capacity: usize,
-    max_values_capacity: usize,
-    min_offset_capacity: usize,
-    max_offset_capacity: usize,
-    min_validity_capacity: usize,
-    max_validity_capacity: usize,
+    pub cell_val_num: Option<CellValNum>,
+    pub is_nullable: Option<bool>,
+    pub min_values_capacity: usize,
+    pub max_values_capacity: usize,
+    pub min_offset_capacity: usize,
+    pub max_offset_capacity: usize,
+    pub min_validity_capacity: usize,
+    pub max_validity_capacity: usize,
 }
 
 impl Default for RawReadOutputParameters {
@@ -114,27 +115,31 @@ where
 }
 
 impl<'data> Arbitrary for TypedRawReadOutput<'data> {
-    type Parameters = Option<Datatype>;
+    type Parameters = Option<(Datatype, RawReadOutputParameters)>;
     type Strategy = BoxedStrategy<TypedRawReadOutput<'data>>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let strategy_datatype = if let Some(datatype) = params {
-            Just(datatype).boxed()
-        } else {
-            any::<Datatype>().boxed()
-        };
+        let strategy_datatype =
+            if let Some(datatype) = params.as_ref().map(|p| p.0) {
+                Just(datatype).boxed()
+            } else {
+                any::<Datatype>().boxed()
+            };
 
         strategy_datatype
-            .prop_flat_map(|datatype| {
+            .prop_flat_map(move |datatype| {
                 fn_typed!(
                     datatype,
                     DT,
-                    any::<RawReadOutput<DT>>()
-                        .prop_map(
-                            #[allow(clippy::redundant_closure)]
-                            |rr| TypedRawReadOutput::from(rr)
-                        )
-                        .boxed()
+                    any_with::<RawReadOutput<DT>>(
+                        params
+                            .as_ref()
+                            .cloned()
+                            .map(|p| p.1)
+                            .unwrap_or(Default::default())
+                    )
+                    .prop_map(move |rr| TypedRawReadOutput::new(datatype, rr))
+                    .boxed()
                 )
             })
             .boxed()

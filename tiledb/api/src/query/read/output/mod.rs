@@ -12,8 +12,8 @@ use crate::query::buffer::{
     Buffer, BufferMut, CellStructure, CellStructureMut, QueryBuffers,
     QueryBuffersMut, TypedQueryBuffers,
 };
-use crate::typed_query_buffers_go;
 use crate::Result as TileDBResult;
+use crate::{typed_query_buffers_go, Datatype};
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
@@ -26,11 +26,11 @@ pub struct RawReadOutput<'data, C> {
     pub input: QueryBuffers<'data, C>,
 }
 
-impl<C> Debug for RawReadOutput<'_, C>
-where
-    C: Debug,
-{
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+impl<C> RawReadOutput<'_, C> {
+    fn to_json(&self) -> serde_json::value::Value
+    where
+        C: Debug,
+    {
         let nrecords = self.nvalues;
         let nvalues = self.nbytes / std::mem::size_of::<C>();
 
@@ -51,51 +51,69 @@ where
             })
         });
 
-        write!(
-            f,
-            "{}",
-            json!({
-                "data": {
-                    "capacity": self.input.data.len(),
-                    "defined": nvalues,
-                    "values": format!("{:?}", &self.input.data.as_ref()[0.. nvalues])
-                },
-                "cells": cell_json,
-                "validity": validity_json,
-            })
-        )
+        json!({
+            "data": {
+                "capacity": self.input.data.len(),
+                "defined": nvalues,
+                "values": format!("{:?}", &self.input.data.as_ref()[0.. nvalues])
+            },
+            "cells": cell_json,
+            "validity": validity_json,
+        })
+    }
+}
+
+impl<C> Debug for RawReadOutput<'_, C>
+where
+    C: Debug,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{}", self.to_json())
     }
 }
 
 pub struct TypedRawReadOutput<'data> {
+    pub datatype: Datatype,
     pub nvalues: usize,
     pub nbytes: usize,
     pub buffers: TypedQueryBuffers<'data>,
 }
 
+impl<'data> TypedRawReadOutput<'data> {
+    pub fn new<C>(datatype: Datatype, rr: RawReadOutput<'data, C>) -> Self
+    where
+        TypedQueryBuffers<'data>: From<QueryBuffers<'data, C>>,
+    {
+        TypedRawReadOutput {
+            datatype,
+            nvalues: rr.nvalues,
+            nbytes: rr.nbytes,
+            buffers: rr.input.into(),
+        }
+    }
+
+    pub fn is_nullable(&self) -> bool {
+        typed_query_buffers_go!(
+            self.buffers,
+            _DT,
+            ref qb,
+            qb.validity.is_some()
+        )
+    }
+}
+
 impl Debug for TypedRawReadOutput<'_> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        typed_query_buffers_go!(self.buffers, _DT, ref qb, {
+        let mut json = typed_query_buffers_go!(self.buffers, _DT, ref qb, {
             RawReadOutput {
                 nvalues: self.nvalues,
                 nbytes: self.nbytes,
                 input: qb.borrow(),
             }
-            .fmt(f)
-        })
-    }
-}
-
-impl<'data, C> From<RawReadOutput<'data, C>> for TypedRawReadOutput<'data>
-where
-    TypedQueryBuffers<'data>: From<QueryBuffers<'data, C>>,
-{
-    fn from(value: RawReadOutput<'data, C>) -> Self {
-        TypedRawReadOutput {
-            nvalues: value.nvalues,
-            nbytes: value.nbytes,
-            buffers: value.input.into(),
-        }
+            .to_json()
+        });
+        json["datatype"] = json!(self.datatype);
+        write!(f, "{}", json)
     }
 }
 
