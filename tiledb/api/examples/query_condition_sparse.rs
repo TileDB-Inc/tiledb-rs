@@ -164,7 +164,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
         data: BufferMut::Owned(
             vec![0u32, 2, 0, 4, 0, 6, 0, 8, 0, 10].into_boxed_slice(),
         ),
-        cell_offsets: None,
+        cell_structure: Default::default(),
         validity: Some(BufferMut::Owned(
             vec![0u8, 1, 0, 1, 0, 1, 0, 1, 0, 1].into_boxed_slice(),
         )),

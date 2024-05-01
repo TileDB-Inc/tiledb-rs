@@ -3,7 +3,9 @@ use super::*;
 use std::cell::RefMut;
 
 use crate::error::Error;
-use crate::query::buffer::{QueryBuffersMut, RefTypedQueryBuffersMut};
+use crate::query::buffer::{
+    CellStructureMut, QueryBuffersMut, RefTypedQueryBuffersMut,
+};
 use crate::query::read::output::ScratchSpace;
 
 pub struct ManagedBuffer<'data, C> {
@@ -25,7 +27,7 @@ impl<'data, C> ManagedBuffer<'data, C> {
         let old_scratch = {
             let tmp = QueryBuffersMut {
                 data: BufferMut::Empty,
-                cell_offsets: None,
+                cell_structure: CellStructureMut::Var(BufferMut::Empty),
                 validity: None,
             };
             ScratchSpace::<C>::try_from(self.buffers.replace(tmp))
@@ -92,7 +94,7 @@ impl<'data, C> RawReadHandle<'data, C> {
             let data = scratch.data.as_mut() as *mut [C];
             let data = unsafe { &mut *data as &mut [C] };
 
-            let cell_offsets = scratch.cell_offsets.as_mut().map(|c| {
+            let cell_offsets = scratch.cell_structure.offsets_mut().map(|c| {
                 let c = c.as_mut() as *mut [u64];
                 unsafe { &mut *c as &mut [u64] }
             });
@@ -183,10 +185,9 @@ impl<'data, C> RawReadHandle<'data, C> {
             )
         })?;
 
-        let cell_offsets = &mut location.cell_offsets;
-
         if let Some(ref mut offsets_size) = self.offsets_size.as_mut() {
-            let cell_offsets = cell_offsets.as_mut().unwrap();
+            let cell_offsets = location.cell_structure.offsets_mut();
+            let cell_offsets = cell_offsets.unwrap();
 
             *offsets_size.as_mut() =
                 std::mem::size_of_val::<[u64]>(cell_offsets) as u64;
@@ -332,16 +333,9 @@ impl<'data> TypedReadHandle<'data> {
         typed_read_handle_go!(self, _DT, handle, handle.last_read_size())
     }
 
-    pub fn borrow_mut(&mut self) -> RefMut<Option<BufferMut<'data, u64>>> {
-        typed_read_handle_go!(
-            self,
-            _DT,
-            handle,
-            RefMut::map(handle.location.borrow_mut(), |o| &mut o.cell_offsets)
-        )
-    }
-
-    pub fn borrow<'this>(&'this self) -> RefTypedQueryBuffersMut<'this, 'data> {
+    pub fn borrow_mut<'this>(
+        &'this self,
+    ) -> RefTypedQueryBuffersMut<'this, 'data> {
         typed_read_handle_go!(self, _DT, handle, {
             RefTypedQueryBuffersMut::from(handle.location.borrow())
         })
@@ -529,7 +523,7 @@ where
                 .raw_read_output
                 .iter_mut()
                 .map(|r| r.borrow_mut())
-                .collect::<Vec<RefMut<_>>>();
+                .collect::<Vec<_>>();
             self.base.step()?
         };
 

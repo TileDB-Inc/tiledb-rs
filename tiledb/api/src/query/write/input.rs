@@ -1,6 +1,10 @@
+use std::num::NonZeroU32;
+
 use crate::array::CellValNum;
 use crate::convert::CAPISameRepr;
-use crate::query::buffer::{Buffer, QueryBuffers, QueryBuffersMut};
+use crate::query::buffer::{
+    Buffer, CellStructure, QueryBuffers, QueryBuffersMut,
+};
 
 pub trait DataProvider {
     type Unit: CAPISameRepr;
@@ -27,9 +31,7 @@ where
         let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
         QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
+            cell_structure: self.cell_structure.borrow(),
             validity: Option::map(self.validity.as_ref(), |v| {
                 Buffer::Borrowed(v.as_ref())
             }),
@@ -53,9 +55,7 @@ where
         let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
         QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
-            cell_offsets: Option::map(self.cell_offsets.as_ref(), |c| {
-                Buffer::Borrowed(c.as_ref())
-            }),
+            cell_structure: self.cell_structure.borrow(),
             validity: Option::map(self.validity.as_ref(), |v| {
                 Buffer::Borrowed(v.as_ref())
             }),
@@ -97,7 +97,7 @@ where
 
         QueryBuffers {
             data: Buffer::Borrowed(self),
-            cell_offsets: None,
+            cell_structure: NonZeroU32::new(1).unwrap().into(),
             validity,
         }
     }
@@ -138,7 +138,7 @@ where
 
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_offsets: Some(Buffer::Owned(offsets)),
+            cell_structure: CellStructure::Var(Buffer::Owned(offsets)),
             validity,
         }
     }
@@ -175,7 +175,9 @@ impl DataProvider for Vec<&str> {
 
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_offsets: Some(Buffer::Owned(offsets.into_boxed_slice())),
+            cell_structure: CellStructure::Var(Buffer::Owned(
+                offsets.into_boxed_slice(),
+            )),
             validity,
         }
     }
@@ -212,7 +214,9 @@ impl DataProvider for Vec<String> {
 
         QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_offsets: Some(Buffer::Owned(offsets.into_boxed_slice())),
+            cell_structure: CellStructure::Var(Buffer::Owned(
+                offsets.into_boxed_slice(),
+            )),
             validity,
         }
     }
@@ -231,7 +235,7 @@ mod tests {
         #[test]
         fn input_provider_u64(u64vec in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
             let input = u64vec.as_tiledb_input(CellValNum::try_from(1).unwrap(), false);
-            let (u64in, offsets) = (input.data.as_ref(), input.cell_offsets);
+            let (u64in, offsets) = (input.data.as_ref(), input.cell_structure.offsets_ref());
             assert!(offsets.is_none());
 
             let u64out = if u64vec.is_empty() {
@@ -253,9 +257,9 @@ mod tests {
             )
         ) {
             let input = stringvec.as_tiledb_input(CellValNum::Var, false);
-            let (bytes, offsets) = (input.data.as_ref(), input.cell_offsets);
-            assert!(offsets.is_some());
-            let mut offsets = offsets.unwrap().to_vec();
+            let (bytes, structure) = (input.data.as_ref(), input.cell_structure);
+            assert!(structure.is_var());
+            let mut offsets = structure.unwrap().unwrap().to_vec();
 
             assert_eq!(stringvec.len(), offsets.len());
 

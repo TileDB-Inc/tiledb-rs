@@ -4,9 +4,12 @@ use arrow::array::{Array as ArrowArray, GenericListArray, PrimitiveArray};
 use arrow::buffer::{OffsetBuffer, ScalarBuffer};
 use arrow::datatypes::Field;
 
+use crate::array::CellValNum;
 use crate::datatype::arrow::ArrowPrimitiveTypeNative;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::query::buffer::{Buffer, QueryBuffers, TypedQueryBuffers};
+use crate::query::buffer::{
+    Buffer, CellStructure, QueryBuffers, TypedQueryBuffers,
+};
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
 use crate::{typed_query_buffers_go, Result as TileDBResult};
 
@@ -23,10 +26,17 @@ where
         type MyPrimitiveArray<C> =
             PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
 
-        if value.input.cell_offsets.is_some() {
-            return Err(Error::Datatype(DatatypeErrorKind::ExpectedFixedSize(
-                None,
-            )));
+        match value.input.cell_structure {
+            CellStructure::Fixed(nz) if nz.get() == 1 => {}
+            structure => {
+                return Err(Error::Datatype(
+                    DatatypeErrorKind::UnexpectedCellStructure {
+                        context: None,
+                        expected: CellValNum::single(),
+                        found: structure.as_cell_val_num(),
+                    },
+                ))
+            }
         }
 
         Ok(if let Some(validity) = value.input.validity {
@@ -78,9 +88,12 @@ where
         type MyPrimitiveArray<C> =
             PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
 
-        let offsets = value.input.cell_offsets.take();
+        let offsets = std::mem::replace(
+            &mut value.input.cell_structure,
+            CellStructure::single(),
+        );
 
-        let mut v_offsets = if let Some(offsets) = offsets {
+        let mut v_offsets = if let CellStructure::Var(offsets) = offsets {
             match offsets {
                 Buffer::Empty => vec![],
                 Buffer::Owned(offsets) => {
@@ -101,7 +114,7 @@ where
                 nbytes: value.nbytes, // unused
                 input: QueryBuffers {
                     data: value.input.data,
-                    cell_offsets: None,
+                    cell_structure: CellStructure::single(),
                     validity: None,
                 },
             };
@@ -191,7 +204,7 @@ mod tests {
             Arc::<dyn ArrowArray>::from(rrborrow)
         };
 
-        if let Some(offsets) = rr.input.cell_offsets {
+        if let CellStructure::Var(offsets) = rr.input.cell_structure {
             assert_eq!(
                 TypeId::of::<GenericListArray<i64>>(),
                 arrow.as_any().type_id()

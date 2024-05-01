@@ -71,6 +71,10 @@ impl CellValNum {
         }
     }
 
+    pub fn single() -> Self {
+        CellValNum::Fixed(NonZeroU32::new(1).unwrap())
+    }
+
     pub fn is_var_sized(&self) -> bool {
         matches!(self, CellValNum::Var)
     }
@@ -78,7 +82,13 @@ impl CellValNum {
 
 impl Default for CellValNum {
     fn default() -> Self {
-        CellValNum::Fixed(NonZeroU32::new(1).unwrap())
+        Self::single()
+    }
+}
+
+impl Display for CellValNum {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        <Self as Debug>::fmt(self, f)
     }
 }
 

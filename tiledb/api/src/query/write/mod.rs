@@ -3,7 +3,7 @@ use super::*;
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use crate::query::buffer::{QueryBuffers, TypedQueryBuffers};
+use crate::query::buffer::{CellStructure, QueryBuffers, TypedQueryBuffers};
 use crate::query::write::input::DataProvider;
 
 pub mod input;
@@ -102,15 +102,12 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             )
         })?;
 
-        let mut offsets_size = input
-            .cell_offsets
-            .as_ref()
-            .map(|b| Box::pin(b.size() as u64));
+        let offsets_size = if let CellStructure::Var(offsets) =
+            input.cell_structure.borrow()
+        {
+            let mut offsets_size = Box::pin(offsets.size() as u64);
 
-        if let Some(ref mut offsets_size) = offsets_size.as_mut() {
-            let c_offptr =
-                input.cell_offsets.as_ref().unwrap().as_ref().as_ptr()
-                    as *mut u64;
+            let c_offptr = offsets.as_ref().as_ptr() as *mut u64;
             let c_sizeptr = offsets_size.as_mut().get_mut() as *mut u64;
 
             self.capi_call(|ctx| unsafe {
@@ -122,7 +119,10 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
                     c_sizeptr,
                 )
             })?;
-        }
+            Some(offsets_size)
+        } else {
+            None
+        };
 
         let mut validity_size =
             input.validity.as_ref().map(|b| Box::pin(b.size() as u64));

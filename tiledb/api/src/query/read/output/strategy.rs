@@ -1,13 +1,15 @@
 use std::fmt::Debug;
+use std::num::NonZeroU32;
 
 use proptest::prelude::*;
 
-use crate::query::buffer::QueryBuffers;
+use crate::array::CellValNum;
+use crate::query::buffer::{CellStructure, QueryBuffers};
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
 use crate::{fn_typed, Datatype};
 
 pub struct RawReadOutputParameters {
-    is_var_sized: Option<bool>,
+    cell_val_num: Option<CellValNum>,
     is_nullable: Option<bool>,
     min_values_capacity: usize,
     max_values_capacity: usize,
@@ -27,7 +29,7 @@ impl Default for RawReadOutputParameters {
         const MAX_VALIDITY_CAPACITY: usize = 128;
 
         RawReadOutputParameters {
-            is_var_sized: None,
+            cell_val_num: None,
             is_nullable: None,
             min_values_capacity: MIN_VALUES_CAPACITY,
             max_values_capacity: MAX_VALUES_CAPACITY,
@@ -63,13 +65,20 @@ where
         /* strategy to choose cell offsets (the offsets themselves will be generated later) */
         let strategy_cell_offsets_capacity = {
             let strategy_capacity =
-                (p.min_offset_capacity..=p.max_offset_capacity).prop_map(Some);
+                (p.min_offset_capacity..=p.max_offset_capacity).prop_map(Ok);
+            let strategy_fixed_cvn =
+                (1..u32::MAX).prop_map(|nz| Err(NonZeroU32::new(nz).unwrap()));
 
-            if let Some(true) = p.is_var_sized {
+            if let Some(CellValNum::Var) = p.cell_val_num {
                 strategy_capacity.boxed()
+            } else if let Some(CellValNum::Fixed(nz)) = p.cell_val_num {
+                Just(Err(nz)).boxed()
             } else {
-                prop_oneof![Just(None).boxed(), strategy_capacity.boxed()]
-                    .boxed()
+                prop_oneof![
+                    strategy_fixed_cvn.boxed(),
+                    strategy_capacity.boxed()
+                ]
+                .boxed()
             }
         };
 
@@ -134,16 +143,19 @@ impl<'data> Arbitrary for TypedRawReadOutput<'data> {
 
 fn prop_raw_read_output_for<'data, C>(
     data: Vec<C>,
-    offsets_capacity: Option<usize>,
+    offsets_capacity: Result<usize, NonZeroU32>,
     validity: Option<Vec<u8>>,
 ) -> BoxedStrategy<RawReadOutput<'data, C>>
 where
     C: Clone + Debug + 'static,
 {
-    if let Some(o) = offsets_capacity {
-        prop_raw_read_output_with_cell_offsets::<'data, C>(data, o, validity)
-    } else {
-        prop_raw_read_output_without_cell_offsets::<'data, C>(data, validity)
+    match offsets_capacity {
+        Ok(o) => prop_raw_read_output_with_cell_offsets::<'data, C>(
+            data, o, validity,
+        ),
+        Err(nz) => prop_raw_read_output_without_cell_offsets::<'data, C>(
+            data, validity, nz,
+        ),
     }
 }
 
@@ -197,7 +209,7 @@ where
                         nbytes: data.len() * std::mem::size_of::<C>(),
                         input: QueryBuffers {
                             data: data.into(),
-                            cell_offsets: Some(offsets.into()),
+                            cell_structure: CellStructure::Var(offsets.into()),
                             validity: validity.map(|v| v.into()),
                         },
                     }
@@ -209,6 +221,7 @@ where
 fn prop_raw_read_output_without_cell_offsets<'data, C>(
     data: Vec<C>,
     validity: Option<Vec<u8>>,
+    cell_val_num: NonZeroU32,
 ) -> BoxedStrategy<RawReadOutput<'data, C>>
 where
     C: Clone + Debug + 'static,
@@ -220,7 +233,7 @@ where
     };
 
     (0..=max_values, Just(data), Just(validity))
-        .prop_map(|(nvalues, data, mut validity)| {
+        .prop_map(move |(nvalues, data, mut validity)| {
             validity.iter_mut().for_each(|v| {
                 v.iter_mut().take(nvalues).for_each(|v: &mut u8| {
                     if *v != 0 {
@@ -235,7 +248,7 @@ where
                 nbytes,
                 input: QueryBuffers {
                     data: data.into(),
-                    cell_offsets: None,
+                    cell_structure: CellStructure::Fixed(cell_val_num),
                     validity: validity.map(|v| v.into()),
                 },
             }
@@ -249,7 +262,7 @@ mod tests {
     use proptest::proptest;
 
     fn arbitrary_raw_read_handle<C>(rr: RawReadOutput<C>) {
-        if let Some(offsets) = rr.input.cell_offsets {
+        if let CellStructure::Var(offsets) = rr.input.cell_structure {
             assert!(
                 rr.nbytes <= std::mem::size_of_val(rr.input.data.as_ref()),
                 "nbytes = {}, data.bytelen() = {}",
