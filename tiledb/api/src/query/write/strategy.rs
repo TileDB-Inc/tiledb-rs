@@ -90,7 +90,6 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
         typed_query_buffers_go!(value.buffers, DT, ref handle, {
             let rr = RawReadOutput {
                 ncells: value.ncells,
-                nbytes: value.nbytes,
                 input: handle.borrow(),
             };
             if rr.input.cell_structure.is_var() {

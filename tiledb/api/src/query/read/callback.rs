@@ -424,20 +424,15 @@ macro_rules! query_read_callback {
 
                 paste! {
                     $(
-                        let ([< ncells_ $U:snake >], [< nbytes_ $U:snake >]) = {
-                            let (nvalues, nbytes) = self.[< arg_ $U:snake >].last_read_size();
+                        let [< ncells_ $U:snake >] = {
+                            let ncells = self.[< arg_ $U:snake >].last_read_ncells();
                             if !base_result.is_final() {
-                                if nvalues == 0 && nbytes == 0 {
+                                if ncells == 0 {
                                     self.realloc_managed_buffers();
                                     return Ok(ReadStepOutput::NotEnoughSpace)
-                                } else if nvalues == 0 {
-                                    return Err(Error::Internal(format!(
-                                                "Invalid read: returned {} offsets but {} bytes",
-                                                nvalues, nbytes
-                                    )));
                                 }
                             }
-                            (nvalues, nbytes)
+                            ncells
                         };
 
                         let [< l_ $U:snake >] = self.[< arg_ $U:snake >].location.borrow();
@@ -449,7 +444,6 @@ macro_rules! query_read_callback {
 
                         let [< arg_ $U:snake >] = RawReadOutput {
                             ncells: [< ncells_ $U:snake >],
-                            nbytes: [< nbytes_ $U:snake >],
                             input: [< input_ $U:snake >]
                         };
                     )+
@@ -626,13 +620,10 @@ where
                 let args = sizes
                     .iter()
                     .zip(buffers.iter())
-                    .map(|(&(ncells, nbytes), (field, buffers))| {
-                        TypedRawReadOutput {
-                            ncells,
-                            nbytes,
-                            buffers: buffers.as_shared(),
-                            datatype: field.datatype,
-                        }
+                    .map(|(ncells, (field, buffers))| TypedRawReadOutput {
+                        ncells: *ncells,
+                        buffers: buffers.as_shared(),
+                        datatype: field.datatype,
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 
@@ -666,13 +657,10 @@ where
                 let args = sizes
                     .iter()
                     .zip(buffers.iter())
-                    .map(|(&(ncells, nbytes), (field, buffers))| {
-                        TypedRawReadOutput {
-                            ncells,
-                            nbytes,
-                            buffers: buffers.as_shared(),
-                            datatype: field.datatype,
-                        }
+                    .map(|(ncells, (field, buffers))| TypedRawReadOutput {
+                        ncells: *ncells,
+                        buffers: buffers.as_shared(),
+                        datatype: field.datatype,
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 
@@ -784,7 +772,6 @@ mod tests {
 
             let arg = RawReadOutput {
                 ncells,
-                nbytes: ncells * std::mem::size_of::<u64>(),
                 input: input_data,
             };
 
@@ -848,30 +835,39 @@ mod tests {
 
         while stringdst.len() < stringsrc.len() {
             /* copy from stringsrc to scratch data */
-            let (ncells, nbytes) = {
+            let ncells = {
                 /* write the offsets first */
                 let (ncells, nbytes) = {
                     let scratch_offsets =
                         scratch_space.1.offsets_mut().unwrap();
-                    let mut i = 0;
                     let mut off = 0;
                     let mut src =
                         stringsrc[stringdst.len()..stringsrc.len()].iter();
-                    loop {
-                        if i >= scratch_offsets.len() {
-                            break (i, off);
-                        }
-                        if let Some(src) = src.next() {
-                            if off + src.len() <= scratch_space.0.len() {
-                                scratch_offsets[i] = off as u64;
-                                off += src.len();
+
+                    if scratch_offsets.len() <= 1 {
+                        // if there are any offsets there are at least two
+                        (0, 0)
+                    } else {
+                        scratch_offsets[0] = 0;
+
+                        let mut i = 1;
+                        let (noffsets, nbytes) = loop {
+                            if i >= scratch_offsets.len() {
+                                break (i, off);
+                            }
+                            if let Some(src) = src.next() {
+                                if off + src.len() <= scratch_space.0.len() {
+                                    off += src.len();
+                                    scratch_offsets[i] = off as u64;
+                                    i += 1;
+                                } else {
+                                    break (i, off);
+                                }
                             } else {
                                 break (i, off);
                             }
-                        } else {
-                            break (i, off);
-                        }
-                        i += 1;
+                        };
+                        (noffsets - 1, nbytes)
                     }
                 };
 
@@ -887,15 +883,11 @@ mod tests {
                 for i in 0..ncells {
                     let s = &stringsrc[stringdst.len() + i];
                     let start = scratch_offsets[i] as usize;
-                    let end = if i + 1 < ncells {
-                        scratch_offsets[i + 1] as usize
-                    } else {
-                        nbytes
-                    };
+                    let end = scratch_offsets[i + 1] as usize;
                     scratch_space.0[start..end].copy_from_slice(s.as_bytes())
                 }
 
-                (ncells, nbytes)
+                ncells
             };
 
             /* then copy from scratch data to stringdst */
@@ -910,11 +902,7 @@ mod tests {
                 },
                 validity: scratch_space.2.as_ref().map(|v| Buffer::Borrowed(v)),
             };
-            let arg = RawReadOutput {
-                ncells,
-                nbytes,
-                input,
-            };
+            let arg = RawReadOutput { ncells, input };
             stringdst
                 .intermediate_result(arg)
                 .expect("Error aggregating Vec<String>");

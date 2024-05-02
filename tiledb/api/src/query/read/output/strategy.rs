@@ -44,7 +44,7 @@ impl Default for RawReadOutputParameters {
 
 /// Produces an arbitrary raw read output.
 /// Buffer capacities are not correlated with each other,
-/// but `ncells` and `nbytes` are valid for each of the buffers.
+/// but `ncells` is valid for each of the buffers.
 /// Unused capacity for all buffers is essentially random.
 /// Cell offsets are sorted and valid indices into the `data` buffer.
 /// Validity is random - null values have no guaranteed representation
@@ -193,32 +193,53 @@ where
                 ),
                 Just(validity),
             )
-                .prop_map(|(data, mut offsets, mut validity)| {
-                    validity.iter_mut().for_each(|v| {
-                        v.iter_mut().take(offsets.len()).for_each(
-                            |v: &mut u8| {
+                .prop_map(
+                    move |(data, mut offsets, mut validity)| {
+                        /*
+                         * What does "empty" look like for arrow-shaped offsets?
+                         * Is it an empty offset buffer?
+                         * Or is it a single offset `[0]`?
+                         * The arrow `OffsetBuffer` doc suggests the latter, but is the tiledb core
+                         * implementation compliant with that?
+                         * A glance at the source code suggests it is not, i.e. if the number
+                         * of records is zero then the offsets will be empty.
+                         * So we must be able to generate empty offsets here too, and
+                         * upstream code must be ready.
+                         */
+                        let ncells = std::cmp::max(1, offsets.len()) - 1;
+
+                        validity.iter_mut().for_each(|v| {
+                            v.iter_mut().take(ncells).for_each(|v: &mut u8| {
                                 if *v != 0 {
                                     *v = 1
                                 }
-                            },
-                        )
-                    });
+                            })
+                        });
 
-                    offsets = offsets
-                        .into_iter()
-                        .map(|o| o * std::mem::size_of::<C>() as u64)
-                        .collect::<Vec<u64>>();
-                    offsets.sort();
-                    RawReadOutput {
-                        ncells: offsets.len(),
-                        nbytes: data.len() * std::mem::size_of::<C>(),
-                        input: QueryBuffers {
-                            data: data.into(),
-                            cell_structure: CellStructure::Var(offsets.into()),
-                            validity: validity.map(|v| v.into()),
-                        },
-                    }
-                })
+                        offsets = offsets
+                            .into_iter()
+                            .take(ncells + 1)
+                            .collect::<Vec<u64>>();
+                        if let Some(first) = offsets.first_mut() {
+                            *first = 0u64;
+                        }
+                        if let Some(last) = offsets.last_mut() {
+                            *last = nvalues as u64;
+                        }
+                        offsets.sort();
+
+                        RawReadOutput {
+                            ncells,
+                            input: QueryBuffers {
+                                data: data.into(),
+                                cell_structure: CellStructure::Var(
+                                    offsets.into(),
+                                ),
+                                validity: validity.map(|v| v.into()),
+                            },
+                        }
+                    },
+                )
         })
         .boxed()
 }
@@ -253,10 +274,8 @@ where
                 })
             });
 
-            let nbytes = data.len() * std::mem::size_of::<C>();
             RawReadOutput {
                 ncells,
-                nbytes,
                 input: QueryBuffers {
                     data: data.into(),
                     cell_structure: CellStructure::Fixed(cell_val_num),
@@ -275,46 +294,38 @@ mod tests {
     fn arbitrary_raw_read_handle<C>(rr: RawReadOutput<C>) {
         match rr.input.cell_structure {
             CellStructure::Var(offsets) => {
+                if rr.ncells == 0 {
+                    // nothing to check really
+                    return;
+                }
                 assert!(
-                    rr.nbytes <= std::mem::size_of_val(rr.input.data.as_ref()),
-                    "nbytes = {}, data.bytelen() = {}",
-                    rr.nbytes,
-                    std::mem::size_of_val(rr.input.data.as_ref())
-                );
-
-                let offsets = offsets.as_ref().to_vec();
-                assert!(
-                    rr.ncells <= offsets.len(),
+                    rr.ncells < offsets.len(),
                     "ncells = {}, offsets.len() = {}",
                     rr.ncells,
                     offsets.len()
                 );
 
-                // offsets are in bytes and are sorted
-                for w in offsets.windows(2) {
-                    assert!(w[0] <= w[1]);
+                let value_bound = rr.input.data.len() as u64;
 
-                    let delta = w[1] - w[0];
-                    assert_eq!(0, delta % std::mem::size_of::<C>() as u64);
+                // offset unit is elements, and offsets are sorted
+                for w in offsets.windows(2).take(rr.ncells) {
+                    assert!(w[0] <= w[1], "w[0] = {}, w[1] = {}", w[0], w[1]);
+                    assert!(
+                        w[1] <= value_bound,
+                        "offset = {}, value_bound = {}",
+                        w[1],
+                        value_bound
+                    );
                 }
 
-                // offsets must be valid into `data`
-                if rr.ncells > 0 {
-                    let last_offset = offsets[rr.ncells - 1];
-                    let byte_bound =
-                        std::mem::size_of_val(rr.input.data.as_ref()) as u64;
-                    assert!(
-                        last_offset <= rr.nbytes as u64,
-                        "last_offset = {}, nbytes = {}",
-                        last_offset,
-                        rr.nbytes
-                    );
-                    assert!(
-                        last_offset <= byte_bound,
-                        "last_offset = {}, byte_bound = {}",
-                        last_offset,
-                        byte_bound
-                    );
+                // should be covered by the loop, but paranoia check
+                let last_offset = offsets[rr.ncells];
+                assert!(last_offset <= value_bound);
+
+                if let Some(validity) = rr.input.validity {
+                    for v in validity[0..rr.ncells].iter() {
+                        assert!(*v == 0 || *v == 1);
+                    }
                 }
             }
             CellStructure::Fixed(nz) => {

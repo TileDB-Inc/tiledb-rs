@@ -5,6 +5,7 @@ use std::pin::Pin;
 
 use paste::paste;
 
+use crate::config::Config;
 use crate::convert::CAPISameRepr;
 use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::read::output::ScratchAllocator;
@@ -382,9 +383,27 @@ pub struct ReadBuilder<'ctx> {
 
 impl<'ctx> ReadBuilder<'ctx> {
     pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
-        Ok(ReadBuilder {
-            base: BuilderBase::new(array, QueryType::Read)?,
-        })
+        let base = BuilderBase::new(array, QueryType::Read)?;
+
+        /* configure the query to always use arrow-like output */
+        {
+            let mut config = Config::new()?;
+            config.set("sm.var_offsets.bitsize", "64")?;
+            config.set("sm.var_offsets.mode", "elements")?;
+            config.set("sm.var_offsets.extra_element", "true")?;
+
+            /*
+             * TODO: make sure that users can't override this somehow,
+             * else we will be very very sad
+             */
+            let c_query = **base.cquery();
+
+            base.capi_call(|c_context| unsafe {
+                ffi::tiledb_query_set_config(c_context, c_query, config.capi())
+            })?;
+        }
+
+        Ok(ReadBuilder { base })
     }
 }
 

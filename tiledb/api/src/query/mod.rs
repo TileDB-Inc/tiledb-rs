@@ -217,6 +217,7 @@ impl<'ctx> BuilderBase<'ctx> {
         array.capi_call(|ctx| unsafe {
             ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
         })?;
+
         Ok(BuilderBase {
             query: QueryBase {
                 array,

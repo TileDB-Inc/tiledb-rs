@@ -96,8 +96,7 @@ where
             CellStructure::Fixed(nz) => {
                 let flat = {
                     let rr = RawReadOutput {
-                        ncells: value.nbytes / std::mem::size_of::<C>(),
-                        nbytes: value.nbytes, // will not be used, TODO: we can remove if using the arrow format in core
+                        ncells: value.ncells * nz.get() as usize,
                         input: QueryBuffers {
                             data: value.input.data,
                             cell_structure: CellStructure::single(),
@@ -153,10 +152,14 @@ where
                 Arc::new(fixed)
             }
             CellStructure::Var(offsets) => {
+                let nvalues = if value.ncells < 1 {
+                    0
+                } else {
+                    *offsets.as_ref().last().unwrap() as usize
+                };
                 let flat = {
                     let rr = RawReadOutput {
-                        ncells: value.nbytes / std::mem::size_of::<C>(),
-                        nbytes: value.nbytes, // will not be used, TODO: we can remove if using the arrow format in core
+                        ncells: nvalues,
                         input: QueryBuffers {
                             data: value.input.data,
                             cell_structure: CellStructure::single(),
@@ -169,24 +172,26 @@ where
                 };
                 let flat: Arc<dyn ArrowArray> = Arc::new(flat);
 
-                let mut offsets = match offsets {
-                    Buffer::Empty => vec![],
-                    Buffer::Borrowed(offsets) => {
-                        offsets[0..value.ncells].to_vec()
-                    }
-                    Buffer::Owned(offsets) => {
-                        let mut offsets = offsets.into_vec();
-                        offsets.truncate(value.ncells);
-                        offsets
+                let offsets = if value.ncells == 0 {
+                    vec![0u64]
+                } else {
+                    let noffsets = value.ncells + 1;
+                    match offsets {
+                        Buffer::Empty => vec![0u64],
+                        Buffer::Borrowed(offsets) => {
+                            offsets[0..noffsets].to_vec()
+                        }
+                        Buffer::Owned(offsets) => {
+                            let mut offsets = offsets.into_vec();
+                            offsets.truncate(noffsets);
+                            offsets
+                        }
                     }
                 };
-                offsets.push(value.nbytes as u64);
 
                 // convert u64 byte offsets to i64 element offsets
-                let offsets = offsets
-                    .into_iter()
-                    .map(|o| (o / std::mem::size_of::<C>() as u64) as i64)
-                    .collect::<Vec<i64>>();
+                let offsets =
+                    offsets.into_iter().map(|o| o as i64).collect::<Vec<i64>>();
 
                 let field = Arc::new(Field::new_list_field(
                     flat.data_type().clone(),
@@ -234,7 +239,6 @@ impl From<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
         typed_query_buffers_go!(value.buffers, _DT, input, {
             RawReadOutput {
                 ncells: value.ncells,
-                nbytes: value.nbytes,
                 input,
             }
             .into()
@@ -261,7 +265,6 @@ mod tests {
         let arrow = {
             let rrborrow = RawReadOutput {
                 ncells: rr.ncells,
-                nbytes: rr.nbytes,
                 input: rr.input.borrow(),
             };
             Arc::<dyn ArrowArray>::from(rrborrow)
@@ -337,7 +340,7 @@ mod tests {
 
                 assert_eq!(rr.ncells * nz.get() as usize, primitive.len());
                 assert_eq!(
-                    rr.nbytes,
+                    rr.nbytes(),
                     primitive.len() * std::mem::size_of::<C>()
                 );
 
@@ -366,25 +369,6 @@ mod tests {
                     .downcast_ref::<GenericListArray<i64>>()
                     .unwrap();
 
-                let arrow_offsets = gl.offsets();
-                assert!(arrow_offsets.len() <= offsets.len() + 1);
-                assert_eq!(arrow_offsets.len(), rr.ncells + 1);
-
-                /* arrow offsets are value, tiledb offsets are bytes */
-                let offset_scale = std::mem::size_of::<C>() as i64;
-
-                /* check that offsets are mapped correctly */
-                for o in 0..rr.ncells {
-                    assert_eq!(
-                        arrow_offsets[o] * offset_scale,
-                        offsets[o] as i64
-                    );
-                }
-                assert_eq!(
-                    arrow_offsets[rr.ncells] * offset_scale,
-                    rr.nbytes as i64
-                );
-
                 /* check that values match */
                 let primitive = {
                     assert_eq!(
@@ -398,10 +382,27 @@ mod tests {
                 };
                 assert_eq!(None, primitive.nulls());
 
-                assert_eq!(
-                    rr.nbytes,
-                    primitive.len() * std::mem::size_of::<C>()
-                );
+                /* check the offsets */
+                let arrow_offsets = gl.offsets();
+                if offsets.is_empty() || rr.ncells == 0 {
+                    assert_eq!(0, rr.ncells);
+                    assert_eq!(1, arrow_offsets.len());
+                    assert_eq!(0, arrow_offsets[0]);
+                    assert_eq!(0, primitive.len());
+                } else {
+                    let noffsets = rr.ncells + 1;
+                    assert!(noffsets <= offsets.len());
+
+                    assert_eq!(arrow_offsets.len(), noffsets);
+
+                    /* check that offsets are mapped correctly */
+                    for o in 0..noffsets {
+                        assert_eq!(arrow_offsets[o], offsets[o] as i64);
+                    }
+
+                    assert_eq!(offsets[rr.ncells] as usize, primitive.len());
+                }
+
                 for (arrow, tiledb) in primitive
                     .iter()
                     .zip(rr.input.data[0..primitive.len()].iter())
@@ -411,6 +412,8 @@ mod tests {
 
                 /* check that validity matches */
                 if let Some(validity) = rr.input.validity {
+                    assert!(rr.ncells <= validity.len());
+
                     assert!(gl.nulls().is_some());
                     let arrow_nulls = gl.nulls().unwrap();
                     assert_eq!(rr.ncells, arrow_nulls.len());
