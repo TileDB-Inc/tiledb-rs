@@ -154,6 +154,36 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
 
         Ok(self)
     }
+
+    // Yep. We're getting this unsafe.
+    /// # Safety
+    ///   Its not.
+    pub unsafe fn data_hacked<S>(
+        self,
+        field: S,
+        c_buffptr: *mut std::ffi::c_void,
+        c_sizeptr: *mut u64,
+    ) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+    {
+        let field_name = field.as_ref().to_string();
+
+        let c_query = **self.base().cquery();
+        let c_name = cstring!(field_name.clone());
+
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_set_data_buffer(
+                ctx,
+                c_query,
+                c_name.as_ptr(),
+                c_buffptr,
+                c_sizeptr,
+            )
+        })?;
+
+        Ok(self)
+    }
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]
