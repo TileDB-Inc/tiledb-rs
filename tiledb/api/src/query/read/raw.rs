@@ -2,11 +2,14 @@ use super::*;
 
 use std::cell::RefMut;
 
+use crate::array::schema::Field;
+use crate::array::CellValNum;
 use crate::error::Error;
 use crate::query::buffer::{
     CellStructureMut, QueryBuffersMut, RefTypedQueryBuffersMut,
 };
 use crate::query::read::output::ScratchSpace;
+use crate::Datatype;
 
 pub struct ManagedBuffer<'data, C> {
     pub buffers: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
@@ -48,10 +51,28 @@ impl<'data, C> From<Box<dyn ScratchAllocator<C> + 'data>>
     }
 }
 
+/// Metadata providing additional context for a field in a read query
+pub struct FieldMetadata {
+    pub name: String,
+    pub datatype: Datatype,
+    pub cell_val_num: CellValNum,
+}
+
+impl TryFrom<&Field<'_>> for FieldMetadata {
+    type Error = Error;
+    fn try_from(value: &Field<'_>) -> TileDBResult<Self> {
+        Ok(FieldMetadata {
+            name: value.name()?,
+            datatype: value.datatype()?,
+            cell_val_num: value.cell_val_num()?,
+        })
+    }
+}
+
 /// Encapsulates data for writing intermediate query results for a data field.
 pub struct RawReadHandle<'data, C> {
-    /// Name of the field which this handle receives data from
-    pub field: String,
+    /// Metadata describing the field which this handle receives data from
+    pub field: FieldMetadata,
 
     /// As input to the C API, the size of the data buffer.
     /// As output from the C API, the size in bytes of an intermediate result.
@@ -80,13 +101,10 @@ pub struct RawReadHandle<'data, C> {
 }
 
 impl<'data, C> RawReadHandle<'data, C> {
-    pub fn new<S>(
-        field: S,
+    pub fn new(
+        field: FieldMetadata,
         location: &'data RefCell<QueryBuffersMut<'data, C>>,
-    ) -> Self
-    where
-        S: AsRef<str>,
-    {
+    ) -> Self {
         let (data, cell_offsets, validity) = {
             let mut scratch: RefMut<QueryBuffersMut<'data, C>> =
                 location.borrow_mut();
@@ -120,7 +138,7 @@ impl<'data, C> RawReadHandle<'data, C> {
         });
 
         RawReadHandle {
-            field: field.as_ref().to_string(),
+            field,
             data_size,
             offsets_size,
             validity_size,
@@ -129,10 +147,10 @@ impl<'data, C> RawReadHandle<'data, C> {
         }
     }
 
-    pub fn managed<S>(field: S, managed: ManagedBuffer<'data, C>) -> Self
-    where
-        S: AsRef<str>,
-    {
+    pub fn managed(
+        field: FieldMetadata,
+        managed: ManagedBuffer<'data, C>,
+    ) -> Self {
         let qb = {
             let qb: Pin<&RefCell<QueryBuffersMut<'data, C>>> =
                 managed.buffers.as_ref();
@@ -164,7 +182,7 @@ impl<'data, C> RawReadHandle<'data, C> {
         context: &Context,
         c_query: *mut ffi::tiledb_query_t,
     ) -> TileDBResult<()> {
-        let c_name = cstring!(&*self.field);
+        let c_name = cstring!(&*self.field.name);
 
         let mut location = self.location.borrow_mut();
 
@@ -231,18 +249,24 @@ impl<'data, C> RawReadHandle<'data, C> {
         Ok(())
     }
 
-    /// Returns the number of records and bytes produced by the last read,
+    /// Returns the number of cells and bytes produced by the last read,
     /// or the capacity of the destination buffers if no read has occurred.
     pub fn last_read_size(&self) -> (usize, usize) {
-        let nvalues = match self.offsets_size.as_ref() {
-            Some(offsets_size) => {
+        let ncells = match self.field.cell_val_num {
+            CellValNum::Fixed(nz) => {
+                assert!(self.offsets_size.is_none());
+                let data_size = *self.data_size as usize;
+                assert_eq!(0, data_size % nz.get() as usize);
+                data_size / nz.get() as usize
+            }
+            CellValNum::Var => {
+                let offsets_size = self.offsets_size.as_ref().unwrap();
                 **offsets_size as usize / std::mem::size_of::<u64>()
             }
-            None => *self.data_size as usize / std::mem::size_of::<C>(),
         };
-        let nbytes = *self.data_size as usize;
 
-        (nvalues, nbytes)
+        let nbytes = *self.data_size as usize;
+        (ncells, nbytes)
     }
 
     pub fn realloc_if_managed(&mut self) {
@@ -312,7 +336,7 @@ macro_rules! typed_read_handle_go {
 }
 
 impl<'data> TypedReadHandle<'data> {
-    pub fn field(&self) -> &String {
+    pub fn field(&self) -> &FieldMetadata {
         typed_read_handle_go!(self, _DT, handle, &handle.field)
     }
 
@@ -420,7 +444,7 @@ where
             self.base.step()?
         };
 
-        let (nvalues, nbytes) = self.raw_read_output.last_read_size();
+        let (ncells, nbytes) = self.raw_read_output.last_read_size();
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
@@ -431,7 +455,7 @@ where
                 ReadStepOutput::NotEnoughSpace
             }
             ReadStepOutput::Intermediate(base_result) => {
-                if nvalues == 0 && nbytes == 0 {
+                if ncells == 0 && nbytes == 0 {
                     /*
                      * The input produced no data.
                      * The returned status itself is not enough to distinguish between
@@ -441,17 +465,17 @@ where
                      * raw read and it is our responsibility to signal NotEnoughSpace.
                      */
                     ReadStepOutput::NotEnoughSpace
-                } else if nvalues == 0 {
+                } else if ncells == 0 {
                     return Err(Error::Internal(format!(
                         "Invalid read: returned {} offsets but {} bytes",
-                        nvalues, nbytes
+                        ncells, nbytes
                     )));
                 } else {
-                    ReadStepOutput::Intermediate((nvalues, nbytes, base_result))
+                    ReadStepOutput::Intermediate((ncells, nbytes, base_result))
                 }
             }
             ReadStepOutput::Final(base_result) => {
-                ReadStepOutput::Final((nvalues, nbytes, base_result))
+                ReadStepOutput::Final((ncells, nbytes, base_result))
             }
         })
     }

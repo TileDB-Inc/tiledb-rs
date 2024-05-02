@@ -222,23 +222,23 @@ macro_rules! fn_register_callback {
             {
                 $(
                     let [< arg_ $U:snake >] = {
-                        let field = [< field_ $U:snake >];
+                        let field = {
+                            let schema = self.base().array().schema()?;
+                            schema.field([< field_ $U:snake >])?
+                        };
+                        let metadata = FieldMetadata::try_from(&field)?;
                         match [< scratch_ $U:snake >] {
                             ScratchStrategy::AttributeDefault => {
-                                let field = {
-                                    let schema = self.base().array().schema()?;
-                                    schema.field(field)?
-                                };
                                 let alloc : Box<dyn ScratchAllocator<<T as $Callback>::$U> + 'data> = Box::new(field.query_scratch_allocator()?);
                                 let managed = ManagedBuffer::from(alloc);
-                                RawReadHandle::managed(field.name()?, managed)
+                                RawReadHandle::managed(metadata, managed)
                             },
                             ScratchStrategy::RawBuffers(qb) => {
-                                RawReadHandle::new(field, qb)
+                                RawReadHandle::new(metadata, qb)
                             },
                             ScratchStrategy::CustomAllocator(a) => {
                                 let managed = ManagedBuffer::from(a);
-                                RawReadHandle::managed(field, managed)
+                                RawReadHandle::managed(metadata, managed)
                             }
                         }
                     };
@@ -273,8 +273,17 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
         S: AsRef<str>,
         RawReadHandle<'data, C>: Into<TypedReadHandle<'data>>,
     {
+        let metadata = {
+            let schema = self.base().array().schema()?;
+            let field = schema.field(field.as_ref())?;
+            FieldMetadata {
+                name: field.name()?,
+                datatype: field.datatype()?,
+                cell_val_num: field.cell_val_num()?,
+            }
+        };
         Ok(RawReadBuilder {
-            raw_read_output: RawReadHandle::new(field.as_ref(), scratch).into(),
+            raw_read_output: RawReadHandle::new(metadata, scratch).into(),
             base: self,
         })
     }

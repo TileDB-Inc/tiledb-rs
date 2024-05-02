@@ -46,20 +46,20 @@ where
                 Buffer::Empty => vec![],
                 Buffer::Owned(data) => {
                     let mut data = data.into_vec();
-                    data.truncate(value.nvalues);
+                    data.truncate(value.ncells);
                     data
                 }
-                Buffer::Borrowed(data) => data[0..value.nvalues].to_vec(),
+                Buffer::Borrowed(data) => data[0..value.ncells].to_vec(),
             };
 
             let validity = match validity {
                 Buffer::Empty => vec![],
                 Buffer::Owned(v) => {
                     let mut v = v.into_vec();
-                    v.truncate(value.nvalues);
+                    v.truncate(value.ncells);
                     v
                 }
-                Buffer::Borrowed(v) => v[0..value.nvalues].to_vec(),
+                Buffer::Borrowed(v) => v[0..value.ncells].to_vec(),
             };
             let validity = validity
                 .into_iter()
@@ -72,7 +72,7 @@ where
                 Buffer::Owned(b) => b.into_vec(),
                 Buffer::Borrowed(b) => b.to_vec(),
             };
-            v.truncate(value.nvalues);
+            v.truncate(value.ncells);
             v.into()
         })
     }
@@ -96,8 +96,8 @@ where
             CellStructure::Fixed(nz) => {
                 let flat = {
                     let rr = RawReadOutput {
-                        nvalues: value.nbytes / std::mem::size_of::<C>(),
-                        nbytes: value.nbytes, // will not be used
+                        ncells: value.nbytes / std::mem::size_of::<C>(),
+                        nbytes: value.nbytes, // will not be used, TODO: we can remove if using the arrow format in core
                         input: QueryBuffers {
                             data: value.input.data,
                             cell_structure: CellStructure::single(),
@@ -131,12 +131,12 @@ where
                             Buffer::Empty => vec![],
                             Buffer::Owned(validity) => validity.into_vec(),
                             Buffer::Borrowed(validity) => {
-                                validity[0..value.nvalues].to_vec()
+                                validity[0..value.ncells].to_vec()
                             }
                         };
                         let arrow_validity = validity
                             .into_iter()
-                            .take(value.nvalues)
+                            .take(value.ncells)
                             .map(|v: u8| v != 0)
                             .collect::<arrow::buffer::NullBuffer>();
                         Some(arrow_validity)
@@ -155,8 +155,8 @@ where
             CellStructure::Var(offsets) => {
                 let flat = {
                     let rr = RawReadOutput {
-                        nvalues: value.nbytes / std::mem::size_of::<C>(),
-                        nbytes: value.nbytes, // will not be used
+                        ncells: value.nbytes / std::mem::size_of::<C>(),
+                        nbytes: value.nbytes, // will not be used, TODO: we can remove if using the arrow format in core
                         input: QueryBuffers {
                             data: value.input.data,
                             cell_structure: CellStructure::single(),
@@ -172,11 +172,11 @@ where
                 let mut offsets = match offsets {
                     Buffer::Empty => vec![],
                     Buffer::Borrowed(offsets) => {
-                        offsets[0..value.nvalues].to_vec()
+                        offsets[0..value.ncells].to_vec()
                     }
                     Buffer::Owned(offsets) => {
                         let mut offsets = offsets.into_vec();
-                        offsets.truncate(value.nvalues);
+                        offsets.truncate(value.ncells);
                         offsets
                     }
                 };
@@ -202,12 +202,12 @@ where
                             Buffer::Empty => vec![],
                             Buffer::Owned(validity) => validity.into_vec(),
                             Buffer::Borrowed(validity) => {
-                                validity[0..value.nvalues].to_vec()
+                                validity[0..value.ncells].to_vec()
                             }
                         };
                         let arrow_validity = validity
                             .into_iter()
-                            .take(value.nvalues)
+                            .take(value.ncells)
                             .map(|v: u8| v != 0)
                             .collect::<arrow::buffer::NullBuffer>();
                         Some(arrow_validity)
@@ -233,7 +233,7 @@ impl From<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
     fn from(value: TypedRawReadOutput<'_>) -> Self {
         typed_query_buffers_go!(value.buffers, _DT, input, {
             RawReadOutput {
-                nvalues: value.nvalues,
+                ncells: value.ncells,
                 nbytes: value.nbytes,
                 input,
             }
@@ -260,7 +260,7 @@ mod tests {
 
         let arrow = {
             let rrborrow = RawReadOutput {
-                nvalues: rr.nvalues,
+                ncells: rr.ncells,
                 nbytes: rr.nbytes,
                 input: rr.input.borrow(),
             };
@@ -278,12 +278,12 @@ mod tests {
                     .downcast_ref::<MyPrimitiveArray<C>>()
                     .unwrap();
 
-                assert_eq!(rr.nvalues, primitive.len());
+                assert_eq!(rr.ncells, primitive.len());
 
                 /* ensure that neither or both has validity values */
                 if rr.input.validity.is_some() {
                     assert!(primitive.nulls().is_some());
-                    assert_eq!(rr.nvalues, primitive.nulls().unwrap().len());
+                    assert_eq!(rr.ncells, primitive.nulls().unwrap().len());
                 } else {
                     assert_eq!(None, primitive.nulls());
                 }
@@ -335,6 +335,7 @@ mod tests {
                 };
                 assert_eq!(None, primitive.nulls());
 
+                assert_eq!(rr.ncells * nz.get() as usize, primitive.len());
                 assert_eq!(
                     rr.nbytes,
                     primitive.len() * std::mem::size_of::<C>()
@@ -344,7 +345,7 @@ mod tests {
                 if let Some(validity) = rr.input.validity {
                     assert!(fl.nulls().is_some());
                     let arrow_nulls = fl.nulls().unwrap();
-                    assert_eq!(rr.nvalues, arrow_nulls.len());
+                    assert_eq!(rr.ncells, arrow_nulls.len());
 
                     let arrow_nulls = arrow_nulls
                         .iter()
@@ -367,20 +368,20 @@ mod tests {
 
                 let arrow_offsets = gl.offsets();
                 assert!(arrow_offsets.len() <= offsets.len() + 1);
-                assert_eq!(arrow_offsets.len(), rr.nvalues + 1);
+                assert_eq!(arrow_offsets.len(), rr.ncells + 1);
 
                 /* arrow offsets are value, tiledb offsets are bytes */
                 let offset_scale = std::mem::size_of::<C>() as i64;
 
                 /* check that offsets are mapped correctly */
-                for o in 0..rr.nvalues {
+                for o in 0..rr.ncells {
                     assert_eq!(
                         arrow_offsets[o] * offset_scale,
                         offsets[o] as i64
                     );
                 }
                 assert_eq!(
-                    arrow_offsets[rr.nvalues] * offset_scale,
+                    arrow_offsets[rr.ncells] * offset_scale,
                     rr.nbytes as i64
                 );
 
@@ -412,7 +413,7 @@ mod tests {
                 if let Some(validity) = rr.input.validity {
                     assert!(gl.nulls().is_some());
                     let arrow_nulls = gl.nulls().unwrap();
-                    assert_eq!(rr.nvalues, arrow_nulls.len());
+                    assert_eq!(rr.ncells, arrow_nulls.len());
 
                     let arrow_nulls = arrow_nulls
                         .iter()

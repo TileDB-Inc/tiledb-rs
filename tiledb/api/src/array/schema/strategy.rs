@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use proptest::prelude::*;
@@ -9,7 +10,9 @@ use crate::array::attribute::strategy::{
     StrategyContext as AttributeContext,
 };
 use crate::array::domain::strategy::Requirements as DomainRequirements;
-use crate::array::{ArrayType, CellOrder, DomainData, SchemaData, TileOrder};
+use crate::array::{
+    ArrayType, CellOrder, CellValNum, DomainData, SchemaData, TileOrder,
+};
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
     Requirements as FilterRequirements, StrategyContext as FilterContext,
@@ -18,6 +21,24 @@ use crate::filter::strategy::{
 #[derive(Clone, Default)]
 pub struct Requirements {
     array_type: Option<ArrayType>,
+}
+
+impl Arbitrary for CellValNum {
+    type Strategy = BoxedStrategy<CellValNum>;
+    type Parameters = Option<std::ops::Range<NonZeroU32>>;
+
+    fn arbitrary_with(r: Self::Parameters) -> Self::Strategy {
+        let r = r.unwrap_or(
+            NonZeroU32::new(1).unwrap()..NonZeroU32::new(u32::MAX).unwrap(),
+        );
+
+        prop_oneof![
+            (r.start.get()..r.end.get())
+                .prop_map(|c| CellValNum::try_from(c).unwrap()),
+            Just(CellValNum::Var)
+        ]
+        .boxed()
+    }
 }
 
 impl Arbitrary for CellOrder {

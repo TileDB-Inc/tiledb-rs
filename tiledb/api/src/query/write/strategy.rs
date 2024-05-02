@@ -16,7 +16,7 @@ use crate::query::read::output::{
     FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
 };
 use crate::query::read::{
-    CallbackVarArgReadBuilder, ManagedBuffer, RawReadHandle,
+    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
     ReadCallbackVarArg, TypedReadHandle,
 };
 use crate::{fn_typed, typed_query_buffers_go};
@@ -89,7 +89,7 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
     fn from(value: &TypedRawReadOutput) -> Self {
         typed_query_buffers_go!(value.buffers, DT, ref handle, {
             let rr = RawReadOutput {
-                nvalues: value.nvalues,
+                ncells: value.ncells,
                 nbytes: value.nbytes,
                 input: handle.borrow(),
             };
@@ -381,7 +381,8 @@ impl WriteQueryData {
                         let managed: ManagedBuffer<DT> = ManagedBuffer::new(
                             field.query_scratch_allocator().unwrap(),
                         );
-                        let rr = RawReadHandle::managed(name, managed);
+                        let metadata = FieldMetadata::try_from(&field).unwrap();
+                        let rr = RawReadHandle::managed(metadata, managed);
                         TypedReadHandle::from(rr)
                     })
                 })
@@ -929,15 +930,15 @@ mod tests {
                         None => unimplemented!(), /* TODO: allocate more */
                         Some((raw, _)) => {
                             let raw = &raw.0;
-                            let mut nvalues = None;
+                            let mut ncells = None;
                             for (key, rdata) in raw.iter() {
                                 let wdata = &accumulated_write.fields[key];
 
-                                let nv = if let Some(nv) = nvalues {
+                                let nv = if let Some(nv) = ncells {
                                     assert_eq!(nv, rdata.len());
                                     nv
                                 } else {
-                                    nvalues = Some(rdata.len());
+                                    ncells = Some(rdata.len());
                                     rdata.len()
                                 };
 

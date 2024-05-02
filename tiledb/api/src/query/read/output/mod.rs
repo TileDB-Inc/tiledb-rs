@@ -12,8 +12,8 @@ use crate::query::buffer::{
     Buffer, BufferMut, CellStructure, CellStructureMut, QueryBuffers,
     QueryBuffersMut, TypedQueryBuffers,
 };
-use crate::typed_query_buffers_go;
 use crate::Result as TileDBResult;
+use crate::{typed_query_buffers_go, Datatype};
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
@@ -21,9 +21,52 @@ pub mod arrow;
 pub mod strategy;
 
 pub struct RawReadOutput<'data, C> {
-    pub nvalues: usize,
+    pub ncells: usize,
     pub nbytes: usize,
     pub input: QueryBuffers<'data, C>,
+}
+
+impl<C> RawReadOutput<'_, C> {
+    pub fn nvalues(&self) -> usize {
+        match self.input.cell_structure {
+            CellStructure::Fixed(nz) => self.ncells * nz.get() as usize,
+            CellStructure::Var(_) => self.nbytes / std::mem::size_of::<C>(),
+        }
+    }
+
+    fn to_json(&self) -> serde_json::value::Value
+    where
+        C: Debug,
+    {
+        let cell_json = match self.input.cell_structure {
+            CellStructure::Fixed(nz) => json!({"cell_val_num": nz}),
+            CellStructure::Var(ref offsets) => json!({
+                "capacity": offsets.len(),
+                "defined": self.ncells,
+                "values": format!("{:?}", &offsets.as_ref()[0.. self.ncells])
+            }),
+        };
+
+        let validity_json = self.input.validity.as_ref().map(|validity| {
+            json!({
+                "capacity": validity.len(),
+                "defined": self.ncells,
+                "values": format!("{:?}", &validity.as_ref()[0.. self.ncells])
+            })
+        });
+
+        json!({
+            "ncells": self.ncells,
+            "nbytes": self.nbytes,
+            "data": {
+                "capacity": self.input.data.len(),
+                "defined": self.nvalues(),
+                "values": format!("{:?}", &self.input.data.as_ref()[0.. self.nvalues()])
+            },
+            "cell_structure": cell_json,
+            "validity": validity_json,
+        })
+    }
 }
 
 impl<C> Debug for RawReadOutput<'_, C>
@@ -31,71 +74,63 @@ where
     C: Debug,
 {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let nrecords = self.nvalues;
-        let nvalues = self.nbytes / std::mem::size_of::<C>();
-
-        let cell_json = match self.input.cell_structure {
-            CellStructure::Fixed(nz) => json!({"cell_val_num": nz}),
-            CellStructure::Var(ref offsets) => json!({
-                "capacity": offsets.len(),
-                "defined": nrecords,
-                "values": format!("{:?}", &offsets.as_ref()[0.. nrecords])
-            }),
-        };
-
-        let validity_json = self.input.validity.as_ref().map(|validity| {
-            json!({
-                "capacity": validity.len(),
-                "defined": nrecords,
-                "values": format!("{:?}", &validity.as_ref()[0.. nrecords])
-            })
-        });
-
-        write!(
-            f,
-            "{}",
-            json!({
-                "data": {
-                    "capacity": self.input.data.len(),
-                    "defined": nvalues,
-                    "values": format!("{:?}", &self.input.data.as_ref()[0.. nvalues])
-                },
-                "cells": cell_json,
-                "validity": validity_json,
-            })
-        )
+        write!(f, "{}", self.to_json())
     }
 }
 
 pub struct TypedRawReadOutput<'data> {
-    pub nvalues: usize,
+    pub datatype: Datatype,
+    pub ncells: usize,
     pub nbytes: usize,
     pub buffers: TypedQueryBuffers<'data>,
 }
 
-impl Debug for TypedRawReadOutput<'_> {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+impl<'data> TypedRawReadOutput<'data> {
+    pub fn new<C>(datatype: Datatype, rr: RawReadOutput<'data, C>) -> Self
+    where
+        TypedQueryBuffers<'data>: From<QueryBuffers<'data, C>>,
+    {
+        TypedRawReadOutput {
+            datatype,
+            ncells: rr.ncells,
+            nbytes: rr.nbytes,
+            buffers: rr.input.into(),
+        }
+    }
+
+    pub fn nvalues(&self) -> usize {
         typed_query_buffers_go!(self.buffers, _DT, ref qb, {
             RawReadOutput {
-                nvalues: self.nvalues,
+                ncells: self.ncells,
                 nbytes: self.nbytes,
                 input: qb.borrow(),
             }
-            .fmt(f)
+            .nvalues()
         })
+    }
+
+    pub fn is_nullable(&self) -> bool {
+        typed_query_buffers_go!(
+            self.buffers,
+            _DT,
+            ref qb,
+            qb.validity.is_some()
+        )
     }
 }
 
-impl<'data, C> From<RawReadOutput<'data, C>> for TypedRawReadOutput<'data>
-where
-    TypedQueryBuffers<'data>: From<QueryBuffers<'data, C>>,
-{
-    fn from(value: RawReadOutput<'data, C>) -> Self {
-        TypedRawReadOutput {
-            nvalues: value.nvalues,
-            nbytes: value.nbytes,
-            buffers: value.input.into(),
-        }
+impl Debug for TypedRawReadOutput<'_> {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let mut json = typed_query_buffers_go!(self.buffers, _DT, ref qb, {
+            RawReadOutput {
+                ncells: self.ncells,
+                nbytes: self.nbytes,
+                input: qb.borrow(),
+            }
+            .to_json()
+        });
+        json["datatype"] = json!(self.datatype);
+        write!(f, "{}", json)
     }
 }
 
@@ -127,6 +162,15 @@ impl ScratchCellStructure {
     /// Returns whether the cells contain a variable number of records.
     pub fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
+    }
+
+    /// Return the fixed number of values per cell, if not variable.
+    pub fn fixed(&self) -> Option<NonZeroU32> {
+        if let Self::Fixed(nz) = self {
+            Some(*nz)
+        } else {
+            None
+        }
     }
 
     /// Returns a reference to the offsets buffer, if any.
@@ -584,7 +628,7 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
 
 /// Iterator which yields variable-sized records from a raw read result.
 pub struct VarDataIterator<'data, C> {
-    nvalues: usize,
+    ncells: usize,
     nbytes: usize,
     offset_cursor: usize,
     location: QueryBuffers<'data, C>,
@@ -592,7 +636,7 @@ pub struct VarDataIterator<'data, C> {
 
 impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
-        nvalues: usize,
+        ncells: usize,
         nbytes: usize,
         location: QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
@@ -606,7 +650,7 @@ impl<'data, C> VarDataIterator<'data, C> {
             ))
         } else {
             Ok(VarDataIterator {
-                nvalues,
+                ncells,
                 nbytes,
                 offset_cursor: 0,
                 location,
@@ -625,7 +669,7 @@ where
             "VarDataIterator {{ cursor: {}, offsets: {:?}, bytes: {:?} }}",
             self.offset_cursor,
             &self.location.cell_structure.offsets_ref().unwrap()
-                [0..self.nvalues],
+                [0..self.ncells],
             &self.location.data.as_ref()[0..self.nbytes]
         )
     }
@@ -653,11 +697,11 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
         let s = self.offset_cursor;
         self.offset_cursor += 1;
 
-        if s + 1 < self.nvalues {
+        if s + 1 < self.ncells {
             let start = offset_buffer[s] as usize;
             let slen = offset_buffer[s + 1] as usize - start;
             Some(&data_buffer[start..start + slen])
-        } else if s < self.nvalues {
+        } else if s < self.ncells {
             let start = offset_buffer[s] as usize;
             let slen = self.nbytes - start;
             Some(&data_buffer[start..start + slen])
@@ -672,7 +716,7 @@ impl<'data, C> FusedIterator for VarDataIterator<'data, C> {}
 impl<'data, C> TryFrom<RawReadOutput<'data, C>> for VarDataIterator<'data, C> {
     type Error = crate::error::Error;
     fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
-        Self::new(value.nvalues, value.nbytes, value.input)
+        Self::new(value.ncells, value.nbytes, value.input)
     }
 }
 

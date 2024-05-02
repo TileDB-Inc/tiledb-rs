@@ -97,6 +97,15 @@ impl<'data> CellStructure<'data> {
         }
     }
 
+    /// Return the fixed number of values per cell, if not variable.
+    pub fn fixed(&self) -> Option<NonZeroU32> {
+        if let Self::Fixed(nz) = self {
+            Some(*nz)
+        } else {
+            None
+        }
+    }
+
     /// Returns a reference to the offsets buffer, if any.
     pub fn offsets_ref(&self) -> Option<&[u64]> {
         if let Self::Var(ref offsets) = self {
@@ -280,6 +289,15 @@ impl<'data> CellStructureMut<'data> {
     pub fn unwrap(self) -> Option<BufferMut<'data, u64>> {
         if let Self::Var(offsets) = self {
             Some(offsets)
+        } else {
+            None
+        }
+    }
+
+    /// Return the fixed number of values per cell, if not variable.
+    pub fn fixed(&self) -> Option<NonZeroU32> {
+        if let Self::Fixed(nz) = self {
+            Some(*nz)
         } else {
             None
         }
