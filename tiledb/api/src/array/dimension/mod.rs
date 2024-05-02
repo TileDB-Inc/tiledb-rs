@@ -271,6 +271,38 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
+    pub fn new_no_extent<T: PhysicalType>(
+        context: &'ctx Context,
+        name: &str,
+        datatype: Datatype,
+        domain: &[T; 2],
+    ) -> TileDBResult<Self> {
+        let c_datatype = datatype.capi_enum();
+
+        let c_name = cstring!(name);
+        let c_extent: *const std::ffi::c_void = std::ptr::null();
+
+        let mut c_dimension: *mut ffi::tiledb_dimension_t =
+            std::ptr::null_mut();
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_alloc(
+                ctx,
+                c_name.as_ptr(),
+                c_datatype,
+                &domain[0] as *const T as *const std::ffi::c_void,
+                c_extent,
+                &mut c_dimension,
+            )
+        })?;
+        Ok(Builder {
+            dim: Dimension {
+                context,
+                raw: RawDimension::Owned(c_dimension),
+            },
+        })
+    }
+
     pub fn context(&self) -> &'ctx Context {
         self.dim.context
     }
