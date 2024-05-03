@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use std::convert::From;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::rc::Rc;
 
 use crate::config::{Config, RawConfig};
 use crate::error::{Error, ObjectTypeErrorKind, RawError};
@@ -72,8 +74,9 @@ where
     }
 }
 
+#[derive(Clone)]
 pub struct Context {
-    raw: RawContext,
+    raw: Rc<RefCell<RawContext>>,
 }
 
 impl Context {
@@ -87,7 +90,7 @@ impl Context {
         let res = unsafe { ffi::tiledb_ctx_alloc(cfg.capi(), &mut c_ctx) };
         if res == ffi::TILEDB_OK {
             Ok(Context {
-                raw: RawContext { raw: c_ctx },
+                raw: Rc::new(RefCell::new(RawContext { raw: c_ctx })),
             })
         } else {
             Err(Error::LibTileDB(String::from("Could not create context")))
@@ -98,7 +101,7 @@ impl Context {
     where
         Callable: FnOnce(*mut ffi::tiledb_ctx_t) -> i32,
     {
-        if action(self.raw.raw) == ffi::TILEDB_OK {
+        if action(self.raw.borrow().raw) == ffi::TILEDB_OK {
             Ok(())
         } else {
             Err(self.expect_last_error())
