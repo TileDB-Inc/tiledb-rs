@@ -703,8 +703,8 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
 
         if s < self.ncells {
             let start = offset_buffer[s] as usize;
-            let slen = offset_buffer[s + 1] as usize - start;
-            Some(&data_buffer[start..start + slen])
+            let end = offset_buffer[s + 1] as usize;
+            Some(&data_buffer[start..end])
         } else {
             None
         }
