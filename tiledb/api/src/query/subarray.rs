@@ -4,8 +4,7 @@ use anyhow::anyhow;
 
 use crate::array::Schema;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::PhysicalType;
-use crate::error::Error;
+use crate::datatype::{LogicalType, PhysicalType};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::key::LookupKey;
 use crate::query::QueryBuilder;
@@ -114,7 +113,8 @@ impl<'ctx> Subarray<'ctx> {
                     // Apparently stride exists in the API but isn't used.
                     let mut stride: *const std::ffi::c_void = out_ptr!();
 
-                    fn_typed!(dtype, DT, {
+                    fn_typed!(dtype, LT, {
+                        type DT = <LT as LogicalType>::PhysicalType;
                         let mut start_ptr: *const DT = out_ptr!();
                         let mut end_ptr: *const DT = out_ptr!();
                         self.capi_call(|ctx| unsafe {
