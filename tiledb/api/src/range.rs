@@ -287,6 +287,23 @@ impl From<&[&str; 2]> for VarValueRange {
     }
 }
 
+impl From<(String, String)> for VarValueRange {
+    fn from(value: (String, String)) -> VarValueRange {
+        let start = value.0.into_bytes().into_boxed_slice();
+        let end = value.1.into_bytes().into_boxed_slice();
+        VarValueRange::UInt8(start, end)
+    }
+}
+
+impl From<[String; 2]> for VarValueRange {
+    fn from(value: [String; 2]) -> VarValueRange {
+        let [start, end] = value;
+        let start = start.into_bytes().into_boxed_slice();
+        let end = end.into_bytes().into_boxed_slice();
+        VarValueRange::UInt8(start, end)
+    }
+}
+
 #[macro_export]
 macro_rules! var_value_range_go {
     ($expr:expr, $DT:ident, $start:pat, $end:pat, $then:expr) => {
