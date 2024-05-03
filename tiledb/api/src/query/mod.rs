@@ -178,7 +178,7 @@ pub trait QueryBuilder<'ctx>: Sized {
         Ok(self)
     }
 
-    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>>
+    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<Self>>
     where
         Self: Sized,
     {
