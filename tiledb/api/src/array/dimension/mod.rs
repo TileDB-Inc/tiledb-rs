@@ -233,6 +233,36 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
+    // This is internal only on purpose.
+    fn new_raw(
+        context: &'ctx Context,
+        name: &str,
+        datatype: Datatype,
+        c_range: *const std::ffi::c_void,
+        c_extent: *const std::ffi::c_void,
+    ) -> TileDBResult<Self> {
+        let c_name = cstring!(name);
+        let c_datatype = datatype.capi_enum();
+        let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_dimension_alloc(
+                ctx,
+                c_name.as_ptr(),
+                c_datatype,
+                c_range,
+                c_extent,
+                &mut c_dimension,
+            )
+        })?;
+        Ok(Builder {
+            dim: Dimension {
+                context,
+                raw: RawDimension::Owned(c_dimension),
+            },
+        })
+    }
+
     pub fn context(&self) -> &'ctx Context {
         self.dim.context
     }
@@ -336,53 +366,72 @@ impl<'ctx> Factory<'ctx> for DimensionData {
 
     fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
         let mut b = if self.datatype == Datatype::StringAscii {
-            Builder::new_string(context, &self.name, self.datatype)?
+            Builder::new_raw(
+                context,
+                &self.name,
+                self.datatype,
+                std::ptr::null(),
+                std::ptr::null(),
+            )?
         } else {
-            if self.domain.is_none() {
-                return Err(Error::InvalidArgument(anyhow!(
-                    "Dimension '{}' is missing its required domain.",
-                    self.name
-                )));
-            }
-            if self.extent.is_none() {
-                return Err(Error::InvalidArgument(anyhow!(
-                    "Dimension '{}' is missing an extent.",
-                    self.name
-                )));
-            }
-            let domain = self.domain.as_ref().unwrap();
-            let extent = self.extent.as_ref().unwrap();
             fn_typed!(self.datatype, DT, {
-                let d0 = serde_json::from_value::<DT>(domain[0].clone())
-                    .map_err(|e| {
-                        Error::Deserialization(
-                            format!("dimension '{}' lower bound", self.name),
-                            anyhow!(e),
-                        )
-                    })?;
-                let d1 = serde_json::from_value::<DT>(domain[1].clone())
-                    .map_err(|e| {
-                        Error::Deserialization(
-                            format!("dimension '{}' upper bound", self.name),
-                            anyhow!(e),
-                        )
-                    })?;
-                let extent = serde_json::from_value::<DT>(extent.clone())
-                    .map_err(|e| {
+                let mut range: Option<[DT; 2]> = None;
+                let mut extent: Option<DT> = None;
+                if let Some(json_range) = &self.domain {
+                    let d0 =
+                        serde_json::from_value::<DT>(json_range[0].clone())
+                            .map_err(|e| {
+                                Error::Deserialization(
+                                    format!(
+                                        "dimension '{}' lower bound",
+                                        self.name
+                                    ),
+                                    anyhow!(e),
+                                )
+                            })?;
+                    let d1 =
+                        serde_json::from_value::<DT>(json_range[1].clone())
+                            .map_err(|e| {
+                                Error::Deserialization(
+                                    format!(
+                                        "dimension '{}' upper bound",
+                                        self.name
+                                    ),
+                                    anyhow!(e),
+                                )
+                            })?;
+                    range = Some([d0, d1]);
+                }
+                if let Some(json_extent) = &self.extent {
+                    let e = serde_json::from_value::<DT>(json_extent.clone())
+                        .map_err(|e| {
                         Error::Deserialization(
                             format!("dimension '{}' extent", self.name),
                             anyhow!(e),
                         )
                     })?;
-                Builder::new::<DT>(
+                    extent = Some(e);
+                }
+                let c_range = if let Some(range) = range {
+                    range.as_ptr() as *const std::ffi::c_void
+                } else {
+                    std::ptr::null()
+                };
+                let c_extent = if let Some(extent) = extent {
+                    &extent as *const DT as *const std::ffi::c_void
+                } else {
+                    std::ptr::null()
+                };
+                Builder::new_raw(
                     context,
                     &self.name,
                     self.datatype,
-                    &[d0, d1],
-                    &extent,
-                )
-            })?
+                    c_range,
+                    c_extent,
+                )?
+            })
         };
+
         if let Some(fl) = self.filters.as_ref() {
             b = b.filters(fl.create(context)?)?;
         }
