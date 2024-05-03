@@ -11,6 +11,7 @@ use tiledb_utils::numbers::{
 
 use crate::array::{ArrayType, DimensionData};
 use crate::datatype::strategy::*;
+use crate::datatype::LogicalType;
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::{fn_typed, Datatype};
@@ -111,7 +112,8 @@ where
 pub fn prop_dimension_for_datatype(
     datatype: Datatype,
 ) -> impl Strategy<Value = DimensionData> {
-    fn_typed!(datatype, DT, {
+    fn_typed!(datatype, LT, {
+        type DT = <LT as LogicalType>::PhysicalType;
         let name = prop_dimension_name();
         let range_and_extent = prop_range_and_extent::<DT>();
         let filters = any_with::<FilterListData>(Rc::new(FilterRequirements {

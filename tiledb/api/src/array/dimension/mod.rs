@@ -8,7 +8,7 @@ use util::option::OptionSubset;
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::PhysicalType;
+use crate::datatype::{LogicalType, PhysicalType};
 use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
@@ -145,11 +145,9 @@ impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
         eq_helper!(self.cell_val_num(), other.cell_val_num());
         eq_helper!(self.filters(), other.filters());
 
-        fn_typed!(self.datatype().unwrap(), DT, {
-            eq_helper!(self.domain::<DT>(), other.domain::<DT>())
-        });
-
-        fn_typed!(self.datatype().unwrap(), DT, {
+        fn_typed!(self.datatype().unwrap(), LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
+            eq_helper!(self.domain::<DT>(), other.domain::<DT>());
             eq_helper!(self.extent::<DT>(), other.extent::<DT>())
         });
 
@@ -264,7 +262,8 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
 
     fn try_from(dim: &Dimension<'ctx>) -> TileDBResult<Self> {
         let datatype = dim.datatype()?;
-        let (domain, extent) = fn_typed!(datatype, DT, {
+        let (domain, extent) = fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             let domain = dim.domain::<DT>()?;
             (
                 [json!(domain[0]), json!(domain[1])],
@@ -301,7 +300,9 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     type Item = Dimension<'ctx>;
 
     fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
-        let mut b = fn_typed!(self.datatype, DT, {
+        let mut b = fn_typed!(self.datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
+
             let d0 = serde_json::from_value::<DT>(self.domain[0].clone())
                 .map_err(|e| {
                     Error::Deserialization(

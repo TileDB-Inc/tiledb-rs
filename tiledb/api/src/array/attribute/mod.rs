@@ -11,7 +11,7 @@ use util::option::OptionSubset;
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::PhysicalType;
+use crate::datatype::{LogicalType, PhysicalType};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::fn_typed;
@@ -225,7 +225,8 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
         }
 
         let fill_value_match = if self.is_nullable().unwrap() {
-            fn_typed!(self.datatype().unwrap(), DT, {
+            fn_typed!(self.datatype().unwrap(), LT, {
+                type DT = <LT as LogicalType>::PhysicalType;
                 match (
                     self.fill_value_nullable::<DT>(),
                     other.fill_value_nullable::<DT>(),
@@ -241,7 +242,8 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
                 }
             })
         } else {
-            fn_typed!(self.datatype().unwrap(), DT, {
+            fn_typed!(self.datatype().unwrap(), LT, {
+                type DT = <LT as LogicalType>::PhysicalType;
                 match (self.fill_value::<DT>(), other.fill_value::<DT>()) {
                     (Ok(mine), Ok(theirs)) => mine.bits_eq(&theirs),
                     _ => false,
@@ -433,9 +435,10 @@ impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {
 
     fn try_from(attr: &Attribute<'ctx>) -> TileDBResult<Self> {
         let datatype = attr.datatype()?;
-        let fill = fn_typed!(datatype, AT, {
+        let fill = fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             let (fill_value, fill_value_nullability) =
-                attr.fill_value_nullable::<AT>()?;
+                attr.fill_value_nullable::<DT>()?;
             FillData {
                 data: json!(fill_value),
                 nullability: Some(fill_value_nullability),
@@ -475,8 +478,9 @@ impl<'ctx> Factory<'ctx> for AttributeData {
             b = b.cell_val_num(c)?;
         }
         if let Some(ref fill) = self.fill {
-            b = fn_typed!(self.datatype, AT, {
-                let fill_value: AT = serde_json::from_value::<AT>(
+            b = fn_typed!(self.datatype, LT, {
+                type DT = <LT as LogicalType>::PhysicalType;
+                let fill_value: DT = serde_json::from_value::<DT>(
                     fill.data.clone(),
                 )
                 .map_err(|e| {
@@ -486,9 +490,9 @@ impl<'ctx> Factory<'ctx> for AttributeData {
                     )
                 })?;
                 if let Some(fill_nullability) = fill.nullability {
-                    b.fill_value_nullability::<AT>(fill_value, fill_nullability)
+                    b.fill_value_nullability::<DT>(fill_value, fill_nullability)
                 } else {
-                    b.fill_value::<AT>(fill_value)
+                    b.fill_value::<DT>(fill_value)
                 }
             })?;
         }

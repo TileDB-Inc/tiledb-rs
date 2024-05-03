@@ -1,7 +1,7 @@
 pub mod logical;
 pub mod physical;
 
-pub use logical::LogicalType;
+pub use logical::*;
 pub use physical::PhysicalType;
 
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -525,173 +525,44 @@ macro_rules! fn_typed {
     ($datatype:expr, $typename:ident, $then:expr) => {{
         type Datatype = $crate::Datatype;
         match $datatype {
-            Datatype::Int8 => { type $typename = i8; $then },
-            Datatype::Int16 => { type $typename = i16; $then },
-            Datatype::Int32 => { type $typename = i32; $then },
-            Datatype::Int64 => { type $typename = i64; $then },
-            Datatype::UInt8 => { type $typename = u8; $then },
-            Datatype::UInt16 => { type $typename = u16; $then },
-            Datatype::UInt32 => { type $typename = u32; $then },
-            Datatype::UInt64 => { type $typename = u64; $then },
-            Datatype::Float32 => { type $typename = f32; $then },
-            Datatype::Float64 => { type $typename = f64; $then },
-            Datatype::Char => unimplemented!(),
-            Datatype::StringAscii => unimplemented!(),
-            Datatype::StringUtf8 => unimplemented!(),
-            Datatype::StringUtf16 => unimplemented!(),
-            Datatype::StringUtf32 => unimplemented!(),
-            Datatype::StringUcs2 => unimplemented!(),
-            Datatype::StringUcs4 => unimplemented!(),
-            Datatype::Any => unimplemented!(),
-            Datatype::DateTimeYear => unimplemented!(),
-            Datatype::DateTimeMonth => unimplemented!(),
-            Datatype::DateTimeWeek => unimplemented!(),
-            Datatype::DateTimeDay => unimplemented!(),
-            Datatype::DateTimeHour => unimplemented!(),
-            Datatype::DateTimeMinute => unimplemented!(),
-            Datatype::DateTimeSecond => unimplemented!(),
-            Datatype::DateTimeMillisecond => unimplemented!(),
-            Datatype::DateTimeMicrosecond => unimplemented!(),
-            Datatype::DateTimeNanosecond => unimplemented!(),
-            Datatype::DateTimePicosecond => unimplemented!(),
-            Datatype::DateTimeFemtosecond => unimplemented!(),
-            Datatype::DateTimeAttosecond => unimplemented!(),
-            Datatype::TimeHour => unimplemented!(),
-            Datatype::TimeMinute => unimplemented!(),
-            Datatype::TimeSecond => unimplemented!(),
-            Datatype::TimeMillisecond => unimplemented!(),
-            Datatype::TimeMicrosecond => unimplemented!(),
-            Datatype::TimeNanosecond => unimplemented!(),
-            Datatype::TimePicosecond => unimplemented!(),
-            Datatype::TimeFemtosecond => unimplemented!(),
-            Datatype::TimeAttosecond => unimplemented!(),
-            Datatype::Blob => unimplemented!(),
-            Datatype::Boolean => unimplemented!(),
-            Datatype::GeometryWkb => unimplemented!(),
-            Datatype::GeometryWkt => unimplemented!(),
-        }
-    }};
-
-    ($func:ident, $datatype:expr$(, $arg:expr)* => $then:expr) => {{
-        type Datatype = $crate::Datatype;
-        match $datatype {
             Datatype::Int8 => {
-                let $func = $func::<i8>($($arg,)*);
+                type $typename = $crate::datatype::Int8Type;
                 $then
             }
             Datatype::Int16 => {
-                let $func = $func::<i16>($($arg,)*);
+                type $typename = $crate::datatype::Int16Type;
                 $then
             }
             Datatype::Int32 => {
-                let $func = $func::<i32>($($arg,)*);
+                type $typename = $crate::datatype::Int32Type;
                 $then
             }
             Datatype::Int64 => {
-                let $func = $func::<i64>($($arg,)*);
+                type $typename = $crate::datatype::Int64Type;
                 $then
             }
             Datatype::UInt8 => {
-                let $func = $func::<u8>($($arg,)*);
+                type $typename = $crate::datatype::UInt8Type;
                 $then
             }
             Datatype::UInt16 => {
-                let $func = $func::<u16>($($arg,)*);
+                type $typename = $crate::datatype::UInt16Type;
                 $then
             }
             Datatype::UInt32 => {
-                let $func = $func::<u32>($($arg,)*);
+                type $typename = $crate::datatype::UInt32Type;
                 $then
             }
             Datatype::UInt64 => {
-                let $func = $func::<u64>($($arg,)*);
+                type $typename = $crate::datatype::UInt64Type;
                 $then
             }
             Datatype::Float32 => {
-                let $func = $func::<f32>($($arg,)*);
+                type $typename = $crate::datatype::Float32Type;
                 $then
             }
             Datatype::Float64 => {
-                let $func = $func::<f64>($($arg,)*);
-                $then
-            }
-            Datatype::Char => unimplemented!(),
-            Datatype::StringAscii => unimplemented!(),
-            Datatype::StringUtf8 => unimplemented!(),
-            Datatype::StringUtf16 => unimplemented!(),
-            Datatype::StringUtf32 => unimplemented!(),
-            Datatype::StringUcs2 => unimplemented!(),
-            Datatype::StringUcs4 => unimplemented!(),
-            Datatype::Any => unimplemented!(),
-            Datatype::DateTimeYear => unimplemented!(),
-            Datatype::DateTimeMonth => unimplemented!(),
-            Datatype::DateTimeWeek => unimplemented!(),
-            Datatype::DateTimeDay => unimplemented!(),
-            Datatype::DateTimeHour => unimplemented!(),
-            Datatype::DateTimeMinute => unimplemented!(),
-            Datatype::DateTimeSecond => unimplemented!(),
-            Datatype::DateTimeMillisecond => unimplemented!(),
-            Datatype::DateTimeMicrosecond => unimplemented!(),
-            Datatype::DateTimeNanosecond => unimplemented!(),
-            Datatype::DateTimePicosecond => unimplemented!(),
-            Datatype::DateTimeFemtosecond => unimplemented!(),
-            Datatype::DateTimeAttosecond => unimplemented!(),
-            Datatype::TimeHour => unimplemented!(),
-            Datatype::TimeMinute => unimplemented!(),
-            Datatype::TimeSecond => unimplemented!(),
-            Datatype::TimeMillisecond => unimplemented!(),
-            Datatype::TimeMicrosecond => unimplemented!(),
-            Datatype::TimeNanosecond => unimplemented!(),
-            Datatype::TimePicosecond => unimplemented!(),
-            Datatype::TimeFemtosecond => unimplemented!(),
-            Datatype::TimeAttosecond => unimplemented!(),
-            Datatype::Blob => unimplemented!(),
-            Datatype::Boolean => unimplemented!(),
-            Datatype::GeometryWkb => unimplemented!(),
-            Datatype::GeometryWkt => unimplemented!(),
-        }
-    }};
-    ($obj:ident.$func:ident, $datatype:expr$(, $arg:expr)* => $then:expr) => {{
-        type Datatype = $crate::Datatype;
-        match $datatype {
-            Datatype::Int8 => {
-                let $func = $obj.$func::<i8>($($arg,)*);
-                $then
-            }
-            Datatype::Int16 => {
-                let $func = $obj.$func::<i16>($($arg,)*);
-                $then
-            }
-            Datatype::Int32 => {
-                let $func = $obj.$func::<i32>($($arg,)*);
-                $then
-            }
-            Datatype::Int64 => {
-                let $func = $obj.$func::<i64>($($arg,)*);
-                $then
-            }
-            Datatype::UInt8 => {
-                let $func = $obj.$func::<u8>($($arg,)*);
-                $then
-            }
-            Datatype::UInt16 => {
-                let $func = $obj.$func::<u16>($($arg,)*);
-                $then
-            }
-            Datatype::UInt32 => {
-                let $func = $obj.$func::<u32>($($arg,)*);
-                $then
-            }
-            Datatype::UInt64 => {
-                let $func = $obj.$func::<u64>($($arg,)*);
-                $then
-            }
-            Datatype::Float32 => {
-                let $func = $obj.$func::<f32>($($arg,)*);
-                $then
-            }
-            Datatype::Float64 => {
-                let $func = $obj.$func::<f64>($($arg,)*);
+                type $typename = $crate::datatype::Float64Type;
                 $then
             }
             Datatype::Char => unimplemented!(),

@@ -1,5 +1,7 @@
 use std::fmt::Debug;
 
+use serde::{Deserialize, Serialize};
+
 use crate::private::sealed;
 
 /// Trait for generic operations on primitive data types.
@@ -11,9 +13,11 @@ pub trait PhysicalType:
     Copy
     + Debug
     + Default
+    + for<'a> Deserialize<'a>
     + PartialEq
     + PartialOrd
     + Send
+    + Serialize
     + Sync
     + crate::private::Sealed
     + 'static

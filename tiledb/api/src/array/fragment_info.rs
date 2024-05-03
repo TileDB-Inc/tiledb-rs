@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use crate::array::schema::{RawSchema, Schema};
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::Datatype;
+use crate::datatype::{Datatype, LogicalType};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::fn_typed;
 use crate::non_empty_domain::{
@@ -298,7 +298,8 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         frag_idx: u32,
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
-        fn_typed!(datatype, DT, {
+        fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             let c_frag = self.capi();
             let mut range = [DT::default(), DT::default()];
             let c_range = range.as_mut_ptr();
@@ -338,7 +339,8 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
             )
         })?;
 
-        fn_typed!(datatype, DT, {
+        fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
                     user_type: std::any::type_name::<DT>(),
@@ -412,7 +414,8 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
         let c_frag = self.capi();
-        fn_typed!(datatype, DT, {
+        fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             let mut range = [DT::default(), DT::default()];
             let c_range = range.as_mut_ptr();
             self.capi_call(|ctx| unsafe {
@@ -455,7 +458,8 @@ impl<'ctx> FragmentInfoInternal<'ctx> {
             )
         })?;
 
-        fn_typed!(datatype, DT, {
+        fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
                     user_type: std::any::type_name::<DT>(),
