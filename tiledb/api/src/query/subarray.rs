@@ -160,13 +160,13 @@ impl<'ctx> Subarray<'ctx> {
 }
 
 #[derive(ContextBound)]
-pub struct Builder<'ctx, Q> {
-    query: Q,
+pub struct Builder<Q> {
     #[base(ContextBound)]
-    subarray: Subarray<'ctx>,
+    query: Q,
+    raw: RawSubarray,
 }
 
-impl<'ctx, Q> Builder<'ctx, Q>
+impl<'ctx, Q> Builder<Q>
 where
     Q: QueryBuilder<'ctx> + Sized,
 {
@@ -182,11 +182,7 @@ where
         let schema = query.base().array().schema()?;
         Ok(Builder {
             query,
-            subarray: Subarray {
-                context,
-                schema,
-                raw: RawSubarray::Owned(c_subarray),
-            },
+            raw: RawSubarray::Owned(c_subarray),
         })
     }
 
@@ -210,7 +206,7 @@ where
                 )
             })?;
 
-        let c_subarray = *self.subarray.raw;
+        let c_subarray = *self.raw;
 
         match range {
             Range::Single(range) => {
@@ -219,7 +215,7 @@ where
                     let end = end.to_le_bytes();
                     match key.into() {
                         LookupKey::Index(idx) => {
-                            self.capi_call(|ctx| unsafe {
+                            self.query.base().capi_call(|ctx| unsafe {
                                 ffi::tiledb_subarray_add_range(
                                     ctx,
                                     c_subarray,
@@ -232,7 +228,7 @@ where
                         }
                         LookupKey::Name(name) => {
                             let c_name = cstring!(name);
-                            self.capi_call(|ctx| unsafe {
+                            self.query.base().capi_call(|ctx| unsafe {
                                 ffi::tiledb_subarray_add_range_by_name(
                                     ctx,
                                     c_subarray,
@@ -253,7 +249,7 @@ where
                 var_value_range_go!(range, _DT, start, end, {
                     match key.into() {
                         LookupKey::Index(idx) => {
-                            self.capi_call(|ctx| unsafe {
+                            self.query.base().capi_call(|ctx| unsafe {
                                 ffi::tiledb_subarray_add_range_var(
                                     ctx,
                                     c_subarray,
@@ -267,7 +263,7 @@ where
                         }
                         LookupKey::Name(name) => {
                             let c_name = cstring!(name);
-                            self.capi_call(|ctx| unsafe {
+                            self.query.base().capi_call(|ctx| unsafe {
                                 ffi::tiledb_subarray_add_range_var_by_name(
                                     ctx,
                                     c_subarray,
@@ -302,8 +298,8 @@ where
             )));
         }
 
-        let ctx = self.subarray.context;
-        let c_subarray = self.subarray.capi();
+        let ctx = self.query.base().context();
+        let c_subarray = *self.raw;
 
         ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_subarray_add_point_ranges(
@@ -321,9 +317,9 @@ where
     /// Apply the subarray to the query, returning the query builder.
     pub fn finish_subarray(self) -> TileDBResult<Q> {
         let c_query = **self.query.base().cquery();
-        let c_subarray = *self.subarray.raw;
+        let c_subarray = *self.raw;
 
-        self.capi_call(|ctx| unsafe {
+        self.query.base().capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_subarray_t(ctx, c_query, c_subarray)
         })?;
         Ok(self.query)
