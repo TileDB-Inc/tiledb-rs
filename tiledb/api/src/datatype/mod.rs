@@ -526,179 +526,185 @@ macro_rules! fn_typed {
         type Datatype = $crate::Datatype;
         match $datatype {
             Datatype::Int8 => {
-                type $typename = $crate::datatype::Int8Type;
+                type $typename = $crate::datatype::logical::Int8Type;
                 $then
             }
             Datatype::Int16 => {
-                type $typename = $crate::datatype::Int16Type;
+                type $typename = $crate::datatype::logical::Int16Type;
                 $then
             }
             Datatype::Int32 => {
-                type $typename = $crate::datatype::Int32Type;
+                type $typename = $crate::datatype::logical::Int32Type;
                 $then
             }
             Datatype::Int64 => {
-                type $typename = $crate::datatype::Int64Type;
+                type $typename = $crate::datatype::logical::Int64Type;
                 $then
             }
             Datatype::UInt8 => {
-                type $typename = $crate::datatype::UInt8Type;
+                type $typename = $crate::datatype::logical::UInt8Type;
                 $then
             }
             Datatype::UInt16 => {
-                type $typename = $crate::datatype::UInt16Type;
+                type $typename = $crate::datatype::logical::UInt16Type;
                 $then
             }
             Datatype::UInt32 => {
-                type $typename = $crate::datatype::UInt32Type;
+                type $typename = $crate::datatype::logical::UInt32Type;
                 $then
             }
             Datatype::UInt64 => {
-                type $typename = $crate::datatype::UInt64Type;
+                type $typename = $crate::datatype::logical::UInt64Type;
                 $then
             }
             Datatype::Float32 => {
-                type $typename = $crate::datatype::Float32Type;
+                type $typename = $crate::datatype::logical::Float32Type;
                 $then
             }
             Datatype::Float64 => {
-                type $typename = $crate::datatype::Float64Type;
+                type $typename = $crate::datatype::logical::Float64Type;
                 $then
             }
             Datatype::Char => {
-                type $typename = $crate::datatype::CharType;
+                type $typename = $crate::datatype::logical::CharType;
                 $then
             }
             Datatype::StringAscii => {
-                type $typename = $crate::datatype::StringAsciiType;
+                type $typename = $crate::datatype::logical::StringAsciiType;
                 $then
             }
             Datatype::StringUtf8 => {
-                type $typename = $crate::datatype::StringUtf8Type;
+                type $typename = $crate::datatype::logical::StringUtf8Type;
                 $then
             }
             Datatype::StringUtf16 => {
-                type $typename = $crate::datatype::StringUtf16Type;
+                type $typename = $crate::datatype::logical::StringUtf16Type;
                 $then
             }
             Datatype::StringUtf32 => {
-                type $typename = $crate::datatype::StringUtf32Type;
+                type $typename = $crate::datatype::logical::StringUtf32Type;
                 $then
             }
             Datatype::StringUcs2 => {
-                type $typename = $crate::datatype::StringUcs2Type;
+                type $typename = $crate::datatype::logical::StringUcs2Type;
                 $then
             }
             Datatype::StringUcs4 => {
-                type $typename = $crate::datatype::StringUcs4Type;
+                type $typename = $crate::datatype::logical::StringUcs4Type;
                 $then
             }
             Datatype::Any => {
-                type $typename = $crate::datatype::AnyType;
+                type $typename = $crate::datatype::logical::AnyType;
                 $then
             }
             Datatype::DateTimeYear => {
-                type $typename = $crate::datatype::DateTimeYearType;
+                type $typename = $crate::datatype::logical::DateTimeYearType;
                 $then
             }
             Datatype::DateTimeMonth => {
-                type $typename = $crate::datatype::DateTimeMonthType;
+                type $typename = $crate::datatype::logical::DateTimeMonthType;
                 $then
             }
             Datatype::DateTimeWeek => {
-                type $typename = $crate::datatype::DateTimeWeekType;
+                type $typename = $crate::datatype::logical::DateTimeWeekType;
                 $then
             }
             Datatype::DateTimeDay => {
-                type $typename = $crate::datatype::DateTimeDayType;
+                type $typename = $crate::datatype::logical::DateTimeDayType;
                 $then
             }
             Datatype::DateTimeHour => {
-                type $typename = $crate::datatype::DateTimeHourType;
+                type $typename = $crate::datatype::logical::DateTimeHourType;
                 $then
             }
             Datatype::DateTimeMinute => {
-                type $typename = $crate::datatype::DateTimeMinuteType;
+                type $typename = $crate::datatype::logical::DateTimeMinuteType;
                 $then
             }
             Datatype::DateTimeSecond => {
-                type $typename = $crate::datatype::DateTimeSecondType;
+                type $typename = $crate::datatype::logical::DateTimeSecondType;
                 $then
             }
             Datatype::DateTimeMillisecond => {
-                type $typename = $crate::datatype::DateTimeMillisecondType;
+                type $typename =
+                    $crate::datatype::logical::DateTimeMillisecondType;
                 $then
             }
             Datatype::DateTimeMicrosecond => {
-                type $typename = $crate::datatype::DateTimeMicrosecondType;
+                type $typename =
+                    $crate::datatype::logical::DateTimeMicrosecondType;
                 $then
             }
             Datatype::DateTimeNanosecond => {
-                type $typename = $crate::datatype::DateTimeNanosecondType;
+                type $typename =
+                    $crate::datatype::logical::DateTimeNanosecondType;
                 $then
             }
             Datatype::DateTimePicosecond => {
-                type $typename = $crate::datatype::DateTimePicosecondType;
+                type $typename =
+                    $crate::datatype::logical::DateTimePicosecondType;
                 $then
             }
             Datatype::DateTimeFemtosecond => {
-                type $typename = $crate::datatype::DateTimeFemtosecondType;
+                type $typename =
+                    $crate::datatype::logical::DateTimeFemtosecondType;
                 $then
             }
             Datatype::DateTimeAttosecond => {
-                type $typename = $crate::datatype::DateTimeAttosecondType;
+                type $typename =
+                    $crate::datatype::logical::DateTimeAttosecondType;
                 $then
             }
             Datatype::TimeHour => {
-                type $typename = $crate::datatype::TimeHourType;
+                type $typename = $crate::datatype::logical::TimeHourType;
                 $then
             }
             Datatype::TimeMinute => {
-                type $typename = $crate::datatype::TimeMinuteType;
+                type $typename = $crate::datatype::logical::TimeMinuteType;
                 $then
             }
             Datatype::TimeSecond => {
-                type $typename = $crate::datatype::TimeSecondType;
+                type $typename = $crate::datatype::logical::TimeSecondType;
                 $then
             }
             Datatype::TimeMillisecond => {
-                type $typename = $crate::datatype::TimeMillisecondType;
+                type $typename = $crate::datatype::logical::TimeMillisecondType;
                 $then
             }
             Datatype::TimeMicrosecond => {
-                type $typename = $crate::datatype::TimeMicrosecondType;
+                type $typename = $crate::datatype::logical::TimeMicrosecondType;
                 $then
             }
             Datatype::TimeNanosecond => {
-                type $typename = $crate::datatype::TimeNanosecondType;
+                type $typename = $crate::datatype::logical::TimeNanosecondType;
                 $then
             }
             Datatype::TimePicosecond => {
-                type $typename = $crate::datatype::TimePicosecondType;
+                type $typename = $crate::datatype::logical::TimePicosecondType;
                 $then
             }
             Datatype::TimeFemtosecond => {
-                type $typename = $crate::datatype::TimeFemtosecondType;
+                type $typename = $crate::datatype::logical::TimeFemtosecondType;
                 $then
             }
             Datatype::TimeAttosecond => {
-                type $typename = $crate::datatype::TimeAttosecondType;
+                type $typename = $crate::datatype::logical::TimeAttosecondType;
                 $then
             }
             Datatype::Blob => {
-                type $typename = $crate::datatype::BlobType;
+                type $typename = $crate::datatype::logical::BlobType;
                 $then
             }
             Datatype::Boolean => {
-                type $typename = $crate::datatype::BooleanType;
+                type $typename = $crate::datatype::logical::BooleanType;
                 $then
             }
             Datatype::GeometryWkb => {
-                type $typename = $crate::datatype::GeometryWkbType;
+                type $typename = $crate::datatype::logical::GeometryWkbType;
                 $then
             }
             Datatype::GeometryWkt => {
-                type $typename = $crate::datatype::GeometryWktType;
+                type $typename = $crate::datatype::logical::GeometryWktType;
                 $then
             }
         }
