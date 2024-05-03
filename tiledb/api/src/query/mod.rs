@@ -2,7 +2,6 @@ use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
-use crate::range::Range;
 use crate::{array::RawArray, Array, Result as TileDBResult};
 
 pub mod buffer;
@@ -49,7 +48,7 @@ pub trait Query<'ctx> {
     where
         Self: Sized;
 
-    fn subarray(&self) -> TileDBResult<Subarray<'ctx>> {
+    fn subarray(&'ctx self) -> TileDBResult<Subarray<'ctx>> {
         let ctx = self.base().context();
         let c_query = *self.base().raw;
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
@@ -57,13 +56,10 @@ pub trait Query<'ctx> {
             ffi::tiledb_query_get_subarray_t(ctx, c_query, &mut c_subarray)
         })?;
 
-        Ok(Subarray::new(ctx, RawSubarray::Owned(c_subarray)))
-    }
-
-    fn ranges(&self) -> TileDBResult<Vec<Vec<Range>>> {
-        let schema = self.base().array.schema()?;
-        let subarray = self.subarray()?;
-        subarray.ranges(&schema)
+        Ok(Subarray::new(
+            self.base().array().schema()?,
+            RawSubarray::Owned(c_subarray),
+        ))
     }
 }
 

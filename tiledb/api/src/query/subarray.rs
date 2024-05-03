@@ -35,8 +35,8 @@ impl Drop for RawSubarray {
 
 #[derive(ContextBound)]
 pub struct Subarray<'ctx> {
-    #[context]
-    context: &'ctx Context,
+    #[base(ContextBound)]
+    schema: Schema<'ctx>,
     raw: RawSubarray,
 }
 
@@ -45,8 +45,8 @@ impl<'ctx> Subarray<'ctx> {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawSubarray) -> Self {
-        Subarray { context, raw }
+    pub(crate) fn new(schema: Schema<'ctx>, raw: RawSubarray) -> Self {
+        Subarray { schema, raw }
     }
 
     /// Return all dimension ranges set on the query.
