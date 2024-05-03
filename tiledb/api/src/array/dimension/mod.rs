@@ -198,6 +198,9 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
+    /// N.B., This API will eventually be removed when we fixup the current
+    /// implementation of `new` to take a `DimensionConstraint` argument instead
+    /// of the serde values for range and extent.
     pub fn new_string(
         context: &'ctx Context,
         name: &str,
