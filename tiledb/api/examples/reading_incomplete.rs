@@ -199,9 +199,7 @@ fn read_array_step() -> TileDBResult<()> {
         let res = qq.step()?;
         let final_result = res.is_final();
 
-        if let Some((n_a2, b_a2, (n_a1, _, (n_cols, _, (n_rows, _, _))))) =
-            res.into_inner()
-        {
+        if let Some((n_a2, (n_a1, (n_cols, (n_rows, _))))) = res.into_inner() {
             let rows =
                 Ref::map(rows_output.borrow(), |o| &o.data.as_ref()[0..n_rows]);
             let cols =
@@ -211,7 +209,7 @@ fn read_array_step() -> TileDBResult<()> {
 
             let char_output: Ref<QueryBuffersMut<u8>> = char_output.borrow();
             let char_output: QueryBuffers<u8> = char_output.as_shared();
-            let a2 = VarDataIterator::new(n_a2, b_a2, char_output)
+            let a2 = VarDataIterator::new(n_a2, char_output)
                 .expect("Expected variable data offsets")
                 .map(|bytes| String::from_utf8_lossy(bytes).to_string());
 

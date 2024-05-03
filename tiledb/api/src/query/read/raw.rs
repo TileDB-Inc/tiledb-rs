@@ -249,24 +249,43 @@ impl<'data, C> RawReadHandle<'data, C> {
         Ok(())
     }
 
-    /// Returns the number of cells and bytes produced by the last read,
+    /// Returns the number of cells produced by the last read,
     /// or the capacity of the destination buffers if no read has occurred.
-    pub fn last_read_size(&self) -> (usize, usize) {
+    pub fn last_read_ncells(&self) -> usize {
         let ncells = match self.field.cell_val_num {
             CellValNum::Fixed(nz) => {
+                let nz = nz.get() as usize;
+
                 assert!(self.offsets_size.is_none());
                 let data_size = *self.data_size as usize;
-                assert_eq!(0, data_size % nz.get() as usize);
-                data_size / nz.get() as usize
+                let nvalues = data_size / nz / std::mem::size_of::<C>();
+
+                // assumption: core gives us an integral number of cells
+                assert_eq!(data_size, nvalues * nz * std::mem::size_of::<C>());
+                nvalues
             }
             CellValNum::Var => {
-                let offsets_size = self.offsets_size.as_ref().unwrap();
-                **offsets_size as usize / std::mem::size_of::<u64>()
+                let offsets_size =
+                    **self.offsets_size.as_ref().unwrap() as usize;
+                let noffsets = offsets_size / std::mem::size_of::<u64>();
+
+                // assumption: core isn't lying about giving us u64 offsets
+                assert_eq!(offsets_size, noffsets * std::mem::size_of::<u64>());
+
+                /*
+                 * We use the "extra_offsets" mode.
+                 * Note that the core does not add a zero offset if
+                 * the result set is empty.
+                 */
+                if noffsets == 0 {
+                    0
+                } else {
+                    noffsets - 1
+                }
             }
         };
 
-        let nbytes = *self.data_size as usize;
-        (ncells, nbytes)
+        ncells
     }
 
     pub fn realloc_if_managed(&mut self) {
@@ -353,8 +372,8 @@ impl<'data> TypedReadHandle<'data> {
         )
     }
 
-    pub fn last_read_size(&self) -> (usize, usize) {
-        typed_read_handle_go!(self, _DT, handle, handle.last_read_size())
+    pub fn last_read_ncells(&self) -> usize {
+        typed_read_handle_go!(self, _DT, handle, handle.last_read_ncells())
     }
 
     pub fn borrow_mut<'this>(
@@ -428,8 +447,8 @@ impl<'ctx, 'data, Q> ReadQuery<'ctx> for RawReadQuery<'data, Q>
 where
     Q: ReadQuery<'ctx>,
 {
-    type Intermediate = (usize, usize, Q::Intermediate);
-    type Final = (usize, usize, Q::Final);
+    type Intermediate = (usize, Q::Intermediate);
+    type Final = (usize, Q::Final);
 
     fn step(
         &mut self,
@@ -444,7 +463,7 @@ where
             self.base.step()?
         };
 
-        let (ncells, nbytes) = self.raw_read_output.last_read_size();
+        let ncells = self.raw_read_output.last_read_ncells();
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
@@ -455,7 +474,7 @@ where
                 ReadStepOutput::NotEnoughSpace
             }
             ReadStepOutput::Intermediate(base_result) => {
-                if ncells == 0 && nbytes == 0 {
+                if ncells == 0 {
                     /*
                      * The input produced no data.
                      * The returned status itself is not enough to distinguish between
@@ -465,17 +484,12 @@ where
                      * raw read and it is our responsibility to signal NotEnoughSpace.
                      */
                     ReadStepOutput::NotEnoughSpace
-                } else if ncells == 0 {
-                    return Err(Error::Internal(format!(
-                        "Invalid read: returned {} offsets but {} bytes",
-                        ncells, nbytes
-                    )));
                 } else {
-                    ReadStepOutput::Intermediate((ncells, nbytes, base_result))
+                    ReadStepOutput::Intermediate((ncells, base_result))
                 }
             }
             ReadStepOutput::Final(base_result) => {
-                ReadStepOutput::Final((ncells, nbytes, base_result))
+                ReadStepOutput::Final((ncells, base_result))
             }
         })
     }
@@ -526,8 +540,8 @@ impl<'ctx, 'data, Q> ReadQuery<'ctx> for VarRawReadQuery<'data, Q>
 where
     Q: ReadQuery<'ctx>,
 {
-    type Intermediate = (Vec<(usize, usize)>, Q::Intermediate);
-    type Final = (Vec<(usize, usize)>, Q::Final);
+    type Intermediate = (Vec<usize>, Q::Intermediate);
+    type Final = (Vec<usize>, Q::Final);
 
     fn step(
         &mut self,
@@ -554,8 +568,8 @@ where
         let read_sizes = self
             .raw_read_output
             .iter()
-            .map(|r| r.last_read_size())
-            .collect::<Vec<(usize, usize)>>();
+            .map(|r| r.last_read_ncells())
+            .collect::<Vec<usize>>();
 
         Ok(match base_result {
             ReadStepOutput::NotEnoughSpace => {
@@ -568,8 +582,8 @@ where
                 ReadStepOutput::NotEnoughSpace
             }
             ReadStepOutput::Intermediate(base_result) => {
-                for (records_written, bytes_written) in read_sizes.iter() {
-                    if *records_written == 0 && *bytes_written == 0 {
+                for ncells in read_sizes.iter() {
+                    if *ncells == 0 {
                         /*
                          * The input produced no data.
                          * The returned status itself is not enough to distinguish between
@@ -579,11 +593,6 @@ where
                          * raw read and it is our responsibility to signal NotEnoughSpace.
                          */
                         return Ok(ReadStepOutput::NotEnoughSpace);
-                    } else if *records_written == 0 {
-                        return Err(Error::Internal(format!(
-                            "Invalid read: returned {} offsets but {} bytes",
-                            records_written, bytes_written
-                        )));
                     }
                 }
                 ReadStepOutput::Intermediate((read_sizes, base_result))
