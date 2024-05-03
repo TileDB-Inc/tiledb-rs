@@ -265,11 +265,22 @@ impl<'data, C> RawReadHandle<'data, C> {
                 nvalues
             }
             CellValNum::Var => {
-                let offsets_size = **self.offsets_size.as_ref().unwrap();
-                if offsets_size == 0 {
+                let offsets_size =
+                    **self.offsets_size.as_ref().unwrap() as usize;
+                let noffsets = offsets_size / std::mem::size_of::<u64>();
+
+                // assumption: core isn't lying about giving us u64 offsets
+                assert_eq!(offsets_size, noffsets * std::mem::size_of::<u64>());
+
+                /*
+                 * We use the "extra_offsets" mode.
+                 * Note that the core does not add a zero offset if
+                 * the result set is empty.
+                 */
+                if noffsets == 0 {
                     0
                 } else {
-                    (offsets_size - 1) as usize
+                    noffsets - 1
                 }
             }
         };
