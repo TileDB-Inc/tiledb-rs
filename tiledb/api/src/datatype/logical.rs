@@ -13,7 +13,7 @@ pub trait LogicalType: crate::private::Sealed {
 pub struct UInt8Type {}
 
 impl LogicalType for UInt8Type {
-    const DATA_TYPE: Datatype = <u8 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::UInt8;
 
     type PhysicalType = u8;
 }
@@ -21,7 +21,7 @@ impl LogicalType for UInt8Type {
 pub struct UInt16Type {}
 
 impl LogicalType for UInt16Type {
-    const DATA_TYPE: Datatype = <u16 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::UInt16;
 
     type PhysicalType = u16;
 }
@@ -29,7 +29,7 @@ impl LogicalType for UInt16Type {
 pub struct UInt32Type {}
 
 impl LogicalType for UInt32Type {
-    const DATA_TYPE: Datatype = <u32 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::UInt32;
 
     type PhysicalType = u32;
 }
@@ -37,7 +37,7 @@ impl LogicalType for UInt32Type {
 pub struct UInt64Type {}
 
 impl LogicalType for UInt64Type {
-    const DATA_TYPE: Datatype = <u64 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::UInt64;
 
     type PhysicalType = u64;
 }
@@ -45,7 +45,7 @@ impl LogicalType for UInt64Type {
 pub struct Int8Type {}
 
 impl LogicalType for Int8Type {
-    const DATA_TYPE: Datatype = <i8 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::Int8;
 
     type PhysicalType = i8;
 }
@@ -53,7 +53,7 @@ impl LogicalType for Int8Type {
 pub struct Int16Type {}
 
 impl LogicalType for Int16Type {
-    const DATA_TYPE: Datatype = <i16 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::Int16;
 
     type PhysicalType = i16;
 }
@@ -61,7 +61,7 @@ impl LogicalType for Int16Type {
 pub struct Int32Type {}
 
 impl LogicalType for Int32Type {
-    const DATA_TYPE: Datatype = <i32 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::Int32;
 
     type PhysicalType = i32;
 }
@@ -69,7 +69,7 @@ impl LogicalType for Int32Type {
 pub struct Int64Type {}
 
 impl LogicalType for Int64Type {
-    const DATA_TYPE: Datatype = <i64 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::Int64;
 
     type PhysicalType = i64;
 }
@@ -77,7 +77,7 @@ impl LogicalType for Int64Type {
 pub struct Float32Type {}
 
 impl LogicalType for Float32Type {
-    const DATA_TYPE: Datatype = <f32 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::Float32;
 
     type PhysicalType = f32;
 }
@@ -85,7 +85,7 @@ impl LogicalType for Float32Type {
 pub struct Float64Type {}
 
 impl LogicalType for Float64Type {
-    const DATA_TYPE: Datatype = <f64 as PhysicalType>::DATA_TYPE;
+    const DATA_TYPE: Datatype = Datatype::Float64;
 
     type PhysicalType = f64;
 }

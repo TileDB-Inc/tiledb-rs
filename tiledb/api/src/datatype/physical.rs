@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use crate::datatype::Datatype;
 use crate::private::sealed;
 
 /// Trait for generic operations on primitive data types.
@@ -19,8 +18,6 @@ pub trait PhysicalType:
     + crate::private::Sealed
     + 'static
 {
-    const DATA_TYPE: Datatype;
-
     /// Test if two values have the same bits.
     ///
     /// This is often the same as `PartialEq::eq`, but is not in the case
@@ -58,8 +55,6 @@ macro_rules! native_type_eq {
         $(
 
             impl PhysicalType for $T {
-                const DATA_TYPE: Datatype = $datatype;
-
                 fn bits_eq(&self, other: &Self) -> bool {
                     <Self as PartialEq>::eq(self, other)
                 }
@@ -79,8 +74,6 @@ impl crate::private::Sealed for f32 {}
 impl crate::private::Sealed for f64 {}
 
 impl PhysicalType for f32 {
-    const DATA_TYPE: Datatype = Datatype::Float32;
-
     fn bits_eq(&self, other: &Self) -> bool {
         self.to_bits() == other.to_bits()
     }
@@ -91,8 +84,6 @@ impl PhysicalType for f32 {
 }
 
 impl PhysicalType for f64 {
-    const DATA_TYPE: Datatype = Datatype::Float64;
-
     fn bits_eq(&self, other: &Self) -> bool {
         self.to_bits() == other.to_bits()
     }

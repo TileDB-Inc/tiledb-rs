@@ -80,8 +80,13 @@ pub trait Factory<'ctx> {
 }
 
 mod private {
-    // the "sealed trait" pattern prevents downstream crates from implementing a trait
-    // if you make `Sealed` a super-trait. This is important for something like `PhysicalType`.
+    // The "sealed trait" pattern is a way to prevent downstream crates from implementing traits
+    // that you don't think they should implement. If you have `trait Foo: Sealed`, then
+    // downstream crates cannot `impl Foo` because they cannot `impl Sealed`.
+    //
+    // Semantic versioning is one reason you might want this.
+    // We currently use this as a bound for `datatype::PhysicalType` and `datatype::LogicalType`
+    // so that we won't accept something that we don't know about for the C API calls.
     pub trait Sealed {}
 
     macro_rules! sealed {
