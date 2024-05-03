@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::convert::CAPIConverter;
+use crate::datatype::PhysicalType;
 use crate::key::LookupKey;
 use crate::query::QueryBuilder;
 use crate::Result as TileDBResult;
@@ -62,15 +62,15 @@ where
         })
     }
 
-    pub fn dimension_range_typed<Conv: CAPIConverter, K: Into<LookupKey>>(
+    pub fn dimension_range_typed<T: PhysicalType, K: Into<LookupKey>>(
         self,
         key: K,
-        range: &[Conv; 2],
+        range: &[T; 2],
     ) -> TileDBResult<Self> {
         let c_subarray = *self.subarray.raw;
 
-        let c_start = &range[0] as *const Conv as *const std::ffi::c_void;
-        let c_end = &range[1] as *const Conv as *const std::ffi::c_void;
+        let c_start = &range[0] as *const T as *const std::ffi::c_void;
+        let c_end = &range[1] as *const T as *const std::ffi::c_void;
 
         match key.into() {
             LookupKey::Index(idx) => {

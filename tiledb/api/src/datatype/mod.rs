@@ -1,3 +1,9 @@
+pub mod logical;
+pub mod physical;
+
+pub use logical::LogicalType;
+pub use physical::PhysicalType;
+
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 
 use serde::{Deserialize, Serialize};

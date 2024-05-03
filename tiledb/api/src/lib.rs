@@ -43,7 +43,6 @@ macro_rules! out_ptr {
 pub mod array;
 pub mod config;
 pub mod context;
-pub mod convert;
 pub mod datatype;
 pub mod error;
 pub mod filesystem;
@@ -78,4 +77,20 @@ pub trait Factory<'ctx> {
     type Item;
 
     fn create(&self, context: &'ctx context::Context) -> Result<Self::Item>;
+}
+
+mod private {
+    // the "sealed trait" pattern prevents downstream crates from implementing a trait
+    // if you make `Sealed` a super-trait. This is important for something like `PhysicalType`.
+    pub trait Sealed {}
+
+    macro_rules! sealed {
+        ($($DT:ty),+) => {
+            $(
+                impl crate::private::Sealed for $DT {}
+            )+
+        }
+    }
+
+    pub(crate) use sealed;
 }

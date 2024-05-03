@@ -1,13 +1,13 @@
 use std::num::NonZeroU32;
 
 use crate::array::CellValNum;
-use crate::convert::CAPISameRepr;
+use crate::datatype::PhysicalType;
 use crate::query::buffer::{
     Buffer, CellStructure, QueryBuffers, QueryBuffersMut,
 };
 
 pub trait DataProvider {
-    type Unit: CAPISameRepr;
+    type Unit: PhysicalType;
     fn as_tiledb_input(
         &self,
         cell_val_num: CellValNum,
@@ -17,7 +17,7 @@ pub trait DataProvider {
 
 impl<'data, C> DataProvider for QueryBuffers<'data, C>
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     type Unit = C;
 
@@ -41,7 +41,7 @@ where
 
 impl<'data, C> DataProvider for QueryBuffersMut<'data, C>
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     type Unit = C;
 
@@ -65,7 +65,7 @@ where
 
 impl<C> DataProvider for Vec<C>
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     type Unit = C;
 
@@ -80,7 +80,7 @@ where
 
 impl<C> DataProvider for [C]
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     type Unit = C;
 
@@ -105,7 +105,7 @@ where
 
 impl<C> DataProvider for Vec<Vec<C>>
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     type Unit = C;
 

@@ -8,7 +8,7 @@ use util::option::OptionSubset;
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::convert::CAPIConverter;
+use crate::datatype::PhysicalType;
 use crate::error::Error;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
@@ -81,7 +81,7 @@ impl<'ctx> Dimension<'ctx> {
         Ok(self.cell_val_num()?.is_var_sized())
     }
 
-    pub fn domain<Conv: CAPIConverter>(&self) -> TileDBResult<[Conv; 2]> {
+    pub fn domain<T: PhysicalType>(&self) -> TileDBResult<[T; 2]> {
         let c_dimension = self.capi();
         let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
 
@@ -93,14 +93,12 @@ impl<'ctx> Dimension<'ctx> {
             )
         })?;
 
-        let c_domain: &[Conv::CAPIType; 2] =
-            unsafe { &*c_domain_ptr.cast::<[Conv::CAPIType; 2]>() };
-
-        Ok([Conv::to_rust(&c_domain[0]), Conv::to_rust(&c_domain[1])])
+        let c_domain: &[T; 2] = unsafe { &*c_domain_ptr.cast::<[T; 2]>() };
+        Ok(*c_domain)
     }
 
     /// Returns the tile extent of this dimension.
-    pub fn extent<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
+    pub fn extent<T: PhysicalType>(&self) -> TileDBResult<T> {
         let c_dimension = self.capi();
         let mut c_extent_ptr: *const ::std::ffi::c_void = out_ptr!();
 
@@ -111,8 +109,7 @@ impl<'ctx> Dimension<'ctx> {
                 &mut c_extent_ptr,
             )
         })?;
-        let c_extent = unsafe { &*c_extent_ptr.cast::<Conv::CAPIType>() };
-        Ok(Conv::to_rust(c_extent))
+        Ok(unsafe { *c_extent_ptr.cast::<T>() })
     }
 
     pub fn filters(&self) -> TileDBResult<FilterList> {
@@ -169,20 +166,19 @@ pub struct Builder<'ctx> {
 impl<'ctx> Builder<'ctx> {
     // TODO: extent might be optional?
     // and it
-    pub fn new<Conv: CAPIConverter>(
+    pub fn new<T: PhysicalType>(
         context: &'ctx Context,
         name: &str,
         datatype: Datatype,
-        domain: &[Conv; 2],
-        extent: &Conv,
+        domain: &[T; 2],
+        extent: &T,
     ) -> TileDBResult<Self> {
         let c_datatype = datatype.capi_enum();
 
         let c_name = cstring!(name);
 
-        let c_domain: [Conv::CAPIType; 2] =
-            [domain[0].to_capi(), domain[1].to_capi()];
-        let c_extent: Conv::CAPIType = extent.to_capi();
+        let c_domain = &domain[0] as *const T as *const std::ffi::c_void;
+        let c_extent = extent as *const T as *const std::ffi::c_void;
 
         let mut c_dimension: *mut ffi::tiledb_dimension_t =
             std::ptr::null_mut();
@@ -192,9 +188,8 @@ impl<'ctx> Builder<'ctx> {
                 ctx,
                 c_name.as_ptr(),
                 c_datatype,
-                &c_domain[0] as *const <Conv>::CAPIType
-                    as *const std::ffi::c_void,
-                &c_extent as *const <Conv>::CAPIType as *const std::ffi::c_void,
+                c_domain,
+                c_extent,
                 &mut c_dimension,
             )
         })?;

@@ -11,7 +11,7 @@ use util::option::OptionSubset;
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::convert::{BitsEq, CAPIConverter};
+use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::fn_typed;
@@ -111,7 +111,7 @@ impl<'ctx> Attribute<'ctx> {
         Ok(c_size as u64)
     }
 
-    pub fn fill_value<Conv: CAPIConverter>(&self) -> TileDBResult<Conv> {
+    pub fn fill_value<T: PhysicalType>(&self) -> TileDBResult<T> {
         let c_attr = *self.raw;
         let mut c_ptr: *const std::ffi::c_void = out_ptr!();
         let mut c_size: u64 = 0;
@@ -125,21 +125,19 @@ impl<'ctx> Attribute<'ctx> {
             )
         })?;
 
-        if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
+        if c_size != std::mem::size_of::<T>() as u64 {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<Conv>(),
+                user_type: std::any::type_name::<T>(),
                 tiledb_type: self.datatype()?,
             }));
         }
 
-        let c_val: Conv::CAPIType = unsafe { *c_ptr.cast::<Conv::CAPIType>() };
-
-        Ok(Conv::to_rust(&c_val))
+        Ok(unsafe { *c_ptr.cast::<T>() })
     }
 
-    pub fn fill_value_nullable<Conv: CAPIConverter>(
+    pub fn fill_value_nullable<T: PhysicalType>(
         &self,
-    ) -> TileDBResult<(Conv, bool)> {
+    ) -> TileDBResult<(T, bool)> {
         if !self.is_nullable()? {
             /* see comment in Builder::fill_value_nullability */
             return Ok((self.fill_value()?, false));
@@ -160,16 +158,16 @@ impl<'ctx> Attribute<'ctx> {
             )
         })?;
 
-        if c_size != std::mem::size_of::<Conv::CAPIType>() as u64 {
+        if c_size != std::mem::size_of::<T>() as u64 {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<Conv>(),
+                user_type: std::any::type_name::<T>(),
                 tiledb_type: self.datatype()?,
             }));
         }
 
-        let c_val: Conv::CAPIType = unsafe { *c_ptr.cast::<Conv::CAPIType>() };
-
-        Ok((Conv::to_rust(&c_val), c_validity != 0))
+        let is_valid = c_validity != 0;
+        let value = unsafe { *c_ptr.cast::<T>() };
+        Ok((value, is_valid))
     }
 }
 
@@ -232,7 +230,13 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
                     self.fill_value_nullable::<DT>(),
                     other.fill_value_nullable::<DT>(),
                 ) {
-                    (Ok(mine), Ok(theirs)) => mine.bits_eq(&theirs),
+                    (
+                        Ok((mine_value, mine_nullable)),
+                        Ok((theirs_value, theirs_nullable)),
+                    ) => {
+                        mine_value.bits_eq(&theirs_value)
+                            && mine_nullable == theirs_nullable
+                    }
                     _ => false,
                 }
             })
@@ -315,26 +319,23 @@ impl<'ctx> Builder<'ctx> {
     }
 
     // This currently does not support setting multi-value cells.
-    pub fn fill_value<Conv: CAPIConverter + 'static>(
-        self,
-        value: Conv,
-    ) -> TileDBResult<Self> {
-        if !self.attr.datatype()?.is_compatible_type::<Conv>() {
+    pub fn fill_value<T: PhysicalType>(self, value: T) -> TileDBResult<Self> {
+        if !self.attr.datatype()?.is_compatible_type::<T>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<Conv>(),
+                user_type: std::any::type_name::<T>(),
                 tiledb_type: self.attr.datatype()?,
             }));
         }
 
         let c_attr = *self.attr.raw;
-        let c_val: Conv::CAPIType = value.to_capi();
+        let c_value = &value as *const T as *const std::ffi::c_void;
 
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_set_fill_value(
                 ctx,
                 c_attr,
-                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
-                std::mem::size_of::<Conv::CAPIType>() as u64,
+                c_value,
+                std::mem::size_of::<T>() as u64,
             )
         })?;
 
@@ -342,9 +343,9 @@ impl<'ctx> Builder<'ctx> {
     }
 
     // This currently does not support setting multi-value cells.
-    pub fn fill_value_nullability<Conv: CAPIConverter + 'static>(
+    pub fn fill_value_nullability<T: PhysicalType>(
         self,
-        value: Conv,
+        value: T,
         nullable: bool,
     ) -> TileDBResult<Self> {
         if !self.attr.is_nullable()? && !nullable {
@@ -358,23 +359,23 @@ impl<'ctx> Builder<'ctx> {
             return self.fill_value(value);
         }
 
-        if !self.attr.datatype()?.is_compatible_type::<Conv>() {
+        if !self.attr.datatype()?.is_compatible_type::<T>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<Conv>(),
+                user_type: std::any::type_name::<T>(),
                 tiledb_type: self.attr.datatype()?,
             }));
         }
 
         let c_attr = *self.attr.raw;
-        let c_val: Conv::CAPIType = value.to_capi();
+        let c_value = &value as *const T as *const std::ffi::c_void;
         let c_nullable: u8 = if nullable { 1 } else { 0 };
 
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_set_fill_value_nullable(
                 ctx,
                 c_attr,
-                &c_val as *const Conv::CAPIType as *const std::ffi::c_void,
-                std::mem::size_of::<Conv::CAPIType>() as u64,
+                c_value,
+                std::mem::size_of::<T>() as u64,
                 c_nullable,
             )
         })?;
