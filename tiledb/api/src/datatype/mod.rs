@@ -565,40 +565,142 @@ macro_rules! fn_typed {
                 type $typename = $crate::datatype::Float64Type;
                 $then
             }
-            Datatype::Char => unimplemented!(),
-            Datatype::StringAscii => unimplemented!(),
-            Datatype::StringUtf8 => unimplemented!(),
-            Datatype::StringUtf16 => unimplemented!(),
-            Datatype::StringUtf32 => unimplemented!(),
-            Datatype::StringUcs2 => unimplemented!(),
-            Datatype::StringUcs4 => unimplemented!(),
-            Datatype::Any => unimplemented!(),
-            Datatype::DateTimeYear => unimplemented!(),
-            Datatype::DateTimeMonth => unimplemented!(),
-            Datatype::DateTimeWeek => unimplemented!(),
-            Datatype::DateTimeDay => unimplemented!(),
-            Datatype::DateTimeHour => unimplemented!(),
-            Datatype::DateTimeMinute => unimplemented!(),
-            Datatype::DateTimeSecond => unimplemented!(),
-            Datatype::DateTimeMillisecond => unimplemented!(),
-            Datatype::DateTimeMicrosecond => unimplemented!(),
-            Datatype::DateTimeNanosecond => unimplemented!(),
-            Datatype::DateTimePicosecond => unimplemented!(),
-            Datatype::DateTimeFemtosecond => unimplemented!(),
-            Datatype::DateTimeAttosecond => unimplemented!(),
-            Datatype::TimeHour => unimplemented!(),
-            Datatype::TimeMinute => unimplemented!(),
-            Datatype::TimeSecond => unimplemented!(),
-            Datatype::TimeMillisecond => unimplemented!(),
-            Datatype::TimeMicrosecond => unimplemented!(),
-            Datatype::TimeNanosecond => unimplemented!(),
-            Datatype::TimePicosecond => unimplemented!(),
-            Datatype::TimeFemtosecond => unimplemented!(),
-            Datatype::TimeAttosecond => unimplemented!(),
-            Datatype::Blob => unimplemented!(),
-            Datatype::Boolean => unimplemented!(),
-            Datatype::GeometryWkb => unimplemented!(),
-            Datatype::GeometryWkt => unimplemented!(),
+            Datatype::Char => {
+                type $typename = $crate::datatype::CharType;
+                $then
+            }
+            Datatype::StringAscii => {
+                type $typename = $crate::datatype::StringAsciiType;
+                $then
+            }
+            Datatype::StringUtf8 => {
+                type $typename = $crate::datatype::StringUtf8Type;
+                $then
+            }
+            Datatype::StringUtf16 => {
+                type $typename = $crate::datatype::StringUtf16Type;
+                $then
+            }
+            Datatype::StringUtf32 => {
+                type $typename = $crate::datatype::StringUtf32Type;
+                $then
+            }
+            Datatype::StringUcs2 => {
+                type $typename = $crate::datatype::StringUcs2Type;
+                $then
+            }
+            Datatype::StringUcs4 => {
+                type $typename = $crate::datatype::StringUcs4Type;
+                $then
+            }
+            Datatype::Any => {
+                type $typename = $crate::datatype::AnyType;
+                $then
+            }
+            Datatype::DateTimeYear => {
+                type $typename = $crate::datatype::DateTimeYearType;
+                $then
+            }
+            Datatype::DateTimeMonth => {
+                type $typename = $crate::datatype::DateTimeMonthType;
+                $then
+            }
+            Datatype::DateTimeWeek => {
+                type $typename = $crate::datatype::DateTimeWeekType;
+                $then
+            }
+            Datatype::DateTimeDay => {
+                type $typename = $crate::datatype::DateTimeDayType;
+                $then
+            }
+            Datatype::DateTimeHour => {
+                type $typename = $crate::datatype::DateTimeHourType;
+                $then
+            }
+            Datatype::DateTimeMinute => {
+                type $typename = $crate::datatype::DateTimeMinuteType;
+                $then
+            }
+            Datatype::DateTimeSecond => {
+                type $typename = $crate::datatype::DateTimeSecondType;
+                $then
+            }
+            Datatype::DateTimeMillisecond => {
+                type $typename = $crate::datatype::DateTimeMillisecondType;
+                $then
+            }
+            Datatype::DateTimeMicrosecond => {
+                type $typename = $crate::datatype::DateTimeMicrosecondType;
+                $then
+            }
+            Datatype::DateTimeNanosecond => {
+                type $typename = $crate::datatype::DateTimeNanosecondType;
+                $then
+            }
+            Datatype::DateTimePicosecond => {
+                type $typename = $crate::datatype::DateTimePicosecondType;
+                $then
+            }
+            Datatype::DateTimeFemtosecond => {
+                type $typename = $crate::datatype::DateTimeFemtosecondType;
+                $then
+            }
+            Datatype::DateTimeAttosecond => {
+                type $typename = $crate::datatype::DateTimeAttosecondType;
+                $then
+            }
+            Datatype::TimeHour => {
+                type $typename = $crate::datatype::TimeHourType;
+                $then
+            }
+            Datatype::TimeMinute => {
+                type $typename = $crate::datatype::TimeMinuteType;
+                $then
+            }
+            Datatype::TimeSecond => {
+                type $typename = $crate::datatype::TimeSecondType;
+                $then
+            }
+            Datatype::TimeMillisecond => {
+                type $typename = $crate::datatype::TimeMillisecondType;
+                $then
+            }
+            Datatype::TimeMicrosecond => {
+                type $typename = $crate::datatype::TimeMicrosecondType;
+                $then
+            }
+            Datatype::TimeNanosecond => {
+                type $typename = $crate::datatype::TimeNanosecondType;
+                $then
+            }
+            Datatype::TimePicosecond => {
+                type $typename = $crate::datatype::TimePicosecondType;
+                $then
+            }
+            Datatype::TimeFemtosecond => {
+                type $typename = $crate::datatype::TimeFemtosecondType;
+                $then
+            }
+            Datatype::TimeAttosecond => {
+                type $typename = $crate::datatype::TimeAttosecondType;
+                $then
+            }
+            Datatype::Blob => {
+                type $typename = $crate::datatype::BlobType;
+                $then
+            }
+            Datatype::Boolean => {
+                type $typename = $crate::datatype::BooleanType;
+                $then
+            }
+            Datatype::GeometryWkb => {
+                type $typename = $crate::datatype::GeometryWkbType;
+                $then
+            }
+            Datatype::GeometryWkt => {
+                type $typename = $crate::datatype::GeometryWktType;
+                $then
+            }
         }
     }};
 }
@@ -612,6 +714,7 @@ pub mod strategy;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
     use util::{assert_not_option_subset, assert_option_subset};
 
     #[test]
@@ -703,5 +806,17 @@ mod tests {
         assert_not_option_subset!(Datatype::UInt32, Datatype::UInt16);
         assert_not_option_subset!(Datatype::UInt16, Datatype::Any);
         assert_not_option_subset!(Datatype::UInt16, Datatype::UInt32);
+    }
+
+    proptest! {
+        #[test]
+        fn logical_type(dt in any::<Datatype>()) {
+            fn_typed!(dt, LT, {
+                let lt_constant = <LT as LogicalType>::DATA_TYPE;
+                assert_eq!(dt, lt_constant);
+
+                assert!(dt.is_compatible_type::<<LT as LogicalType>::PhysicalType>());
+            })
+        }
     }
 }

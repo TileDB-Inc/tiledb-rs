@@ -1,3 +1,5 @@
+use paste::paste;
+
 use crate::datatype::physical::PhysicalType;
 use crate::datatype::Datatype;
 use crate::private::sealed;
@@ -90,6 +92,13 @@ impl LogicalType for Float64Type {
     type PhysicalType = f64;
 }
 
+pub struct CharType {}
+
+impl LogicalType for CharType {
+    const DATA_TYPE: Datatype = Datatype::Char;
+    type PhysicalType = i8;
+}
+
 pub struct StringAsciiType {}
 
 impl LogicalType for StringAsciiType {
@@ -130,14 +139,125 @@ impl LogicalType for StringUcs4Type {
     type PhysicalType = u32;
 }
 
+macro_rules! datetime_type {
+    ($($datetime:ident),+) => {
+        paste! {
+            $(
+                pub struct [< $datetime Type >] {}
+
+                impl crate::private::Sealed for [< $datetime Type >] {}
+
+                impl LogicalType for [< $datetime Type >] {
+                    const DATA_TYPE: Datatype = Datatype::$datetime;
+                    type PhysicalType = i64;
+                }
+            )+
+        }
+    }
+}
+
+/*
+declare_datetime!(
+    DateTimeYear,
+    DateTimeMonth,
+    DateTimeWeek,
+    DateTimeDay,
+    DateTimeHour,
+    DateTimeMinute,
+    DateTimeSecond,
+    DateTimeMillisecond,
+    DateTimeMicrosecond,
+    DateTimeNanosecond,
+    DateTimePicosecond,
+    DateTimeFemtosecond,
+    DateTimeAttosecond,
+    TimeHour,
+    TimeMinute,
+    TimeSecond,
+    TimeMillisecond,
+    TimeMicrosecond,
+    TimeNanosecond,
+    TimePicosecond,
+    TimeFemtosecond,
+    TimeAttosecond,
+);
+*/
+datetime_type!(
+    DateTimeYear,
+    DateTimeMonth,
+    DateTimeWeek,
+    DateTimeDay,
+    DateTimeHour,
+    DateTimeMinute,
+    DateTimeSecond,
+    DateTimeMillisecond,
+    DateTimeMicrosecond,
+    DateTimeNanosecond,
+    DateTimePicosecond,
+    DateTimeFemtosecond,
+    DateTimeAttosecond,
+    TimeHour,
+    TimeMinute,
+    TimeSecond,
+    TimeMillisecond,
+    TimeMicrosecond,
+    TimeNanosecond,
+    TimePicosecond,
+    TimeFemtosecond,
+    TimeAttosecond
+);
+
+pub struct AnyType {}
+
+impl LogicalType for AnyType {
+    const DATA_TYPE: Datatype = Datatype::Any;
+    type PhysicalType = u8;
+}
+
+pub struct BlobType {}
+
+impl LogicalType for BlobType {
+    const DATA_TYPE: Datatype = Datatype::Blob;
+    type PhysicalType = u8;
+}
+
+pub struct BooleanType {}
+
+impl LogicalType for BooleanType {
+    const DATA_TYPE: Datatype = Datatype::Boolean;
+    type PhysicalType = u8;
+}
+
+pub struct GeometryWkbType {}
+
+impl LogicalType for GeometryWkbType {
+    const DATA_TYPE: Datatype = Datatype::GeometryWkb;
+    type PhysicalType = u8;
+}
+
+pub struct GeometryWktType {}
+
+impl LogicalType for GeometryWktType {
+    const DATA_TYPE: Datatype = Datatype::GeometryWkt;
+    type PhysicalType = u8;
+}
+
 sealed!(UInt8Type, UInt16Type, UInt32Type, UInt64Type);
 sealed!(Int8Type, Int16Type, Int32Type, Int64Type);
 sealed!(Float32Type, Float64Type);
 sealed!(
+    CharType,
     StringAsciiType,
     StringUtf8Type,
     StringUtf16Type,
     StringUtf32Type,
     StringUcs2Type,
     StringUcs4Type
+);
+sealed!(
+    AnyType,
+    BlobType,
+    BooleanType,
+    GeometryWktType,
+    GeometryWkbType
 );
