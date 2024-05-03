@@ -2,10 +2,11 @@ use std::ops::Deref;
 
 use anyhow::anyhow;
 
-use crate::array::{CellValNum, Schema};
+use crate::array::Schema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
 use crate::error::Error;
+use crate::error::{DatatypeErrorKind, Error};
 use crate::key::LookupKey;
 use crate::query::QueryBuilder;
 use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
@@ -110,13 +111,7 @@ impl<'ctx> Subarray<'ctx> {
                 } else {
                     let dtype = dim.datatype()?;
                     let cvn = dim.cell_val_num()?;
-                    let size = match cvn {
-                        CellValNum::Fixed(cvn) => {
-                            cvn.get() as u64 * dtype.size()
-                        }
-                        // Unreachable becuase we're in !var_sized_dim
-                        CellValNum::Var => unreachable!(),
-                    };
+                    let size = u32::from(cvn);
 
                     let start = vec![0u8; size as usize].into_boxed_slice();
                     let end = vec![0u8; size as usize].into_boxed_slice();
@@ -146,7 +141,7 @@ impl<'ctx> Subarray<'ctx> {
             ranges.push(dim_ranges);
         }
 
-        Ok(Vec::new())
+        Ok(ranges)
     }
 }
 
@@ -284,6 +279,14 @@ where
     ) -> TileDBResult<Self> {
         let schema = self.query.base().query.array.schema()?;
         let dim_idx = schema.domain()?.dimension_index(key)?;
+        let dim = schema.domain()?.dimension(dim_idx)?;
+        let dtype = dim.datatype()?;
+        if dtype.is_compatible_type::<T>() {
+            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
+                user_type: std::any::type_name::<T>(),
+                tiledb_type: dtype,
+            }));
+        }
 
         if points.is_empty() {
             return Err(Error::InvalidArgument(anyhow!(
