@@ -16,6 +16,30 @@ use tiledb::{Datatype, Factory};
 
 const ARRAY_URI: &str = "multi_range_slicing";
 
+/// This example creates a 4x4 dense array with the contents:
+///
+/// Col:     1   2   3   4
+/// Row: 1   1   2   3   4
+///      2   5   6   7   8
+///      3   9  10  11  12
+///      4  13  14  15  16
+///
+/// The query run restricts rows to [1, 2, 4] and returns all columns which
+/// should produce these rows:
+///
+/// Row Col Value
+/// 1   1   1
+/// 1   2   2
+/// 1   3   3
+/// 1   4   4
+/// 2   1   5
+/// 2   2   6
+/// 2   3   7
+/// 2   4   8
+/// 4   1   13
+/// 4   2   14
+/// 4   3   15
+/// 4   4   16
 fn main() -> TileDBResult<()> {
     let ctx = Context::new()?;
     if !Array::exists(&ctx, ARRAY_URI)? {
