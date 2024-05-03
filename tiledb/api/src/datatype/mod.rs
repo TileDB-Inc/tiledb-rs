@@ -711,6 +711,255 @@ macro_rules! fn_typed {
     }};
 }
 
+#[macro_export]
+macro_rules! typed_enum {
+    ($src:ident < $range:ident > => $dst:ident) => {
+        typed_enum!($src <() enum $range> => $dst);
+    };
+    ($src:ident < $g1:tt, $range:ident > => $dst:ident) => {
+        typed_enum!($src <($g1) enum $range> => $dst);
+    };
+    ($src:ident < $g1:tt, $g2:tt, $range:ident > => $dst:ident) => {
+        typed_enum!($src <($g1, $g2) enum $range> => $dst);
+    };
+    ($src:ident < $g1:tt, $g2:tt, $g3:tt, $range:ident > => $dst:ident) => {
+        typed_enum!($src <($g1, $g2, $g3) enum $range> => $dst);
+    };
+    ($src:ident < $g1:tt, $g2:tt, $g3:tt, $g4:tt, $range:ident > => $dst:ident) => {
+        typed_enum!($src <($g1, $g2, $g3, $g4) enum $range> => $dst);
+    };
+    ($src:ident < ($($generics:tt),*) enum $range:ident > => $dst:ident) => {
+        pub enum $dst<$($generics),*> {
+            Int8($src<$($generics,)* <$crate::datatype::logical::Int8Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Int16($src<$($generics,)* <$crate::datatype::logical::Int16Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Int32($src<$($generics,)* <$crate::datatype::logical::Int32Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Int64($src<$($generics,)* <$crate::datatype::logical::Int64Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            UInt8($src<$($generics,)* <$crate::datatype::logical::UInt8Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            UInt16($src<$($generics,)* <$crate::datatype::logical::UInt16Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            UInt32($src<$($generics,)* <$crate::datatype::logical::UInt32Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            UInt64($src<$($generics,)* <$crate::datatype::logical::UInt64Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Float32($src<$($generics,)* <$crate::datatype::logical::Float32Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Float64($src<$($generics,)* <$crate::datatype::logical::Float64Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Char($src<$($generics,)* <$crate::datatype::logical::CharType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            StringAscii($src<$($generics,)* <$crate::datatype::logical::StringAsciiType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            StringUtf8($src<$($generics,)* <$crate::datatype::logical::StringUtf8Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            StringUtf16($src<$($generics,)* <$crate::datatype::logical::StringUtf16Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            StringUtf32($src<$($generics,)* <$crate::datatype::logical::StringUtf32Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            StringUcs2($src<$($generics,)* <$crate::datatype::logical::StringUcs2Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            StringUcs4($src<$($generics,)* <$crate::datatype::logical::StringUcs4Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeYear($src<$($generics,)* <$crate::datatype::logical::DateTimeYearType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeMonth($src<$($generics,)* <$crate::datatype::logical::DateTimeMonthType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeWeek($src<$($generics,)* <$crate::datatype::logical::DateTimeWeekType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeDay($src<$($generics,)* <$crate::datatype::logical::DateTimeDayType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeHour($src<$($generics,)* <$crate::datatype::logical::DateTimeHourType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeMinute($src<$($generics,)* <$crate::datatype::logical::DateTimeMinuteType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeSecond($src<$($generics,)* <$crate::datatype::logical::DateTimeSecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeMillisecond($src<$($generics,)* <$crate::datatype::logical::DateTimeMillisecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeMicrosecond($src<$($generics,)* <$crate::datatype::logical::DateTimeMicrosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeNanosecond($src<$($generics,)* <$crate::datatype::logical::DateTimeNanosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimePicosecond($src<$($generics,)* <$crate::datatype::logical::DateTimePicosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeFemtosecond($src<$($generics,)* <$crate::datatype::logical::DateTimeFemtosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            DateTimeAttosecond($src<$($generics,)* <$crate::datatype::logical::DateTimeAttosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeHour($src<$($generics,)* <$crate::datatype::logical::TimeHourType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeMinute($src<$($generics,)* <$crate::datatype::logical::TimeMinuteType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeSecond($src<$($generics,)* <$crate::datatype::logical::TimeSecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeMillisecond($src<$($generics,)* <$crate::datatype::logical::TimeMillisecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeMicrosecond($src<$($generics,)* <$crate::datatype::logical::TimeMicrosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeNanosecond($src<$($generics,)* <$crate::datatype::logical::TimeNanosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimePicosecond($src<$($generics,)* <$crate::datatype::logical::TimePicosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeFemtosecond($src<$($generics,)* <$crate::datatype::logical::TimeFemtosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            TimeAttosecond($src<$($generics,)* <$crate::datatype::logical::TimeAttosecondType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Blob($src<$($generics,)* <$crate::datatype::logical::BlobType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            Boolean($src<$($generics,)* <$crate::datatype::logical::BooleanType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            GeometryWkb($src<$($generics,)* <$crate::datatype::logical::GeometryWkbType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+            GeometryWkt($src<$($generics,)* <$crate::datatype::logical::GeometryWktType as $crate::datatype::logical::LogicalType>::PhysicalType>),
+        }
+
+        ::paste::paste! {
+            #[macro_export]
+            macro_rules! [< $dst:snake _go >] {
+                ($thing:expr, $typename:ident, $binding:pat, $then:expr) => {
+                    match $thing {
+                        $dst::Int8($binding) => {
+                            type $typename = $crate::datatype::logical::Int8Type;
+                            $then
+                        },
+                        $dst::Int16($binding) => {
+                            type $typename = $crate::datatype::logical::Int16Type;
+                            $then
+                        },
+                        $dst::Int32($binding) => {
+                            type $typename = $crate::datatype::logical::Int32Type;
+                            $then
+                        },
+                        $dst::Int64($binding) => {
+                            type $typename = $crate::datatype::logical::Int64Type;
+                            $then
+                        },
+                        $dst::UInt8($binding) => {
+                            type $typename = $crate::datatype::logical::UInt8Type;
+                            $then
+                        },
+                        $dst::UInt16($binding) => {
+                            type $typename = $crate::datatype::logical::UInt16Type;
+                            $then
+                        },
+                        $dst::UInt32($binding) => {
+                            type $typename = $crate::datatype::logical::UInt32Type;
+                            $then
+                        },
+                        $dst::UInt64($binding) => {
+                            type $typename = $crate::datatype::logical::UInt64Type;
+                            $then
+                        },
+                        $dst::Float32($binding) => {
+                            type $typename = $crate::datatype::logical::Float32Type;
+                            $then
+                        },
+                        $dst::Float64($binding) => {
+                            type $typename = $crate::datatype::logical::Float64Type;
+                            $then
+                        },
+                        $dst::Char($binding) => {
+                            type $typename = $crate::datatype::logical::CharType;
+                            $then
+                        },
+                        $dst::StringAscii($binding) => {
+                            type $typename = $crate::datatype::logical::StringAsciiType;
+                            $then
+                        },
+                        $dst::StringUtf8($binding) => {
+                            type $typename = $crate::datatype::logical::StringUtf8Type;
+                            $then
+                        },
+                        $dst::StringUtf16($binding) => {
+                            type $typename = $crate::datatype::logical::StringUtf16Type;
+                            $then
+                        },
+                        $dst::StringUtf32($binding) => {
+                            type $typename = $crate::datatype::logical::StringUtf32Type;
+                            $then
+                        },
+                        $dst::StringUcs2($binding) => {
+                            type $typename = $crate::datatype::logical::StringUcs2Type;
+                            $then
+                        },
+                        $dst::StringUcs4($binding) => {
+                            type $typename = $crate::datatype::logical::StringUcs4Type;
+                            $then
+                        },
+                        $dst::DateTimeYear($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeYearType;
+                            $then
+                        },
+                        $dst::DateTimeMonth($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeMonthType;
+                            $then
+                        },
+                        $dst::DateTimeWeek($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeWeekType;
+                            $then
+                        },
+                        $dst::DateTimeDay($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeDayType;
+                            $then
+                        },
+                        $dst::DateTimeHour($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeHourType;
+                            $then
+                        },
+                        $dst::DateTimeMinute($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeMinuteType;
+                            $then
+                        },
+                        $dst::DateTimeSecond($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeSecondType;
+                            $then
+                        },
+                        $dst::DateTimeMillisecond($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeMillisecondType;
+                            $then
+                        },
+                        $dst::DateTimeMicrosecond($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeMicrosecondType;
+                            $then
+                        },
+                        $dst::DateTimeNanosecond($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeNanosecondType;
+                            $then
+                        },
+                        $dst::DateTimePicosecond($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimePicosecondType;
+                            $then
+                        },
+                        $dst::DateTimeFemtosecond($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeFemtosecondType;
+                            $then
+                        },
+                        $dst::DateTimeAttosecond($binding) => {
+                            type $typename = $crate::datatype::logical::DateTimeAttosecondType;
+                            $then
+                        },
+                        $dst::TimeHour($binding) => {
+                            type $typename = $crate::datatype::logical::TimeHourType;
+                            $then
+                        },
+                        $dst::TimeMinute($binding) => {
+                            type $typename = $crate::datatype::logical::TimeMinuteType;
+                            $then
+                        },
+                        $dst::TimeSecond($binding) => {
+                            type $typename = $crate::datatype::logical::TimeSecondType;
+                            $then
+                        },
+                        $dst::TimeMillisecond($binding) => {
+                            type $typename = $crate::datatype::logical::TimeMillisecondType;
+                            $then
+                        },
+                        $dst::TimeMicrosecond($binding) => {
+                            type $typename = $crate::datatype::logical::TimeMicrosecondType;
+                            $then
+                        },
+                        $dst::TimeNanosecond($binding) => {
+                            type $typename = $crate::datatype::logical::TimeNanosecondType;
+                            $then
+                        },
+                        $dst::TimePicosecond($binding) => {
+                            type $typename = $crate::datatype::logical::TimePicosecondType;
+                            $then
+                        },
+                        $dst::TimeFemtosecond($binding) => {
+                            type $typename = $crate::datatype::logical::TimeFemtosecondType;
+                            $then
+                        },
+                        $dst::TimeAttosecond($binding) => {
+                            type $typename = $crate::datatype::logical::TimeAttosecondType;
+                            $then
+                        },
+                        $dst::Blob($binding) => {
+                            type $typename = $crate::datatype::logical::BlobType;
+                            $then
+                        },
+                        $dst::Boolean($binding) => {
+                            type $typename = $crate::datatype::logical::BooleanType;
+                            $then
+                        },
+                        $dst::GeometryWkb($binding) => {
+                            type $typename = $crate::datatype::logical::GeometryWkbType;
+                            $then
+                        },
+                        $dst::GeometryWkt($binding) => {
+                            type $typename = $crate::datatype::logical::GeometryWktType;
+                            $then
+                        },
+                    }
+                }
+            }
+            pub use [< $dst:snake _go >];
+        }
+    };
+}
+
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
