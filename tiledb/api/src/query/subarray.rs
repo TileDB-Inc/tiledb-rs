@@ -11,7 +11,7 @@ use crate::key::LookupKey;
 use crate::query::QueryBuilder;
 use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
 use crate::Result as TileDBResult;
-use crate::{single_value_range_go, var_value_range_go};
+use crate::{fn_typed, single_value_range_go, var_value_range_go};
 
 pub(crate) enum RawSubarray {
     Owned(*mut ffi::tiledb_subarray_t),
@@ -110,31 +110,31 @@ impl<'ctx> Subarray<'ctx> {
                     dim_ranges.push(range);
                 } else {
                     let dtype = dim.datatype()?;
-                    let cvn = dim.cell_val_num()?;
-                    let size = u32::from(cvn);
-
-                    let start = vec![0u8; size as usize].into_boxed_slice();
-                    let end = vec![0u8; size as usize].into_boxed_slice();
 
                     // Apparently stride exists in the API but isn't used.
                     let mut stride: *const std::ffi::c_void = out_ptr!();
 
-                    self.capi_call(|ctx| unsafe {
-                        ffi::tiledb_subarray_get_range(
-                            ctx,
-                            c_subarray,
-                            dim_idx,
-                            rng_idx,
-                            start.as_ptr() as *mut *const std::ffi::c_void,
-                            end.as_ptr() as *mut *const std::ffi::c_void,
-                            &mut stride,
-                        )
-                    })?;
+                    fn_typed!(dtype, DT, {
+                        let mut start_ptr: *const DT = out_ptr!();
+                        let mut end_ptr: *const DT = out_ptr!();
+                        self.capi_call(|ctx| unsafe {
+                            ffi::tiledb_subarray_get_range(
+                                ctx,
+                                c_subarray,
+                                dim_idx,
+                                rng_idx,
+                                &mut start_ptr as *mut *const DT
+                                    as *mut *const std::ffi::c_void,
+                                &mut end_ptr as *mut *const DT
+                                    as *mut *const std::ffi::c_void,
+                                &mut stride,
+                            )
+                        })?;
 
-                    let range =
-                        TypedRange::from_slices(dtype, cvn, &start, &end)?
-                            .range;
-                    dim_ranges.push(range);
+                        let (start, end) = unsafe { (*start_ptr, *end_ptr) };
+                        let range = Range::from(&[start, end]);
+                        dim_ranges.push(range);
+                    })
                 }
             }
 
@@ -319,5 +319,101 @@ where
             ffi::tiledb_query_set_subarray_t(ctx, c_query, c_subarray)
         })?;
         Ok(self.query)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    use crate::array::*;
+    use crate::query::{Query, QueryBuilder, ReadBuilder};
+    use crate::Datatype;
+
+    #[test]
+    fn test_dense_ranges() -> TileDBResult<()> {
+        let ctx = Context::new().unwrap();
+        let tmp_dir = TempDir::new().unwrap();
+        test_ranges(&ctx, ArrayType::Dense, &tmp_dir)
+    }
+
+    #[test]
+    fn test_sparse_ranges() -> TileDBResult<()> {
+        let ctx = Context::new().unwrap();
+        let tmp_dir = TempDir::new().unwrap();
+        test_ranges(&ctx, ArrayType::Sparse, &tmp_dir)
+    }
+
+    fn test_ranges(
+        ctx: &Context,
+        atype: ArrayType,
+        dir: &TempDir,
+    ) -> TileDBResult<()> {
+        let array_uri = create_array(ctx, atype, dir)?;
+        let array = Array::open(ctx, array_uri, Mode::Read)?;
+        let query = ReadBuilder::new(array)?
+            .start_subarray()?
+            .add_range("id", &[1, 2])?
+            .add_range("id", &[4, 6])?
+            .add_range("id", &[8, 10])?
+            .finish_subarray()?
+            .build();
+
+        let schema = query.base().array().schema()?;
+        let subarray = query.subarray()?;
+        let ranges = subarray.ranges(&schema)?;
+
+        // There's only one dimension with ranges
+        assert_eq!(ranges.len(), 1);
+
+        // The single id dimension has three ranges.
+        assert_eq!(ranges[0].len(), 3);
+
+        let expect = vec![
+            Range::from(&[1i32, 2]),
+            Range::from(&[4i32, 6]),
+            Range::from(&[8i32, 10]),
+        ];
+        assert_eq!(ranges[0], expect);
+
+        Ok(())
+    }
+
+    /// Create a simple dense test array with a couple fragments to inspect.
+    fn create_array(
+        ctx: &Context,
+        atype: ArrayType,
+        dir: &TempDir,
+    ) -> TileDBResult<String> {
+        let name = if atype == ArrayType::Dense {
+            "range_test_dense"
+        } else {
+            "range_test_sparse"
+        };
+        let array_dir = dir.path().join(name);
+        let array_uri = String::from(array_dir.to_str().unwrap());
+
+        let domain = {
+            let rows = DimensionBuilder::new::<i32>(
+                ctx,
+                "id",
+                Datatype::Int32,
+                &[1, 10],
+                &4,
+            )?
+            .build();
+
+            DomainBuilder::new(ctx)?.add_dimension(rows)?.build()
+        };
+
+        let attr = AttributeBuilder::new(ctx, "attr", Datatype::Int32)?.build();
+        let schema = SchemaBuilder::new(ctx, atype, domain)?
+            .add_attribute(attr)?
+            .build()?;
+
+        Array::create(ctx, &array_uri, schema)?;
+
+        Ok(array_uri)
     }
 }
