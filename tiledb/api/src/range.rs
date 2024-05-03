@@ -576,15 +576,88 @@ impl Debug for TypedRange {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Result as TileDBResult;
     use proptest::collection::vec;
     use proptest::prelude::*;
 
-    // These tests are a bit awkward in that we're testing a bunch of different
-    // things in a given test. This approach was motivated by looking at
-    // llvm-cov reports and each fn_typed! generates significant overhead when
-    // compiling for coverage. Hence, one per type of Range and then just
-    // add tests in side each body.
+    fn test_clone(range: &Range) {
+        let other = range.clone();
+        assert_eq!(*range, other);
+    }
 
+    fn test_dimension_compatibility(
+        range: &Range,
+        datatype: Datatype,
+    ) -> TileDBResult<()> {
+        match range {
+            Range::Single(srange) => {
+                if !matches!(datatype, Datatype::StringAscii) {
+                    range.check_dimension_compatibility(
+                        datatype,
+                        1.try_into()?,
+                    )?;
+                } else {
+                    assert!(range
+                        .check_dimension_compatibility(datatype, 1.try_into()?)
+                        .is_err());
+                    srange.check_datatype(datatype)?;
+                }
+            }
+            Range::Multi(mrange) => {
+                // MultiValueRange is not valid for dimensions
+                assert!(range
+                    .check_dimension_compatibility(datatype, CellValNum::Var)
+                    .is_err());
+                // But we can check that the datatype is correct.
+                mrange.check_datatype(datatype)?;
+            }
+            Range::Var(vrange) => {
+                if matches!(datatype, Datatype::StringAscii) {
+                    range.check_dimension_compatibility(
+                        datatype,
+                        CellValNum::Var,
+                    )?;
+                } else {
+                    // Only StringAscii can be var sized
+                    assert!(range
+                        .check_dimension_compatibility(
+                            datatype,
+                            CellValNum::Var
+                        )
+                        .is_err());
+
+                    // But we can still check the datatype correctness
+                    vrange.check_datatype(datatype)?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn test_serialization_roundtrip(range: &Range) {
+        let data = serde_json::to_string(range).unwrap();
+        let other: Range = serde_json::from_str(&data).unwrap();
+        assert_eq!(*range, other);
+    }
+
+    fn test_from_slices(
+        range: &Range,
+        datatype: Datatype,
+        cvn: CellValNum,
+        start: &[u8],
+        end: &[u8],
+    ) {
+        let range2 =
+            TypedRange::from_slices(datatype, cvn, start, end).unwrap();
+
+        assert_eq!(datatype, range2.datatype);
+        assert_eq!(*range, range2.range);
+    }
+
+    // fn_typed! seems to be fairly heavy for using with llvm-cov so I've
+    // minimized the number of usages in these tests by adding test helpers
+    // that are called from as few fn_typed macros as possible.
     #[test]
     fn test_single_value_range() {
         for datatype in Datatype::iter() {
@@ -593,52 +666,20 @@ mod tests {
                 proptest!(ProptestConfig::with_cases(8),
                         |(start in any::<DT>(), end in any::<DT>())| {
 
-                    // Check clone because why not?
-                    {
-                        let range1 = Range::from(&[start, end]);
-                        let range2 = range1.clone();
-                        assert_eq!(range1, range2);
-                    }
+                    let range = Range::from(&[start, end]);
+                    test_clone(&range);
+                    test_dimension_compatibility(&range, *datatype)?;
+                    test_serialization_roundtrip(&range);
 
-                    // Serialization Round Trip
-                    {
-                        let range1 = Range::from(&[start, end]);
-                        let data = serde_json::to_string(&range1)?;
-                        let range2: Range = serde_json::from_str(&data).unwrap();
-                        assert_eq!(range1, range2);
-                    }
-
-                    // Datatype compatibility
-                    {
-                        let range = Range::from(&[start, end]);
-                        if !matches!(datatype, Datatype::StringAscii) {
-                            range.check_dimension_compatibility(*datatype, 1.try_into()?)?;
-                        } else {
-                            assert!(range.check_dimension_compatibility(*datatype, 1.try_into()?).is_err());
-                            if let Range::Single(range) = range {
-                                range.check_datatype(*datatype)?;
-                            } else {
-                                unreachable!();
-                            }
-                        }
-                    }
-
-                    // TypedRange from slices
-                    {
-                        let range1 = Range::from(&[start, end]);
-                        let start_slice = start.to_le_bytes();
-                        let end_slice = end.to_le_bytes();
-
-                        let range2 = TypedRange::from_slices(
-                            *datatype,
-                            CellValNum::try_from(1)?,
-                            &start_slice[..],
-                            &end_slice[..]
-                        )?;
-
-                        assert_eq!(*datatype, range2.datatype);
-                        assert_eq!(range1, range2.range);
-                    }
+                    let start_slice = start.to_le_bytes();
+                    let end_slice = end.to_le_bytes();
+                    test_from_slices(
+                        &range,
+                        *datatype,
+                        CellValNum::try_from(1)?,
+                        &start_slice[..],
+                        &end_slice[..]
+                    );
                 });
             });
         }
@@ -655,85 +696,53 @@ mod tests {
                     let start = data.clone().into_boxed_slice();
                     let end = start.clone();
 
-                    // Check clone because why not?
-                    {
-                        let range1 = Range::try_from((len, start.clone(), end.clone()))?;
-                        let range2 = range1.clone();
-                        assert_eq!(range1, range2);
-                    }
+                    let range = Range::try_from((len, start.clone(), end.clone()))?;
+                    test_clone(&range);
+                    test_dimension_compatibility(&range, *datatype)?;
+                    test_serialization_roundtrip(&range);
+
+                    let nbytes = (len as u64 * datatype.size()) as usize;
+                    let start = data.clone().into_boxed_slice();
+                    let end = data.clone().into_boxed_slice();
+
+                    let start_slice = unsafe {
+                        std::slice::from_raw_parts(
+                            start.as_ptr() as *mut u8 as *const u8,
+                            nbytes,
+                        )
+                    };
+
+                    let end_slice = unsafe {
+                        std::slice::from_raw_parts(
+                            end.as_ptr() as *mut u8 as *const u8,
+                            nbytes,
+                        )
+                    };
+
+                    test_from_slices(
+                        &range,
+                        *datatype,
+                        CellValNum::try_from(len)?,
+                        start_slice,
+                        end_slice
+                    );
 
                     // Check TryFrom failures
-                    {
-                        assert!(Range::try_from((0, start.clone(), end.clone())).is_err());
-                        assert!(Range::try_from((1, start.clone(), end.clone())).is_err());
-                        assert!(Range::try_from((u32::MAX, start.clone(), end.clone())).is_err());
+                    assert!(Range::try_from((0, start.clone(), end.clone())).is_err());
+                    assert!(Range::try_from((1, start.clone(), end.clone())).is_err());
+                    assert!(Range::try_from((u32::MAX, start.clone(), end.clone())).is_err());
 
-                        let start = data.clone().into_boxed_slice();
-                        let mut end = data.clone();
-                        end.push(data[0]);
-                        let end = end.into_boxed_slice();
-                        assert!(Range::try_from((len, start, end)).is_err());
+                    let start = data.clone().into_boxed_slice();
+                    let mut end = data.clone();
+                    end.push(data[0]);
+                    let end = end.into_boxed_slice();
+                    assert!(Range::try_from((len, start, end)).is_err());
 
-                        let mut start = data.clone();
-                        start.push(data[0]);
-                        let start = start.into_boxed_slice();
-                        let end = data.clone().into_boxed_slice();
-                        assert!(Range::try_from((len, start, end)).is_err());
-                    }
-
-                    // Serialization Round Trip
-                    {
-                        let range1 = Range::try_from((len, start.clone(), end.clone()))?;
-                        let data = serde_json::to_string(&range1)?;
-                        let range2: Range = serde_json::from_str(&data).unwrap();
-                        assert_eq!(range1, range2);
-                    }
-
-                    // Datatype compatibility
-                    {
-                        let range = Range::try_from((len, start.clone(), end.clone()))?;
-                        // MultiValueRange is not valid for dimensions
-                        assert!(range.check_dimension_compatibility(*datatype, CellValNum::Var).is_err());
-
-                        // But we can check the datatype
-                        if let Range::Multi(range) = range {
-                            range.check_datatype(*datatype)?;
-                        } else {
-                            unreachable!();
-                        }
-                    }
-
-                    // TypedRange from slices
-                    {
-                        let nbytes = (len as u64 * datatype.size()) as usize;
-                        let start = data.clone().into_boxed_slice();
-                        let end = data.clone().into_boxed_slice();
-                        let range1 = Range::try_from((len, start.clone(), end.clone()))?;
-
-                        let start_slice = unsafe {
-                            std::slice::from_raw_parts(
-                                start.as_ptr() as *mut u8 as *const u8,
-                                nbytes,
-                            )
-                        };
-
-                        let end_slice = unsafe {
-                            std::slice::from_raw_parts(
-                                end.as_ptr() as *mut u8 as *const u8,
-                                nbytes,
-                            )
-                        };
-
-                        let range2 = TypedRange::from_slices(
-                            *datatype,
-                            CellValNum::try_from(len)?,
-                            start_slice,
-                            end_slice
-                        )?;
-
-                        assert_eq!(*datatype, range2.datatype);
-                        assert_eq!(range1, range2.range);
-                    }
+                    let mut start = data.clone();
+                    start.push(data[0]);
+                    let start = start.into_boxed_slice();
+                    let end = data.clone().into_boxed_slice();
+                    assert!(Range::try_from((len, start, end)).is_err());
                 });
             });
         }
@@ -749,69 +758,33 @@ mod tests {
                     let start = start.into_boxed_slice();
                     let end = end.into_boxed_slice();
 
-                    // Check clone because why not?
-                    {
-                        let range1 = Range::from((start.clone(), end.clone()));
-                        let range2 = range1.clone();
-                        assert_eq!(range1, range2);
-                    }
+                    let range = Range::from((start.clone(), end.clone()));
+                    test_clone(&range);
+                    test_dimension_compatibility(&range, *datatype)?;
+                    test_serialization_roundtrip(&range);
 
-                    // Serialization Round Trip
-                    {
-                        let range1 = Range::from((start.clone(), end.clone()));
-                        let data = serde_json::to_string(&range1)?;
-                        let range2: Range = serde_json::from_str(&data).unwrap();
-                        assert_eq!(range1, range2);
-                    }
+                    // Test from slices
+                    let start_slice = unsafe {
+                        std::slice::from_raw_parts(
+                            start.as_ptr() as *mut u8 as *const u8,
+                            std::mem::size_of_val(&*start),
+                        )
+                    };
 
-                    // Datatype compatibility
-                    {
-                        let range = Range::from((start.clone(), end.clone()));
-                        if matches!(datatype, Datatype::StringAscii) {
-                            range.check_dimension_compatibility(*datatype, CellValNum::Var)?;
-                        } else {
-                            // Only StringAscii can be var sized
-                            assert!(range.check_dimension_compatibility(*datatype, CellValNum::Var).is_err());
+                    let end_slice = unsafe {
+                        std::slice::from_raw_parts(
+                            end.as_ptr() as *mut u8 as *const u8,
+                            std::mem::size_of_val(&*end),
+                        )
+                    };
 
-                            // But we can still check the datatype correctness
-                            if let Range::Var(range) = range {
-                                range.check_datatype(*datatype)?;
-                            } else {
-                                unreachable!();
-                            }
-                        }
-                    }
-
-                    // TypedRange from slices
-                    {
-                        let start = start.clone();
-                        let end = end.clone();
-                        let range1 = Range::from((start.clone(), end.clone()));
-
-                        let start_slice = unsafe {
-                            std::slice::from_raw_parts(
-                                start.as_ptr() as *mut u8 as *const u8,
-                                std::mem::size_of_val(&*start),
-                            )
-                        };
-
-                        let end_slice = unsafe {
-                            std::slice::from_raw_parts(
-                                end.as_ptr() as *mut u8 as *const u8,
-                                std::mem::size_of_val(&*end),
-                            )
-                        };
-
-                        let range2 = TypedRange::from_slices(
-                            *datatype,
-                            CellValNum::Var,
-                            start_slice,
-                            end_slice
-                        )?;
-
-                        assert_eq!(*datatype, range2.datatype);
-                        assert_eq!(range1, range2.range);
-                    }
+                    test_from_slices(
+                        &range,
+                        *datatype,
+                        CellValNum::Var,
+                        start_slice,
+                        end_slice
+                    );
                 });
             });
         }
