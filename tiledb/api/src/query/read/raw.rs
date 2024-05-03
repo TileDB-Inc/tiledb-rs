@@ -254,10 +254,15 @@ impl<'data, C> RawReadHandle<'data, C> {
     pub fn last_read_ncells(&self) -> usize {
         let ncells = match self.field.cell_val_num {
             CellValNum::Fixed(nz) => {
+                let nz = nz.get() as usize;
+
                 assert!(self.offsets_size.is_none());
                 let data_size = *self.data_size as usize;
-                assert_eq!(0, data_size % nz.get() as usize);
-                data_size / nz.get() as usize
+                let nvalues = data_size / nz / std::mem::size_of::<C>();
+
+                // assumption: core gives us an integral number of cells
+                assert_eq!(data_size, nvalues * nz * std::mem::size_of::<C>());
+                nvalues
             }
             CellValNum::Var => {
                 let offsets_size = **self.offsets_size.as_ref().unwrap();
