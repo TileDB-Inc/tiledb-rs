@@ -423,7 +423,7 @@ impl Debug for Range {
     }
 }
 
-macro_rules! range_single_from {
+macro_rules! range_from_impl {
     ($($V:ident : $U:ty),+) => {
         $(
             impl From<&[$U; 2]> for Range {
@@ -431,34 +431,14 @@ macro_rules! range_single_from {
                     Range::Single(SingleValueRange::from(value))
                 }
             }
-        )+
-    }
-}
 
-range_single_from!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-range_single_from!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-range_single_from!(Float32: f32, Float64: f64);
-
-macro_rules! range_multi_try_from {
-    ($($V:ident : $U:ty),+) => {
-        $(
             impl TryFrom<(u32, Box<[$U]>, Box<[$U]>)> for Range {
                 type Error = crate::error::Error;
                 fn try_from(value: (u32, Box<[$U]>, Box<[$U]>)) -> TileDBResult<Range> {
                     Ok(Range::Multi(MultiValueRange::try_from(value)?))
                 }
             }
-        )+
-    }
-}
 
-range_multi_try_from!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-range_multi_try_from!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-range_multi_try_from!(Float32: f32, Float64: f64);
-
-macro_rules! range_var_from {
-    ($($V:ident : $U:ty),+) => {
-        $(
             impl From<(Box<[$U]>, Box<[$U]>)> for Range {
                 fn from(value: (Box<[$U]>, Box<[$U]>)) -> Range {
                     Range::Var(VarValueRange::from(value))
@@ -468,9 +448,9 @@ macro_rules! range_var_from {
     }
 }
 
-range_var_from!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-range_var_from!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-range_var_from!(Float32: f32, Float64: f64);
+range_from_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+range_from_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+range_from_impl!(Float32: f32, Float64: f64);
 
 impl From<(&str, &str)> for Range {
     fn from(value: (&str, &str)) -> Range {
@@ -480,6 +460,18 @@ impl From<(&str, &str)> for Range {
 
 impl From<&[&str; 2]> for Range {
     fn from(value: &[&str; 2]) -> Range {
+        Range::Var(VarValueRange::from(value))
+    }
+}
+
+impl From<(String, String)> for Range {
+    fn from(value: (String, String)) -> Range {
+        Range::Var(VarValueRange::from(value))
+    }
+}
+
+impl From<[String; 2]> for Range {
+    fn from(value: [String; 2]) -> Range {
         Range::Var(VarValueRange::from(value))
     }
 }
