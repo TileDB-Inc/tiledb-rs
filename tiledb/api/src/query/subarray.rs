@@ -36,6 +36,7 @@ impl Drop for RawSubarray {
 pub struct Subarray<'ctx> {
     #[context]
     context: &'ctx Context,
+    schema: Schema<'ctx>,
     raw: RawSubarray,
 }
 
@@ -44,8 +45,16 @@ impl<'ctx> Subarray<'ctx> {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawSubarray) -> Self {
-        Subarray { context, raw }
+    pub(crate) fn new(
+        context: &'ctx Context,
+        schema: Schema<'ctx>,
+        raw: RawSubarray,
+    ) -> Self {
+        Subarray {
+            context,
+            schema,
+            raw,
+        }
     }
 
     /// Return all dimension ranges set on the query.
@@ -170,10 +179,12 @@ where
             ffi::tiledb_subarray_alloc(ctx, c_array, &mut c_subarray)
         })?;
 
+        let schema = query.base().array().schema()?;
         Ok(Builder {
             query,
             subarray: Subarray {
                 context,
+                schema,
                 raw: RawSubarray::Owned(c_subarray),
             },
         })
