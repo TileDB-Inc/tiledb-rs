@@ -6,7 +6,7 @@ use anyhow::anyhow;
 use serde_json::json;
 
 use crate::array::CellValNum;
-use crate::convert::CAPISameRepr;
+use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
     Buffer, BufferMut, CellStructure, CellStructureMut, QueryBuffers,
@@ -330,7 +330,7 @@ impl Default for NonVarSized {
 
 impl<C> ScratchAllocator<C> for NonVarSized
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
         ScratchSpace(
@@ -375,7 +375,7 @@ impl Default for NullableNonVarSized {
 
 impl<C> ScratchAllocator<C> for NullableNonVarSized
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
         ScratchSpace(
@@ -424,7 +424,7 @@ impl Default for VarSized {
 
 impl<C> ScratchAllocator<C> for VarSized
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
@@ -476,7 +476,7 @@ impl Default for NullableVarSized {
 
 impl<C> ScratchAllocator<C> for NullableVarSized
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
@@ -524,7 +524,7 @@ pub struct FieldScratchAllocator {
 
 impl<C> ScratchAllocator<C> for FieldScratchAllocator
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
         let (byte_capacity, cell_structure) = match self.cell_val_num {
@@ -754,7 +754,7 @@ pub trait FromQueryOutput: Sized {
 
 impl<C> FromQueryOutput for C
 where
-    C: CAPISameRepr,
+    C: PhysicalType,
 {
     type Unit = C;
     type Iterator<'data> = FixedDataIterator<'data, Self::Unit> where C: 'data;

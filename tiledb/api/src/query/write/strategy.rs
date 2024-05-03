@@ -12,6 +12,7 @@ use proptest::test_runner::TestRunner;
 
 use super::*;
 use crate::array::{ArrayType, CellValNum, SchemaData};
+use crate::datatype::LogicalType;
 use crate::query::read::output::{
     FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
 };
@@ -376,7 +377,8 @@ impl WriteQueryData {
                 .iter()
                 .map(|name| {
                     let field = schema.field(name.clone()).unwrap();
-                    fn_typed!(field.datatype().unwrap(), DT, {
+                    fn_typed!(field.datatype().unwrap(), LT, {
+                        type DT = <LT as LogicalType>::PhysicalType;
                         let managed: ManagedBuffer<DT> = ManagedBuffer::new(
                             field.query_scratch_allocator().unwrap(),
                         );
@@ -745,7 +747,8 @@ impl Strategy for WriteQueryDataStrategy {
                         .unwrap_or(CellValNum::try_from(1).unwrap());
 
                     if cell_val_num == 1u32 {
-                        Some(fn_typed!(datatype, DT, {
+                        Some(fn_typed!(datatype, LT, {
+                            type DT = <LT as LogicalType>::PhysicalType;
                             let data = proptest::collection::vec(
                                 any::<DT>(),
                                 nrecords..=nrecords,
@@ -767,7 +770,8 @@ impl Strategy for WriteQueryDataStrategy {
                                 Into::<u32>::into(cell_val_num) as usize;
                             (fixed_bound, fixed_bound)
                         };
-                        Some(fn_typed!(datatype, DT, {
+                        Some(fn_typed!(datatype, LT, {
+                            type DT = <LT as LogicalType>::PhysicalType;
                             let data = proptest::collection::vec(
                                 proptest::collection::vec(
                                     any::<DT>(),

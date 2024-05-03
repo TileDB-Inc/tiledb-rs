@@ -6,7 +6,6 @@ use std::pin::Pin;
 use paste::paste;
 
 use crate::config::Config;
-use crate::convert::CAPISameRepr;
 use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::read::output::ScratchAllocator;
 use crate::Result as TileDBResult;

@@ -7,6 +7,7 @@ use serde_json::json;
 use crate::array::{CellValNum, Dimension, DimensionBuilder};
 use crate::context::Context as TileDBContext;
 use crate::datatype::arrow::{arrow_type_physical, tiledb_type_physical};
+use crate::datatype::LogicalType;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
 use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
@@ -23,7 +24,8 @@ pub struct DimensionMetadata {
 
 impl DimensionMetadata {
     pub fn new(dim: &Dimension) -> TileDBResult<Self> {
-        fn_typed!(dim.datatype()?, DT, {
+        fn_typed!(dim.datatype()?, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             let domain = dim.domain::<DT>()?;
             let extent = dim.extent::<DT>()?;
 
@@ -86,7 +88,8 @@ pub fn tiledb_dimension<'ctx>(
         None => return Ok(None),
     };
 
-    let dim = fn_typed!(tiledb_datatype, DT, {
+    let dim = fn_typed!(tiledb_datatype, LT, {
+        type DT = <LT as LogicalType>::PhysicalType;
         let deser = |v: &serde_json::value::Value| {
             serde_json::from_value::<DT>(v.clone()).map_err(|e| {
                 TileDBError::Deserialization(

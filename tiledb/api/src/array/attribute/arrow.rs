@@ -6,6 +6,7 @@ use serde_json::json;
 
 use crate::array::{Attribute, AttributeBuilder, CellValNum};
 use crate::datatype::arrow::*;
+use crate::datatype::LogicalType;
 use crate::error::Error;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
@@ -30,17 +31,15 @@ impl AttributeMetadata {
     pub fn new(attr: &Attribute) -> TileDBResult<Self> {
         Ok(AttributeMetadata {
             cell_val_num: attr.cell_val_num()?,
-            fill_value: fn_typed!(
-                attr.fill_value_nullable,
-                attr.datatype()? =>
-                {
-                    let (fill_value, fill_nullable) = fill_value_nullable?;
-                    FillValueMetadata {
-                        data: json!(fill_value),
-                        nullable: fill_nullable
-                    }
-            }
-            ),
+            fill_value: fn_typed!(attr.datatype()?, LT, {
+                type DT = <LT as LogicalType>::PhysicalType;
+                let (fill_value, fill_nullable) =
+                    attr.fill_value_nullable::<DT>()?;
+                FillValueMetadata {
+                    data: json!(fill_value),
+                    nullable: fill_nullable,
+                }
+            }),
             filters: FilterMetadata::new(&attr.filter_list()?)?,
         })
     }
@@ -55,9 +54,10 @@ impl AttributeMetadata {
             .filters
             .apply(FilterListBuilder::new(builder.context())?)?
             .build();
-        fn_typed!(builder.datatype()?, AT, {
+        fn_typed!(builder.datatype()?, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
             let fill_value =
-                serde_json::from_value::<AT>(self.fill_value.data.clone())
+                serde_json::from_value::<DT>(self.fill_value.data.clone())
                     .map_err(|e| {
                         Error::Deserialization(
                             String::from("attribute fill value"),

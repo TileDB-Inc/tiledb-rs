@@ -2,10 +2,10 @@ use std::cmp::Ordering;
 
 use proptest::collection::vec;
 use proptest::prelude::*;
-use util::numbers::AnyNumCmp;
 
 use crate::array::EnumerationData;
 use crate::datatype::strategy::*;
+use crate::datatype::{LogicalType, PhysicalType};
 use crate::{fn_typed, Datatype};
 
 const MIN_ENUMERATION_VALUES: usize = 1;
@@ -24,12 +24,13 @@ fn prop_ordered() -> impl Strategy<Value = bool> {
     any::<bool>()
 }
 
-fn do_cmp<T: AnyNumCmp>(a: &T, b: &T) -> Ordering {
-    a.cmp(b)
+fn do_cmp<T: PhysicalType>(a: &T, b: &T) -> Ordering {
+    a.bits_cmp(b)
 }
 
 fn prop_enumeration_values(datatype: Datatype) -> BoxedStrategy<Box<[u8]>> {
-    fn_typed!(datatype, DT, {
+    fn_typed!(datatype, LT, {
+        type DT = <LT as LogicalType>::PhysicalType;
         vec(any::<DT>(), MIN_ENUMERATION_VALUES..=MAX_ENUMERATION_VALUES)
             .prop_map(|data| {
                 let mut data = data;
