@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::array::{Attribute, AttributeBuilder, CellValNum};
+use crate::context::ContextBound;
 use crate::datatype::arrow::*;
 use crate::datatype::LogicalType;
 use crate::error::Error;
@@ -45,14 +46,14 @@ impl AttributeMetadata {
     }
 
     /// Updates an AttributeBuilder with the contents of this object
-    pub fn apply<'ctx>(
+    pub fn apply(
         &self,
-        builder: AttributeBuilder<'ctx>,
-    ) -> TileDBResult<AttributeBuilder<'ctx>> {
+        builder: AttributeBuilder,
+    ) -> TileDBResult<AttributeBuilder> {
         /* TODO: fill value */
         let fl = self
             .filters
-            .apply(FilterListBuilder::new(builder.context())?)?
+            .apply(FilterListBuilder::new(&builder.context())?)?
             .build();
         fn_typed!(builder.datatype()?, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
@@ -103,10 +104,10 @@ pub fn arrow_field(
 /// Tries to construct a TileDB array Attribute from the Arrow Field.
 /// Details about the Attribute are stored under the key "tiledb"
 /// in the Field's metadata, if it is present.
-pub fn tiledb_attribute<'ctx>(
-    context: &'ctx Context,
+pub fn tiledb_attribute(
+    context: &Context,
     field: &arrow_schema::Field,
-) -> TileDBResult<Option<AttributeBuilder<'ctx>>> {
+) -> TileDBResult<Option<AttributeBuilder>> {
     if let Some(tiledb_dt) = tiledb_type_physical(field.data_type()) {
         let attr = AttributeBuilder::new(context, field.name(), tiledb_dt)?
             .nullability(field.is_nullable())?;

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::array::{CellValNum, Dimension, DimensionBuilder};
-use crate::context::Context as TileDBContext;
+use crate::context::{Context as TileDBContext, ContextBound};
 use crate::datatype::arrow::{arrow_type_physical, tiledb_type_physical};
 use crate::datatype::LogicalType;
 use crate::filter::arrow::FilterMetadata;
@@ -69,10 +69,10 @@ pub fn arrow_field(
     }
 }
 
-pub fn tiledb_dimension<'ctx>(
-    context: &'ctx TileDBContext,
+pub fn tiledb_dimension(
+    context: &TileDBContext,
     field: &arrow_schema::Field,
-) -> TileDBResult<Option<DimensionBuilder<'ctx>>> {
+) -> TileDBResult<Option<DimensionBuilder>> {
     let tiledb_datatype = match tiledb_type_physical(field.data_type()) {
         Some(dt) => dt,
         None => return Ok(None),
@@ -113,7 +113,7 @@ pub fn tiledb_dimension<'ctx>(
 
     let fl = metadata
         .filters
-        .apply(FilterListBuilder::new(dim.context())?)?
+        .apply(FilterListBuilder::new(&dim.context())?)?
         .build();
 
     Ok(Some(dim.cell_val_num(metadata.cell_val_num)?.filters(fl)?))

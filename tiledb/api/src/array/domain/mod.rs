@@ -33,27 +33,28 @@ impl Drop for RawDomain {
     }
 }
 
-pub struct Domain<'ctx> {
-    context: &'ctx Context,
+pub struct Domain {
+    context: Context,
     raw: RawDomain,
 }
 
-// impl<'ctx> ContextBoundBase<'ctx> for Domain<'ctx> {}
-
-impl<'ctx> ContextBound<'ctx> for Domain<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
+impl ContextBound for Domain {
+    fn context(&self) -> Context {
+        self.context.clone()
     }
 }
 
-impl<'ctx> Domain<'ctx> {
+impl Domain {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_domain_t {
         *self.raw
     }
 
     /// Read from the C API whatever we need to use this domain from Rust
-    pub(crate) fn new(context: &'ctx Context, raw: RawDomain) -> Self {
-        Domain { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawDomain) -> Self {
+        Domain {
+            context: context.clone(),
+            raw,
+        }
     }
 
     pub fn ndim(&self) -> TileDBResult<usize> {
@@ -92,7 +93,7 @@ impl<'ctx> Domain<'ctx> {
     pub fn dimension<K: Into<LookupKey>>(
         &self,
         key: K,
-    ) -> TileDBResult<Dimension<'ctx>> {
+    ) -> TileDBResult<Dimension> {
         let c_domain = *self.raw;
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
 
@@ -126,13 +127,13 @@ impl<'ctx> Domain<'ctx> {
         }
 
         Ok(Dimension::new(
-            self.context,
+            &self.context,
             RawDimension::Owned(c_dimension),
         ))
     }
 }
 
-impl<'ctx> Debug for Domain<'ctx> {
+impl Debug for Domain {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let data = DomainData::try_from(self).map_err(|_| std::fmt::Error)?;
         let mut json = json!(data);
@@ -142,8 +143,8 @@ impl<'ctx> Debug for Domain<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<Domain<'c2>> for Domain<'c1> {
-    fn eq(&self, other: &Domain<'c2>) -> bool {
+impl PartialEq<Domain> for Domain {
+    fn eq(&self, other: &Domain) -> bool {
         let ndim_match = match (self.ndim(), other.ndim()) {
             (Ok(mine), Ok(theirs)) => mine == theirs,
             _ => false,
@@ -166,18 +167,18 @@ impl<'c1, 'c2> PartialEq<Domain<'c2>> for Domain<'c1> {
     }
 }
 
-pub struct Builder<'ctx> {
-    domain: Domain<'ctx>,
+pub struct Builder {
+    domain: Domain,
 }
 
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
+impl ContextBound for Builder {
+    fn context(&self) -> Context {
         self.domain.context()
     }
 }
 
-impl<'ctx> Builder<'ctx> {
-    pub fn new(context: &'ctx Context) -> TileDBResult<Self> {
+impl Builder {
+    pub fn new(context: &Context) -> TileDBResult<Self> {
         let mut c_domain: *mut ffi::tiledb_domain_t = out_ptr!();
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_domain_alloc(ctx, &mut c_domain)
@@ -185,16 +186,13 @@ impl<'ctx> Builder<'ctx> {
 
         Ok(Builder {
             domain: Domain {
-                context,
+                context: context.clone(),
                 raw: RawDomain::Owned(c_domain),
             },
         })
     }
 
-    pub fn add_dimension(
-        self,
-        dimension: Dimension<'ctx>,
-    ) -> TileDBResult<Self> {
+    pub fn add_dimension(self, dimension: Dimension) -> TileDBResult<Self> {
         let c_domain = *self.domain.raw;
         let c_dim = dimension.capi();
 
@@ -205,13 +203,13 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn build(self) -> Domain<'ctx> {
+    pub fn build(self) -> Domain {
         self.domain
     }
 }
 
-impl<'ctx> From<Builder<'ctx>> for Domain<'ctx> {
-    fn from(builder: Builder<'ctx>) -> Domain<'ctx> {
+impl From<Builder> for Domain {
+    fn from(builder: Builder) -> Domain {
         builder.build()
     }
 }
@@ -228,10 +226,10 @@ impl Display for DomainData {
     }
 }
 
-impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {
+impl TryFrom<&Domain> for DomainData {
     type Error = crate::error::Error;
 
-    fn try_from(domain: &Domain<'ctx>) -> TileDBResult<Self> {
+    fn try_from(domain: &Domain) -> TileDBResult<Self> {
         Ok(DomainData {
             dimension: (0..domain.ndim()?)
                 .map(|d| DimensionData::try_from(&domain.dimension(d)?))
@@ -240,18 +238,18 @@ impl<'ctx> TryFrom<&Domain<'ctx>> for DomainData {
     }
 }
 
-impl<'ctx> TryFrom<Domain<'ctx>> for DomainData {
+impl TryFrom<Domain> for DomainData {
     type Error = crate::error::Error;
 
-    fn try_from(domain: Domain<'ctx>) -> TileDBResult<Self> {
+    fn try_from(domain: Domain) -> TileDBResult<Self> {
         Self::try_from(&domain)
     }
 }
 
-impl<'ctx> Factory<'ctx> for DomainData {
-    type Item = Domain<'ctx>;
+impl Factory for DomainData {
+    type Item = Domain;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         Ok(self
             .dimension
             .iter()

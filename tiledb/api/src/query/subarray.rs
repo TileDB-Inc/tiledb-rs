@@ -26,33 +26,31 @@ impl Drop for RawSubarray {
     }
 }
 
-pub struct Subarray<'ctx> {
-    context: &'ctx Context,
+pub struct Subarray {
+    context: Context,
     raw: RawSubarray,
 }
 
-// impl<'ctx> ContextBoundBase<'ctx> for Subarray<'ctx> {}
-
-impl<'ctx> ContextBound<'ctx> for Subarray<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
+impl ContextBound for Subarray {
+    fn context(&self) -> Context {
+        self.context.clone()
     }
 }
 
-pub struct Builder<'ctx, Q> {
+pub struct Builder<Q> {
     query: Q,
-    subarray: Subarray<'ctx>,
+    subarray: Subarray,
 }
 
-impl<'ctx, Q> ContextBound<'ctx> for Builder<'ctx, Q> {
-    fn context(&self) -> &'ctx Context {
+impl<Q> ContextBound for Builder<Q> {
+    fn context(&self) -> Context {
         self.subarray.context()
     }
 }
 
-impl<'ctx, Q> Builder<'ctx, Q>
+impl<Q> Builder<Q>
 where
-    Q: QueryBuilder<'ctx> + Sized,
+    Q: QueryBuilder + Sized,
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
         let context = query.base().context();

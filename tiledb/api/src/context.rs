@@ -61,8 +61,8 @@ impl Drop for RawContext {
 //     }
 // }
 
-pub trait ContextBound<'ctx> {
-    fn context(&self) -> &'ctx Context;
+pub trait ContextBound {
+    fn context(&self) -> Context;
 }
 
 pub trait CApiInterface {
@@ -75,9 +75,9 @@ pub trait CApiInterface {
         Callable: FnOnce(*mut ffi::tiledb_ctx_t) -> i32;
 }
 
-impl<'ctx, T> CApiInterface for T
+impl<T> CApiInterface for T
 where
-    T: ContextBound<'ctx>,
+    T: ContextBound,
 {
     fn capi_call<Callable>(&self, action: Callable) -> TileDBResult<()>
     where

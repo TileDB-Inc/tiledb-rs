@@ -59,9 +59,9 @@ pub struct FieldMetadata {
     pub cell_val_num: CellValNum,
 }
 
-impl TryFrom<&Field<'_>> for FieldMetadata {
+impl TryFrom<&Field> for FieldMetadata {
     type Error = Error;
-    fn try_from(value: &Field<'_>) -> TileDBResult<Self> {
+    fn try_from(value: &Field) -> TileDBResult<Self> {
         Ok(FieldMetadata {
             name: value.name()?,
             datatype: value.datatype()?,
@@ -442,31 +442,31 @@ pub struct RawReadQuery<'data, Q> {
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, Q> ContextBound<'ctx> for RawReadQuery<'data, Q>
+impl<'data, Q> ContextBound for RawReadQuery<'data, Q>
 where
-    Q: ContextBound<'ctx>,
+    Q: ContextBound,
 {
-    fn context(&self) -> &'ctx Context {
+    fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'ctx, 'data, Q> Query<'ctx> for RawReadQuery<'data, Q>
+impl<'data, Q> Query for RawReadQuery<'data, Q>
 where
-    Q: Query<'ctx>,
+    Q: Query,
 {
-    fn base(&self) -> &QueryBase<'ctx> {
+    fn base(&self) -> &QueryBase {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+    fn finalize(self) -> TileDBResult<Array> {
         self.base.finalize()
     }
 }
 
-impl<'ctx, 'data, Q> ReadQuery<'ctx> for RawReadQuery<'data, Q>
+impl<'data, Q> ReadQuery for RawReadQuery<'data, Q>
 where
-    Q: ReadQuery<'ctx> + ContextBound<'ctx>,
+    Q: ReadQuery + ContextBound,
 {
     type Intermediate = (usize, Q::Intermediate);
     type Final = (usize, Q::Final);
@@ -476,7 +476,7 @@ where
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
         self.raw_read_output
-            .attach_query(self.base().context(), **self.base().cquery())?;
+            .attach_query(&self.base().context(), **self.base().cquery())?;
 
         /* then execute */
         let base_result = {
@@ -521,23 +521,23 @@ pub struct RawReadBuilder<'data, B> {
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, B> ContextBound<'ctx> for RawReadBuilder<'data, B>
+impl<'data, B> ContextBound for RawReadBuilder<'data, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
-    fn context(&self) -> &'ctx Context {
+    fn context(&self) -> Context {
         self.base.base().context()
     }
 }
 
-impl<'ctx, 'data, B> QueryBuilder<'ctx> for RawReadBuilder<'data, B>
+impl<'data, B> QueryBuilder for RawReadBuilder<'data, B>
 where
-    B: QueryBuilder<'ctx>,
-    <B as QueryBuilder<'ctx>>::Query: ContextBound<'ctx>,
+    B: QueryBuilder,
+    <B as QueryBuilder>::Query: ContextBound,
 {
     type Query = RawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -549,10 +549,10 @@ where
     }
 }
 
-impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data> for RawReadBuilder<'data, B>
+impl<'data, B> ReadQueryBuilder<'data> for RawReadBuilder<'data, B>
 where
-    B: ReadQueryBuilder<'ctx, 'data>,
-    <B as QueryBuilder<'ctx>>::Query: ContextBound<'ctx>,
+    B: ReadQueryBuilder<'data>,
+    <B as QueryBuilder>::Query: ContextBound,
 {
 }
 
@@ -565,31 +565,31 @@ pub struct VarRawReadQuery<'data, Q> {
     pub(crate) base: Q,
 }
 
-impl<'ctx, 'data, Q> ContextBound<'ctx> for VarRawReadQuery<'data, Q>
+impl<'data, Q> ContextBound for VarRawReadQuery<'data, Q>
 where
-    Q: ContextBound<'ctx>,
+    Q: ContextBound,
 {
-    fn context(&self) -> &'ctx Context {
+    fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'ctx, 'data, Q> Query<'ctx> for VarRawReadQuery<'data, Q>
+impl<'data, Q> Query for VarRawReadQuery<'data, Q>
 where
-    Q: Query<'ctx>,
+    Q: Query,
 {
-    fn base(&self) -> &QueryBase<'ctx> {
+    fn base(&self) -> &QueryBase {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+    fn finalize(self) -> TileDBResult<Array> {
         self.base.finalize()
     }
 }
 
-impl<'ctx, 'data, Q> ReadQuery<'ctx> for VarRawReadQuery<'data, Q>
+impl<'data, Q> ReadQuery for VarRawReadQuery<'data, Q>
 where
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery,
 {
     type Intermediate = (Vec<usize>, Q::Intermediate);
     type Final = (Vec<usize>, Q::Final);
@@ -602,7 +602,7 @@ where
             let context = self.base().context();
             let cquery = **self.base().cquery();
             for handle in self.raw_read_output.iter_mut() {
-                handle.attach_query(context, cquery)?;
+                handle.attach_query(&context, cquery)?;
             }
         }
 
@@ -660,22 +660,22 @@ pub struct VarRawReadBuilder<'data, B> {
     pub(crate) base: B,
 }
 
-impl<'ctx, 'data, B> ContextBound<'ctx> for VarRawReadBuilder<'data, B>
+impl<'data, B> ContextBound for VarRawReadBuilder<'data, B>
 where
-    B: ContextBound<'ctx>,
+    B: ContextBound,
 {
-    fn context(&self) -> &'ctx Context {
+    fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'ctx, 'data, B> QueryBuilder<'ctx> for VarRawReadBuilder<'data, B>
+impl<'data, B> QueryBuilder for VarRawReadBuilder<'data, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
     type Query = VarRawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -687,9 +687,7 @@ where
     }
 }
 
-impl<'ctx, 'data, B> ReadQueryBuilder<'ctx, 'data>
-    for VarRawReadBuilder<'data, B>
-where
-    B: ReadQueryBuilder<'ctx, 'data>,
+impl<'data, B> ReadQueryBuilder<'data> for VarRawReadBuilder<'data, B> where
+    B: ReadQueryBuilder<'data>
 {
 }

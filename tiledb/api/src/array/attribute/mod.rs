@@ -38,26 +38,27 @@ impl Drop for RawAttribute {
     }
 }
 
-pub struct Attribute<'ctx> {
-    context: &'ctx Context,
+pub struct Attribute {
+    context: Context,
     raw: RawAttribute,
 }
 
-// impl<'ctx> ContextBoundBase<'ctx> for Attribute<'ctx> {}
-
-impl<'ctx> ContextBound<'ctx> for Attribute<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
+impl ContextBound for Attribute {
+    fn context(&self) -> Context {
+        self.context.clone()
     }
 }
 
-impl<'ctx> Attribute<'ctx> {
+impl Attribute {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_attribute_t {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawAttribute) -> Self {
-        Attribute { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawAttribute) -> Self {
+        Attribute {
+            context: context.clone(),
+            raw,
+        }
     }
 
     pub fn name(&self) -> TileDBResult<String> {
@@ -86,13 +87,13 @@ impl<'ctx> Attribute<'ctx> {
         Ok(c_nullable == 1)
     }
 
-    pub fn filter_list(&self) -> TileDBResult<FilterList<'ctx>> {
+    pub fn filter_list(&self) -> TileDBResult<FilterList> {
         let mut c_flist: *mut ffi::tiledb_filter_list_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_get_filter_list(ctx, *self.raw, &mut c_flist)
         })?;
         Ok(FilterList {
-            context: self.context,
+            context: self.context.clone(),
             raw: RawFilterList::Owned(c_flist),
         })
     }
@@ -177,7 +178,7 @@ impl<'ctx> Attribute<'ctx> {
     }
 }
 
-impl<'ctx> Debug for Attribute<'ctx> {
+impl Debug for Attribute {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let data =
             AttributeData::try_from(self).map_err(|_| std::fmt::Error)?;
@@ -188,8 +189,8 @@ impl<'ctx> Debug for Attribute<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
-    fn eq(&self, other: &Attribute<'c2>) -> bool {
+impl PartialEq<Attribute> for Attribute {
+    fn eq(&self, other: &Attribute) -> bool {
         let names_match = match (self.name(), other.name()) {
             (Ok(mine), Ok(theirs)) => mine == theirs,
             _ => false,
@@ -264,19 +265,19 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
     }
 }
 
-pub struct Builder<'ctx> {
-    attr: Attribute<'ctx>,
+pub struct Builder {
+    attr: Attribute,
 }
 
-impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
-    fn context(&self) -> &'ctx Context {
+impl ContextBound for Builder {
+    fn context(&self) -> Context {
         self.attr.context()
     }
 }
 
-impl<'ctx> Builder<'ctx> {
+impl Builder {
     pub fn new(
-        context: &'ctx Context,
+        context: &Context,
         name: &str,
         datatype: Datatype,
     ) -> TileDBResult<Self> {
@@ -292,14 +293,10 @@ impl<'ctx> Builder<'ctx> {
         })?;
         Ok(Builder {
             attr: Attribute {
-                context,
+                context: context.clone(),
                 raw: RawAttribute::Owned(c_attr),
             },
         })
-    }
-
-    pub fn context(&self) -> &'ctx Context {
-        self.attr.context
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
@@ -397,7 +394,7 @@ impl<'ctx> Builder<'ctx> {
 
     pub fn filter_list<FL>(self, filter_list: FL) -> TileDBResult<Self>
     where
-        FL: Borrow<FilterList<'ctx>>,
+        FL: Borrow<FilterList>,
     {
         let filter_list = filter_list.borrow();
         self.capi_call(|ctx| unsafe {
@@ -411,7 +408,7 @@ impl<'ctx> Builder<'ctx> {
         Ok(self)
     }
 
-    pub fn build(self) -> Attribute<'ctx> {
+    pub fn build(self) -> Attribute {
         self.attr
     }
 }
@@ -440,10 +437,10 @@ impl Display for AttributeData {
     }
 }
 
-impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {
+impl TryFrom<&Attribute> for AttributeData {
     type Error = crate::error::Error;
 
-    fn try_from(attr: &Attribute<'ctx>) -> TileDBResult<Self> {
+    fn try_from(attr: &Attribute) -> TileDBResult<Self> {
         let datatype = attr.datatype()?;
         let fill = fn_typed!(datatype, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
@@ -466,18 +463,18 @@ impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {
     }
 }
 
-impl<'ctx> TryFrom<Attribute<'ctx>> for AttributeData {
+impl TryFrom<Attribute> for AttributeData {
     type Error = crate::error::Error;
 
-    fn try_from(attr: Attribute<'ctx>) -> TileDBResult<Self> {
+    fn try_from(attr: Attribute) -> TileDBResult<Self> {
         Self::try_from(&attr)
     }
 }
 
-impl<'ctx> Factory<'ctx> for AttributeData {
-    type Item = Attribute<'ctx>;
+impl Factory for AttributeData {
+    type Item = Attribute;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         let mut b = Builder::new(context, &self.name, self.datatype)?
             .filter_list(self.filters.create(context)?)?;
 

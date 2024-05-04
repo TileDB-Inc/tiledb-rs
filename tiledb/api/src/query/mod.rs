@@ -40,26 +40,26 @@ impl Drop for RawQuery {
     }
 }
 
-pub trait Query<'ctx> {
-    fn base(&self) -> &QueryBase<'ctx>;
+pub trait Query {
+    fn base(&self) -> &QueryBase;
 
-    fn finalize(self) -> TileDBResult<Array<'ctx>>
+    fn finalize(self) -> TileDBResult<Array>
     where
         Self: Sized;
 }
 
-pub struct QueryBase<'ctx> {
-    array: Array<'ctx>,
+pub struct QueryBase {
+    array: Array,
     raw: RawQuery,
 }
 
-impl<'ctx> ContextBound<'ctx> for QueryBase<'ctx> {
-    fn context(&self) -> &'ctx Context {
+impl ContextBound for QueryBase {
+    fn context(&self) -> Context {
         self.array.context()
     }
 }
 
-impl<'ctx> QueryBase<'ctx> {
+impl QueryBase {
     fn cquery(&self) -> &RawQuery {
         &self.raw
     }
@@ -83,17 +83,17 @@ impl<'ctx> QueryBase<'ctx> {
         .map(|_| c_status)
     }
 
-    pub fn array(&self) -> &Array<'ctx> {
+    pub fn array(&self) -> &Array {
         &self.array
     }
 }
 
-impl<'ctx> Query<'ctx> for QueryBase<'ctx> {
-    fn base(&self) -> &QueryBase<'ctx> {
+impl Query for QueryBase {
+    fn base(&self) -> &QueryBase {
         self
     }
 
-    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+    fn finalize(self) -> TileDBResult<Array> {
         let c_query = **self.base().cquery();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_finalize(ctx, c_query)
@@ -103,7 +103,7 @@ impl<'ctx> Query<'ctx> for QueryBase<'ctx> {
     }
 }
 
-impl<'ctx> ReadQuery<'ctx> for QueryBase<'ctx> {
+impl ReadQuery for QueryBase {
     type Intermediate = ();
     type Final = ();
 
@@ -146,10 +146,10 @@ impl<'ctx> ReadQuery<'ctx> for QueryBase<'ctx> {
     }
 }
 
-pub trait QueryBuilder<'ctx>: Sized {
-    type Query: Query<'ctx>;
+pub trait QueryBuilder: Sized {
+    type Query: Query;
 
-    fn base(&self) -> &BuilderBase<'ctx>;
+    fn base(&self) -> &BuilderBase;
 
     fn layout(self, layout: QueryLayout) -> TileDBResult<Self>
     where
@@ -163,14 +163,14 @@ pub trait QueryBuilder<'ctx>: Sized {
         Ok(self)
     }
 
-    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>>
+    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<Self>>
     where
         Self: Sized,
     {
         SubarrayBuilder::for_query(self)
     }
 
-    fn query_condition(self, qc: QueryCondition<'ctx>) -> TileDBResult<Self> {
+    fn query_condition(self, qc: QueryCondition) -> TileDBResult<Self> {
         let c_query = **self.base().cquery();
         let c_cond = qc.capi();
         self.base().capi_call(|ctx| unsafe {
@@ -182,17 +182,17 @@ pub trait QueryBuilder<'ctx>: Sized {
     fn build(self) -> Self::Query;
 }
 
-pub struct BuilderBase<'ctx> {
-    query: QueryBase<'ctx>,
+pub struct BuilderBase {
+    query: QueryBase,
 }
 
-impl<'ctx> ContextBound<'ctx> for BuilderBase<'ctx> {
-    fn context(&self) -> &'ctx Context {
+impl ContextBound for BuilderBase {
+    fn context(&self) -> Context {
         self.query.context()
     }
 }
 
-impl<'ctx> BuilderBase<'ctx> {
+impl BuilderBase {
     fn carray(&self) -> &RawArray {
         self.query.array.capi()
     }
@@ -200,15 +200,15 @@ impl<'ctx> BuilderBase<'ctx> {
         &self.query.raw
     }
 
-    pub fn array(&self) -> &Array<'ctx> {
+    pub fn array(&self) -> &Array {
         &self.query.array
     }
 }
 
-impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
-    type Query = QueryBase<'ctx>;
+impl QueryBuilder for BuilderBase {
+    type Query = QueryBase;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self
     }
 
@@ -217,8 +217,8 @@ impl<'ctx> QueryBuilder<'ctx> for BuilderBase<'ctx> {
     }
 }
 
-impl<'ctx> BuilderBase<'ctx> {
-    fn new(array: Array<'ctx>, query_type: QueryType) -> TileDBResult<Self> {
+impl BuilderBase {
+    fn new(array: Array, query_type: QueryType) -> TileDBResult<Self> {
         let c_array = **array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();

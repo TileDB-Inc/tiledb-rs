@@ -17,50 +17,50 @@ struct RawWriteInput<'data> {
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 
-pub struct WriteQuery<'ctx, 'data> {
-    base: QueryBase<'ctx>,
+pub struct WriteQuery<'data> {
+    base: QueryBase,
 
     /// Hold on to query inputs to ensure they live long enough
     _inputs: InputMap<'data>,
 }
 
-impl<'ctx, 'data> ContextBound<'ctx> for WriteQuery<'ctx, 'data> {
-    fn context(&self) -> &'ctx Context {
+impl<'data> ContextBound for WriteQuery<'data> {
+    fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'ctx, 'data> Query<'ctx> for WriteQuery<'ctx, 'data> {
-    fn base(&self) -> &QueryBase<'ctx> {
+impl<'data> Query for WriteQuery<'data> {
+    fn base(&self) -> &QueryBase {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+    fn finalize(self) -> TileDBResult<Array> {
         self.base.finalize()
     }
 }
 
-impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
+impl<'data> WriteQuery<'data> {
     pub fn submit(&self) -> TileDBResult<()> {
         self.base.do_submit()
     }
 }
 
-pub struct WriteBuilder<'ctx, 'data> {
-    base: BuilderBase<'ctx>,
+pub struct WriteBuilder<'data> {
+    base: BuilderBase,
     inputs: InputMap<'data>,
 }
 
-impl<'ctx, 'data> ContextBound<'ctx> for WriteBuilder<'ctx, 'data> {
-    fn context(&self) -> &'ctx Context {
+impl<'data> ContextBound for WriteBuilder<'data> {
+    fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
-    type Query = WriteQuery<'ctx, 'data>;
+impl<'data> QueryBuilder for WriteBuilder<'data> {
+    type Query = WriteQuery<'data>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         &self.base
     }
 
@@ -72,8 +72,8 @@ impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
     }
 }
 
-impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
-    pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
+impl<'data> WriteBuilder<'data> {
+    pub fn new(array: Array) -> TileDBResult<Self> {
         Ok(WriteBuilder {
             base: BuilderBase::new(array, QueryType::Write)?,
             inputs: HashMap::new(),
