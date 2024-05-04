@@ -378,17 +378,39 @@ macro_rules! query_read_callback {
         paste! {
             /// Query result handler which runs a callback on the results after each
             /// step of execution.
-            #[derive(ContextBound, Query)]
             pub struct $query<'data, T, Q>
             where
                 T: $callback,
             {
                 pub(crate) callback: Option<T>,
-                #[base(ContextBound, Query)]
                 pub(crate) base: Q,
                 $(
                     pub(crate) [< arg_ $U:snake >]: RawReadHandle<'data, T::$U>
                 ),+
+            }
+
+            impl<'ctx, 'data, T, Q> ContextBound<'ctx> for $query<'data, T, Q>
+            where
+                T: $callback,
+                Q: ContextBound<'ctx>,
+            {
+                fn context(&self) -> &'ctx Context {
+                    self.base.context()
+                }
+            }
+
+            impl<'ctx, 'data, T, Q> Query<'ctx> for $query<'data, T, Q>
+            where
+                T: $callback,
+                Q: Query<'ctx>,
+            {
+                fn base(&self) -> &QueryBase<'ctx> {
+                    self.base.base()
+                }
+
+                fn finalize(self) -> TileDBResult<Array<'ctx>> {
+                    self.base.finalize()
+                }
             }
         }
 
@@ -504,12 +526,10 @@ macro_rules! query_read_callback {
         }
 
         paste! {
-            #[derive(ContextBound)]
             pub struct $Builder<'data, T, B>
             where T: $callback,
             {
                 pub(crate) callback: T,
-                #[base(ContextBound)]
                 pub(crate) base: B,
                 $(
                     pub(crate) [< arg_ $U:snake >]: RawReadHandle<'data, T::$U>
@@ -581,11 +601,32 @@ query_read_callback!(
     Unit4
 );
 
-#[derive(ContextBound, Query)]
 pub struct CallbackVarArgReadQuery<'data, T, Q> {
     pub(crate) callback: Option<T>,
-    #[base(ContextBound, Query)]
     pub(crate) base: VarRawReadQuery<'data, Q>,
+}
+
+impl<'ctx, 'data, T, Q> ContextBound<'ctx>
+    for CallbackVarArgReadQuery<'data, T, Q>
+where
+    VarRawReadQuery<'data, Q>: ContextBound<'ctx>,
+{
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
+}
+
+impl<'ctx, 'data, T, Q> Query<'ctx> for CallbackVarArgReadQuery<'data, T, Q>
+where
+    VarRawReadQuery<'data, Q>: Query<'ctx>,
+{
+    fn base(&self) -> &QueryBase<'ctx> {
+        self.base.base()
+    }
+
+    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+        self.base.finalize()
+    }
 }
 
 impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for CallbackVarArgReadQuery<'data, T, Q>
@@ -680,11 +721,19 @@ where
     }
 }
 
-#[derive(ContextBound)]
 pub struct CallbackVarArgReadBuilder<'data, T, B> {
     pub(crate) callback: T,
-    #[base(ContextBound)]
     pub(crate) base: VarRawReadBuilder<'data, B>,
+}
+
+impl<'ctx, 'data, T, B> ContextBound<'ctx>
+    for CallbackVarArgReadBuilder<'data, T, B>
+where
+    VarRawReadBuilder<'data, B>: ContextBound<'ctx>,
+{
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
 }
 
 impl<'ctx, 'data, T, B> QueryBuilder<'ctx>

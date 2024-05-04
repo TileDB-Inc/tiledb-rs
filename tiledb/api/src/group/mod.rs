@@ -42,11 +42,17 @@ impl Drop for RawGroup {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Group<'ctx> {
-    #[context]
     context: &'ctx Context,
     raw: RawGroup,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for Group<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for Group<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> Group<'ctx> {

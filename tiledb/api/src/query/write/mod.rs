@@ -17,13 +17,27 @@ struct RawWriteInput<'data> {
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 
-#[derive(ContextBound, Query)]
 pub struct WriteQuery<'ctx, 'data> {
-    #[base(ContextBound, Query)]
     base: QueryBase<'ctx>,
 
     /// Hold on to query inputs to ensure they live long enough
     _inputs: InputMap<'data>,
+}
+
+impl<'ctx, 'data> ContextBound<'ctx> for WriteQuery<'ctx, 'data> {
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
+}
+
+impl<'ctx, 'data> Query<'ctx> for WriteQuery<'ctx, 'data> {
+    fn base(&self) -> &QueryBase<'ctx> {
+        self.base.base()
+    }
+
+    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+        self.base.finalize()
+    }
 }
 
 impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
@@ -32,11 +46,15 @@ impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
     }
 }
 
-#[derive(ContextBound)]
 pub struct WriteBuilder<'ctx, 'data> {
-    #[base(ContextBound)]
     base: BuilderBase<'ctx>,
     inputs: InputMap<'data>,
+}
+
+impl<'ctx, 'data> ContextBound<'ctx> for WriteBuilder<'ctx, 'data> {
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
 }
 
 impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {

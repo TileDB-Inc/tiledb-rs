@@ -668,11 +668,17 @@ impl Drop for RawQueryCondition {
     }
 }
 
-#[derive(ContextBound)]
 pub struct QueryCondition<'ctx> {
-    #[context]
     context: &'ctx Context,
     raw: RawQueryCondition,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for QueryCondition<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for QueryCondition<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> QueryCondition<'ctx> {

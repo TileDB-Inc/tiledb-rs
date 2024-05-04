@@ -38,11 +38,17 @@ impl Drop for RawFragmentInfo {
     }
 }
 
-#[derive(ContextBound)]
 struct FragmentInfoInternal<'ctx> {
-    #[context]
     context: &'ctx Context,
     raw: RawFragmentInfo,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for FragmentInfoInternal<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for FragmentInfoInternal<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> FragmentInfoInternal<'ctx> {
@@ -584,10 +590,14 @@ impl<'ctx, 'info> FragmentInfo<'ctx, 'info> {
     }
 }
 
-#[derive(ContextBound)]
 pub struct FragmentInfoList<'ctx> {
-    #[base(ContextBound)]
     info: FragmentInfoInternal<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for FragmentInfoList<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.info.context()
+    }
 }
 
 impl<'ctx> FragmentInfoList<'ctx> {
@@ -633,12 +643,16 @@ impl<'ctx> FragmentInfoList<'ctx> {
     }
 }
 
-#[derive(ContextBound)]
 pub struct FragmentInfoListIterator<'ctx, 'info> {
-    #[base(ContextBound)]
     info: &'info FragmentInfoList<'ctx>,
     num_fragments: u32,
     index: u32,
+}
+
+impl<'ctx, 'data> ContextBound<'ctx> for FragmentInfoListIterator<'ctx, 'data> {
+    fn context(&self) -> &'ctx Context {
+        self.info.context()
+    }
 }
 
 impl<'ctx, 'info: 'ctx> Iterator for FragmentInfoListIterator<'ctx, 'info> {
@@ -678,10 +692,14 @@ impl<'ctx, 'info: 'ctx> TryFrom<&'info FragmentInfoList<'ctx>>
     }
 }
 
-#[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[base(ContextBound)]
     info: FragmentInfoInternal<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.info.context()
+    }
 }
 
 impl<'ctx> Builder<'ctx> {

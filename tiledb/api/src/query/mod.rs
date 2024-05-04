@@ -48,11 +48,15 @@ pub trait Query<'ctx> {
         Self: Sized;
 }
 
-#[derive(ContextBound)]
 pub struct QueryBase<'ctx> {
-    #[base(ContextBound)]
     array: Array<'ctx>,
     raw: RawQuery,
+}
+
+impl<'ctx> ContextBound<'ctx> for QueryBase<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.array.context()
+    }
 }
 
 impl<'ctx> QueryBase<'ctx> {
@@ -178,10 +182,14 @@ pub trait QueryBuilder<'ctx>: Sized {
     fn build(self) -> Self::Query;
 }
 
-#[derive(ContextBound)]
 pub struct BuilderBase<'ctx> {
-    #[base(ContextBound)]
     query: QueryBase<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for BuilderBase<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.query.context()
+    }
 }
 
 impl<'ctx> BuilderBase<'ctx> {

@@ -374,10 +374,14 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
     }
 }
 
-#[derive(ContextBound)]
 pub struct ReadBuilder<'ctx> {
-    #[base(ContextBound)]
     base: BuilderBase<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for ReadBuilder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
 }
 
 impl<'ctx> ReadBuilder<'ctx> {
