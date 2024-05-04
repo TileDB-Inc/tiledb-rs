@@ -33,24 +33,29 @@ impl Drop for RawSubarray {
     }
 }
 
-pub struct Subarray<'ctx> {
-    schema: Schema<'ctx>,
+pub struct Subarray<'query> {
+    schema: Schema,
     raw: RawSubarray,
+    _marker: PhantomData<&'query ()>,
 }
 
-impl<'ctx> ContextBound<'ctx> for Subarray<'ctx> {
-    fn context(&self) -> &'ctx Context {
+impl<'query> ContextBound for Subarray<'query> {
+    fn context(&self) -> Context {
         self.schema.context()
     }
 }
 
-impl<'ctx> Subarray<'ctx> {
+impl<'query> Subarray<'query> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_subarray_t {
         *self.raw
     }
 
-    pub(crate) fn new(schema: Schema<'ctx>, raw: RawSubarray) -> Self {
-        Subarray { schema, raw }
+    pub(crate) fn new(schema: Schema, raw: RawSubarray) -> Self {
+        Subarray {
+            schema,
+            raw,
+            _marker: Default::default(),
+        }
     }
 
     /// Return all dimension ranges set on the query.
@@ -147,27 +152,26 @@ impl<'ctx> Subarray<'ctx> {
     }
 }
 
-pub struct Builder<'ctx, Q>
+pub struct Builder<Q>
 where
-    Q: QueryBuilder<'ctx> + Sized,
+    Q: QueryBuilder + Sized,
 {
     query: Q,
     raw: RawSubarray,
-    _marker: PhantomData<&'ctx ()>,
 }
 
-impl<'ctx, Q> ContextBound<'ctx> for Builder<'ctx, Q>
+impl<Q> ContextBound for Builder<Q>
 where
-    Q: QueryBuilder<'ctx>,
+    Q: QueryBuilder,
 {
-    fn context(&self) -> &'ctx Context {
+    fn context(&self) -> Context {
         self.query.base().context()
     }
 }
 
-impl<'ctx, Q> Builder<'ctx, Q>
+impl<Q> Builder<Q>
 where
-    Q: QueryBuilder<'ctx> + Sized,
+    Q: QueryBuilder + Sized,
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
         let context = query.base().context();
@@ -181,7 +185,6 @@ where
         Ok(Builder {
             query,
             raw: RawSubarray::Owned(c_subarray),
-            _marker: Default::default(),
         })
     }
 

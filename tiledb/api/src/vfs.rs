@@ -64,16 +64,14 @@ impl Drop for RawVFS {
     }
 }
 
-pub struct VFS<'ctx> {
-    context: &'ctx Context,
+pub struct VFS {
+    context: Context,
     raw: RawVFS,
 }
 
-// impl<'ctx> ContextBoundBase<'ctx> for VFS<'ctx> {}
-
-impl<'ctx> ContextBound<'ctx> for VFS<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
+impl ContextBound for VFS {
+    fn context(&self) -> Context {
+        self.context.clone()
     }
 }
 
@@ -97,28 +95,26 @@ impl Drop for RawVFSHandle {
     }
 }
 
-pub struct VFSHandle<'ctx> {
-    context: &'ctx Context,
+pub struct VFSHandle {
+    context: Context,
     raw: RawVFSHandle,
 }
 
-// impl<'ctx> ContextBoundBase<'ctx> for VFSHandle<'ctx> {}
-
-impl<'ctx> ContextBound<'ctx> for VFSHandle<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
+impl ContextBound for VFSHandle {
+    fn context(&self) -> Context {
+        self.context.clone()
     }
 }
 
-impl<'ctx> VFS<'ctx> {
-    pub fn new(ctx: &'ctx Context, config: &Config) -> TileDBResult<VFS<'ctx>> {
+impl VFS {
+    pub fn new(ctx: &Context, config: &Config) -> TileDBResult<VFS> {
         let c_config = config.capi();
         let mut c_vfs: *mut ffi::tiledb_vfs_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_vfs_alloc(ctx, c_config, &mut c_vfs)
         })?;
         Ok(VFS {
-            context: ctx,
+            context: ctx.clone(),
             raw: RawVFS::Owned(c_vfs),
         })
     }
@@ -307,11 +303,7 @@ impl<'ctx> VFS<'ctx> {
         self.touch(uri)
     }
 
-    pub fn open(
-        &self,
-        uri: &str,
-        mode: VFSMode,
-    ) -> TileDBResult<VFSHandle<'ctx>> {
+    pub fn open(&self, uri: &str, mode: VFSMode) -> TileDBResult<VFSHandle> {
         let mut c_fh: *mut ffi::tiledb_vfs_fh_t = out_ptr!();
         let c_vfs = *self.raw;
         let c_uri = cstring!(uri);
@@ -326,7 +318,7 @@ impl<'ctx> VFS<'ctx> {
         })?;
 
         Ok(VFSHandle {
-            context: self.context,
+            context: self.context.clone(),
             raw: RawVFSHandle::Owned(c_fh),
         })
     }
@@ -493,7 +485,7 @@ extern "C" fn vfs_ls_recursive_cb_handler(
     }
 }
 
-impl<'ctx> VFSHandle<'ctx> {
+impl VFSHandle {
     pub fn is_closed(&self) -> TileDBResult<bool> {
         let c_fh = *self.raw;
         let mut c_is_closed: i32 = 0;

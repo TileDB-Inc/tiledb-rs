@@ -389,26 +389,26 @@ macro_rules! query_read_callback {
                 ),+
             }
 
-            impl<'ctx, 'data, T, Q> ContextBound<'ctx> for $query<'data, T, Q>
+            impl<'data, T, Q> ContextBound for $query<'data, T, Q>
             where
                 T: $callback,
-                Q: ContextBound<'ctx>,
+                Q: ContextBound,
             {
-                fn context(&self) -> &'ctx Context {
+                fn context(&self) -> Context {
                     self.base.context()
                 }
             }
 
-            impl<'ctx, 'data, T, Q> Query<'ctx> for $query<'data, T, Q>
+            impl<'data, T, Q> Query for $query<'data, T, Q>
             where
                 T: $callback,
-                Q: Query<'ctx>,
+                Q: Query,
             {
-                fn base(&self) -> &QueryBase<'ctx> {
+                fn base(&self) -> &QueryBase {
                     self.base.base()
                 }
 
-                fn finalize(self) -> TileDBResult<Array<'ctx>> {
+                fn finalize(self) -> TileDBResult<Array> {
                     self.base.finalize()
                 }
             }
@@ -424,9 +424,9 @@ macro_rules! query_read_callback {
             }
         }
 
-        impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for $query <'data, T, Q>
+        impl<'data, T, Q> ReadQuery for $query <'data, T, Q>
             where T: $callback,
-                  Q: ReadQuery<'ctx>
+                  Q: ReadQuery
         {
             type Intermediate = (T::Intermediate, Q::Intermediate);
             type Final = (T::Final, Q::Final);
@@ -438,7 +438,7 @@ macro_rules! query_read_callback {
                 paste! {
                     $(
                         self.[< arg_ $U:snake >].attach_query(
-                            self.base().context(),
+                            &self.base().context(),
                             **self.base().cquery())?;
                     )+
                 }
@@ -536,13 +536,13 @@ macro_rules! query_read_callback {
                 ),+
             }
 
-            impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for $Builder <'data, T, B>
+            impl<'data, T, B> QueryBuilder for $Builder <'data, T, B>
             where T: $callback,
-                  B: QueryBuilder<'ctx>,
+                  B: QueryBuilder,
             {
                 type Query = $query<'data, T, B::Query>;
 
-                fn base(&self) -> &BuilderBase<'ctx> {
+                fn base(&self) -> &BuilderBase {
                     self.base.base()
                 }
 
@@ -557,10 +557,10 @@ macro_rules! query_read_callback {
                 }
             }
 
-            impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data> for $Builder<'data, T, B>
+            impl<'data, T, B> ReadQueryBuilder<'data> for $Builder<'data, T, B>
             where
                 T: $callback,
-                B: ReadQueryBuilder<'ctx, 'data>,
+                B: ReadQueryBuilder<'data>,
             {
             }
         }
@@ -606,33 +606,32 @@ pub struct CallbackVarArgReadQuery<'data, T, Q> {
     pub(crate) base: VarRawReadQuery<'data, Q>,
 }
 
-impl<'ctx, 'data, T, Q> ContextBound<'ctx>
-    for CallbackVarArgReadQuery<'data, T, Q>
+impl<'data, T, Q> ContextBound for CallbackVarArgReadQuery<'data, T, Q>
 where
-    VarRawReadQuery<'data, Q>: ContextBound<'ctx>,
+    VarRawReadQuery<'data, Q>: ContextBound,
 {
-    fn context(&self) -> &'ctx Context {
+    fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'ctx, 'data, T, Q> Query<'ctx> for CallbackVarArgReadQuery<'data, T, Q>
+impl<'data, T, Q> Query for CallbackVarArgReadQuery<'data, T, Q>
 where
-    VarRawReadQuery<'data, Q>: Query<'ctx>,
+    VarRawReadQuery<'data, Q>: Query,
 {
-    fn base(&self) -> &QueryBase<'ctx> {
+    fn base(&self) -> &QueryBase {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+    fn finalize(self) -> TileDBResult<Array> {
         self.base.finalize()
     }
 }
 
-impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for CallbackVarArgReadQuery<'data, T, Q>
+impl<'data, T, Q> ReadQuery for CallbackVarArgReadQuery<'data, T, Q>
 where
     T: ReadCallbackVarArg,
-    Q: ReadQuery<'ctx>,
+    Q: ReadQuery,
 {
     type Intermediate = (T::Intermediate, Q::Intermediate);
     type Final = (T::Final, Q::Final);
@@ -726,24 +725,22 @@ pub struct CallbackVarArgReadBuilder<'data, T, B> {
     pub(crate) base: VarRawReadBuilder<'data, B>,
 }
 
-impl<'ctx, 'data, T, B> ContextBound<'ctx>
-    for CallbackVarArgReadBuilder<'data, T, B>
+impl<'data, T, B> ContextBound for CallbackVarArgReadBuilder<'data, T, B>
 where
-    VarRawReadBuilder<'data, B>: ContextBound<'ctx>,
+    VarRawReadBuilder<'data, B>: ContextBound,
 {
-    fn context(&self) -> &'ctx Context {
+    fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'ctx, 'data, T, B> QueryBuilder<'ctx>
-    for CallbackVarArgReadBuilder<'data, T, B>
+impl<'data, T, B> QueryBuilder for CallbackVarArgReadBuilder<'data, T, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
     type Query = CallbackVarArgReadQuery<'data, T, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -755,10 +752,10 @@ where
     }
 }
 
-impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data>
+impl<'data, T, B> ReadQueryBuilder<'data>
     for CallbackVarArgReadBuilder<'data, T, B>
 where
-    B: QueryBuilder<'ctx>,
+    B: QueryBuilder,
 {
 }
 

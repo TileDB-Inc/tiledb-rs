@@ -172,27 +172,25 @@ impl Drop for RawArray {
     }
 }
 
-pub struct Array<'ctx> {
-    context: &'ctx Context,
+pub struct Array {
+    context: Context,
     uri: String,
     pub(crate) raw: RawArray,
 }
 
-// impl<'ctx> ContextBoundBase<'ctx> for Array<'ctx> {}
-
-impl<'ctx> ContextBound<'ctx> for Array<'ctx> {
-    fn context(&self) -> &'ctx Context {
-        self.context
+impl ContextBound for Array {
+    fn context(&self) -> Context {
+        self.context.clone()
     }
 }
 
-impl<'ctx> Array<'ctx> {
+impl Array {
     pub(crate) fn capi(&self) -> &RawArray {
         &self.raw
     }
 
     pub fn create<S>(
-        context: &'ctx Context,
+        context: &Context,
         name: S,
         schema: Schema,
     ) -> TileDBResult<()>
@@ -207,7 +205,7 @@ impl<'ctx> Array<'ctx> {
         Ok(())
     }
 
-    pub fn exists<S>(context: &'ctx Context, uri: S) -> TileDBResult<bool>
+    pub fn exists<S>(context: &Context, uri: S) -> TileDBResult<bool>
     where
         S: AsRef<str>,
     {
@@ -217,11 +215,7 @@ impl<'ctx> Array<'ctx> {
         ))
     }
 
-    pub fn open<S>(
-        context: &'ctx Context,
-        uri: S,
-        mode: Mode,
-    ) -> TileDBResult<Self>
+    pub fn open<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
     where
         S: AsRef<str>,
     {
@@ -238,7 +232,7 @@ impl<'ctx> Array<'ctx> {
         })?;
 
         Ok(Array {
-            context,
+            context: context.clone(),
             uri: uri.as_ref().to_owned(),
             raw: RawArray::Owned(array_raw),
         })
@@ -249,7 +243,7 @@ impl<'ctx> Array<'ctx> {
         self.uri.as_ref()
     }
 
-    pub fn schema(&self) -> TileDBResult<Schema<'ctx>> {
+    pub fn schema(&self) -> TileDBResult<Schema> {
         let c_array = *self.raw;
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
 
@@ -261,11 +255,11 @@ impl<'ctx> Array<'ctx> {
             )
         })?;
 
-        Ok(Schema::new(self.context, RawSchema::Owned(c_schema)))
+        Ok(Schema::new(&self.context, RawSchema::Owned(c_schema)))
     }
 }
 
-impl Drop for Array<'_> {
+impl Drop for Array {
     fn drop(&mut self) {
         let c_array = *self.raw;
         self.capi_call(|ctx| unsafe { ffi::tiledb_array_close(ctx, c_array) })
