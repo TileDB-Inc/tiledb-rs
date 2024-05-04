@@ -229,7 +229,10 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
-    // This is internal only on purpose.
+    // This is internal only on purpose. It is used by the Factory trait on
+    // DimensionData to avoid requiring us to bake in logic that reimplements
+    // logic in core. This will likely be removed when we get to adding the
+    // DimensionConstraint type that will remove the need for new_string above.
     fn new_raw(
         context: &'ctx Context,
         name: &str,
