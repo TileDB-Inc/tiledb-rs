@@ -34,11 +34,17 @@ impl Drop for RawDomain {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Domain<'ctx> {
-    #[context]
     context: &'ctx Context,
     raw: RawDomain,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for Domain<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for Domain<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> Domain<'ctx> {
@@ -183,10 +189,14 @@ impl<'c1, 'c2> PartialEq<Domain<'c2>> for Domain<'c1> {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[base(ContextBound)]
     domain: Domain<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.domain.context()
+    }
 }
 
 impl<'ctx> Builder<'ctx> {

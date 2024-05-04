@@ -7,15 +7,38 @@ pub trait ReadResult: Sized {
 }
 
 /// Query result handler which constructs an object from query results.
-#[derive(ContextBound, Query)]
 pub struct TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound, Query)]
     pub(crate) base:
         CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>,
+}
+
+impl<'ctx, 'data, T, Q> ContextBound<'ctx> for TypedReadQuery<'data, T, Q>
+where
+    T: ReadResult,
+    CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>:
+        ContextBound<'ctx>,
+{
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
+}
+
+impl<'ctx, 'data, T, Q> Query<'ctx> for TypedReadQuery<'data, T, Q>
+where
+    T: ReadResult,
+    CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>: Query<'ctx>,
+{
+    fn base(&self) -> &QueryBase<'ctx> {
+        self.base.base()
+    }
+
+    fn finalize(self) -> TileDBResult<Array<'ctx>> {
+        self.base.finalize()
+    }
 }
 
 impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for TypedReadQuery<'data, T, Q>
@@ -41,15 +64,24 @@ where
     }
 }
 
-#[derive(ContextBound)]
 pub struct TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound)]
     pub(crate) base:
         CallbackReadBuilder<'data, <T as ReadResult>::Constructor, B>,
+}
+
+impl<'ctx, 'data, T, B> ContextBound<'ctx> for TypedReadBuilder<'data, T, B>
+where
+    T: ReadResult,
+    CallbackReadBuilder<'data, <T as ReadResult>::Constructor, B>:
+        ContextBound<'ctx>,
+{
+    fn context(&self) -> &'ctx Context {
+        self.base.context()
+    }
 }
 
 impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for TypedReadBuilder<'data, T, B>

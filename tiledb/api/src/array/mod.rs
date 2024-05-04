@@ -172,12 +172,18 @@ impl Drop for RawArray {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Array<'ctx> {
-    #[context]
     context: &'ctx Context,
     uri: String,
     pub(crate) raw: RawArray,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for Array<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for Array<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> Array<'ctx> {

@@ -40,11 +40,17 @@ impl Drop for RawAttribute {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Attribute<'ctx> {
-    #[context]
     context: &'ctx Context,
     raw: RawAttribute,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for Attribute<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for Attribute<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> Attribute<'ctx> {
@@ -278,10 +284,14 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[base(ContextBound)]
     attr: Attribute<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.attr.context()
+    }
 }
 
 impl<'ctx> Builder<'ctx> {

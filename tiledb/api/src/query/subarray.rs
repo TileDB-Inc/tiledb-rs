@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -32,11 +33,15 @@ impl Drop for RawSubarray {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Subarray<'ctx> {
-    #[base(ContextBound)]
     schema: Schema<'ctx>,
     raw: RawSubarray,
+}
+
+impl<'ctx> ContextBound<'ctx> for Subarray<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.schema.context()
+    }
 }
 
 impl<'ctx> Subarray<'ctx> {
@@ -142,14 +147,25 @@ impl<'ctx> Subarray<'ctx> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Builder<Q> {
-    #[base(ContextBound)]
+pub struct Builder<'ctx, Q>
+where
+    Q: QueryBuilder<'ctx> + Sized,
+{
     query: Q,
     raw: RawSubarray,
+    _marker: PhantomData<&'ctx ()>,
 }
 
-impl<'ctx, Q> Builder<Q>
+impl<'ctx, Q> ContextBound<'ctx> for Builder<'ctx, Q>
+where
+    Q: QueryBuilder<'ctx>,
+{
+    fn context(&self) -> &'ctx Context {
+        self.query.base().context()
+    }
+}
+
+impl<'ctx, Q> Builder<'ctx, Q>
 where
     Q: QueryBuilder<'ctx> + Sized,
 {
@@ -165,6 +181,7 @@ where
         Ok(Builder {
             query,
             raw: RawSubarray::Owned(c_subarray),
+            _marker: Default::default(),
         })
     }
 

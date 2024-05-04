@@ -322,11 +322,17 @@ impl Drop for RawFilter {
     }
 }
 
-#[derive(ContextBound)]
 pub struct Filter<'ctx> {
-    #[context]
     context: &'ctx Context,
     pub(crate) raw: RawFilter,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for Filter<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for Filter<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> Filter<'ctx> {

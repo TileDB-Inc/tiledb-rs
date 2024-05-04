@@ -173,7 +173,7 @@ impl Drop for RawSchema {
 }
 
 /// Holds a field of the schema, which may be either a dimension or an attribute.
-#[derive(ContextBound, PartialEq)]
+#[derive(PartialEq)]
 pub enum Field<'ctx> {
     Dimension(Dimension<'ctx>),
     Attribute(Attribute<'ctx>),
@@ -326,11 +326,17 @@ type FnFilterListGet = unsafe extern "C" fn(
     *mut *mut ffi::tiledb_filter_list_t,
 ) -> i32;
 
-#[derive(ContextBound)]
 pub struct Schema<'ctx> {
-    #[context]
     context: &'ctx Context,
     raw: RawSchema,
+}
+
+// impl<'ctx> ContextBoundBase<'ctx> for Schema<'ctx> {}
+
+impl<'ctx> ContextBound<'ctx> for Schema<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.context
+    }
 }
 
 impl<'ctx> Schema<'ctx> {
@@ -644,10 +650,14 @@ type FnFilterListSet = unsafe extern "C" fn(
     *mut ffi::tiledb_filter_list_t,
 ) -> i32;
 
-#[derive(ContextBound)]
 pub struct Builder<'ctx> {
-    #[base(ContextBound)]
     schema: Schema<'ctx>,
+}
+
+impl<'ctx> ContextBound<'ctx> for Builder<'ctx> {
+    fn context(&self) -> &'ctx Context {
+        self.schema.context()
+    }
 }
 
 impl<'ctx> Builder<'ctx> {
