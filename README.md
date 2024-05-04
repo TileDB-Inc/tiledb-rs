@@ -1,7 +1,7 @@
 TileDB - Rust Bindings
 ===
 
-Rust bindings for TileDB. Currently covering 0.5% of the API.
+Rust bindings for TileDB. (currently covering ~45% of the TileDB C API).
 
 Getting Started
 ---
