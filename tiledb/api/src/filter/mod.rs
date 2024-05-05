@@ -223,24 +223,13 @@ impl FilterData {
                 }
                 | CompressionType::DoubleDelta {
                     reinterpret_datatype,
-                } => {
-                    // these filters do not accept floating point
-                    let check_type =
-                        if let Some(Datatype::Any) = reinterpret_datatype {
-                            *input
-                        } else if let Some(reinterpret_datatype) =
-                            reinterpret_datatype
-                        {
-                            reinterpret_datatype
-                        } else {
-                            return None;
-                        };
-                    if check_type.is_real_type() {
-                        None
+                } => reinterpret_datatype.map_or(Some(*input), |dtype| {
+                    if !dtype.is_real_type() {
+                        Some(dtype)
                     } else {
-                        Some(check_type)
+                        None
                     }
-                }
+                }),
                 _ => Some(*input),
             },
             FilterData::ScaleFloat { byte_width, .. } => {

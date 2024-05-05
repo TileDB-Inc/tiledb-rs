@@ -366,7 +366,7 @@ impl Datatype {
     pub fn is_byte_type(&self) -> bool {
         matches!(
             *self,
-            Datatype::Boolean | Datatype::GeometryWkb | Datatype::GeometryWkt
+            Datatype::Blob | Datatype::GeometryWkb | Datatype::GeometryWkt
         )
     }
 
