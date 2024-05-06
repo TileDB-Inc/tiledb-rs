@@ -551,10 +551,7 @@ mod tests {
             let metadata_aaa =
                 group1_read.metadata(LookupKey::Name("aaa".to_owned()))?;
             assert_eq!(metadata_aaa.datatype, Datatype::Int32);
-            assert_eq!(
-                metadata_aaa.value,
-                metadata::Value::Int32Value(vec!(5))
-            );
+            assert_eq!(metadata_aaa.value, metadata::Value::Int32(vec!(5)));
             assert_eq!(metadata_aaa.key, "aaa");
 
             let metadata_num = group1_read.num_metadata()?;
@@ -565,7 +562,7 @@ mod tests {
             assert_eq!(metadata_bb.key, "bb");
             assert_eq!(
                 metadata_bb.value,
-                metadata::Value::Float32Value(vec!(1.1f32, 2.2f32))
+                metadata::Value::Float32(vec!(1.1f32, 2.2f32))
             );
 
             let has_aaa = group1_read.has_metadata_key("aaa")?;

@@ -5,22 +5,9 @@ use crate::Result as TileDBResult;
 use core::slice;
 use std::convert::From;
 
-#[derive(Debug, PartialEq)]
-pub enum Value {
-    UInt8Value(Vec<u8>),
-    UInt16Value(Vec<u16>),
-    UInt32Value(Vec<u32>),
-    UInt64Value(Vec<u64>),
-    Int8Value(Vec<i8>),
-    Int16Value(Vec<i16>),
-    Int32Value(Vec<i32>),
-    Int64Value(Vec<i64>),
-    Float32Value(Vec<f32>),
-    Float64Value(Vec<f64>),
-    //StringAsciiValue(CString),
-    //BooleanValue(bool),
-    // maybe blobs?
-}
+use crate::typed_enum;
+
+typed_enum!(Vec<T> => #[derive(Debug, PartialEq)] Value);
 
 fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
     let vec_size = vec.len();
@@ -28,56 +15,9 @@ fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
     (vec_ptr, vec_size)
 }
 
-macro_rules! value_typed {
-    ($valuetype:expr, $typename:ident, $vec:ident, $then: expr) => {
-        match $valuetype {
-            Value::Int8Value(ref $vec) => {
-                type $typename = i8;
-                $then
-            }
-            Value::Int16Value(ref $vec) => {
-                type $typename = i16;
-                $then
-            }
-            Value::Int32Value(ref $vec) => {
-                type $typename = i32;
-                $then
-            }
-            Value::Int64Value(ref $vec) => {
-                type $typename = i64;
-                $then
-            }
-            Value::UInt8Value(ref $vec) => {
-                type $typename = u8;
-                $then
-            }
-            Value::UInt16Value(ref $vec) => {
-                type $typename = u16;
-                $then
-            }
-            Value::UInt32Value(ref $vec) => {
-                type $typename = u32;
-                $then
-            }
-            Value::UInt64Value(ref $vec) => {
-                type $typename = u64;
-                $then
-            }
-            Value::Float32Value(ref $vec) => {
-                type $typename = f32;
-                $then
-            }
-            Value::Float64Value(ref $vec) => {
-                type $typename = f64;
-                $then
-            }
-        }
-    };
-}
-
 impl Value {
     pub fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
-        value_typed!(self, _DT, vec, get_value_vec(vec))
+        value_go!(self, _DT, vec, get_value_vec(vec))
     }
 }
 
@@ -91,16 +31,16 @@ macro_rules! value_impl {
     };
 }
 
-value_impl!(i8, Value::Int8Value);
-value_impl!(i16, Value::Int16Value);
-value_impl!(i32, Value::Int32Value);
-value_impl!(i64, Value::Int64Value);
-value_impl!(u8, Value::UInt8Value);
-value_impl!(u16, Value::UInt16Value);
-value_impl!(u32, Value::UInt32Value);
-value_impl!(u64, Value::UInt64Value);
-value_impl!(f32, Value::Float32Value);
-value_impl!(f64, Value::Float64Value);
+value_impl!(i8, Value::Int8);
+value_impl!(i16, Value::Int16);
+value_impl!(i32, Value::Int32);
+value_impl!(i64, Value::Int64);
+value_impl!(u8, Value::UInt8);
+value_impl!(u16, Value::UInt16);
+value_impl!(u32, Value::UInt32);
+value_impl!(u64, Value::UInt64);
+value_impl!(f32, Value::Float32);
+value_impl!(f64, Value::Float64);
 
 #[derive(Debug)]
 pub struct Metadata {
