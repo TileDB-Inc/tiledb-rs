@@ -136,8 +136,8 @@ fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
     tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .start_subarray()?
-        .dimension_range_typed::<i32, _>(0, &[1, 4])?
-        .dimension_range_typed::<i32, _>(1, &[1, 4])?
+        .add_range(0, &[1i32, 4])?
+        .add_range(1, &[1i32, 4])?
         .finish_subarray()
 }
 

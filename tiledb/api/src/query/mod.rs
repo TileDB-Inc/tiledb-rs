@@ -1,6 +1,3 @@
-pub mod conditions;
-pub mod subarray;
-
 use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
@@ -8,7 +5,9 @@ use crate::error::Error;
 use crate::{array::RawArray, Array, Result as TileDBResult};
 
 pub mod buffer;
+pub mod conditions;
 pub mod read;
+pub mod subarray;
 pub mod write;
 
 pub use self::conditions::{QueryCondition, QueryConditionExpr};
@@ -16,7 +15,9 @@ pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };
 pub use self::subarray::{Builder as SubarrayBuilder, Subarray};
-pub use self::write::WriteBuilder;
+pub use self::write::{WriteBuilder, WriteQuery};
+
+use self::subarray::RawSubarray;
 
 pub type QueryType = crate::array::Mode;
 pub type QueryLayout = crate::array::CellOrder;
@@ -46,6 +47,36 @@ pub trait Query<'ctx> {
     fn finalize(self) -> TileDBResult<Array<'ctx>>
     where
         Self: Sized;
+
+    /// Get the subarray for this query.
+    ///
+    /// The Subarray is tied to the lifetime of the Query.
+    ///
+    /// ```compile_fail,E0505
+    /// # use tiledb::query::{Query, QueryBase, Subarray};
+    /// fn invalid_use(query: QueryBase) {
+    ///     let subarray = query.subarray().unwrap();
+    ///     drop(query);
+    ///     /// The subarray should not be usable after the query is dropped.
+    ///     let _ = subarray.ranges();
+    /// }
+    /// ```
+    fn subarray<'query>(&'query self) -> TileDBResult<Subarray<'query>>
+    where
+        'ctx: 'query,
+    {
+        let ctx = self.base().context();
+        let c_query = *self.base().raw;
+        let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_subarray_t(ctx, c_query, &mut c_subarray)
+        })?;
+
+        Ok(Subarray::new(
+            self.base().array().schema()?,
+            RawSubarray::Owned(c_subarray),
+        ))
+    }
 }
 
 #[derive(ContextBound)]
@@ -159,7 +190,7 @@ pub trait QueryBuilder<'ctx>: Sized {
         Ok(self)
     }
 
-    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<'ctx, Self>>
+    fn start_subarray(self) -> TileDBResult<SubarrayBuilder<Self>>
     where
         Self: Sized,
     {

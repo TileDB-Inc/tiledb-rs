@@ -21,13 +21,22 @@ use crate::Datatype;
 use crate::{Factory, Result as TileDBResult};
 
 #[derive(
-    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
+    Clone,
+    Default,
+    Copy,
+    Debug,
+    Deserialize,
+    Eq,
+    OptionSubset,
+    PartialEq,
+    Serialize,
 )]
 #[cfg_attr(
     any(test, feature = "proptest-strategies"),
     derive(proptest_derive::Arbitrary)
 )]
 pub enum ArrayType {
+    #[default]
     Dense,
     Sparse,
 }
@@ -282,6 +291,18 @@ impl<'ctx> TryFrom<Field<'ctx>> for FieldData {
 
     fn try_from(field: Field<'ctx>) -> TileDBResult<Self> {
         Self::try_from(&field)
+    }
+}
+
+impl<'ctx> From<Dimension<'ctx>> for Field<'ctx> {
+    fn from(dim: Dimension<'ctx>) -> Field<'ctx> {
+        Field::Dimension(dim)
+    }
+}
+
+impl<'ctx> From<Attribute<'ctx>> for Field<'ctx> {
+    fn from(attr: Attribute<'ctx>) -> Field<'ctx> {
+        Field::Attribute(attr)
     }
 }
 
@@ -699,7 +720,9 @@ impl<'ctx> TryFrom<Builder<'ctx>> for Schema<'ctx> {
 }
 
 /// Encapsulation of data needed to construct a Schema
-#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
+#[derive(
+    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
+)]
 pub struct SchemaData {
     pub array_type: ArrayType,
     pub domain: DomainData,
