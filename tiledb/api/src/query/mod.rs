@@ -48,6 +48,18 @@ pub trait Query<'ctx> {
     where
         Self: Sized;
 
+    /// Get the subarray for this query.
+    ///
+    /// The Subarray is tied to the lifetime of the Query.
+    ///
+    /// ```compile_fail,E0505
+    /// # use tiledb::query::{Query, QueryBase, Subarray};
+    /// fn do_thing(query: QueryBase) {
+    ///    let subarray = query.subarray().unwrap();
+    ///    drop(query);
+    ///    let _ = subarray.ranges();
+    /// }
+    /// ```
     fn subarray<'query>(&'query self) -> TileDBResult<Subarray<'query>>
     where
         'ctx: 'query,
