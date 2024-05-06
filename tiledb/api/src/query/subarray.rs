@@ -49,12 +49,9 @@ impl<'ctx> Subarray<'ctx> {
     }
 
     /// Return all dimension ranges set on the query.
-    pub fn ranges(
-        &self,
-        schema: &'ctx Schema,
-    ) -> TileDBResult<Vec<Vec<Range>>> {
+    pub fn ranges(&self) -> TileDBResult<Vec<Vec<Range>>> {
         let c_subarray = self.capi();
-        let ndims = schema.domain()?.ndim()? as u32;
+        let ndims = self.schema.domain()?.ndim()? as u32;
         let mut ranges: Vec<Vec<Range>> = Vec::new();
         for dim_idx in 0..ndims {
             let mut nranges: u64 = 0;
@@ -67,7 +64,7 @@ impl<'ctx> Subarray<'ctx> {
                 )
             })?;
 
-            let dim = schema.domain()?.dimension(dim_idx)?;
+            let dim = self.schema.domain()?.dimension(dim_idx)?;
             let var_sized_dim = dim.is_var_sized()?;
 
             let mut dim_ranges: Vec<Range> = Vec::new();
@@ -357,9 +354,8 @@ mod tests {
             .finish_subarray()?
             .build();
 
-        let schema = query.base().array().schema()?;
         let subarray = query.subarray()?;
-        let ranges = subarray.ranges(&schema)?;
+        let ranges = subarray.ranges()?;
 
         // There's only one dimension with ranges
         assert_eq!(ranges.len(), 1);
