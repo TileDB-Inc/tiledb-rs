@@ -48,7 +48,10 @@ pub trait Query<'ctx> {
     where
         Self: Sized;
 
-    fn subarray(&self) -> TileDBResult<Subarray<'ctx>> {
+    fn subarray<'query>(&'query self) -> TileDBResult<Subarray<'query>>
+    where
+        'ctx: 'query,
+    {
         let ctx = self.base().context();
         let c_query = *self.base().raw;
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
