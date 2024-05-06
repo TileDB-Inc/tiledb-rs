@@ -10,10 +10,11 @@ use crate::array::CellValNum;
 use crate::datatype::arrow::ArrowPrimitiveTypeNative;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
-    Buffer, CellStructure, QueryBuffers, TypedQueryBuffers,
+    typed_query_buffers_go, Buffer, CellStructure, QueryBuffers,
+    TypedQueryBuffers,
 };
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
-use crate::{typed_query_buffers_go, Result as TileDBResult};
+use crate::Result as TileDBResult;
 
 impl<'data, C> TryFrom<RawReadOutput<'data, C>>
     for PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>

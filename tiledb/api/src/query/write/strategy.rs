@@ -13,6 +13,8 @@ use proptest::test_runner::TestRunner;
 use super::*;
 use crate::array::{ArrayType, CellValNum, SchemaData};
 use crate::datatype::LogicalType;
+use crate::fn_typed;
+use crate::query::buffer::typed_query_buffers_go;
 use crate::query::read::output::{
     FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
 };
@@ -20,7 +22,6 @@ use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
     ReadCallbackVarArg, TypedReadHandle,
 };
-use crate::{fn_typed, typed_query_buffers_go};
 
 /// Represents the write query input for a single field.
 /// For each variant, the outer Vec is the collection of records, and the interior is value in the
@@ -88,7 +89,8 @@ impl From<Vec<String>> for FieldData {
 
 impl From<&TypedRawReadOutput<'_>> for FieldData {
     fn from(value: &TypedRawReadOutput) -> Self {
-        typed_query_buffers_go!(value.buffers, DT, ref handle, {
+        typed_query_buffers_go!(value.buffers, LT, ref handle, {
+            type DT = <LT as LogicalType>::PhysicalType;
             let rr = RawReadOutput {
                 ncells: value.ncells,
                 input: handle.borrow(),

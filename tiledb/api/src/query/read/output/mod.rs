@@ -9,11 +9,11 @@ use crate::array::CellValNum;
 use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
-    Buffer, BufferMut, CellStructure, CellStructureMut, QueryBuffers,
-    QueryBuffersMut, TypedQueryBuffers,
+    typed_query_buffers_go, Buffer, BufferMut, CellStructure, CellStructureMut,
+    QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
 };
+use crate::Datatype;
 use crate::Result as TileDBResult;
-use crate::{typed_query_buffers_go, Datatype};
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
