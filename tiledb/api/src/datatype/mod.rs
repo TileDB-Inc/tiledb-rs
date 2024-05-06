@@ -713,22 +713,23 @@ macro_rules! fn_typed {
 
 #[macro_export]
 macro_rules! typed_enum {
-    ($src:ident < $range:ident > => $dst:ident) => {
-        typed_enum!($src <() enum $range> => $dst);
+    ($src:ident < $range:ident > => $(#[ $($attrs:meta),+ ])? $dst:ident) => {
+        typed_enum!($src <() enum $range> => $(#[ $($attrs),+ ])? $dst);
     };
-    ($src:ident < $g1:tt, $range:ident > => $dst:ident) => {
-        typed_enum!($src <($g1) enum $range> => $dst);
+    ($src:ident < $g1:tt, $range:ident > => $(#[ $($attrs:meta),+ ])? $dst:ident) => {
+        typed_enum!($src <($g1) enum $range> => $(#[ $($attrs),+ ])? $dst);
     };
-    ($src:ident < $g1:tt, $g2:tt, $range:ident > => $dst:ident) => {
-        typed_enum!($src <($g1, $g2) enum $range> => $dst);
+    ($src:ident < $g1:tt, $g2:tt, $range:ident > => $(#[ $($attrs:meta),+ ])? $dst:ident) => {
+        typed_enum!($src <($g1, $g2) enum $range> => $(#[ $($attrs),+ ])? $dst);
     };
-    ($src:ident < $g1:tt, $g2:tt, $g3:tt, $range:ident > => $dst:ident) => {
-        typed_enum!($src <($g1, $g2, $g3) enum $range> => $dst);
+    ($src:ident < $g1:tt, $g2:tt, $g3:tt, $range:ident > => $(#[ $($attrs:meta),+ ])? $dst:ident) => {
+        typed_enum!($src <($g1, $g2, $g3) enum $range> => $(#[ $($attrs),+ ])? $dst);
     };
-    ($src:ident < $g1:tt, $g2:tt, $g3:tt, $g4:tt, $range:ident > => $dst:ident) => {
-        typed_enum!($src <($g1, $g2, $g3, $g4) enum $range> => $dst);
+    ($src:ident < $g1:tt, $g2:tt, $g3:tt, $g4:tt, $range:ident > => $(#[ $($attrs:meta),+ ])? $dst:ident) => {
+        typed_enum!($src <($g1, $g2, $g3, $g4) enum $range> => $(#[ $($attrs),+ ])? $dst);
     };
-    ($src:ident < ($($generics:tt),*) enum $range:ident > => $dst:ident) => {
+    ($src:ident < ($($generics:tt),*) enum $range:ident > => $(#[ $($attrs:meta),+ ])? $dst:ident) => {
+        $(#[ $($attrs),+ ])?
         pub enum $dst<$($generics),*> {
             Int8($src<$($generics,)* <$crate::datatype::logical::Int8Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
             Int16($src<$($generics,)* <$crate::datatype::logical::Int16Type as $crate::datatype::logical::LogicalType>::PhysicalType>),
