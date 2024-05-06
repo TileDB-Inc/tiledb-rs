@@ -54,10 +54,11 @@ pub trait Query<'ctx> {
     ///
     /// ```compile_fail,E0505
     /// # use tiledb::query::{Query, QueryBase, Subarray};
-    /// fn do_thing(query: QueryBase) {
-    ///    let subarray = query.subarray().unwrap();
-    ///    drop(query);
-    ///    let _ = subarray.ranges();
+    /// fn invalid_use(query: QueryBase) {
+    ///     let subarray = query.subarray().unwrap();
+    ///     drop(query);
+    ///     /// The subarray should not be usable after the query is dropped.
+    ///     let _ = subarray.ranges();
     /// }
     /// ```
     fn subarray<'query>(&'query self) -> TileDBResult<Subarray<'query>>
