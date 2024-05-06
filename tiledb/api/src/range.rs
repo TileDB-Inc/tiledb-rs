@@ -151,28 +151,35 @@ impl MultiValueRange {
 macro_rules! multi_value_range_try_from {
     ($($V:ident : $U:ty),+) => {
         $(
-            impl TryFrom<(u32, Box<[$U]>, Box<[$U]>)> for MultiValueRange {
+            impl TryFrom<(CellValNum, Box<[$U]>, Box<[$U]>)> for MultiValueRange {
                 type Error = crate::error::Error;
-                fn try_from(value: (u32, Box<[$U]>, Box<[$U]>)) ->
+                fn try_from(value: (CellValNum, Box<[$U]>, Box<[$U]>)) ->
                         TileDBResult<MultiValueRange> {
-                    if value.0 < 2 || value.0 == u32::MAX {
-                        return Err(Error::InvalidArgument(anyhow!(
-                            "Length for MultiValueRange must be > 1 and < u32::MAX, not {}",
-                            value.0
-                        )))
-                    }
-                    if value.1.len() as u32 != value.0 {
+                    let cell_val_num = match value.0 {
+                        CellValNum::Fixed(cvn) if u32::from(cvn) == 1u32 => {
+                            return Err(Error::InvalidArgument(anyhow!(
+                                "MultiValueRange does not support CellValNum::Fixed(1)"
+                            )));
+                        }
+                        CellValNum::Fixed(cvn) => cvn.get(),
+                        CellValNum::Var => {
+                            return Err(Error::InvalidArgument(anyhow!(
+                                "MultiValueRange does not support CellValNum::Var"
+                            )));
+                        }
+                    };
+                    if value.1.len() as u32 != cell_val_num {
                         return Err(Error::InvalidArgument(anyhow!(
                             "Invalid range start length. Found {}, not {}",
                             value.1.len(),
-                            value.0
+                            cell_val_num
                         )))
                     }
-                    if value.2.len() as u32 != value.0 {
+                    if value.2.len() as u32 != cell_val_num {
                         return Err(Error::InvalidArgument(anyhow!(
                             "Invalid range end length. Found {}, not {}",
                             value.2.len(),
-                            value.0
+                            cell_val_num
                         )))
                     }
                     Ok(MultiValueRange::$V(value.1, value.2))
@@ -432,9 +439,9 @@ macro_rules! range_from_impl {
                 }
             }
 
-            impl TryFrom<(u32, Box<[$U]>, Box<[$U]>)> for Range {
+            impl TryFrom<(CellValNum, Box<[$U]>, Box<[$U]>)> for Range {
                 type Error = crate::error::Error;
-                fn try_from(value: (u32, Box<[$U]>, Box<[$U]>)) -> TileDBResult<Range> {
+                fn try_from(value: (CellValNum, Box<[$U]>, Box<[$U]>)) -> TileDBResult<Range> {
                     Ok(Range::Multi(MultiValueRange::try_from(value)?))
                 }
             }
@@ -545,19 +552,16 @@ impl TypedRange {
             let end = end_slice.to_vec().into_boxed_slice();
 
             match cell_val_num {
-                CellValNum::Fixed(cvn) => {
-                    if cvn.get() == 1 {
-                        Ok(TypedRange {
-                            datatype,
-                            range: Range::from(&[start[0], end[0]]),
-                        })
-                    } else {
-                        Ok(TypedRange {
-                            datatype,
-                            range: Range::try_from((cvn.get(), start, end))?,
-                        })
-                    }
+                CellValNum::Fixed(cvn) if u32::from(cvn) == 1u32 => {
+                    Ok(TypedRange {
+                        datatype,
+                        range: Range::from(&[start[0], end[0]]),
+                    })
                 }
+                CellValNum::Fixed(_) => Ok(TypedRange {
+                    datatype,
+                    range: Range::try_from((cell_val_num, start, end))?,
+                }),
                 CellValNum::Var => Ok(TypedRange {
                     datatype,
                     range: Range::from((start, end)),
@@ -693,10 +697,12 @@ mod tests {
                 proptest!(ProptestConfig::with_cases(8),
                         |(data in vec(any::<DT>(), 2..=32))| {
                     let len = data.len() as u32;
+                    let cell_val_num = CellValNum::try_from(len)?;
                     let start = data.clone().into_boxed_slice();
                     let end = start.clone();
 
-                    let range = Range::try_from((len, start.clone(), end.clone()))?;
+                    let range = Range::try_from(
+                        (cell_val_num, start.clone(), end.clone()))?;
                     test_clone(&range);
                     test_dimension_compatibility(&range, *datatype)?;
                     test_serialization_roundtrip(&range);
@@ -728,21 +734,22 @@ mod tests {
                     );
 
                     // Check TryFrom failures
-                    assert!(Range::try_from((0, start.clone(), end.clone())).is_err());
-                    assert!(Range::try_from((1, start.clone(), end.clone())).is_err());
-                    assert!(Range::try_from((u32::MAX, start.clone(), end.clone())).is_err());
+                    assert!(Range::try_from(
+                        (CellValNum::try_from(1)?, start.clone(), end.clone())).is_err());
+                    assert!(Range::try_from(
+                        (CellValNum::Var, start.clone(), end.clone())).is_err());
 
                     let start = data.clone().into_boxed_slice();
                     let mut end = data.clone();
                     end.push(data[0]);
                     let end = end.into_boxed_slice();
-                    assert!(Range::try_from((len, start, end)).is_err());
+                    assert!(Range::try_from((cell_val_num, start, end)).is_err());
 
                     let mut start = data.clone();
                     start.push(data[0]);
                     let start = start.into_boxed_slice();
                     let end = data.clone().into_boxed_slice();
-                    assert!(Range::try_from((len, start, end)).is_err());
+                    assert!(Range::try_from((cell_val_num, start, end)).is_err());
                 });
             });
         }
