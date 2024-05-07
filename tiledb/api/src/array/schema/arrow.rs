@@ -252,6 +252,11 @@ mod tests {
             }
             SchemaToArrowResult::Inexact(_) => {
                 /* this could have missing attributes, inexact attributes, something */
+                /*
+                 * NB: this is currently unreachable by schemata produced by `any::<SchemaData>()`
+                 * because the datatypes used for the attributes and dimensions are coincidentally
+                 * restricted to datatypes that have an exact match. SC-46813
+                 */
                 unimplemented!()
             }
         }
