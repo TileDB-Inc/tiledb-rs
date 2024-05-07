@@ -3,10 +3,31 @@ use arrow::datatypes::Schema as ArrowSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::array::{
-    ArrayType, CellOrder, DomainBuilder, Schema, SchemaBuilder, TileOrder,
+    ArrayType, AttributeBuilder, CellOrder, DimensionBuilder, DomainBuilder,
+    Schema, SchemaBuilder, TileOrder,
 };
 use crate::filter::arrow::FilterMetadata;
 use crate::{error::Error, Context, Result as TileDBResult};
+
+pub type FieldToArrowResult = crate::arrow::ArrowConversionResult<
+    arrow::datatypes::Field,
+    arrow::datatypes::Field,
+>;
+
+pub type FieldFromArrowResult<F> = crate::arrow::ArrowConversionResult<F, F>;
+
+pub type AttributeFromArrowResult<'ctx> =
+    FieldFromArrowResult<AttributeBuilder<'ctx>>;
+pub type DimensionFromArrowResult<'ctx> =
+    FieldFromArrowResult<DimensionBuilder<'ctx>>;
+
+pub type SchemaToArrowResult =
+    crate::arrow::ArrowConversionResult<ArrowSchema, ArrowSchema>;
+
+pub type SchemaFromArrowResult<'ctx> = crate::arrow::ArrowConversionResult<
+    SchemaBuilder<'ctx>,
+    SchemaBuilder<'ctx>,
+>;
 
 /// Represents required metadata to convert from an arrow schema
 /// to a TileDB schema.
@@ -46,22 +67,53 @@ impl SchemaMetadata {
     }
 }
 
-pub fn arrow_schema<'ctx>(
+pub fn to_arrow<'ctx>(
     tiledb: &'ctx Schema<'ctx>,
-) -> TileDBResult<Option<ArrowSchema>> {
+) -> TileDBResult<SchemaToArrowResult> {
     let mut builder =
         arrow::datatypes::SchemaBuilder::with_capacity(tiledb.nattributes()?);
 
+    let mut inexact = false;
+
     for d in 0..tiledb.domain()?.ndim()? {
         let dim = tiledb.domain()?.dimension(d)?;
-        let field = crate::array::dimension::arrow::arrow_field(&dim)?;
-        builder.push(field);
+        match crate::array::dimension::arrow::to_arrow(&dim)? {
+            FieldToArrowResult::None => {
+                /*
+                 * Missing a dimension is a problem, but it's mostly
+                 * a problem for if we try to invert back to tiledb.
+                 * See `from_arrow`.
+                 */
+                inexact = true;
+            }
+            FieldToArrowResult::Inexact(field) => {
+                inexact = true;
+                builder.push(field);
+            }
+            FieldToArrowResult::Exact(field) => {
+                builder.push(field);
+            }
+        };
     }
 
     for a in 0..tiledb.nattributes()? {
         let attr = tiledb.attribute(a)?;
-        let field = crate::array::attribute::arrow::arrow_field(&attr)?;
-        builder.push(field);
+        match crate::array::attribute::arrow::to_arrow(&attr)? {
+            FieldToArrowResult::None => {
+                /*
+                 * No way to represent this arrow field in tiledb.
+                 * TODO: some kind of inexactness details
+                 */
+                inexact = true;
+            }
+            FieldToArrowResult::Inexact(field) => {
+                inexact = true;
+                builder.push(field);
+            }
+            FieldToArrowResult::Exact(field) => {
+                builder.push(field);
+            }
+        };
     }
 
     let metadata = serde_json::ser::to_string(&SchemaMetadata::new(tiledb)?)
@@ -72,17 +124,21 @@ pub fn arrow_schema<'ctx>(
         .metadata_mut()
         .insert(String::from("tiledb"), metadata);
 
-    Ok(Some(builder.finish()))
+    Ok(if inexact {
+        SchemaToArrowResult::Inexact(builder.finish())
+    } else {
+        SchemaToArrowResult::Exact(builder.finish())
+    })
 }
 
 /// Construct a TileDB schema from an Arrow schema.
 /// A TileDB schema must have domain and dimension details.
 /// These are expected to be in the schema `metadata` beneath the key `tiledb`.
 /// This metadata is expected to be a JSON object with the following fields:
-pub fn tiledb_schema<'ctx>(
+pub fn from_arrow<'ctx>(
     context: &'ctx Context,
     schema: &ArrowSchema,
-) -> TileDBResult<Option<SchemaBuilder<'ctx>>> {
+) -> TileDBResult<SchemaFromArrowResult<'ctx>> {
     let metadata = match schema.metadata().get("tiledb") {
         Some(metadata) => serde_json::from_str::<SchemaMetadata>(metadata)
             .map_err(|e| {
@@ -91,7 +147,7 @@ pub fn tiledb_schema<'ctx>(
                     anyhow!(e),
                 )
             })?,
-        None => return Ok(None),
+        None => return Ok(SchemaFromArrowResult::None),
     };
 
     if schema.fields.len() < metadata.ndim {
@@ -105,15 +161,28 @@ pub fn tiledb_schema<'ctx>(
     let dimensions = schema.fields.iter().take(metadata.ndim);
     let attributes = schema.fields.iter().skip(metadata.ndim);
 
+    let mut inexact: bool = false;
+
     let domain = {
         let mut b = DomainBuilder::new(context)?;
         for f in dimensions {
-            if let Some(dimension) =
-                crate::array::dimension::arrow::tiledb_dimension(context, f)?
-            {
-                b = b.add_dimension(dimension.build())?;
-            } else {
-                return Ok(None);
+            match crate::array::dimension::arrow::from_arrow(context, f)? {
+                DimensionFromArrowResult::None => {
+                    /*
+                     * In contrast to attributes (see below) this
+                     * probably represents a significant problem
+                     * because it completely changes the way arrays using
+                     * this schema are interacted with
+                     */
+                    return Ok(SchemaFromArrowResult::None);
+                }
+                DimensionFromArrowResult::Inexact(dimension) => {
+                    inexact = true;
+                    b = b.add_dimension(dimension.build())?;
+                }
+                DimensionFromArrowResult::Exact(dimension) => {
+                    b = b.add_dimension(dimension.build())?;
+                }
             }
         }
         b.build()
@@ -129,16 +198,29 @@ pub fn tiledb_schema<'ctx>(
         .nullity_filters(&metadata.nullity_filters.create(context)?)?;
 
     for f in attributes {
-        if let Some(attr) =
-            crate::array::attribute::arrow::tiledb_attribute(context, f)?
-        {
-            b = b.add_attribute(attr.build())?;
-        } else {
-            return Ok(None);
+        match crate::array::attribute::arrow::from_arrow(context, f)? {
+            AttributeFromArrowResult::None => {
+                /*
+                 * No way to represent this arrow field in tiledb.
+                 * TODO: some kind of inexactness details
+                 */
+                inexact = true;
+            }
+            AttributeFromArrowResult::Inexact(attr) => {
+                inexact = true;
+                b = b.add_attribute(attr.build())?;
+            }
+            AttributeFromArrowResult::Exact(attr) => {
+                b = b.add_attribute(attr.build())?;
+            }
         }
     }
 
-    Ok(Some(b))
+    Ok(if inexact {
+        SchemaFromArrowResult::Inexact(b)
+    } else {
+        SchemaFromArrowResult::Exact(b)
+    })
 }
 
 #[cfg(test)]
@@ -148,24 +230,37 @@ mod tests {
     use crate::Factory;
     use proptest::prelude::*;
 
-    #[test]
-    fn test_tiledb_arrow_tiledb() -> TileDBResult<()> {
-        let c: Context = Context::new()?;
+    fn do_to_arrow(tdb_in: SchemaData) {
+        let c: Context = Context::new().unwrap();
 
-        /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in any::<SchemaData>())| {
-            let tdb_in = tdb_in.create(&c)
-                .expect("Error constructing arbitrary tiledb attribute");
-            if let Some(arrow_schema) = arrow_schema(&tdb_in)
-                    .expect("Error reading tiledb schema") {
-                // convert back to TileDB attribute
-                let tdb_out = tiledb_schema(&c, &arrow_schema)?
-                    .expect("Arrow schema did not invert")
-                    .build().expect("Error creating TileDB schema");
-                assert_eq!(tdb_in, tdb_out);
+        let tdb_in = tdb_in
+            .create(&c)
+            .expect("Error constructing arbitrary tiledb attribute");
+
+        let arrow_schema = to_arrow(&tdb_in).unwrap();
+        match arrow_schema {
+            SchemaToArrowResult::None => unreachable!(),
+            SchemaToArrowResult::Exact(arrow_schema) => {
+                /* this should invert entirely */
+                let tdb_out = from_arrow(&c, &arrow_schema).unwrap();
+                if let SchemaFromArrowResult::Exact(tdb_out) = tdb_out {
+                    let tdb_out = tdb_out.build().unwrap();
+                    assert_eq!(tdb_in, tdb_out);
+                } else {
+                    unreachable!("Exact schema did not invert")
+                }
             }
-        });
+            SchemaToArrowResult::Inexact(arrow_schema) => {
+                /* this could have missing attributes, inexact attributes, something */
+                unimplemented!()
+            }
+        }
+    }
 
-        Ok(())
+    proptest! {
+        #[test]
+        fn test_to_arrow(tdb_in in any::<SchemaData>()) {
+            do_to_arrow(tdb_in)
+        }
     }
 }

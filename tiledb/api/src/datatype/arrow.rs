@@ -1,7 +1,9 @@
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use arrow::datatypes::{ArrowNativeTypeOp, ArrowPrimitiveType};
+use arrow::datatypes::{
+    ArrowNativeTypeOp, ArrowPrimitiveType, Field, TimeUnit,
+};
 
 use crate::array::CellValNum;
 use crate::Datatype;
@@ -50,65 +52,134 @@ impl ArrowPrimitiveTypeNative for f64 {
     type ArrowPrimitiveType = arrow::datatypes::Float64Type;
 }
 
-/// For a TileDB type and cell val num, returns a compatible Arrow type.
-/// An arrow type is compatible if:
-/// 1) the bits of the primitive values of the tiledb type can
-///    be interpreted as sound values of the arrow type.
-/// 2) it carries the same number of primitive values as is expressed by the cell val num.
-///
-/// In general, this means that:
-/// 1) a cell val num of 1 maps to an arrow primitive or date/time type,
-/// 2) a cell val num of greater than 1 maps to an arrow fixed size list,
-/// 3) a variable cell val num maps to an arrow list .
-///
-/// There are exceptions, such as (Datatype::Utf8, CellValNum::Var) mapping
-/// to the arrow Utf8 type which is always variable-length.
-///
-/// This function is not always invertible as there are some date/time types in tiledb
-/// which have no corresponding bit width or precision in arrow.
-pub fn arrow_type_physical(
-    tdb_dt: &Datatype,
+/*
+pub trait ArrowLogicalType: LogicalType {
+    type ArrowPrimitiveType: ArrowPrimitiveType;
+}
+
+impl ArrowLogicalType for Int8Type {
+    type ArrowPrimitiveType = arrow::datatypes::Int8Type;
+}
+
+impl ArrowLogicalType for Int16Type {
+    type ArrowPrimitiveType = arrow::datatypes::Int16Type;
+}
+
+impl ArrowLogicalType for Int32Type {
+    type ArrowPrimitiveType = arrow::datatypes::Int32Type;
+}
+
+impl ArrowLogicalType for Int64Type {
+    type ArrowPrimitiveType = arrow::datatypes::Int64Type;
+}
+
+impl ArrowLogicalType for UInt8Type {
+    type ArrowPrimitiveType = arrow::datatypes::UInt8Type;
+}
+
+impl ArrowLogicalType for UInt16Type {
+    type ArrowPrimitiveType = arrow::datatypes::UInt16Type;
+}
+
+impl ArrowLogicalType for UInt32Type {
+    type ArrowPrimitiveType = arrow::datatypes::UInt32Type;
+}
+
+impl ArrowLogicalType for UInt64Type {
+    type ArrowPrimitiveType = arrow::datatypes::UInt64Type;
+}
+*/
+
+/// Represents tiledb (`Datatype`, `CellValNum`) compatibility for an arrow `DataType`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DatatypeToArrowResult {
+    /// There is an exact logical match for the tiledb `Datatype`.
+    /// The individual values of the respective types have the same bit width
+    /// and are meant to be interpreted the same way.
+    ///
+    /// In general, this means that:
+    /// 1. a cell val num of 1 maps to an arrow primitive or date/time type.
+    /// 2. a cell val num of greater than 1 maps to an arrow fixed size list.
+    /// 3. a variable cell val num maps to an arrow list.
+    ///
+    /// There are exceptions, such as `(Datatype::Utf8, CellValNum::Var)`
+    /// mapping to `arrow::datatypes::DataType::Utf8`, which is always variable-length.
+    ///
+    /// ```
+    /// use arrow::datatypes::DataType as ArrowDT;
+    /// use tiledb::{array::CellValNum, datatype::arrow::ArrowForDatatype};
+    /// assert_eq!(DatatypeFromArrow::Exact(ArrowDT::Utf8), DatatypeFromArrow::from((Datatype::Utf8, CellVarNum::Var)));
+    /// ```
+    Exact(arrow::datatypes::DataType),
+    /// There is no corresponding logical data type, but a phyiscal data type
+    /// with the same bit width can be used to represent primitive values,
+    /// and there is a trivial or cheap conersion between value structural data.
+    Inexact(arrow::datatypes::DataType),
+}
+
+impl DatatypeToArrowResult {
+    pub fn is_inexact(&self) -> bool {
+        matches!(self, Self::Inexact(_))
+    }
+
+    pub fn is_exact(&self) -> bool {
+        matches!(self, Self::Exact(_))
+    }
+
+    pub fn into_inner(self) -> arrow::datatypes::DataType {
+        match self {
+            Self::Exact(arrow) => arrow,
+            Self::Inexact(arrow) => arrow,
+        }
+    }
+}
+
+pub fn to_arrow(
+    datatype: &Datatype,
     cell_val_num: CellValNum,
-) -> arrow::datatypes::DataType {
+) -> DatatypeToArrowResult {
     use arrow::datatypes::DataType as ADT;
-    use arrow::datatypes::TimeUnit;
+
+    type Res = DatatypeToArrowResult;
 
     match cell_val_num {
         CellValNum::Fixed(nz) if nz.get() == 1 => {
-            match tdb_dt {
-                Datatype::Int8 | Datatype::Char => ADT::Int8,
-                Datatype::Int16 => ADT::Int16,
-                Datatype::Int32 => ADT::Int32,
-                Datatype::Int64 => ADT::Int64,
-                Datatype::UInt8
-                | Datatype::StringAscii
-                | Datatype::Any
-                | Datatype::Blob
-                | Datatype::Boolean
-                | Datatype::GeometryWkb
-                | Datatype::GeometryWkt => ADT::UInt8,
-                Datatype::UInt16 => ADT::UInt16,
-                Datatype::UInt32 => ADT::UInt32,
-                Datatype::UInt64 => ADT::UInt64,
-                Datatype::Float32 => ADT::Float32,
-                Datatype::Float64 => ADT::Float64,
-                Datatype::StringUtf8 => ADT::UInt8,
-                Datatype::StringUtf16 => ADT::UInt16,
-                Datatype::StringUtf32 => ADT::UInt32,
-                Datatype::StringUcs2 => ADT::UInt16,
-                Datatype::StringUcs4 => ADT::UInt32,
+            match datatype {
+                Datatype::Int8 => Res::Exact(ADT::Int8),
+                Datatype::Int16 => Res::Exact(ADT::Int16),
+                Datatype::Int32 => Res::Exact(ADT::Int32),
+                Datatype::Int64 => Res::Exact(ADT::Int64),
+                Datatype::UInt8 => Res::Exact(ADT::UInt8),
+                Datatype::UInt16 => Res::Exact(ADT::UInt16),
+                Datatype::UInt32 => Res::Exact(ADT::UInt32),
+                Datatype::UInt64 => Res::Exact(ADT::UInt64),
+                Datatype::Float32 => Res::Exact(ADT::Float32),
+                Datatype::Float64 => Res::Exact(ADT::Float64),
                 Datatype::DateTimeSecond => {
-                    ADT::Timestamp(TimeUnit::Second, None)
+                    Res::Exact(ADT::Timestamp(TimeUnit::Second, None))
                 }
                 Datatype::DateTimeMillisecond => {
-                    ADT::Timestamp(TimeUnit::Millisecond, None)
+                    Res::Exact(ADT::Timestamp(TimeUnit::Millisecond, None))
                 }
                 Datatype::DateTimeMicrosecond => {
-                    ADT::Timestamp(TimeUnit::Microsecond, None)
+                    Res::Exact(ADT::Timestamp(TimeUnit::Microsecond, None))
                 }
                 Datatype::DateTimeNanosecond => {
-                    ADT::Timestamp(TimeUnit::Nanosecond, None)
+                    Res::Exact(ADT::Timestamp(TimeUnit::Nanosecond, None))
                 }
+                Datatype::TimeMicrosecond => {
+                    Res::Exact(ADT::Time64(TimeUnit::Microsecond))
+                }
+                Datatype::TimeNanosecond => {
+                    Res::Exact(ADT::Time64(TimeUnit::Nanosecond))
+                }
+                Datatype::Char => Res::Inexact(ADT::Int8),
+                Datatype::StringAscii => Res::Inexact(ADT::UInt8),
+                Datatype::StringUtf8 => Res::Inexact(ADT::UInt8),
+                Datatype::StringUtf16 => Res::Inexact(ADT::UInt16),
+                Datatype::StringUtf32 => Res::Inexact(ADT::UInt32),
+                Datatype::StringUcs2 => Res::Inexact(ADT::UInt16),
+                Datatype::StringUcs4 => Res::Inexact(ADT::UInt32),
                 Datatype::DateTimeDay
                 | Datatype::DateTimeYear
                 | Datatype::DateTimeMonth
@@ -128,170 +199,264 @@ pub fn arrow_type_physical(
                     // these are signed 64-bit integers in tiledb,
                     // arrow datetypes with the same precision are 32 bits
                     // (or there is no equivalent time unit)
-                    ADT::Int64
+                    Res::Inexact(ADT::Int64)
                 }
-                Datatype::TimeMicrosecond => ADT::Time64(TimeUnit::Microsecond),
-                Datatype::TimeNanosecond => ADT::Time64(TimeUnit::Nanosecond),
+                Datatype::Blob
+                | Datatype::Boolean
+                | Datatype::GeometryWkb
+                | Datatype::GeometryWkt => Res::Inexact(ADT::UInt8),
+                Datatype::Any => {
+                    // note that this likely is unreachable if the tiledb API is used
+                    // correctly, as `Datatype::Any` requires `CellValNum::Var`
+                    Res::Inexact(ADT::UInt8)
+                }
             }
         }
         CellValNum::Fixed(nz) => match i32::try_from(nz.get()) {
             Ok(nz) => {
-                if matches!(tdb_dt, Datatype::Blob) {
-                    ADT::FixedSizeBinary(nz)
+                if matches!(datatype, Datatype::Blob) {
+                    Res::Exact(ADT::FixedSizeBinary(nz))
                 } else {
-                    let item =
-                        arrow_type_physical(tdb_dt, CellValNum::single());
-                    ADT::FixedSizeList(
-                        Arc::new(arrow::datatypes::Field::new_list_field(
-                            item, false,
+                    match to_arrow(&datatype, CellValNum::single()) {
+                        Res::Exact(item) => Res::Exact(ADT::FixedSizeList(
+                            Arc::new(arrow::datatypes::Field::new_list_field(
+                                item, false,
+                            )),
+                            nz,
                         )),
-                        nz,
-                    )
+                        Res::Inexact(item) => Res::Inexact(ADT::FixedSizeList(
+                            Arc::new(arrow::datatypes::Field::new_list_field(
+                                item, false,
+                            )),
+                            nz,
+                        )),
+                    }
                 }
             }
             Err(_) => unimplemented!(),
         },
-        CellValNum::Var => match tdb_dt {
-            Datatype::StringAscii | Datatype::StringUtf8 => ADT::Utf8,
-            Datatype::Blob => ADT::Binary,
-            dt => {
-                let item = arrow_type_physical(dt, CellValNum::single());
-                ADT::new_list(item, false)
+        CellValNum::Var => {
+            if let Datatype::Blob = datatype {
+                Res::Exact(ADT::LargeBinary)
+            } else {
+                /*
+                 * TODO:
+                 * We could, and probably ought to, treat Utf8 in a similar fashion
+                 * to LargeBinary as above. However, arrow (in contrast to tiledb)
+                 * actually does to a UTF-8 integrity check. Until tiledb also
+                 * does that, and we update our test strategies to generate
+                 * valid UTF-8 sequences, we cannot do so.
+                 */
+                match to_arrow(&datatype, CellValNum::single()) {
+                    Res::Exact(item) => {
+                        let item = Arc::new(Field::new_list_field(item, false));
+                        Res::Exact(ADT::LargeList(item))
+                    }
+                    Res::Inexact(item) => {
+                        let item = Arc::new(Field::new_list_field(item, false));
+                        Res::Inexact(ADT::LargeList(item))
+                    }
+                }
             }
-        },
+        }
     }
 }
 
-/// For an Arrow type, returns a compatible TileDB type and cell val num.
-/// A type is compatible if:
-/// 1) the bits of the primitive values of the arrow type can
-///    be interpreted as sound values of the tiledb type.
-/// 2) it carries the same number of primitive values.
-///
-/// This function is not always invertible.
-/// TODO: name some exceptions
-pub fn tiledb_type_physical(
-    arrow_dt: &arrow::datatypes::DataType,
-) -> Option<(Datatype, CellValNum)> {
-    use arrow::datatypes::DataType as ADT;
-    use arrow::datatypes::TimeUnit;
+/// Represents arrow type compatibility for a tiledb `Datatype` paired with a `CellValNum`.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum DatatypeFromArrowResult {
+    /// There is no reasonable matching type in tiledb.
+    None,
+    /// There is an exact logical match for the arrow `DataType`.
+    /// The individual values of the respective types have the same bit width
+    /// and are meant to be interpreted the same way.
+    Exact(Datatype, CellValNum),
+    /// There is no corresponding logical data type, but a phyiscal data type
+    /// with the same bit width can be used to represent primitive values,
+    /// and there is a trivial or cheap conversion between value structural data.
+    Inexact(Datatype, CellValNum),
+}
 
-    Some(match arrow_dt {
-        ADT::Null => return None,
-        ADT::Int8 => (Datatype::Int8, CellValNum::single()),
-        ADT::Int16 => (Datatype::Int16, CellValNum::single()),
-        ADT::Int32 => (Datatype::Int32, CellValNum::single()),
-        ADT::Int64 => (Datatype::Int64, CellValNum::single()),
-        ADT::UInt8 => (Datatype::UInt8, CellValNum::single()),
-        ADT::UInt16 => (Datatype::UInt16, CellValNum::single()),
-        ADT::UInt32 => (Datatype::UInt32, CellValNum::single()),
-        ADT::UInt64 => (Datatype::UInt64, CellValNum::single()),
+impl DatatypeFromArrowResult {
+    pub fn is_inexact(&self) -> bool {
+        matches!(self, Self::Inexact(_, _))
+    }
+
+    pub fn is_exact(&self) -> bool {
+        matches!(self, Self::Exact(_, _))
+    }
+
+    pub fn ok(self) -> Option<(Datatype, CellValNum)> {
+        match self {
+            Self::None => None,
+            Self::Exact(dt, cv) => Some((dt, cv)),
+            Self::Inexact(dt, cv) => Some((dt, cv)),
+        }
+    }
+}
+
+pub fn from_arrow(
+    value: &arrow::datatypes::DataType,
+) -> DatatypeFromArrowResult {
+    use arrow::datatypes::DataType as ADT;
+
+    type Res = DatatypeFromArrowResult;
+
+    match value {
+        ADT::Null => Res::None,
+        ADT::Int8 => Res::Exact(Datatype::Int8, CellValNum::single()),
+        ADT::Int16 => Res::Exact(Datatype::Int16, CellValNum::single()),
+        ADT::Int32 => Res::Exact(Datatype::Int32, CellValNum::single()),
+        ADT::Int64 => Res::Exact(Datatype::Int64, CellValNum::single()),
+        ADT::UInt8 => Res::Exact(Datatype::UInt8, CellValNum::single()),
+        ADT::UInt16 => Res::Exact(Datatype::UInt16, CellValNum::single()),
+        ADT::UInt32 => Res::Exact(Datatype::UInt32, CellValNum::single()),
+        ADT::UInt64 => Res::Exact(Datatype::UInt64, CellValNum::single()),
         ADT::Float16 => {
             /* tiledb has no f16 type, so use u16 as a 2-byte container */
-            (Datatype::UInt16, CellValNum::single())
+            Res::Inexact(Datatype::UInt16, CellValNum::single())
         }
-        ADT::Float32 => (Datatype::Float32, CellValNum::single()),
-        ADT::Float64 => (Datatype::Float64, CellValNum::single()),
+        ADT::Float32 => Res::Exact(Datatype::Float32, CellValNum::single()),
+        ADT::Float64 => Res::Exact(Datatype::Float64, CellValNum::single()),
         ADT::Decimal128(_, _) | ADT::Decimal256(_, _) => {
             /*
              * We could map this to fixed-length blob but probably
              * better to do a proper 128 or 256 bit thing in core
              * so we avoid making mistakes here
              */
-            return None;
+            Res::None
         }
         ADT::Timestamp(TimeUnit::Second, _) => {
-            (Datatype::DateTimeSecond, CellValNum::single())
+            Res::Exact(Datatype::DateTimeSecond, CellValNum::single())
         }
         ADT::Timestamp(TimeUnit::Millisecond, _) => {
-            (Datatype::DateTimeMillisecond, CellValNum::single())
+            Res::Exact(Datatype::DateTimeMillisecond, CellValNum::single())
         }
         ADT::Timestamp(TimeUnit::Microsecond, _) => {
-            (Datatype::DateTimeMicrosecond, CellValNum::single())
+            Res::Exact(Datatype::DateTimeMicrosecond, CellValNum::single())
         }
         ADT::Timestamp(TimeUnit::Nanosecond, _) => {
-            (Datatype::DateTimeNanosecond, CellValNum::single())
+            Res::Exact(Datatype::DateTimeNanosecond, CellValNum::single())
         }
-        ADT::Date32 | ADT::Time32(_) => (Datatype::Int32, CellValNum::single()),
-        ADT::Date64 => (Datatype::DateTimeMillisecond, CellValNum::single()),
+        ADT::Date32 | ADT::Time32(_) => {
+            Res::Inexact(Datatype::Int32, CellValNum::single())
+        }
+        ADT::Date64 => {
+            Res::Inexact(Datatype::DateTimeMillisecond, CellValNum::single())
+        }
         ADT::Time64(TimeUnit::Microsecond) => {
-            (Datatype::TimeMicrosecond, CellValNum::single())
+            Res::Exact(Datatype::TimeMicrosecond, CellValNum::single())
         }
         ADT::Time64(TimeUnit::Nanosecond) => {
-            (Datatype::TimeNanosecond, CellValNum::single())
+            Res::Exact(Datatype::TimeNanosecond, CellValNum::single())
         }
-        ADT::Time64(_) => (Datatype::UInt64, CellValNum::single()),
+        ADT::Time64(_) => Res::Inexact(Datatype::UInt64, CellValNum::single()),
         ADT::Boolean => {
             /* this may be bit-packed by arrow but is not by tiledb */
-            return None;
+            Res::None
         }
         ADT::Duration(_) | ADT::Interval(_) => {
             /* these are scalars but the doc does not specify bit width */
-            return None;
+            Res::None
         }
-        ADT::Binary => (Datatype::Blob, CellValNum::Var),
-        ADT::FixedSizeBinary(len) => (
-            Datatype::Blob,
-            match NonZeroU32::new(*len as u32) {
-                None => return None,
-                Some(nz) => CellValNum::Fixed(nz),
+        ADT::LargeBinary => Res::Exact(Datatype::Blob, CellValNum::Var),
+        ADT::FixedSizeBinary(len) => match i32::try_from(*len) {
+            Ok(len) => match NonZeroU32::new(len as u32) {
+                None => Res::None,
+                Some(nz) => Res::Exact(Datatype::Blob, CellValNum::Fixed(nz)),
             },
-        ),
+            Err(_) => Res::None,
+        },
         ADT::FixedSizeList(ref item, ref len) => {
-            if item.data_type().primitive_width().is_none() {
+            if item.is_nullable() {
+                // no way to represent null values within a cell
+                Res::None
+            } else if item.data_type().primitive_width().is_none() {
                 /*
                  * probably there are some cases we can handle,
                  * but let's omit for now
                  */
-                return None;
-            }
-            if let Some((dt, item_cell_val)) =
-                tiledb_type_physical(item.data_type())
-            {
+                Res::None
+            } else {
                 let len = match NonZeroU32::new(*len as u32) {
-                    None => return None,
+                    None => return Res::None,
                     Some(nz) => nz,
                 };
-                match item_cell_val {
-                    CellValNum::Fixed(nz) => match nz.checked_mul(len) {
-                        None => return None,
-                        Some(nz) => (dt, CellValNum::Fixed(nz)),
-                    },
-                    CellValNum::Var => (dt, CellValNum::Var),
+                match from_arrow(item.data_type()) {
+                    Res::None => Res::None,
+                    Res::Inexact(item, item_cell_val) => {
+                        let cell_val_num = match item_cell_val {
+                            CellValNum::Fixed(nz) => {
+                                match nz.checked_mul(len) {
+                                    None => return Res::None,
+                                    Some(nz) => CellValNum::Fixed(nz),
+                                }
+                            }
+                            CellValNum::Var => CellValNum::Var,
+                        };
+                        Res::Inexact(item, cell_val_num)
+                    }
+                    Res::Exact(item, item_cell_val) => {
+                        let cell_val_num = match item_cell_val {
+                            CellValNum::Fixed(nz) => {
+                                match nz.checked_mul(len) {
+                                    None => return Res::None,
+                                    Some(nz) => CellValNum::Fixed(nz),
+                                }
+                            }
+                            CellValNum::Var => CellValNum::Var,
+                        };
+                        Res::Exact(item, cell_val_num)
+                    }
                 }
-            } else {
-                return None;
             }
         }
-        ADT::Utf8 => (Datatype::StringUtf8, CellValNum::Var),
-        ADT::List(ref item) => {
-            if item.data_type().primitive_width().is_none() {
+        ADT::LargeUtf8 => {
+            /*
+             * NB: arrow checks for valid UTF-8 but tiledb does not.
+             * This is not an exact conversion for that reason
+             * because we cannot guarantee invertibility.
+             */
+            Res::Inexact(Datatype::StringUtf8, CellValNum::Var)
+        }
+        ADT::LargeList(ref item) => {
+            if item.is_nullable() {
+                // no way to represent null values within a cell
+                Res::None
+            } else if item.data_type().primitive_width().is_none() {
                 /*
                  * probably there are some cases we can handle,
                  * but let's omit for now
                  */
-                return None;
-            }
-            if let Some((dt, item_cell_val)) =
-                tiledb_type_physical(item.data_type())
-            {
-                match item_cell_val {
-                    CellValNum::Fixed(_) => {
-                        /* whatever the cell val num may be, we need one level of offsets */
-                        (dt, CellValNum::Var)
+                Res::None
+            } else {
+                match from_arrow(item.data_type()) {
+                    Res::None => Res::None,
+                    Res::Inexact(item, CellValNum::Fixed(nz))
+                        if nz.get() == 1 =>
+                    {
+                        Res::Inexact(item, CellValNum::Var)
                     }
-                    CellValNum::Var => {
-                        /* we will not be able to do two levels of offsets */
-                        return None;
+                    Res::Exact(item, CellValNum::Fixed(nz))
+                        if nz.get() == 1 =>
+                    {
+                        Res::Exact(item, CellValNum::Var)
+                    }
+                    _ => {
+                        /*
+                         * We probably *can* fill in more cases, but either:
+                         * 1) we need to do work to keep the fixed cell val num around, doable but
+                         *    why bother right now
+                         * 2) we need to keep multiple levels of offsets, not supported right now
+                         */
+                        Res::None
                     }
                 }
-            } else {
-                return None;
             }
         }
-        ADT::LargeBinary | ADT::LargeUtf8 | ADT::LargeList(_) => {
-            /* cell val num is only 32 bites, there is no way to represent 64-bit offsets */
-            return None;
+        ADT::Binary | ADT::Utf8 | ADT::List(_) => {
+            /* offsets are 64 bits, these types use 32-bit offsets */
+            Res::None
         }
         ADT::Struct(_)
         | ADT::Union(_, _)
@@ -299,9 +464,9 @@ pub fn tiledb_type_physical(
         | ADT::Map(_, _)
         | ADT::RunEndEncoded(_, _) => {
             /* complex types are not implemented */
-            return None;
+            Res::None
         }
-    })
+    }
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]
@@ -344,8 +509,9 @@ pub mod strategy {
     pub fn any_datatype(
         params: FieldParameters,
     ) -> impl Strategy<Value = arrow::datatypes::DataType> {
-        use arrow::datatypes::DataType as ADT;
-        use arrow::datatypes::{Field, Fields, IntervalUnit, TimeUnit};
+        use arrow::datatypes::{
+            DataType as ADT, Field, Fields, IntervalUnit, TimeUnit,
+        };
 
         let leaf = prop_oneof![
             Just(ADT::Null),
@@ -451,74 +617,340 @@ pub mod tests {
     use super::*;
     use proptest::prelude::*;
 
+    fn do_to_arrow_single(tdb_dt: Datatype) {
+        let cell_val_num = CellValNum::single();
+        let arrow_dt = to_arrow(&tdb_dt, cell_val_num);
+        match arrow_dt {
+            DatatypeToArrowResult::Inexact(arrow) => {
+                assert!(arrow.is_primitive());
+                let arrow_size = arrow.primitive_width().unwrap() as u64;
+                assert_eq!(
+                    tdb_dt.size(),
+                    arrow_size,
+                    "to_arrow({}, {:?}) = {}",
+                    tdb_dt,
+                    cell_val_num,
+                    arrow
+                );
+
+                let tdb_out = from_arrow(&arrow);
+                let (tdb_out, cell_val_num_out) = tdb_out.ok().unwrap();
+
+                /* the datatype should not match exactly but it must be the same size */
+                assert_ne!(tdb_dt, tdb_out);
+                assert_eq!(tdb_dt.size(), tdb_out.size());
+                assert_eq!(cell_val_num, cell_val_num_out);
+            }
+            DatatypeToArrowResult::Exact(arrow) => {
+                assert!(arrow.is_primitive());
+                let arrow_size = arrow.primitive_width().unwrap() as u64;
+                assert_eq!(
+                    tdb_dt.size(),
+                    arrow_size,
+                    "to_arrow({}, {:?}) = {}",
+                    tdb_dt,
+                    cell_val_num,
+                    arrow
+                );
+
+                let tdb_out = from_arrow(&arrow);
+                if let DatatypeFromArrowResult::Exact(
+                    tdb_out,
+                    cell_val_num_out,
+                ) = tdb_out
+                {
+                    /* the datatype must match exactly */
+                    assert_eq!(tdb_dt, tdb_out);
+                    assert_eq!(cell_val_num, cell_val_num_out);
+                } else {
+                    unreachable!(
+                        "Exact conversion did not invert, found {:?}",
+                        tdb_out
+                    )
+                }
+            }
+        }
+    }
+
+    fn do_to_arrow_nonvar(tdb_dt: Datatype) {
+        let fixed_len_in = 32u32;
+        let cell_val_num = CellValNum::try_from(fixed_len_in).unwrap();
+        let arrow_dt = to_arrow(&tdb_dt, cell_val_num);
+
+        use arrow::datatypes::DataType as ADT;
+        match arrow_dt {
+            DatatypeToArrowResult::Inexact(arrow) => {
+                match arrow {
+                    ADT::FixedSizeList(ref item, fixed_len_out) => {
+                        let item_expect =
+                            to_arrow(&tdb_dt, CellValNum::single());
+                        if let DatatypeToArrowResult::Inexact(item_expect) =
+                            item_expect
+                        {
+                            assert_eq!(item_expect, *item.data_type());
+                            assert_eq!(fixed_len_in, fixed_len_out as u32);
+                        } else {
+                            unreachable!(
+                                "Expected inexact item match, found {:?}",
+                                item_expect
+                            )
+                        }
+                    }
+                    arrow => unreachable!(
+                        "Expected FixedSizeList for inexact match but found {}",
+                        arrow
+                    ),
+                }
+
+                /* invertibility */
+                let tdb_out = from_arrow(&arrow);
+                let (tdb_out, cell_val_num_out) = tdb_out.ok().unwrap();
+
+                /* inexact match will not be eq, but must be the same size */
+                assert_eq!(tdb_dt.size(), tdb_out.size());
+                assert_eq!(cell_val_num, cell_val_num_out);
+            }
+            DatatypeToArrowResult::Exact(arrow) => {
+                match arrow {
+                    ADT::FixedSizeList(ref item, fixed_len_out) => {
+                        let item_expect =
+                            to_arrow(&tdb_dt, CellValNum::single());
+                        if let DatatypeToArrowResult::Exact(item_expect) =
+                            item_expect
+                        {
+                            assert_eq!(item_expect, *item.data_type());
+                            assert_eq!(fixed_len_in, fixed_len_out as u32);
+                        } else {
+                            unreachable!(
+                                "Expected exact item match, found {:?}",
+                                item_expect
+                            )
+                        }
+                    }
+                    ADT::FixedSizeBinary(fixed_len_out) => {
+                        assert_eq!(tdb_dt, Datatype::Blob);
+                        assert_eq!(fixed_len_in, fixed_len_out as u32);
+                    }
+                    adt => unreachable!(
+                        "to_arrow({}, {:?}) = {}",
+                        tdb_dt, cell_val_num, adt
+                    ),
+                }
+
+                /* invertibility */
+                let tdb_out = from_arrow(&arrow);
+                if let DatatypeFromArrowResult::Exact(
+                    tdb_out,
+                    cell_val_num_out,
+                ) = tdb_out
+                {
+                    assert_eq!(tdb_dt, tdb_out);
+                    assert_eq!(cell_val_num, cell_val_num_out);
+                } else {
+                    unreachable!(
+                        "Arrow datatype did not invert, found {:?}",
+                        tdb_out
+                    )
+                }
+            }
+        }
+    }
+
+    fn do_to_arrow_var(tdb_dt: Datatype) {
+        let cell_val_num = CellValNum::Var;
+        let arrow_dt = to_arrow(&tdb_dt, cell_val_num);
+
+        use arrow::datatypes::DataType as ADT;
+        match arrow_dt {
+            DatatypeToArrowResult::Inexact(arrow) => {
+                assert!(
+                    !arrow.is_primitive(),
+                    "to_arrow({}, {:?}) = {}",
+                    tdb_dt,
+                    cell_val_num,
+                    arrow
+                );
+
+                if let ADT::LargeList(ref item) = arrow {
+                    let item_expect = to_arrow(&tdb_dt, CellValNum::single());
+                    if let DatatypeToArrowResult::Inexact(item_expect) =
+                        item_expect
+                    {
+                        assert_eq!(*item.data_type(), item_expect);
+                    } else {
+                        unreachable!(
+                            "Expected inexact item match, but found {:?}",
+                            item_expect
+                        )
+                    }
+                } else {
+                    /* other possibilities should be Exact */
+                    unreachable!(
+                        "Expected LargeList for inexact match but found {:?}",
+                        arrow
+                    )
+                }
+
+                let tdb_out = from_arrow(&arrow);
+                let (tdb_out, cell_val_num_out) = tdb_out.ok().unwrap();
+
+                /* must be the same size */
+                assert_eq!(tdb_dt.size(), tdb_out.size());
+                assert_eq!(cell_val_num, cell_val_num_out);
+            }
+            DatatypeToArrowResult::Exact(arrow) => {
+                assert!(
+                    !arrow.is_primitive(),
+                    "to_arrow({}, {:?}) = {}",
+                    tdb_dt,
+                    cell_val_num,
+                    arrow
+                );
+
+                match arrow {
+                    ADT::LargeList(ref item) => {
+                        let item_dt = to_arrow(&tdb_dt, CellValNum::single());
+                        if let DatatypeToArrowResult::Exact(item_dt) = item_dt {
+                            assert_eq!(*item.data_type(), item_dt);
+                        } else {
+                            unreachable!(
+                                "Expected exact item match but found {:?}",
+                                item_dt
+                            )
+                        }
+                    }
+                    ADT::LargeUtf8 => assert!(matches!(
+                        tdb_dt,
+                        Datatype::StringAscii | Datatype::StringUtf8
+                    )),
+                    ADT::LargeBinary => {
+                        assert!(matches!(tdb_dt, Datatype::Blob))
+                    }
+                    adt => unreachable!(
+                        "to_arrow({}, {:?}) = {}",
+                        tdb_dt, cell_val_num, adt
+                    ),
+                }
+
+                let tdb_out = from_arrow(&arrow);
+                if let DatatypeFromArrowResult::Exact(
+                    tdb_out,
+                    cell_val_num_out,
+                ) = tdb_out
+                {
+                    assert_eq!(tdb_dt, tdb_out);
+                    assert_eq!(cell_val_num, cell_val_num_out);
+                } else {
+                    unreachable!(
+                        "Arrow datatype constructed from tiledb datatype must convert back")
+                }
+            }
+        }
+    }
+
+    pub fn arrow_datatype_is_inexact_compatible(
+        arrow_in: &arrow::datatypes::DataType,
+        arrow_out: &arrow::datatypes::DataType,
+    ) -> bool {
+        if arrow_in == arrow_out {
+            return true;
+        }
+
+        /* otherwise check some inexact compatibilities */
+        use arrow::datatypes::DataType as ADT;
+        match (arrow_in, arrow_out) {
+            (
+                ADT::FixedSizeList(ref item_in, len_in),
+                ADT::FixedSizeList(ref item_out, len_out),
+            ) => {
+                len_in == len_out
+                    && arrow_datatype_is_inexact_compatible(
+                        item_in.data_type(),
+                        item_out.data_type(),
+                    )
+            }
+            (ADT::LargeList(ref item_in), ADT::LargeList(ref item_out)) => {
+                arrow_datatype_is_inexact_compatible(
+                    item_in.data_type(),
+                    item_out.data_type(),
+                )
+            }
+            (ADT::FixedSizeList(ref item_in, 1), dt_out) => {
+                /*
+                 * fixed size list of 1 element should have no extra data,
+                 * we probably don't need to keep the FixedSizeList part
+                 * for correctness, punt on it for now and see if we need
+                 * to deal with it later
+                 */
+                arrow_datatype_is_inexact_compatible(
+                    item_in.data_type(),
+                    dt_out,
+                )
+            }
+            (ADT::LargeUtf8, ADT::LargeList(ref item)) => {
+                /*
+                 * Arrow does checked UTF-8, tiledb does not,
+                 * so we must permit this inexactness
+                 */
+                *item.data_type() == arrow::datatypes::DataType::UInt8
+                    && !item.is_nullable()
+            }
+            (dt_in, dt_out) => {
+                if dt_in.is_primitive() {
+                    dt_in.primitive_width() == dt_out.primitive_width()
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    fn do_from_arrow(arrow_in: &arrow::datatypes::DataType) {
+        match from_arrow(arrow_in) {
+            DatatypeFromArrowResult::None => (),
+            DatatypeFromArrowResult::Exact(datatype, cvn) => {
+                let arrow_out = to_arrow(&datatype, cvn);
+                if let DatatypeToArrowResult::Exact(arrow_out) = arrow_out {
+                    assert_eq!(*arrow_in, arrow_out);
+                } else {
+                    unreachable!(
+                        "Expected exact inversion, found {:?}",
+                        arrow_out
+                    )
+                }
+            }
+            DatatypeFromArrowResult::Inexact(datatype, cvn) => {
+                let arrow_out = to_arrow(&datatype, cvn);
+                let arrow_out = arrow_out.into_inner();
+                assert!(
+                    arrow_datatype_is_inexact_compatible(arrow_in, &arrow_out),
+                    "{:?} => {:?}",
+                    arrow_in,
+                    arrow_out
+                );
+            }
+        }
+    }
+
     proptest! {
         #[test]
-        fn test_arrow_type_physical_single(tdb_dt in any::<Datatype>()) {
-            let cell_val_num = CellValNum::single();
-            let arrow_dt = arrow_type_physical(&tdb_dt, cell_val_num);
-            assert!(arrow_dt.is_primitive());
-            let arrow_size = arrow_dt.primitive_width().unwrap() as u64;
-            assert_eq!(tdb_dt.size(), arrow_size,
-                "arrow_type_physical({}, {:?}) = {}", tdb_dt, cell_val_num, arrow_dt);
-
-            let (tdb_out, cell_val_num_out) = tiledb_type_physical(&arrow_dt)
-                .expect("Arrow datatype constructed from tiledb datatype must convert back");
-            /* the datatype may not match exactly but it must be the same size */
-            assert_eq!(tdb_dt.size(), tdb_out.size());
-            assert_eq!(cell_val_num, cell_val_num_out);
+        fn test_to_arrow_single(tdb_dt in any::<Datatype>()) {
+            do_to_arrow_single(tdb_dt)
         }
 
         #[test]
-        fn test_arrow_type_physical_nonvar(tdb_dt in any::<Datatype>()) {
-            let fixed_len_in = 32u32;
-            let cell_val_num = CellValNum::try_from(fixed_len_in).unwrap();
-            let arrow_dt = arrow_type_physical(&tdb_dt, cell_val_num);
-
-            use arrow::datatypes::DataType as ADT;
-            match arrow_dt {
-                ADT::FixedSizeList(ref item, fixed_len_out) => {
-                    let item_dt  = arrow_type_physical(&tdb_dt, CellValNum::single());
-                    assert_eq!(*item.data_type(), item_dt);
-                    assert_eq!(fixed_len_in, fixed_len_out as u32);
-                },
-                ADT::FixedSizeBinary(fixed_len_out) => {
-                    assert_eq!(tdb_dt, Datatype::Blob);
-                    assert_eq!(fixed_len_in, fixed_len_out as u32);
-                }
-                adt => unreachable!("arrow_type_physical({}, {:?}) = {}", tdb_dt, cell_val_num, adt)
-            }
-
-            let (tdb_out, cell_val_num_out) = tiledb_type_physical(&arrow_dt)
-                .expect("Arrow datatype constructed from tiledb datatype must convert back");
-            /* the datatype may not match exactly but it must be the same size */
-            assert_eq!(tdb_dt.size(), tdb_out.size());
-            assert_eq!(cell_val_num, cell_val_num_out);
+        fn test_to_arrow_nonvar(tdb_dt in any::<Datatype>()) {
+            do_to_arrow_nonvar(tdb_dt);
         }
 
         #[test]
-        fn test_arrow_type_physical_var(tdb_dt in any::<Datatype>()) {
-            let cell_val_num = CellValNum::Var;
-            let arrow_dt = arrow_type_physical(&tdb_dt, cell_val_num);
+        fn test_to_arrow_var(tdb_dt in any::<Datatype>()) {
+            do_to_arrow_var(tdb_dt);
+        }
 
-            assert!(!arrow_dt.is_primitive(), "arrow_type_physical({}, {:?}) = {}",
-            tdb_dt, cell_val_num, arrow_dt);
-
-            use arrow::datatypes::DataType as ADT;
-            match arrow_dt {
-                ADT::List(ref item) => {
-                    let item_dt = arrow_type_physical(&tdb_dt, CellValNum::single());
-                    assert_eq!(*item.data_type(), item_dt);
-                },
-                ADT::Utf8 => assert!(matches!(tdb_dt, Datatype::StringAscii | Datatype::StringUtf8)),
-                ADT::Binary => assert!(matches!(tdb_dt, Datatype::Blob)),
-                adt => unreachable!("arrow_type_physical({}, {:?}) = {}", tdb_dt, cell_val_num, adt)
-            }
-
-            let (tdb_out, cell_val_num_out) = tiledb_type_physical(&arrow_dt)
-                .expect("Arrow datatype constructed from tiledb datatype must convert back");
-            /* the datatype may not match exactly but it must be the same size */
-            assert_eq!(tdb_dt.size(), tdb_out.size());
-            assert_eq!(cell_val_num, cell_val_num_out);
+        #[test]
+        fn test_from_arrow(arrow in crate::array::attribute::arrow::strategy::prop_arrow_field()) {
+            do_from_arrow(arrow.data_type());
         }
     }
 }

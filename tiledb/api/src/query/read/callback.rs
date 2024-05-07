@@ -445,7 +445,7 @@ macro_rules! query_read_callback {
 
                         let [< arg_ $U:snake >] = RawReadOutput {
                             ncells: [< ncells_ $U:snake >],
-                            input: [< input_ $U:snake >]
+                            input: [< input_ $U:snake >],
                         };
                     )+
                 }
@@ -622,9 +622,9 @@ where
                     .iter()
                     .zip(buffers.iter())
                     .map(|(ncells, (field, buffers))| TypedRawReadOutput {
+                        datatype: field.datatype,
                         ncells: *ncells,
                         buffers: buffers.as_shared(),
-                        datatype: field.datatype,
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 
@@ -659,9 +659,9 @@ where
                     .iter()
                     .zip(buffers.iter())
                     .map(|(ncells, (field, buffers))| TypedRawReadOutput {
+                        datatype: field.datatype,
                         ncells: *ncells,
                         buffers: buffers.as_shared(),
-                        datatype: field.datatype,
                     })
                     .collect::<Vec<TypedRawReadOutput>>();
 

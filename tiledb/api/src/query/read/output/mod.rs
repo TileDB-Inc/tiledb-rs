@@ -52,8 +52,8 @@ impl<C> RawReadOutput<'_, C> {
             CellStructure::Fixed(nz) => json!({"cell_val_num": nz}),
             CellStructure::Var(ref offsets) => json!({
                 "capacity": offsets.len(),
-                "defined": self.ncells,
-                "values": format!("{:?}", &offsets.as_ref()[0.. self.ncells])
+                "defined": self.ncells + 1,
+                "values": format!("{:?}", &offsets.as_ref()[0.. self.ncells + 1])
             }),
         };
 
@@ -124,6 +124,10 @@ impl<'data> TypedRawReadOutput<'data> {
             qb.validity.is_some()
         )
     }
+
+    pub fn cell_structure(&self) -> &CellStructure<'data> {
+        self.buffers.cell_structure()
+    }
 }
 
 impl Debug for TypedRawReadOutput<'_> {
@@ -160,12 +164,17 @@ impl ScratchCellStructure {
         ScratchCellStructure::Fixed(NonZeroU32::new(1).unwrap())
     }
 
-    /// Returns whether the cells contain a fixed number of records.
+    /// Returns whether the cells contain exactly one value.
+    pub fn is_single(&self) -> bool {
+        matches!(self, Self::Fixed(nz) if nz.get() == 1)
+    }
+
+    /// Returns whether the cells contain a fixed number of values.
     pub fn is_fixed(&self) -> bool {
         matches!(self, Self::Fixed(_))
     }
 
-    /// Returns whether the cells contain a variable number of records.
+    /// Returns whether the cells contain a variable number of values.
     pub fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
     }
