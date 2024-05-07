@@ -14,7 +14,7 @@ use util::option::OptionSubset;
 use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Default, Hash, Deserialize, Eq, PartialEq, Serialize)]
 #[repr(u64)]
 pub enum Datatype {
     /// A 32-bit signed integer
@@ -111,7 +111,7 @@ pub enum Datatype {
 }
 
 impl Datatype {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_datatype_t {
+    pub fn capi_enum(&self) -> ffi::tiledb_datatype_t {
         match *self {
             Datatype::Int8 => ffi::tiledb_datatype_t_TILEDB_INT8,
             Datatype::Int16 => ffi::tiledb_datatype_t_TILEDB_INT16,
@@ -358,7 +358,7 @@ impl Datatype {
     pub fn is_byte_type(&self) -> bool {
         matches!(
             *self,
-            Datatype::Boolean | Datatype::GeometryWkb | Datatype::GeometryWkt
+            Datatype::Blob | Datatype::GeometryWkb | Datatype::GeometryWkt
         )
     }
 

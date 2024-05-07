@@ -1302,6 +1302,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiledb-proptests"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+ "rand",
+ "tiledb",
+]
+
+[[package]]
 name = "tiledb-sys"
 version = "0.1.0"
 

@@ -1,0 +1,130 @@
+use proptest::prelude::*;
+use proptest::strategy::{NewTree, Strategy, ValueTree};
+use proptest::test_runner::TestRunner;
+
+use rand::distributions::Uniform;
+use rand::Rng;
+
+use tiledb::array::schema::CellValNum;
+use tiledb::datatype::Datatype;
+use tiledb::filter::list::FilterListData;
+use tiledb::filter::FilterData;
+
+use crate::datatype as pt_datatype;
+use crate::util as pt_util;
+
+pub struct FilterListDataValueTree {
+    filters: Vec<FilterData>,
+    low: usize,
+    current: usize,
+    high: usize,
+}
+
+impl FilterListDataValueTree {
+    pub fn new(filters: Vec<FilterData>) -> Self {
+        let len = filters.len();
+        Self {
+            filters,
+            low: 0,
+            current: len,
+            high: len,
+        }
+    }
+}
+
+impl ValueTree for FilterListDataValueTree {
+    type Value = FilterListData;
+
+    fn current(&self) -> Self::Value {
+        FilterListData::from_iter(self.filters[0..self.current].iter().cloned())
+    }
+
+    fn simplify(&mut self) -> bool {
+        let prev_current = self.current;
+        assert!(self.low <= self.current && self.current <= self.high);
+        self.high = self.current;
+        self.current = ((self.high - self.low) / 2).clamp(self.low, self.high);
+        self.current != prev_current
+    }
+
+    fn complicate(&mut self) -> bool {
+        let prev_current = self.current;
+        assert!(self.low <= self.current && self.current <= self.high);
+        self.low = (self.current + 1).clamp(self.current, self.high);
+        self.current = ((self.high - self.low) / 2).clamp(self.low, self.high);
+        self.current != prev_current
+    }
+}
+
+#[derive(Debug)]
+pub struct FilterListDataStrategy {
+    datatype: Datatype,
+    cell_val_num: CellValNum,
+    len_dist: Uniform<usize>,
+}
+
+impl FilterListDataStrategy {
+    pub fn new(
+        datatype: Datatype,
+        cell_val_num: CellValNum,
+        max_len: usize,
+    ) -> Self {
+        Self {
+            datatype,
+            cell_val_num,
+            len_dist: rand::distributions::Uniform::new_inclusive(0, max_len),
+        }
+    }
+}
+
+impl Strategy for FilterListDataStrategy {
+    type Tree = FilterListDataValueTree;
+    type Value = FilterListData;
+    fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        let len = runner.rng().sample(self.len_dist);
+        let mut curr_type = self.datatype;
+        let mut filters = Vec::new();
+        for idx in 0..len {
+            let fprop = super::prop_filter_data_with_constraints(
+                curr_type,
+                self.cell_val_num,
+                idx,
+            );
+            let fdata = fprop.new_tree(runner)?.current();
+            let next_type = fdata.transform_datatype(&curr_type);
+            if next_type.is_none() {
+                return Err(format!(
+                    "INVALID FILTER DATA: {} {} {:?}",
+                    curr_type, self.cell_val_num, fdata
+                )
+                .into());
+            }
+            filters.push(fdata);
+            curr_type = next_type.unwrap();
+        }
+
+        Ok(FilterListDataValueTree::new(filters))
+    }
+}
+
+pub fn prop_filter_list(
+    datatype: Datatype,
+    cell_val_num: CellValNum,
+    max_len: usize,
+) -> impl Strategy<Value = FilterListData> {
+    FilterListDataStrategy::new(datatype, cell_val_num, max_len)
+}
+
+pub fn prop_any_filter_list(
+    max_len: usize,
+) -> impl Strategy<Value = (Datatype, CellValNum, FilterListData)> {
+    let datatype = pt_datatype::prop_all_datatypes();
+    let cell_val_num = pt_util::prop_cell_val_num();
+    (datatype, cell_val_num).prop_flat_map(move |(datatype, cell_val_num)| {
+        (
+            Just(datatype),
+            Just(cell_val_num),
+            prop_filter_list(datatype, cell_val_num, max_len),
+        )
+    })
+}

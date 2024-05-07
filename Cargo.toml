@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "tiledb/api",
   "tiledb/proc-macro",
+  "tiledb/proptests",
   "tiledb/sys",
   "tiledb/utils",
   "tools/api-coverage"
