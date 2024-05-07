@@ -223,13 +223,40 @@ impl FilterData {
                 }
                 | CompressionType::DoubleDelta {
                     reinterpret_datatype,
-                } => reinterpret_datatype.map_or(Some(*input), |dtype| {
-                    if !dtype.is_real_type() {
-                        Some(dtype)
-                    } else {
-                        None
+                } => {
+                    // Delta and Double Delta filters don't take float types
+                    // as input. However, it also has the ability to reinterpret
+                    // any datatype so we have to handle that as well.
+
+                    // If reinterpret_datatype is None, then we just check
+                    // the input datatype.
+                    if reinterpret_datatype.is_none() && !input.is_real_type() {
+                        return Some(*input);
                     }
-                }),
+
+                    let reinterpret_datatype = reinterpret_datatype.unwrap();
+
+                    // Reinterpret datatype is set. So now we have to match the
+                    // logic in core which is that if its set to Datatype::Any
+                    // (the internal default) then we check the input type
+                    // again.
+                    if matches!(reinterpret_datatype, Datatype::Any)
+                        && !input.is_real_type()
+                    {
+                        return Some(*input);
+                    }
+
+                    // Otherwise, we just have to make sure that the reinterpret
+                    // type is not a real type.
+
+                    if !reinterpret_datatype.is_real_type() {
+                        return Some(reinterpret_datatype);
+                    }
+
+                    // Otherwise a user set the reinterpret datatype to a real
+                    // type which is invalid.
+                    None
+                }
                 _ => Some(*input),
             },
             FilterData::ScaleFloat { byte_width, .. } => {
