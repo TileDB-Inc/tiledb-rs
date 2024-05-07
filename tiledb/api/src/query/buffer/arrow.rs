@@ -15,12 +15,14 @@ use crate::query::buffer::{
     QueryBuffersCellStructureSingle, QueryBuffersCellStructureVar,
 };
 
-pub type PrimitiveArrayAlias<C> =
+type PrimitiveArrayAlias<C> =
     PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
 
+/// Wraps `QueryBuffers` or a wrapper and contextualizes it with the number of filled in cells.
 pub struct Celled<B>(pub usize, pub B);
 
 impl<B> Celled<B> {
+    /// Returns the number of cells which are valid in the underlying buffer.
     pub fn ncells(&self) -> usize {
         self.0
     }

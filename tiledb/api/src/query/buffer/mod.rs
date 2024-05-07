@@ -412,6 +412,7 @@ impl<'data, T> QueryBuffersMut<'data, T> {
     }
 }
 
+/// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Fixed(1)`.
 pub struct QueryBuffersCellStructureSingle<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> TryFrom<QueryBuffers<'data, C>>
@@ -443,6 +444,8 @@ impl<'data, C> AsMut<QueryBuffers<'data, C>>
     }
 }
 
+/// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Fixed(nz)`
+/// for some `1 < nz < u32::MAX`.
 pub struct QueryBuffersCellStructureFixed<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> TryFrom<QueryBuffers<'data, C>>
@@ -475,6 +478,7 @@ impl<'data, C> AsMut<QueryBuffers<'data, C>>
     }
 }
 
+/// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Var(_)`.
 pub struct QueryBuffersCellStructureVar<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> TryFrom<QueryBuffers<'data, C>>

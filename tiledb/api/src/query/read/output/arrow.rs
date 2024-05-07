@@ -31,16 +31,13 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
 
     fn try_from(value: TypedRawReadOutput<'_>) -> Result<Self, Self::Error> {
         /*
-        fn assign_logical_type<PT, LT, I, O>(p: I) -> O where
-            PT: ArrowPrimitiveTypeNative,
-            LT: LogicalType<PhysicalType = PT> + ArrowPrimitiveTypeLogical,
-            I: PrimitiveArray<<<LT as LogicalType>::PhysicalType as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>,
-            O: PrimitiveArray<<LT as ArrowPrimitiveTypeLogical>::ArrowPrimitiveType>
-        {
-            unimplemented!()
-        }
-        */
-
+         * See `TryFrom<RawReadOutput<C>> for QueryBufferArrowArray<C>`.
+         * `C` is a physical type, not a logical type, so we end up
+         * with an arrow array whose type is based on the physical type.
+         * We must re-type the array so that its logical type matches
+         * what is represented by `value.datatype`.  It suffices
+         * to change the type of the primitive array of values.
+         */
         fn assign_logical_type<C>(
             datatype: Datatype,
             p: PrimitiveArray<
@@ -50,6 +47,12 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
         where
             C: ArrowPrimitiveTypeNative,
         {
+            /*
+             * NB: `PrimitiveArray::with_datatype` is very restrictive
+             * and only allows conversions of timezones, etc. whereas
+             * we have an array of something like `i64` and need to
+             * turn that into `ADT::Time64(TimeUnit::Microsecond)` for example.
+             */
             let arrow_datatype = crate::datatype::arrow::to_arrow(
                 &datatype,
                 CellValNum::single(),
