@@ -217,7 +217,7 @@ pub fn to_arrow(
                 if matches!(datatype, Datatype::Blob) {
                     Res::Exact(ADT::FixedSizeBinary(nz))
                 } else {
-                    match to_arrow(&datatype, CellValNum::single()) {
+                    match to_arrow(datatype, CellValNum::single()) {
                         Res::Exact(item) => Res::Exact(ADT::FixedSizeList(
                             Arc::new(arrow::datatypes::Field::new_list_field(
                                 item, false,
@@ -247,7 +247,7 @@ pub fn to_arrow(
                  * does that, and we update our test strategies to generate
                  * valid UTF-8 sequences, we cannot do so.
                  */
-                match to_arrow(&datatype, CellValNum::single()) {
+                match to_arrow(datatype, CellValNum::single()) {
                     Res::Exact(item) => {
                         let item = Arc::new(Field::new_list_field(item, false));
                         Res::Exact(ADT::LargeList(item))
@@ -360,8 +360,8 @@ pub fn from_arrow(
             Res::None
         }
         ADT::LargeBinary => Res::Exact(Datatype::Blob, CellValNum::Var),
-        ADT::FixedSizeBinary(len) => match i32::try_from(*len) {
-            Ok(len) => match NonZeroU32::new(len as u32) {
+        ADT::FixedSizeBinary(len) => match u32::try_from(*len) {
+            Ok(len) => match NonZeroU32::new(len) {
                 None => Res::None,
                 Some(nz) => Res::Exact(Datatype::Blob, CellValNum::Fixed(nz)),
             },
@@ -544,7 +544,7 @@ pub mod strategy {
             Just(ADT::Interval(IntervalUnit::MonthDayNano)),
             Just(ADT::Binary),
             (params.min_fixed_binary_len..=params.max_fixed_binary_len)
-                .prop_map(|len| ADT::FixedSizeBinary(len)),
+                .prop_map(ADT::FixedSizeBinary),
             Just(ADT::LargeBinary),
             Just(ADT::Utf8),
             Just(ADT::LargeUtf8),

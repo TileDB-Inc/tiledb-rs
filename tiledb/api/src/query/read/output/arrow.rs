@@ -140,7 +140,6 @@ mod tests {
     use proptest::prelude::*;
 
     use crate::array::CellValNum;
-    use crate::query::buffer::QueryBuffers;
     use crate::query::read::output::strategy::RawReadOutputParameters;
     use crate::query::read::output::CellStructure;
     use crate::Datatype;
@@ -391,9 +390,9 @@ mod tests {
             rr.is_nullable(),
         )]);
 
-        let cols = vec![Arc::from(
-            Arc::<dyn ArrowArray>::try_from(rr).expect("Integer overflow"),
-        )];
+        let cols = vec![
+            Arc::<dyn ArrowArray>::try_from(rr).expect("Integer overflow")
+        ];
 
         // NB: even constructing this successfully is a big deal due to schema match
         let _ = RecordBatch::try_new(Arc::new(arrow_schema), cols)

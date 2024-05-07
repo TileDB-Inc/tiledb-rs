@@ -7,7 +7,7 @@ use serde_json::json;
 use crate::array::schema::arrow::{
     AttributeFromArrowResult, FieldToArrowResult,
 };
-use crate::array::{Attribute, AttributeBuilder};
+use crate::array::{Attribute, AttributeBuilder, CellValNum};
 use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::datatype::LogicalType;
 use crate::error::Error;
@@ -115,15 +115,14 @@ pub fn from_arrow<'ctx>(
     context: &'ctx Context,
     field: &arrow::datatypes::Field,
 ) -> TileDBResult<AttributeFromArrowResult<'ctx>> {
-    let construct = |datatype, cell_val_num| {
-        let attr = if let Datatype::Any = datatype {
+    let construct = |datatype: Datatype, cell_val_num: CellValNum| {
+        let attr = if Datatype::Any == datatype && cell_val_num.is_var_sized() {
             /*
              * sc-46696: cannot call cell_val_num() with Any datatype,
              * not even with CellValNum::Var
              */
-            let a = AttributeBuilder::new(context, field.name(), datatype)?
-                .nullability(field.is_nullable())?;
-            a
+            AttributeBuilder::new(context, field.name(), datatype)?
+                .nullability(field.is_nullable())?
         } else {
             AttributeBuilder::new(context, field.name(), datatype)?
                 .nullability(field.is_nullable())?

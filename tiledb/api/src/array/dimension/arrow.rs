@@ -129,7 +129,7 @@ pub fn from_arrow<'ctx>(
                 .apply(FilterListBuilder::new(dim.context())?)?
                 .build();
 
-            Ok(dim.cell_val_num(cell_val_num)?.filters(fl)?)
+            dim.cell_val_num(cell_val_num)?.filters(fl)
         };
 
     match crate::datatype::arrow::from_arrow(field.data_type()) {

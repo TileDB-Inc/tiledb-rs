@@ -250,7 +250,7 @@ mod tests {
                     unreachable!("Exact schema did not invert")
                 }
             }
-            SchemaToArrowResult::Inexact(arrow_schema) => {
+            SchemaToArrowResult::Inexact(_) => {
                 /* this could have missing attributes, inexact attributes, something */
                 unimplemented!()
             }

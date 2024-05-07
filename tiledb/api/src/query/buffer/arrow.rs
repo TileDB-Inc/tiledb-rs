@@ -239,7 +239,7 @@ where
             // convert u64 byte offsets to i64 element offsets
             let offsets = offsets
                 .into_iter()
-                .map(|o| i64::try_from(o))
+                .map(i64::try_from)
                 .collect::<Result<Vec<i64>, TryFromIntError>>()?;
             OffsetBuffer::<i64>::new(ScalarBuffer::<i64>::from(offsets))
         };
