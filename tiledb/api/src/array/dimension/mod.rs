@@ -81,7 +81,7 @@ impl<'ctx> Dimension<'ctx> {
         Ok(self.cell_val_num()?.is_var_sized())
     }
 
-    pub fn domain<T: PhysicalType>(&self) -> TileDBResult<[T; 2]> {
+    pub fn domain<T: PhysicalType>(&self) -> TileDBResult<Option<[T; 2]>> {
         let c_dimension = self.capi();
         let mut c_domain_ptr: *const std::ffi::c_void = out_ptr!();
 
@@ -93,12 +93,16 @@ impl<'ctx> Dimension<'ctx> {
             )
         })?;
 
-        let c_domain: &[T; 2] = unsafe { &*c_domain_ptr.cast::<[T; 2]>() };
-        Ok(*c_domain)
+        if c_domain_ptr == std::ptr::null() {
+            Ok(None)
+        } else {
+            let c_domain: &[T; 2] = unsafe { &*c_domain_ptr.cast::<[T; 2]>() };
+            Ok(Some(*c_domain))
+        }
     }
 
     /// Returns the tile extent of this dimension.
-    pub fn extent<T: PhysicalType>(&self) -> TileDBResult<T> {
+    pub fn extent<T: PhysicalType>(&self) -> TileDBResult<Option<T>> {
         let c_dimension = self.capi();
         let mut c_extent_ptr: *const ::std::ffi::c_void = out_ptr!();
 
@@ -109,7 +113,12 @@ impl<'ctx> Dimension<'ctx> {
                 &mut c_extent_ptr,
             )
         })?;
-        Ok(unsafe { *c_extent_ptr.cast::<T>() })
+
+        if c_extent_ptr == std::ptr::null() {
+            Ok(None)
+        } else {
+            Ok(Some(unsafe { *c_extent_ptr.cast::<T>() }))
+        }
     }
 
     pub fn filters(&self) -> TileDBResult<FilterList> {
@@ -330,16 +339,21 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
         let (domain, extent) = fn_typed!(datatype, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
             let domain = dim.domain::<DT>()?;
-            (
-                [json!(domain[0]), json!(domain[1])],
-                json!(dim.extent::<DT>()?),
-            )
+            let extent = dim.extent::<DT>()?;
+            match (domain, extent) {
+                (Some(domain), Some(extent)) => (
+                    Some([json!(domain[0]), json!(domain[1])]),
+                    Some(json!(extent)),
+                ),
+                (None, None) => (None, None),
+                _ => unreachable!(), /* TODO: internal error instead probably */
+            }
         });
         Ok(DimensionData {
             name: dim.name()?,
             datatype,
-            domain: Some(domain),
-            extent: Some(extent),
+            domain,
+            extent,
             cell_val_num: Some(dim.cell_val_num()?),
             filters: {
                 let fl = FilterListData::try_from(&dim.filters()?)?;
@@ -529,11 +543,11 @@ mod tests {
 
             assert_eq!(Datatype::Int32, dim.datatype().unwrap());
 
-            let domain_out = dim.domain::<i32>().unwrap();
+            let domain_out = dim.domain::<i32>().unwrap().unwrap();
             assert_eq!(domain_in[0], domain_out[0]);
             assert_eq!(domain_in[1], domain_out[1]);
 
-            let extent_out = dim.extent::<i32>().unwrap();
+            let extent_out = dim.extent::<i32>().unwrap().unwrap();
             assert_eq!(extent_in, extent_out);
         }
     }

@@ -6,7 +6,6 @@ use serde_json::json;
 use crate::array::{
     attribute::FillData, ArrayType, AttributeData, CellValNum, DomainData,
 };
-use crate::datatype::strategy::*;
 use crate::datatype::LogicalType;
 use crate::filter::list::FilterListData;
 use crate::{fn_typed, Datatype};
@@ -34,10 +33,6 @@ pub fn prop_attribute_name() -> impl Strategy<Value = String> {
         )
 }
 
-fn prop_cell_val_num() -> impl Strategy<Value = Option<CellValNum>> {
-    Just(None)
-}
-
 fn prop_fill<T: Arbitrary>() -> impl Strategy<Value = T> {
     any::<T>()
 }
@@ -46,6 +41,7 @@ fn prop_fill<T: Arbitrary>() -> impl Strategy<Value = T> {
 /// datatype and other user requirements
 fn prop_filters(
     datatype: Datatype,
+    cell_val_num: CellValNum,
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterListData> {
     use crate::filter::strategy::{
@@ -55,10 +51,16 @@ fn prop_filters(
     let pipeline_requirements = FilterRequirements {
         context: requirements.context.as_ref().map(
             |StrategyContext::Schema(array_type, domain)| {
-                FilterContext::Attribute(datatype, *array_type, domain.clone())
+                FilterContext::Attribute(
+                    datatype,
+                    cell_val_num,
+                    *array_type,
+                    domain.clone(),
+                )
             },
         ),
         input_datatype: Some(datatype),
+        ..Default::default()
     };
 
     any_with::<FilterListData>(Rc::new(pipeline_requirements))
@@ -70,47 +72,43 @@ fn prop_attribute_for_datatype(
     datatype: Datatype,
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = AttributeData> {
-    fn_typed!(datatype, LT, {
-        type DT = <LT as LogicalType>::PhysicalType;
-        let name = requirements
-            .name
-            .as_ref()
-            .map(|n| Just(n.clone()).boxed())
-            .unwrap_or(prop_attribute_name().boxed());
-        let nullable = requirements
-            .nullability
-            .as_ref()
-            .map(|n| Just(*n).boxed())
-            .unwrap_or(any::<bool>().boxed());
-        let cell_val_num = prop_cell_val_num();
-        let fill = prop_fill::<DT>();
-        let fill_nullable = any::<bool>();
-        let filters = prop_filters(datatype, requirements);
-        (name, nullable, cell_val_num, fill, fill_nullable, filters)
-            .prop_map(
-                move |(
-                    name,
-                    nullable,
-                    cell_val_num,
-                    fill,
-                    fill_nullable,
-                    filters,
-                )| {
-                    AttributeData {
-                        name,
-                        datatype,
-                        nullability: Some(nullable),
-                        cell_val_num,
-                        fill: Some(FillData {
-                            data: json!(fill),
-                            nullability: Some(nullable && fill_nullable),
-                        }),
-                        filters,
-                    }
+    fn_typed!(
+        datatype,
+        LT,
+        {
+            type DT = <LT as LogicalType>::PhysicalType;
+            let name = requirements
+                .name
+                .as_ref()
+                .map(|n| Just(n.clone()).boxed())
+                .unwrap_or(prop_attribute_name().boxed());
+            let nullable = requirements
+                .nullability
+                .as_ref()
+                .map(|n| Just(*n).boxed())
+                .unwrap_or(any::<bool>().boxed());
+            let cell_val_num = any::<CellValNum>();
+            let fill = prop_fill::<DT>();
+            let fill_nullable = any::<bool>();
+            (name, nullable, cell_val_num, fill, fill_nullable).prop_flat_map(
+                move |(name, nullable, cell_val_num, fill, fill_nullable)| {
+                    prop_filters(datatype, cell_val_num, requirements.clone())
+                        .prop_map(move |filters| AttributeData {
+                            name: name.clone(),
+                            datatype,
+                            nullability: Some(nullable),
+                            cell_val_num: Some(cell_val_num),
+                            fill: Some(FillData {
+                                data: json!(fill),
+                                nullability: Some(nullable && fill_nullable),
+                            }),
+                            filters,
+                        })
                 },
             )
-            .boxed()
-    })
+        }
+        .boxed()
+    )
 }
 
 pub fn prop_attribute(
@@ -119,7 +117,7 @@ pub fn prop_attribute(
     let datatype = requirements
         .datatype
         .map(|d| Just(d).boxed())
-        .unwrap_or(prop_datatype_implemented().boxed());
+        .unwrap_or(any::<Datatype>());
 
     datatype.prop_flat_map(move |datatype| {
         prop_attribute_for_datatype(datatype, requirements.clone())

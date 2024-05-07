@@ -2,7 +2,7 @@ use proptest::prelude::*;
 
 use crate::Datatype;
 
-pub fn prop_datatype() -> impl Strategy<Value = Datatype> {
+fn prop_datatype() -> impl Strategy<Value = Datatype> {
     prop_oneof![
         Just(Datatype::Int8),
         Just(Datatype::Int16),
@@ -51,10 +51,44 @@ pub fn prop_datatype() -> impl Strategy<Value = Datatype> {
     ]
 }
 
-/// Choose an arbitrary datatype which is implemented
-/// (satisfies CAPIConv, and has cases in fn_typed)
-// TODO: make sure to keep this list up to date as we add more types
-pub fn prop_datatype_implemented() -> impl Strategy<Value = Datatype> {
+fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
+    /* see `Datatype::is_allowed_dimension_type_dense` */
+    prop_oneof![
+        Just(Datatype::Int8),
+        Just(Datatype::Int16),
+        Just(Datatype::Int32),
+        Just(Datatype::Int64),
+        Just(Datatype::UInt8),
+        Just(Datatype::UInt16),
+        Just(Datatype::UInt32),
+        Just(Datatype::UInt64),
+        Just(Datatype::DateTimeYear),
+        Just(Datatype::DateTimeMonth),
+        Just(Datatype::DateTimeWeek),
+        Just(Datatype::DateTimeDay),
+        Just(Datatype::DateTimeHour),
+        Just(Datatype::DateTimeMinute),
+        Just(Datatype::DateTimeSecond),
+        Just(Datatype::DateTimeMillisecond),
+        Just(Datatype::DateTimeMicrosecond),
+        Just(Datatype::DateTimeNanosecond),
+        Just(Datatype::DateTimePicosecond),
+        Just(Datatype::DateTimeFemtosecond),
+        Just(Datatype::DateTimeAttosecond),
+        Just(Datatype::TimeHour),
+        Just(Datatype::TimeMinute),
+        Just(Datatype::TimeSecond),
+        Just(Datatype::TimeMillisecond),
+        Just(Datatype::TimeMicrosecond),
+        Just(Datatype::TimeNanosecond),
+        Just(Datatype::TimePicosecond),
+        Just(Datatype::TimeFemtosecond),
+        Just(Datatype::TimeAttosecond),
+    ]
+}
+
+fn prop_datatype_for_sparse_dimension() -> impl Strategy<Value = Datatype> {
+    /* see `Datatype::is_allowed_dimension_type_sparse` */
     prop_oneof![
         Just(Datatype::Int8),
         Just(Datatype::Int16),
@@ -66,14 +100,30 @@ pub fn prop_datatype_implemented() -> impl Strategy<Value = Datatype> {
         Just(Datatype::UInt64),
         Just(Datatype::Float32),
         Just(Datatype::Float64),
+        Just(Datatype::DateTimeYear),
+        Just(Datatype::DateTimeMonth),
+        Just(Datatype::DateTimeWeek),
+        Just(Datatype::DateTimeDay),
+        Just(Datatype::DateTimeHour),
+        Just(Datatype::DateTimeMinute),
+        Just(Datatype::DateTimeSecond),
+        Just(Datatype::DateTimeMillisecond),
+        Just(Datatype::DateTimeMicrosecond),
+        Just(Datatype::DateTimeNanosecond),
+        Just(Datatype::DateTimePicosecond),
+        Just(Datatype::DateTimeFemtosecond),
+        Just(Datatype::DateTimeAttosecond),
+        Just(Datatype::TimeHour),
+        Just(Datatype::TimeMinute),
+        Just(Datatype::TimeSecond),
+        Just(Datatype::TimeMillisecond),
+        Just(Datatype::TimeMicrosecond),
+        Just(Datatype::TimeNanosecond),
+        Just(Datatype::TimePicosecond),
+        Just(Datatype::TimeFemtosecond),
+        Just(Datatype::TimeAttosecond),
+        Just(Datatype::StringAscii),
     ]
-}
-
-pub fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
-    prop_datatype_implemented().prop_filter(
-        "Type is not a valid dimension type for dense arrays",
-        |dt| dt.is_allowed_dimension_type_dense(),
-    )
 }
 
 #[derive(Clone, Debug, Default)]
@@ -81,7 +131,7 @@ pub enum DatatypeContext {
     #[default]
     Any,
     DenseDimension,
-    Implemented,
+    SparseDimension,
 }
 
 impl Arbitrary for Datatype {
@@ -94,7 +144,26 @@ impl Arbitrary for Datatype {
             DatatypeContext::DenseDimension => {
                 prop_datatype_for_dense_dimension().boxed()
             }
-            DatatypeContext::Implemented => prop_datatype_implemented().boxed(),
+            DatatypeContext::SparseDimension => {
+                prop_datatype_for_sparse_dimension().boxed()
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    proptest! {
+        #[test]
+        fn dense_dimension(dt in any_with::<Datatype>(DatatypeContext::DenseDimension)) {
+            assert!(dt.is_allowed_dimension_type_dense())
+        }
+
+        #[test]
+        fn sparse_dimension(dt in any_with::<Datatype>(DatatypeContext::SparseDimension)) {
+            assert!(dt.is_allowed_dimension_type_sparse())
         }
     }
 }

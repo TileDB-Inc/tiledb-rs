@@ -5,6 +5,7 @@ use proptest::prelude::*;
 use crate::array::dimension::strategy::*;
 use crate::array::{ArrayType, DomainData};
 use crate::datatype::strategy::*;
+use crate::Datatype;
 
 const MIN_DIMENSIONS: usize = 1;
 const MAX_DIMENSIONS: usize = 8;
@@ -18,14 +19,16 @@ fn prop_domain_for_array_type(
     array_type: ArrayType,
 ) -> impl Strategy<Value = DomainData> {
     match array_type {
-        ArrayType::Dense => prop_datatype_for_dense_dimension()
-            .prop_flat_map(|dimension_type| {
-                proptest::collection::vec(
-                    prop_dimension_for_datatype(dimension_type),
-                    MIN_DIMENSIONS..=MAX_DIMENSIONS,
-                )
-            })
-            .boxed(),
+        ArrayType::Dense => {
+            any_with::<Datatype>(DatatypeContext::DenseDimension)
+                .prop_flat_map(|dimension_type| {
+                    proptest::collection::vec(
+                        prop_dimension_for_datatype(dimension_type),
+                        MIN_DIMENSIONS..=MAX_DIMENSIONS,
+                    )
+                })
+                .boxed()
+        }
         ArrayType::Sparse => proptest::collection::vec(
             prop_dimension_for_array_type(array_type),
             MIN_DIMENSIONS..=MAX_DIMENSIONS,
