@@ -148,7 +148,12 @@ where
     ) -> Result<Self, Self::Error> {
         let Celled(ncells, buffers) = value;
 
-        let values = ScalarBuffer::<C>::from(Celled(ncells, buffers.0.data));
+        let nz = buffers.0.cell_structure.fixed().unwrap();
+
+        let values = ScalarBuffer::<C>::from(Celled(
+            ncells * nz.get() as usize,
+            buffers.0.data,
+        ));
         let values = PrimitiveArrayAlias::<C>::new(values, None);
 
         let validity = buffers
@@ -158,7 +163,6 @@ where
 
         let field = Field::new_list_field(values.data_type().clone(), false);
 
-        let nz = buffers.0.cell_structure.fixed().unwrap();
         let fixed_len = i32::try_from(nz.get())?;
 
         let values = Arc::new(values);
