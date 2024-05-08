@@ -51,79 +51,89 @@ fn prop_datatype() -> impl Strategy<Value = Datatype> {
     ]
 }
 
+const DENSE_DIMENSION_DATATYPES: [Datatype; 31] = [
+    Datatype::Int8,
+    Datatype::Int16,
+    Datatype::Int32,
+    Datatype::Int64,
+    Datatype::UInt8,
+    Datatype::UInt16,
+    Datatype::UInt32,
+    Datatype::UInt64,
+    Datatype::DateTimeYear,
+    Datatype::DateTimeMonth,
+    Datatype::DateTimeWeek,
+    Datatype::DateTimeDay,
+    Datatype::DateTimeHour,
+    Datatype::DateTimeMinute,
+    Datatype::DateTimeSecond,
+    Datatype::DateTimeMillisecond,
+    Datatype::DateTimeMicrosecond,
+    Datatype::DateTimeNanosecond,
+    Datatype::DateTimePicosecond,
+    Datatype::DateTimeFemtosecond,
+    Datatype::DateTimeAttosecond,
+    Datatype::TimeHour,
+    Datatype::TimeMinute,
+    Datatype::TimeSecond,
+    Datatype::TimeMillisecond,
+    Datatype::TimeMicrosecond,
+    Datatype::TimeNanosecond,
+    Datatype::TimePicosecond,
+    Datatype::TimeFemtosecond,
+    Datatype::TimeAttosecond,
+    Datatype::Boolean,
+];
+
+const SPARSE_DIMENSION_DATATYPES: [Datatype; 34] = [
+    Datatype::Int8,
+    Datatype::Int16,
+    Datatype::Int32,
+    Datatype::Int64,
+    Datatype::UInt8,
+    Datatype::UInt16,
+    Datatype::UInt32,
+    Datatype::UInt64,
+    Datatype::Float32,
+    Datatype::Float64,
+    Datatype::DateTimeYear,
+    Datatype::DateTimeMonth,
+    Datatype::DateTimeWeek,
+    Datatype::DateTimeDay,
+    Datatype::DateTimeHour,
+    Datatype::DateTimeMinute,
+    Datatype::DateTimeSecond,
+    Datatype::DateTimeMillisecond,
+    Datatype::DateTimeMicrosecond,
+    Datatype::DateTimeNanosecond,
+    Datatype::DateTimePicosecond,
+    Datatype::DateTimeFemtosecond,
+    Datatype::DateTimeAttosecond,
+    Datatype::TimeHour,
+    Datatype::TimeMinute,
+    Datatype::TimeSecond,
+    Datatype::TimeMillisecond,
+    Datatype::TimeMicrosecond,
+    Datatype::TimeNanosecond,
+    Datatype::TimePicosecond,
+    Datatype::TimeFemtosecond,
+    Datatype::TimeAttosecond,
+    Datatype::StringAscii,
+    Datatype::Boolean,
+];
+
 fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
     /* see `Datatype::is_allowed_dimension_type_dense` */
-    prop_oneof![
-        Just(Datatype::Int8),
-        Just(Datatype::Int16),
-        Just(Datatype::Int32),
-        Just(Datatype::Int64),
-        Just(Datatype::UInt8),
-        Just(Datatype::UInt16),
-        Just(Datatype::UInt32),
-        Just(Datatype::UInt64),
-        Just(Datatype::DateTimeYear),
-        Just(Datatype::DateTimeMonth),
-        Just(Datatype::DateTimeWeek),
-        Just(Datatype::DateTimeDay),
-        Just(Datatype::DateTimeHour),
-        Just(Datatype::DateTimeMinute),
-        Just(Datatype::DateTimeSecond),
-        Just(Datatype::DateTimeMillisecond),
-        Just(Datatype::DateTimeMicrosecond),
-        Just(Datatype::DateTimeNanosecond),
-        Just(Datatype::DateTimePicosecond),
-        Just(Datatype::DateTimeFemtosecond),
-        Just(Datatype::DateTimeAttosecond),
-        Just(Datatype::TimeHour),
-        Just(Datatype::TimeMinute),
-        Just(Datatype::TimeSecond),
-        Just(Datatype::TimeMillisecond),
-        Just(Datatype::TimeMicrosecond),
-        Just(Datatype::TimeNanosecond),
-        Just(Datatype::TimePicosecond),
-        Just(Datatype::TimeFemtosecond),
-        Just(Datatype::TimeAttosecond),
-    ]
+    proptest::strategy::Union::new(
+        DENSE_DIMENSION_DATATYPES.iter().map(|dt| Just(*dt)),
+    )
 }
 
 fn prop_datatype_for_sparse_dimension() -> impl Strategy<Value = Datatype> {
     /* see `Datatype::is_allowed_dimension_type_sparse` */
-    prop_oneof![
-        Just(Datatype::Int8),
-        Just(Datatype::Int16),
-        Just(Datatype::Int32),
-        Just(Datatype::Int64),
-        Just(Datatype::UInt8),
-        Just(Datatype::UInt16),
-        Just(Datatype::UInt32),
-        Just(Datatype::UInt64),
-        Just(Datatype::Float32),
-        Just(Datatype::Float64),
-        Just(Datatype::DateTimeYear),
-        Just(Datatype::DateTimeMonth),
-        Just(Datatype::DateTimeWeek),
-        Just(Datatype::DateTimeDay),
-        Just(Datatype::DateTimeHour),
-        Just(Datatype::DateTimeMinute),
-        Just(Datatype::DateTimeSecond),
-        Just(Datatype::DateTimeMillisecond),
-        Just(Datatype::DateTimeMicrosecond),
-        Just(Datatype::DateTimeNanosecond),
-        Just(Datatype::DateTimePicosecond),
-        Just(Datatype::DateTimeFemtosecond),
-        Just(Datatype::DateTimeAttosecond),
-        Just(Datatype::TimeHour),
-        Just(Datatype::TimeMinute),
-        Just(Datatype::TimeSecond),
-        Just(Datatype::TimeMillisecond),
-        Just(Datatype::TimeMicrosecond),
-        Just(Datatype::TimeNanosecond),
-        Just(Datatype::TimePicosecond),
-        Just(Datatype::TimeFemtosecond),
-        Just(Datatype::TimeAttosecond),
-        Just(Datatype::StringAscii),
-    ]
+    proptest::strategy::Union::new(
+        SPARSE_DIMENSION_DATATYPES.iter().map(|dt| Just(*dt)),
+    )
 }
 
 #[derive(Clone, Debug, Default)]
@@ -162,8 +172,26 @@ mod tests {
         }
 
         #[test]
+        fn dense_dimension_comprehensive(dt in any::<Datatype>()) {
+            if DENSE_DIMENSION_DATATYPES.contains(&dt) {
+                assert!(dt.is_allowed_dimension_type_dense());
+            } else {
+                assert!(!dt.is_allowed_dimension_type_dense());
+            }
+        }
+
+        #[test]
         fn sparse_dimension(dt in any_with::<Datatype>(DatatypeContext::SparseDimension)) {
             assert!(dt.is_allowed_dimension_type_sparse())
+        }
+
+        #[test]
+        fn sparse_dimension_comprehensive(dt in any::<Datatype>()) {
+            if SPARSE_DIMENSION_DATATYPES.contains(&dt) {
+                assert!(dt.is_allowed_dimension_type_sparse());
+            } else {
+                assert!(!dt.is_allowed_dimension_type_sparse());
+            }
         }
     }
 }
