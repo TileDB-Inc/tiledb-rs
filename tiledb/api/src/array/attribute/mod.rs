@@ -438,6 +438,7 @@ pub trait IntoFillValue {
     fn to_raw(&self) -> &[Self::PhysicalType];
 }
 
+/// Trait for data which can be constructed from an attribute's raw fill value.
 pub trait FromFillValue<'a>: IntoFillValue + Sized {
     /// Construct a value of this type from a raw fill value.
     fn from_raw(raw: &'a [Self::PhysicalType]) -> TileDBResult<Self>;
@@ -896,8 +897,8 @@ mod test {
         {
             let attr = Builder::new(&ctx, "foo", Datatype::UInt32)?.build();
 
-            let val: &[u32] = attr.fill_value()?;
-            assert_eq!(val, [u32::MAX]);
+            let val: u32 = attr.fill_value()?;
+            assert_eq!(val, u32::MAX);
         }
 
         // override
@@ -906,8 +907,8 @@ mod test {
                 .fill_value(5_u32)?
                 .build();
 
-            let val: &[u32] = attr.fill_value()?;
-            assert_eq!(val, [5]);
+            let val: u32 = attr.fill_value()?;
+            assert_eq!(val, 5);
         }
 
         Ok(())
@@ -923,8 +924,8 @@ mod test {
                 .nullability(true)?
                 .build();
 
-            let (val, validity): (&[u32], bool) = attr.fill_value_nullable()?;
-            assert_eq!(val, [u32::MAX]);
+            let (val, validity): (u32, bool) = attr.fill_value_nullable()?;
+            assert_eq!(val, u32::MAX);
             assert!(!validity);
         }
 
@@ -935,8 +936,8 @@ mod test {
                 .fill_value_nullability(5_u32, true)?
                 .build();
 
-            let (val, validity): (&[u32], bool) = attr.fill_value_nullable()?;
-            assert_eq!(val, [5]);
+            let (val, validity): (u32, bool) = attr.fill_value_nullable()?;
+            assert_eq!(val, 5);
             assert!(validity);
         }
 

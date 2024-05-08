@@ -124,7 +124,10 @@ pub fn tiledb_dimension<'ctx>(
                 tiledb_datatype,
             ),
             _ => {
-                /* TODO: refactor so there is only one Option such that this is actually true */
+                /*
+                 * TODO: refactor so there is only one Option such that this is actually true.
+                 * Related to SC-466692
+                 */
                 unreachable!()
             }
         }
