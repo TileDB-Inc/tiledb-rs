@@ -33,8 +33,17 @@ pub fn prop_attribute_name() -> impl Strategy<Value = String> {
         )
 }
 
-fn prop_fill<T: Arbitrary>() -> impl Strategy<Value = T> {
-    any::<T>()
+fn prop_fill<T: Arbitrary>(
+    cell_val_num: CellValNum,
+) -> impl Strategy<Value = Vec<T>> {
+    match cell_val_num {
+        CellValNum::Fixed(nz) => {
+            proptest::collection::vec(any::<T>(), nz.get() as usize)
+        }
+        CellValNum::Var => {
+            proptest::collection::vec(any::<T>(), 1..16) /* TODO: does 16 make sense? */
+        }
+    }
 }
 
 /// Returns a strategy to generate a filter pipeline for an attribute with the given
@@ -87,23 +96,37 @@ fn prop_attribute_for_datatype(
                 .as_ref()
                 .map(|n| Just(*n).boxed())
                 .unwrap_or(any::<bool>().boxed());
-            let cell_val_num = any::<CellValNum>();
-            let fill = prop_fill::<DT>();
+            let cell_val_num = if datatype == Datatype::Any {
+                Just(CellValNum::Var).boxed()
+            } else {
+                any::<CellValNum>()
+            };
             let fill_nullable = any::<bool>();
-            (name, nullable, cell_val_num, fill, fill_nullable).prop_flat_map(
-                move |(name, nullable, cell_val_num, fill, fill_nullable)| {
-                    prop_filters(datatype, cell_val_num, requirements.clone())
-                        .prop_map(move |filters| AttributeData {
-                            name: name.clone(),
+            (name, nullable, cell_val_num, fill_nullable).prop_flat_map(
+                move |(name, nullable, cell_val_num, fill_nullable)| {
+                    (
+                        prop_fill::<DT>(cell_val_num),
+                        prop_filters(
                             datatype,
-                            nullability: Some(nullable),
-                            cell_val_num: Some(cell_val_num),
-                            fill: Some(FillData {
-                                data: json!(fill),
-                                nullability: Some(nullable && fill_nullable),
-                            }),
-                            filters,
-                        })
+                            cell_val_num,
+                            requirements.clone(),
+                        ),
+                    )
+                        .prop_map(
+                            move |(fill, filters)| AttributeData {
+                                name: name.clone(),
+                                datatype,
+                                nullability: Some(nullable),
+                                cell_val_num: Some(cell_val_num),
+                                fill: Some(FillData {
+                                    data: json!(fill),
+                                    nullability: Some(
+                                        nullable && fill_nullable,
+                                    ),
+                                }),
+                                filters,
+                            },
+                        )
                 },
             )
         }
