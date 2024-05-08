@@ -17,8 +17,8 @@ use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 #[derive(Deserialize, Serialize)]
 pub struct DimensionMetadata {
     pub cell_val_num: CellValNum,
-    pub domain: [serde_json::value::Value; 2],
-    pub extent: serde_json::value::Value,
+    pub domain: Option<[serde_json::value::Value; 2]>,
+    pub extent: Option<serde_json::value::Value>,
     pub filters: FilterMetadata,
 }
 
@@ -31,8 +31,8 @@ impl DimensionMetadata {
 
             Ok(DimensionMetadata {
                 cell_val_num: dim.cell_val_num()?,
-                domain: [json!(domain[0]), json!(domain[1])],
-                extent: json!(extent),
+                domain: domain.map(|d| [json!(d[0]), json!(d[1])]),
+                extent: extent.map(|e| json!(e)),
                 filters: FilterMetadata::new(&dim.filters()?)?,
             })
         })
@@ -99,16 +99,38 @@ pub fn tiledb_dimension<'ctx>(
             })
         };
 
-        let domain = [deser(&metadata.domain[0])?, deser(&metadata.domain[1])?];
-        let extent = deser(&metadata.extent)?;
+        let domain = if let Some(d) = metadata.domain {
+            Some([deser(&d[0])?, deser(&d[1])?])
+        } else {
+            None
+        };
+        let extent = if let Some(e) = metadata.extent {
+            Some(deser(&e)?)
+        } else {
+            None
+        };
 
-        DimensionBuilder::new::<DT>(
-            context,
-            field.name(),
-            tiledb_datatype,
-            &domain,
-            &extent,
-        )
+        match (domain, extent) {
+            (Some(domain), Some(extent)) => DimensionBuilder::new::<DT>(
+                context,
+                field.name(),
+                tiledb_datatype,
+                &domain,
+                &extent,
+            ),
+            (None, None) => DimensionBuilder::new_string(
+                context,
+                field.name(),
+                tiledb_datatype,
+            ),
+            _ => {
+                /*
+                 * TODO: refactor so there is only one Option such that this is actually true.
+                 * Related to SC-466692
+                 */
+                unreachable!()
+            }
+        }
     })?;
 
     let fl = metadata

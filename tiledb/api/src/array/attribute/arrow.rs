@@ -34,7 +34,7 @@ impl AttributeMetadata {
             fill_value: fn_typed!(attr.datatype()?, LT, {
                 type DT = <LT as LogicalType>::PhysicalType;
                 let (fill_value, fill_nullable) =
-                    attr.fill_value_nullable::<DT>()?;
+                    attr.fill_value_nullable::<&[DT]>()?;
                 FillValueMetadata {
                     data: json!(fill_value),
                     nullable: fill_nullable,
@@ -57,7 +57,7 @@ impl AttributeMetadata {
         fn_typed!(builder.datatype()?, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
             let fill_value =
-                serde_json::from_value::<DT>(self.fill_value.data.clone())
+                serde_json::from_value::<Vec<DT>>(self.fill_value.data.clone())
                     .map_err(|e| {
                         Error::Deserialization(
                             String::from("attribute fill value"),

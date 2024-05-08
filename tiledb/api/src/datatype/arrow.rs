@@ -177,7 +177,6 @@ pub fn is_same_physical_type(
 
 #[cfg(any(feature = "proptest-strategies", test))]
 pub mod strategy {
-    use super::*;
     use proptest::prelude::*;
 
     /// Returns a strategy for generating any Arrow data type
@@ -208,9 +207,8 @@ pub mod strategy {
 
     pub fn prop_arrow_implemented(
     ) -> impl Strategy<Value = arrow_schema::DataType> {
-        crate::datatype::strategy::prop_datatype_implemented()
-            .prop_map(|dt| arrow_type_physical(&dt)
-                .expect("Datatype claims to be implemented but does not have an arrow equivalent"))
+        /* note to the reviewer, this is going to be blasted away in short order by #87 */
+        prop_arrow_invertible()
     }
 }
 
@@ -245,13 +243,6 @@ pub mod tests {
         ]
     }
 
-    pub fn prop_arrow_implemented(
-    ) -> impl Strategy<Value = arrow_schema::DataType> {
-        crate::datatype::strategy::prop_datatype_implemented()
-            .prop_map(|dt| arrow_type_physical(&dt)
-                .expect("Datatype claims to be implemented but does not have an arrow equivalent"))
-    }
-
     mod strategy {
         use super::*;
 
@@ -274,7 +265,7 @@ pub mod tests {
 
     proptest! {
         #[test]
-        fn test_physical(tdb_dt in crate::datatype::strategy::prop_datatype()) {
+        fn test_physical(tdb_dt in any::<Datatype>()) {
             if let Some(arrow_dt) = arrow_type_physical(&tdb_dt) {
                 assert!(is_same_physical_type(&tdb_dt, &arrow_dt));
                 if let Some(adt_width) = arrow_dt.primitive_width() {

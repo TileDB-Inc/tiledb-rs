@@ -1007,11 +1007,11 @@ mod tests {
         assert_eq!(Datatype::Int32, rows.datatype().unwrap());
         // TODO: add method to check min/max
 
-        let rows_domain = rows.domain::<i32>().unwrap();
+        let rows_domain = rows.domain::<i32>().unwrap().unwrap();
         assert_eq!(rows_domain[0], 1);
         assert_eq!(rows_domain[1], 4);
 
-        let cols_domain = cols.domain::<i32>().unwrap();
+        let cols_domain = cols.domain::<i32>().unwrap().unwrap();
         assert_eq!(cols_domain[0], 1);
         assert_eq!(cols_domain[1], 4);
 

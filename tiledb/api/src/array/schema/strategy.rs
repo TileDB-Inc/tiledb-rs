@@ -28,16 +28,21 @@ impl Arbitrary for CellValNum {
     type Parameters = Option<std::ops::Range<NonZeroU32>>;
 
     fn arbitrary_with(r: Self::Parameters) -> Self::Strategy {
-        let r = r.unwrap_or(
-            NonZeroU32::new(1).unwrap()..NonZeroU32::new(u32::MAX).unwrap(),
-        );
-
-        prop_oneof![
-            (r.start.get()..r.end.get())
-                .prop_map(|c| CellValNum::try_from(c).unwrap()),
-            Just(CellValNum::Var)
-        ]
-        .boxed()
+        if let Some(range) = r {
+            (range.start.get()..range.end.get())
+                .prop_map(|nz| CellValNum::try_from(nz).unwrap())
+                .boxed()
+        } else {
+            prop_oneof![
+                30 => Just(CellValNum::single()),
+                30 => Just(CellValNum::Var),
+                20 => (2u32..=8).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                10 => (9u32..=16).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                5 => (17u32..=32).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                3 => (33u32..=64).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                2 => (65u32..=2048).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+            ].boxed()
+        }
     }
 }
 
