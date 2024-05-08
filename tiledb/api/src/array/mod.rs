@@ -8,6 +8,9 @@ use util::option::OptionSubset;
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::ModeErrorKind;
+use crate::key::LookupKey;
+use crate::metadata::Metadata;
+use crate::Datatype;
 use crate::Result as TileDBResult;
 
 pub mod attribute;
@@ -249,6 +252,113 @@ impl<'ctx> Array<'ctx> {
         })?;
 
         Ok(Schema::new(self.context, RawSchema::Owned(c_schema)))
+    }
+
+    pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
+        let c_array = *self.raw;
+        let (vec_size, vec_ptr, datatype) = metadata.c_data();
+        let c_key = cstring!(metadata.key);
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_put_metadata(
+                ctx,
+                c_array,
+                c_key.as_ptr(),
+                datatype,
+                vec_size as u32,
+                vec_ptr,
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn delete_metadata<S>(&mut self, name: S) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_array = *self.raw;
+        let c_name = cstring!(name.as_ref());
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_delete_metadata(ctx, c_array, c_name.as_ptr())
+        })?;
+        Ok(())
+    }
+
+    pub fn num_metadata(&self) -> TileDBResult<u64> {
+        let c_array = *self.raw;
+        let mut num: u64 = out_ptr!();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_get_metadata_num(ctx, c_array, &mut num)
+        })?;
+        Ok(num)
+    }
+
+    pub fn metadata(&self, key: LookupKey) -> TileDBResult<Metadata> {
+        let c_array = *self.raw;
+        let mut vec_size: u32 = out_ptr!();
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
+        let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
+
+        let name: String = match key {
+            LookupKey::Index(index) => {
+                let mut key_ptr: *const std::ffi::c_char = out_ptr!();
+                let mut key_len: u32 = out_ptr!();
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_metadata_from_index(
+                        ctx,
+                        c_array,
+                        index as u64,
+                        &mut key_ptr,
+                        &mut key_len,
+                        &mut c_datatype,
+                        &mut vec_size,
+                        &mut vec_ptr,
+                    )
+                })?;
+                let c_key = unsafe { std::ffi::CStr::from_ptr(key_ptr) };
+                Ok(c_key.to_string_lossy().into_owned()) as TileDBResult<String>
+            }
+            LookupKey::Name(name) => {
+                let c_name = cstring!(name.as_ref() as &str);
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_metadata(
+                        ctx,
+                        c_array,
+                        c_name.as_ptr(),
+                        &mut c_datatype,
+                        &mut vec_size,
+                        &mut vec_ptr,
+                    )
+                })?;
+                Ok(name.to_owned())
+            }
+        }?;
+        let datatype = Datatype::try_from(c_datatype)?;
+        Ok(Metadata::new_raw(name, datatype, vec_ptr, vec_size))
+    }
+
+    pub fn has_metadata_key<S>(&self, name: S) -> TileDBResult<Option<Datatype>>
+    where
+        S: AsRef<str>,
+    {
+        let c_array = *self.raw;
+        let c_name = cstring!(name.as_ref());
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
+        let mut exists: i32 = out_ptr!();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_has_metadata_key(
+                ctx,
+                c_array,
+                c_name.as_ptr(),
+                &mut c_datatype,
+                &mut exists,
+            )
+        })?;
+        if exists == 0 {
+            return Ok(None);
+        }
+
+        let datatype = Datatype::try_from(c_datatype)?;
+        Ok(Some(datatype))
     }
 }
 
