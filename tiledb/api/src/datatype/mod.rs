@@ -377,20 +377,24 @@ impl Datatype {
 
     /// Returns whether this type can be used as a dimension type of a sparse array
     pub fn is_allowed_dimension_type_sparse(&self) -> bool {
-        self.is_integral_type()
-            || self.is_datetime_type()
-            || self.is_time_type()
-            || matches!(
-                *self,
-                Datatype::Float32 | Datatype::Float64 | Datatype::StringAscii
-            )
+        !matches!(self, Datatype::Boolean)
+            && (self.is_integral_type()
+                || self.is_datetime_type()
+                || self.is_time_type()
+                || matches!(
+                    *self,
+                    Datatype::Float32
+                        | Datatype::Float64
+                        | Datatype::StringAscii
+                ))
     }
 
     /// Returns whether this type can be used as a dimension type of a dense array
     pub fn is_allowed_dimension_type_dense(&self) -> bool {
-        self.is_integral_type()
-            || self.is_datetime_type()
-            || self.is_time_type()
+        !matches!(self, Datatype::Boolean)
+            && (self.is_integral_type()
+                || self.is_datetime_type()
+                || self.is_time_type())
     }
 
     #[cfg(test)]

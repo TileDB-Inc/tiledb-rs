@@ -51,7 +51,7 @@ fn prop_datatype() -> impl Strategy<Value = Datatype> {
     ]
 }
 
-const DENSE_DIMENSION_DATATYPES: [Datatype; 31] = [
+const DENSE_DIMENSION_DATATYPES: [Datatype; 30] = [
     Datatype::Int8,
     Datatype::Int16,
     Datatype::Int32,
@@ -82,10 +82,9 @@ const DENSE_DIMENSION_DATATYPES: [Datatype; 31] = [
     Datatype::TimePicosecond,
     Datatype::TimeFemtosecond,
     Datatype::TimeAttosecond,
-    Datatype::Boolean,
 ];
 
-const SPARSE_DIMENSION_DATATYPES: [Datatype; 34] = [
+const SPARSE_DIMENSION_DATATYPES: [Datatype; 33] = [
     Datatype::Int8,
     Datatype::Int16,
     Datatype::Int32,
@@ -119,7 +118,6 @@ const SPARSE_DIMENSION_DATATYPES: [Datatype; 34] = [
     Datatype::TimeFemtosecond,
     Datatype::TimeAttosecond,
     Datatype::StringAscii,
-    Datatype::Boolean,
 ];
 
 fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
@@ -164,6 +162,96 @@ impl Arbitrary for Datatype {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array::{
+        ArrayType, AttributeBuilder, DimensionBuilder, DomainBuilder, Schema,
+        SchemaBuilder,
+    };
+    use crate::datatype::LogicalType;
+    use crate::error::Error;
+    use crate::{Context, Result as TileDBResult};
+
+    /// Creates a schema with a single dimension of the given `Datatype` with one attribute.
+    /// Used by the test to check if the `Datatype` can be used in this way.
+    fn dimension_comprehensive_schema(
+        context: &Context,
+        array_type: ArrayType,
+        datatype: Datatype,
+    ) -> TileDBResult<Schema> {
+        let dim = fn_typed!(datatype, LT, {
+            if datatype.is_string_type() {
+                DimensionBuilder::new_string(context, "d", datatype)
+            } else {
+                type DT = <LT as LogicalType>::PhysicalType;
+                let domain: [DT; 2] = [0 as DT, 127 as DT];
+                let extent: DT = 16 as DT;
+                DimensionBuilder::new::<DT>(
+                    context, "d", datatype, &domain, &extent,
+                )
+            }
+        })?
+        .build();
+
+        let attr = AttributeBuilder::new(context, "a", Datatype::Any)?.build();
+
+        let domain = DomainBuilder::new(context)?.add_dimension(dim)?.build();
+        SchemaBuilder::new(context, array_type, domain)?
+            .add_attribute(attr)?
+            .build()
+    }
+
+    fn do_dense_dimension_comprehensive(datatype: Datatype) {
+        let allowed = DENSE_DIMENSION_DATATYPES.contains(&datatype);
+        assert_eq!(allowed, datatype.is_allowed_dimension_type_dense());
+
+        let context = Context::new().unwrap();
+        let r = dimension_comprehensive_schema(
+            &context,
+            ArrayType::Dense,
+            datatype,
+        );
+        assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
+        }
+    }
+
+    fn do_sparse_dimension_comprehensive(datatype: Datatype) {
+        let allowed = SPARSE_DIMENSION_DATATYPES.contains(&datatype);
+        assert_eq!(allowed, datatype.is_allowed_dimension_type_sparse());
+
+        let context = Context::new().unwrap();
+        let r = dimension_comprehensive_schema(
+            &context,
+            ArrayType::Sparse,
+            datatype,
+        );
+        assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
+        }
+    }
 
     proptest! {
         #[test]
@@ -173,11 +261,7 @@ mod tests {
 
         #[test]
         fn dense_dimension_comprehensive(dt in any::<Datatype>()) {
-            if DENSE_DIMENSION_DATATYPES.contains(&dt) {
-                assert!(dt.is_allowed_dimension_type_dense());
-            } else {
-                assert!(!dt.is_allowed_dimension_type_dense());
-            }
+            do_dense_dimension_comprehensive(dt)
         }
 
         #[test]
@@ -187,11 +271,7 @@ mod tests {
 
         #[test]
         fn sparse_dimension_comprehensive(dt in any::<Datatype>()) {
-            if SPARSE_DIMENSION_DATATYPES.contains(&dt) {
-                assert!(dt.is_allowed_dimension_type_sparse());
-            } else {
-                assert!(!dt.is_allowed_dimension_type_sparse());
-            }
+            do_sparse_dimension_comprehensive(dt)
         }
     }
 }
