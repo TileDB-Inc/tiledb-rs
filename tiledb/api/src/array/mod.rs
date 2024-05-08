@@ -1,7 +1,3 @@
-// This is for the derive(proptest::Arbitrary) macro which triggers this
-// lint on nightly.
-#![cfg_attr(ci_nightly, allow(non_local_definitions))]
-
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
