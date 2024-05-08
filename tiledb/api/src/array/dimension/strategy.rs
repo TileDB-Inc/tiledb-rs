@@ -122,24 +122,38 @@ pub fn prop_dimension_for_datatype(
     fn_typed!(datatype, LT, {
         type DT = <LT as LogicalType>::PhysicalType;
         let name = prop_dimension_name();
-        let range_and_extent = prop_range_and_extent::<DT>();
+        let range_and_extent = if !datatype.is_string_type() {
+            prop_range_and_extent::<DT>().prop_map(Some).boxed()
+        } else {
+            Just(None).boxed()
+        };
         let filters = any_with::<FilterListData>(Rc::new(FilterRequirements {
             input_datatype: Some(datatype),
             context: Some(FilterContext::Dimension(datatype, cell_val_num)),
             ..Default::default()
         }));
         (name, range_and_extent, filters)
-            .prop_map(move |(name, values, filters)| DimensionData {
-                name,
-                datatype,
-                domain: Some([json!(values.0[0]), json!(values.0[1])]),
-                extent: Some(json!(values.1)),
-                cell_val_num: Some(cell_val_num),
-                filters: if filters.is_empty() {
-                    None
-                } else {
-                    Some(filters)
-                },
+            .prop_map(move |(name, values, filters)| {
+                let (domain, extent) = match values {
+                    None => (None, None),
+                    Some((domain, extent)) => (
+                        Some([json![domain[0]], json![domain[1]]]),
+                        Some(json!(extent)),
+                    ),
+                };
+
+                DimensionData {
+                    name,
+                    datatype,
+                    domain,
+                    extent,
+                    cell_val_num: Some(cell_val_num),
+                    filters: if filters.is_empty() {
+                        None
+                    } else {
+                        Some(filters)
+                    },
+                }
             })
             .boxed()
     })
