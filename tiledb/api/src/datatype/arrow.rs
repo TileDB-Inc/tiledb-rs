@@ -177,7 +177,6 @@ pub fn is_same_physical_type(
 
 #[cfg(any(feature = "proptest-strategies", test))]
 pub mod strategy {
-    use super::*;
     use proptest::prelude::*;
 
     /// Returns a strategy for generating any Arrow data type
@@ -208,9 +207,8 @@ pub mod strategy {
 
     pub fn prop_arrow_implemented(
     ) -> impl Strategy<Value = arrow_schema::DataType> {
-        any::<Datatype>()
-            .prop_map(|dt| arrow_type_physical(&dt)
-                .expect("Datatype claims to be implemented but does not have an arrow equivalent"))
+        /* note to the reviewer, this is going to be blasted away in short order by #87 */
+        prop_arrow_invertible()
     }
 }
 
