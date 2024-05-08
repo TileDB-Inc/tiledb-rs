@@ -19,8 +19,8 @@ use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 /// field
 #[derive(Deserialize, Serialize)]
 pub struct DimensionMetadata {
-    pub domain: [serde_json::value::Value; 2],
-    pub extent: serde_json::value::Value,
+    pub domain: Option<[serde_json::value::Value; 2]>,
+    pub extent: Option<serde_json::value::Value>,
     pub filters: FilterMetadata,
 }
 
@@ -32,8 +32,8 @@ impl DimensionMetadata {
             let extent = dim.extent::<DT>()?;
 
             Ok(DimensionMetadata {
-                domain: [json!(domain[0]), json!(domain[1])],
-                extent: json!(extent),
+                domain: domain.map(|d| [json!(d[0]), json!(d[1])]),
+                extent: extent.map(|e| json!(e)),
                 filters: FilterMetadata::new(&dim.filters()?)?,
             })
         })
@@ -82,55 +82,77 @@ pub fn from_arrow<'ctx>(
     context: &'ctx TileDBContext,
     field: &arrow::datatypes::Field,
 ) -> TileDBResult<DimensionFromArrowResult<'ctx>> {
-    let construct =
-        |datatype, cell_val_num| -> TileDBResult<DimensionBuilder<'ctx>> {
-            let metadata = match field.metadata().get("tiledb") {
-                Some(metadata) => {
-                    serde_json::from_str::<DimensionMetadata>(metadata)
-                        .map_err(|e| {
-                            TileDBError::Deserialization(
-                                format!("dimension {} metadata", field.name()),
-                                anyhow!(e),
-                            )
-                        })?
-                }
-                None => Err(TileDBError::InvalidArgument(anyhow!(format!(
-                    "field {} missing metadata to construct dimension",
-                    field.name()
-                ))))?,
+    let construct = |datatype,
+                     cell_val_num|
+     -> TileDBResult<DimensionBuilder<'ctx>> {
+        let metadata = match field.metadata().get("tiledb") {
+            Some(metadata) => serde_json::from_str::<DimensionMetadata>(
+                metadata,
+            )
+            .map_err(|e| {
+                TileDBError::Deserialization(
+                    format!("dimension {} metadata", field.name()),
+                    anyhow!(e),
+                )
+            })?,
+            None => Err(TileDBError::InvalidArgument(anyhow!(format!(
+                "field {} missing metadata to construct dimension",
+                field.name()
+            ))))?,
+        };
+
+        let dim = fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
+            let deser = |v: &serde_json::value::Value| {
+                serde_json::from_value::<DT>(v.clone()).map_err(|e| {
+                    TileDBError::Deserialization(
+                        format!("dimension {} lower bound", field.name()),
+                        anyhow!(e),
+                    )
+                })
             };
 
-            let dim = fn_typed!(datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
-                let deser = |v: &serde_json::value::Value| {
-                    serde_json::from_value::<DT>(v.clone()).map_err(|e| {
-                        TileDBError::Deserialization(
-                            format!("dimension {} lower bound", field.name()),
-                            anyhow!(e),
-                        )
-                    })
-                };
+            let domain = if let Some(d) = metadata.domain {
+                Some([deser(&d[0])?, deser(&d[1])?])
+            } else {
+                None
+            };
+            let extent = if let Some(e) = metadata.extent {
+                Some(deser(&e)?)
+            } else {
+                None
+            };
 
-                let domain =
-                    [deser(&metadata.domain[0])?, deser(&metadata.domain[1])?];
-                let extent = deser(&metadata.extent)?;
-
-                DimensionBuilder::new::<DT>(
+            match (domain, extent) {
+                (Some(domain), Some(extent)) => DimensionBuilder::new::<DT>(
                     context,
                     field.name(),
                     datatype,
                     &domain,
                     &extent,
-                )
-            })?;
+                ),
+                (None, None) => DimensionBuilder::new_string(
+                    context,
+                    field.name(),
+                    datatype,
+                ),
+                _ => {
+                    /*
+                     * TODO: refactor so there is only one Option such that this is actually true.
+                     * Related to SC-466692
+                     */
+                    unreachable!()
+                }
+            }
+        })?;
 
-            let fl = metadata
-                .filters
-                .apply(FilterListBuilder::new(dim.context())?)?
-                .build();
+        let fl = metadata
+            .filters
+            .apply(FilterListBuilder::new(dim.context())?)?
+            .build();
 
-            dim.cell_val_num(cell_val_num)?.filters(fl)
-        };
+        dim.cell_val_num(cell_val_num)?.filters(fl)
+    };
 
     match crate::datatype::arrow::from_arrow(field.data_type()) {
         DatatypeFromArrowResult::None => Ok(DimensionFromArrowResult::None),

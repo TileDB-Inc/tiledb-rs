@@ -4,13 +4,74 @@ use serde::{Deserialize, Serialize};
 
 use crate::private::sealed;
 
+/// Trait for comparisons based on value bits.
+/// This exists to work around float `NaN` which is not equal to itself,
+/// preventing float types from being `Eq` for generic operations.
+pub trait BitsEq {
+    /// Test if two values have the same bits.
+    ///
+    /// This is often the same as `PartialEq::eq`, but is not in the case
+    /// of floats where `NaN != NaN`.
+    fn bits_eq(&self, other: &Self) -> bool;
+}
+
+impl<T> BitsEq for [T]
+where
+    T: BitsEq,
+{
+    fn bits_eq(&self, other: &Self) -> bool {
+        self.len() == other.len()
+            && self.iter().zip(other.iter()).all(|(l, r)| l.bits_eq(r))
+    }
+}
+
+impl<T1, T2> BitsEq for (T1, T2)
+where
+    T1: BitsEq,
+    T2: BitsEq,
+{
+    fn bits_eq(&self, other: &Self) -> bool {
+        self.0.bits_eq(&other.0) && self.1.bits_eq(&other.1)
+    }
+}
+
+/// Trait for ordering based on value bits.
+/// This exists to work around float `NaN` which prevents float from being
+/// a total order for use with generic operations.
+pub trait BitsOrd {
+    /// Return the ordering between `self` and `other`.
+    /// This function defines a total order for all values of `Self`.
+    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering;
+
+    /// Restrict a value to a certain interval, using `bits_cmp` as
+    /// the ordering function. See `std::cmp::Ord::clamp`.
+    fn bits_clamp(self, min: Self, max: Self) -> Self
+    where
+        Self: Sized,
+    {
+        use std::cmp::Ordering;
+
+        assert_eq!(min.bits_cmp(&max), Ordering::Less);
+
+        if matches!(self.bits_cmp(&min), Ordering::Less) {
+            min
+        } else if matches!(self.bits_cmp(&max), Ordering::Less) {
+            self
+        } else {
+            max
+        }
+    }
+}
+
 /// Trait for generic operations on primitive data types.
 ///
 /// Types which implement this trait can be used to interface with TileDB
 /// at the lowest level due to having the same memory representation
 /// in Rust and TileDB.
 pub trait PhysicalType:
-    Copy
+    BitsEq
+    + BitsOrd
+    + Copy
     + Debug
     + Default
     + for<'a> Deserialize<'a>
@@ -22,34 +83,6 @@ pub trait PhysicalType:
     + crate::private::Sealed
     + 'static
 {
-    /// Test if two values have the same bits.
-    ///
-    /// This is often the same as `PartialEq::eq`, but is not in the case
-    /// of floats where `NaN != NaN`.
-    fn bits_eq(&self, other: &Self) -> bool;
-
-    /// Return the ordering between `self` and `other`.
-    /// This function defines a total order for all values of `Self`.
-    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering;
-
-    /// Restrict a value to a certain interval, using `bits_cmp` as
-    /// the ordering function. See `std::cmp::Ord::clamp`.
-    fn bits_clamp(&self, min: Self, max: Self) -> Self
-    where
-        Self: Sized,
-    {
-        use std::cmp::Ordering;
-
-        assert_eq!(min.bits_cmp(&max), Ordering::Less);
-
-        if matches!(self.bits_cmp(&min), Ordering::Less) {
-            min
-        } else if matches!(self.bits_cmp(&max), Ordering::Less) {
-            *self
-        } else {
-            max
-        }
-    }
 }
 
 macro_rules! native_type_eq {
@@ -57,16 +90,19 @@ macro_rules! native_type_eq {
         sealed!($($T),+);
 
         $(
-
-            impl PhysicalType for $T {
+            impl BitsEq for $T {
                 fn bits_eq(&self, other: &Self) -> bool {
                     <Self as PartialEq>::eq(self, other)
                 }
+            }
 
+            impl BitsOrd for $T {
                 fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
                     <Self as Ord>::cmp(self, other)
                 }
             }
+
+            impl PhysicalType for $T {}
         )+
     }
 }
@@ -77,22 +113,30 @@ native_type_eq!(i8: Datatype::Int8, i16: Datatype::Int16, i32: Datatype::Int32, 
 impl crate::private::Sealed for f32 {}
 impl crate::private::Sealed for f64 {}
 
-impl PhysicalType for f32 {
+impl BitsEq for f32 {
     fn bits_eq(&self, other: &Self) -> bool {
         self.to_bits() == other.to_bits()
     }
+}
 
+impl BitsOrd for f32 {
     fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.total_cmp(other)
     }
 }
 
-impl PhysicalType for f64 {
+impl PhysicalType for f32 {}
+
+impl BitsEq for f64 {
     fn bits_eq(&self, other: &Self) -> bool {
         self.to_bits() == other.to_bits()
     }
+}
 
+impl BitsOrd for f64 {
     fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.total_cmp(other)
     }
 }
+
+impl PhysicalType for f64 {}

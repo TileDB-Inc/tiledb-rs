@@ -2,7 +2,7 @@ use proptest::prelude::*;
 
 use crate::Datatype;
 
-pub fn prop_datatype() -> impl Strategy<Value = Datatype> {
+fn prop_datatype() -> impl Strategy<Value = Datatype> {
     prop_oneof![
         Just(Datatype::Int8),
         Just(Datatype::Int16),
@@ -51,28 +51,86 @@ pub fn prop_datatype() -> impl Strategy<Value = Datatype> {
     ]
 }
 
-/// Choose an arbitrary datatype which is implemented
-/// (satisfies CAPIConv, and has cases in fn_typed)
-// TODO: make sure to keep this list up to date as we add more types
-pub fn prop_datatype_implemented() -> impl Strategy<Value = Datatype> {
-    prop_oneof![
-        Just(Datatype::Int8),
-        Just(Datatype::Int16),
-        Just(Datatype::Int32),
-        Just(Datatype::Int64),
-        Just(Datatype::UInt8),
-        Just(Datatype::UInt16),
-        Just(Datatype::UInt32),
-        Just(Datatype::UInt64),
-        Just(Datatype::Float32),
-        Just(Datatype::Float64),
-    ]
+const DENSE_DIMENSION_DATATYPES: [Datatype; 30] = [
+    Datatype::Int8,
+    Datatype::Int16,
+    Datatype::Int32,
+    Datatype::Int64,
+    Datatype::UInt8,
+    Datatype::UInt16,
+    Datatype::UInt32,
+    Datatype::UInt64,
+    Datatype::DateTimeYear,
+    Datatype::DateTimeMonth,
+    Datatype::DateTimeWeek,
+    Datatype::DateTimeDay,
+    Datatype::DateTimeHour,
+    Datatype::DateTimeMinute,
+    Datatype::DateTimeSecond,
+    Datatype::DateTimeMillisecond,
+    Datatype::DateTimeMicrosecond,
+    Datatype::DateTimeNanosecond,
+    Datatype::DateTimePicosecond,
+    Datatype::DateTimeFemtosecond,
+    Datatype::DateTimeAttosecond,
+    Datatype::TimeHour,
+    Datatype::TimeMinute,
+    Datatype::TimeSecond,
+    Datatype::TimeMillisecond,
+    Datatype::TimeMicrosecond,
+    Datatype::TimeNanosecond,
+    Datatype::TimePicosecond,
+    Datatype::TimeFemtosecond,
+    Datatype::TimeAttosecond,
+];
+
+const SPARSE_DIMENSION_DATATYPES: [Datatype; 33] = [
+    Datatype::Int8,
+    Datatype::Int16,
+    Datatype::Int32,
+    Datatype::Int64,
+    Datatype::UInt8,
+    Datatype::UInt16,
+    Datatype::UInt32,
+    Datatype::UInt64,
+    Datatype::Float32,
+    Datatype::Float64,
+    Datatype::DateTimeYear,
+    Datatype::DateTimeMonth,
+    Datatype::DateTimeWeek,
+    Datatype::DateTimeDay,
+    Datatype::DateTimeHour,
+    Datatype::DateTimeMinute,
+    Datatype::DateTimeSecond,
+    Datatype::DateTimeMillisecond,
+    Datatype::DateTimeMicrosecond,
+    Datatype::DateTimeNanosecond,
+    Datatype::DateTimePicosecond,
+    Datatype::DateTimeFemtosecond,
+    Datatype::DateTimeAttosecond,
+    Datatype::TimeHour,
+    Datatype::TimeMinute,
+    Datatype::TimeSecond,
+    Datatype::TimeMillisecond,
+    Datatype::TimeMicrosecond,
+    Datatype::TimeNanosecond,
+    Datatype::TimePicosecond,
+    Datatype::TimeFemtosecond,
+    Datatype::TimeAttosecond,
+    Datatype::StringAscii,
+];
+
+fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
+    /* see `Datatype::is_allowed_dimension_type_dense` */
+    proptest::strategy::Union::new(
+        DENSE_DIMENSION_DATATYPES.iter().map(|dt| Just(*dt)),
+    )
 }
 
-pub fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
-    prop_datatype_implemented().prop_filter(
-        "Type is not a valid dimension type for dense arrays",
-        |dt| dt.is_allowed_dimension_type_dense(),
+fn prop_datatype_for_sparse_dimension() -> impl Strategy<Value = Datatype> {
+    /* see `Datatype::is_allowed_dimension_type_sparse` */
+    proptest::strategy::Union::new(
+        SPARSE_DIMENSION_DATATYPES.iter().map(|dt| Just(*dt)),
     )
 }
 
@@ -81,7 +139,7 @@ pub enum DatatypeContext {
     #[default]
     Any,
     DenseDimension,
-    Implemented,
+    SparseDimension,
 }
 
 impl Arbitrary for Datatype {
@@ -94,7 +152,126 @@ impl Arbitrary for Datatype {
             DatatypeContext::DenseDimension => {
                 prop_datatype_for_dense_dimension().boxed()
             }
-            DatatypeContext::Implemented => prop_datatype_implemented().boxed(),
+            DatatypeContext::SparseDimension => {
+                prop_datatype_for_sparse_dimension().boxed()
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::array::{
+        ArrayType, AttributeBuilder, DimensionBuilder, DomainBuilder, Schema,
+        SchemaBuilder,
+    };
+    use crate::datatype::LogicalType;
+    use crate::error::Error;
+    use crate::{Context, Result as TileDBResult};
+
+    /// Creates a schema with a single dimension of the given `Datatype` with one attribute.
+    /// Used by the test to check if the `Datatype` can be used in this way.
+    fn dimension_comprehensive_schema(
+        context: &Context,
+        array_type: ArrayType,
+        datatype: Datatype,
+    ) -> TileDBResult<Schema> {
+        let dim = fn_typed!(datatype, LT, {
+            if datatype.is_string_type() {
+                DimensionBuilder::new_string(context, "d", datatype)
+            } else {
+                type DT = <LT as LogicalType>::PhysicalType;
+                let domain: [DT; 2] = [0 as DT, 127 as DT];
+                let extent: DT = 16 as DT;
+                DimensionBuilder::new::<DT>(
+                    context, "d", datatype, &domain, &extent,
+                )
+            }
+        })?
+        .build();
+
+        let attr = AttributeBuilder::new(context, "a", Datatype::Any)?.build();
+
+        let domain = DomainBuilder::new(context)?.add_dimension(dim)?.build();
+        SchemaBuilder::new(context, array_type, domain)?
+            .add_attribute(attr)?
+            .build()
+    }
+
+    fn do_dense_dimension_comprehensive(datatype: Datatype) {
+        let allowed = DENSE_DIMENSION_DATATYPES.contains(&datatype);
+        assert_eq!(allowed, datatype.is_allowed_dimension_type_dense());
+
+        let context = Context::new().unwrap();
+        let r = dimension_comprehensive_schema(
+            &context,
+            ArrayType::Dense,
+            datatype,
+        );
+        assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
+        }
+    }
+
+    fn do_sparse_dimension_comprehensive(datatype: Datatype) {
+        let allowed = SPARSE_DIMENSION_DATATYPES.contains(&datatype);
+        assert_eq!(allowed, datatype.is_allowed_dimension_type_sparse());
+
+        let context = Context::new().unwrap();
+        let r = dimension_comprehensive_schema(
+            &context,
+            ArrayType::Sparse,
+            datatype,
+        );
+        assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn dense_dimension(dt in any_with::<Datatype>(DatatypeContext::DenseDimension)) {
+            assert!(dt.is_allowed_dimension_type_dense())
+        }
+
+        #[test]
+        fn dense_dimension_comprehensive(dt in any::<Datatype>()) {
+            do_dense_dimension_comprehensive(dt)
+        }
+
+        #[test]
+        fn sparse_dimension(dt in any_with::<Datatype>(DatatypeContext::SparseDimension)) {
+            assert!(dt.is_allowed_dimension_type_sparse())
+        }
+
+        #[test]
+        fn sparse_dimension_comprehensive(dt in any::<Datatype>()) {
+            do_sparse_dimension_comprehensive(dt)
         }
     }
 }

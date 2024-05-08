@@ -458,6 +458,13 @@ pub fn from_arrow(
             /* offsets are 64 bits, these types use 32-bit offsets */
             Res::None
         }
+        ADT::BinaryView
+        | ADT::Utf8View
+        | ADT::ListView(_)
+        | ADT::LargeListView(_) => {
+            /* not something we can represent */
+            Res::None
+        }
         ADT::Struct(_)
         | ADT::Union(_, _)
         | ADT::Dictionary(_, _)

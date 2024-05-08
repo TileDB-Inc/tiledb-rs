@@ -1,7 +1,3 @@
-// This is for the derive(proptest::Arbitrary) macro which triggers this
-// lint on nightly.
-#![cfg_attr(ci_nightly, allow(non_local_definitions))]
-
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
@@ -29,7 +25,7 @@ pub use enumeration::{
 };
 pub use fragment_info::{Builder as FragmentInfoBuilder, FragmentInfo};
 pub use schema::{
-    ArrayType, Builder as SchemaBuilder, CellValNum, Schema, SchemaData,
+    ArrayType, Builder as SchemaBuilder, CellValNum, Field, Schema, SchemaData,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -240,7 +236,7 @@ impl<'ctx> Array<'ctx> {
         })
     }
 
-    pub fn schema(&self) -> TileDBResult<Schema> {
+    pub fn schema(&self) -> TileDBResult<Schema<'ctx>> {
         let c_array = *self.raw;
         let mut c_schema: *mut ffi::tiledb_array_schema_t = out_ptr!();
 

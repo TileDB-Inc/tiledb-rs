@@ -4,7 +4,6 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 
 use crate::array::EnumerationData;
-use crate::datatype::strategy::*;
 use crate::datatype::{LogicalType, PhysicalType};
 use crate::{fn_typed, Datatype};
 
@@ -68,7 +67,7 @@ pub fn prop_enumeration_for_datatype(
 }
 
 pub fn prop_enumeration() -> impl Strategy<Value = EnumerationData> {
-    prop_datatype_implemented().prop_flat_map(prop_enumeration_for_datatype)
+    any::<Datatype>().prop_flat_map(prop_enumeration_for_datatype)
 }
 
 #[cfg(test)]

@@ -1,19 +1,42 @@
-use std::collections::VecDeque;
 use std::rc::Rc;
 
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
-use crate::array::{ArrayType, DomainData};
-use crate::datatype::strategy::*;
+use crate::array::{ArrayType, CellValNum, DomainData};
 use crate::filter::list::FilterListData;
 use crate::filter::*;
 
 #[derive(Clone, Debug)]
 pub enum StrategyContext {
-    Attribute(Datatype, ArrayType, Rc<DomainData>),
+    Attribute(Datatype, CellValNum, ArrayType, Rc<DomainData>),
+    Dimension(Datatype, CellValNum),
     SchemaCoordinates(Rc<DomainData>),
+}
+
+impl StrategyContext {
+    /// Returns the input to the filter pipeline
+    /// (whereas `input_datatype` is the input to the current filter)
+    pub fn pipeline_input_datatypes(
+        &self,
+    ) -> Option<Vec<(Datatype, Option<CellValNum>)>> {
+        match self {
+            StrategyContext::Attribute(dt, cvn, _, _) => {
+                Some(vec![(*dt, Some(*cvn))])
+            }
+            StrategyContext::Dimension(dt, cvn) => {
+                Some(vec![(*dt, Some(*cvn))])
+            }
+            StrategyContext::SchemaCoordinates(domain) => Some(
+                domain
+                    .dimension
+                    .iter()
+                    .map(|d| (d.datatype, d.cell_val_num))
+                    .collect::<Vec<(Datatype, Option<CellValNum>)>>(),
+            ),
+        }
+    }
 }
 
 /// Defines requirements for what a generated filter must be able to accept
@@ -21,6 +44,7 @@ pub enum StrategyContext {
 pub struct Requirements {
     pub input_datatype: Option<Datatype>,
     pub context: Option<StrategyContext>,
+    pub pipeline_position: Option<usize>,
 }
 
 fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
@@ -41,7 +65,7 @@ fn prop_compression_delta_strategies(
 ) -> Vec<BoxedStrategy<CompressionType>> {
     if let Some(input_datatype) = input_datatype {
         if input_datatype.is_real_type() {
-            let delta = prop_datatype()
+            let delta = any::<Datatype>()
                 .prop_filter(
                     "input_datatype is floating-point, input must not be Any",
                     move |dt| {
@@ -56,7 +80,7 @@ fn prop_compression_delta_strategies(
                     reinterpret_datatype: Some(dt),
                 });
 
-            let double_delta = prop_datatype()
+            let double_delta = any::<Datatype>()
                 .prop_filter(
                     "input_datatype is floating-point, input must not be Any",
                     move |dt| {
@@ -76,14 +100,14 @@ fn prop_compression_delta_strategies(
     }
 
     /* any non-float type is allowed */
-    let delta = prop_datatype()
+    let delta = any::<Datatype>()
         .prop_filter("reinterpret_datatype cannot be floating-point", |dt| {
             !dt.is_real_type()
         })
         .prop_map(|dt| CompressionType::Delta {
             reinterpret_datatype: Some(dt),
         });
-    let double_delta = prop_datatype()
+    let double_delta = any::<Datatype>()
         .prop_filter("reinterpret_datatype cannot be floating-point", |dt| {
             !dt.is_real_type()
         })
@@ -103,12 +127,36 @@ fn prop_compression(
     // always availalble
     let compression_types = vec![
         CompressionType::Bzip2,
-        CompressionType::Dictionary,
         CompressionType::Gzip,
         CompressionType::Lz4,
-        CompressionType::Rle,
         CompressionType::Zstd,
     ];
+
+    let try_rle = if matches!(requirements.pipeline_position, Some(p) if p > 0)
+    {
+        if let Some(dts) = requirements
+            .context
+            .as_ref()
+            .and_then(|c| c.pipeline_input_datatypes())
+        {
+            let mut try_rle = true;
+            for (dt, cvn) in dts {
+                if let Some(CellValNum::Var) = cvn {
+                    if dt.is_string_type() {
+                        try_rle = false;
+                        break;
+                    }
+                }
+            }
+            try_rle
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    let try_dict = try_rle;
 
     let try_delta =
         if let Some(StrategyContext::SchemaCoordinates(ref domain)) =
@@ -129,19 +177,27 @@ fn prop_compression(
         } else {
             true
         };
-    let strat_kind = if try_delta {
-        let delta_strategies =
-            prop_compression_delta_strategies(requirements.input_datatype);
 
-        let strats = compression_types
+    let strat_kind = {
+        let mut strats = compression_types
             .into_iter()
             .map(|ct| Just(ct).boxed())
-            .chain(delta_strategies)
-            .collect::<Vec<_>>();
+            .collect::<Vec<BoxedStrategy<CompressionType>>>();
+        if try_rle {
+            strats.push(Just(CompressionType::Rle).boxed());
+        }
+        if try_dict {
+            strats.push(Just(CompressionType::Dictionary).boxed());
+        }
+        if try_delta {
+            for strat in
+                prop_compression_delta_strategies(requirements.input_datatype)
+            {
+                strats.push(strat);
+            }
+        }
+
         proptest::strategy::Union::new(strats).boxed()
-    } else {
-        proptest::strategy::Union::new(compression_types.into_iter().map(Just))
-            .boxed()
     };
 
     (strat_kind, MIN_COMPRESSION_LEVEL..=MAX_COMPRESSION_LEVEL).prop_map(
@@ -194,6 +250,7 @@ fn prop_webp(
 ) -> Option<impl Strategy<Value = FilterData>> {
     if let Some(StrategyContext::Attribute(
         attribute_type,
+        _,
         array_type,
         ref domain,
     )) = requirements.context.as_ref()
@@ -211,11 +268,11 @@ fn prop_webp(
         const MAX_EXTENT: usize = 16383;
 
         let e0 = serde_json::value::from_value::<usize>(
-            domain.dimension[0].extent.clone(),
+            domain.dimension[0].extent.as_ref().unwrap().clone(),
         )
         .ok()?;
         let e1 = serde_json::value::from_value::<usize>(
-            domain.dimension[1].extent.clone(),
+            domain.dimension[1].extent.as_ref().unwrap().clone(),
         )
         .ok()?;
 
@@ -308,70 +365,6 @@ pub fn prop_filter(
     proptest::strategy::Union::new(filter_strategies)
 }
 
-fn prop_filter_pipeline_impl(
-    requirements: Rc<Requirements>,
-    nfilters: usize,
-) -> impl Strategy<Value = VecDeque<FilterData>> {
-    if nfilters == 0 {
-        Just(VecDeque::new()).boxed()
-    } else {
-        prop_filter(Rc::clone(&requirements))
-            .prop_flat_map(move |filter| {
-                // If the transformed datatype is None then we have a bug.
-                // Do not panic here, that will swallow what the pipeline looked like.
-                // Let the unit test fail and print the input.
-                let next = requirements
-                    .input_datatype
-                    .and_then(|dt| filter.transform_datatype(&dt));
-                let next_requirements = Requirements {
-                    input_datatype: next,
-                    ..(*requirements).clone()
-                };
-                prop_filter_pipeline_impl(
-                    Rc::new(next_requirements),
-                    nfilters - 1,
-                )
-                .boxed()
-                .prop_map(move |mut filter_vec| {
-                    filter_vec.push_front(filter.clone());
-                    filter_vec
-                })
-            })
-            .boxed()
-    }
-}
-
-fn prop_filter_pipeline(
-    requirements: Rc<Requirements>,
-) -> impl Strategy<Value = FilterListData> {
-    const MIN_FILTERS: usize = 0;
-    const MAX_FILTERS: usize = 4;
-
-    fn with_datatype(
-        requirements: Rc<Requirements>,
-    ) -> impl Strategy<Value = FilterListData> {
-        (MIN_FILTERS..=MAX_FILTERS).prop_flat_map(move |nfilters| {
-            prop_filter_pipeline_impl(Rc::clone(&requirements), nfilters)
-                .prop_map(move |filter_deque| {
-                    filter_deque.into_iter().collect::<FilterListData>()
-                })
-        })
-    }
-
-    if requirements.input_datatype.is_some() {
-        with_datatype(Rc::clone(&requirements)).boxed()
-    } else {
-        prop_datatype_implemented()
-            .prop_flat_map(move |input_datatype| {
-                with_datatype(Rc::new(Requirements {
-                    input_datatype: Some(input_datatype),
-                    ..(*requirements).clone()
-                }))
-            })
-            .boxed()
-    }
-}
-
 /// Value tree to search through the complexity space of some filter pipeline.
 /// A filter pipeline has a bit more structure than just a list of filters,
 /// because the output of each filter feeds into the next one.
@@ -437,10 +430,42 @@ impl Strategy for FilterPipelineStrategy {
     type Value = FilterListData;
 
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
-        let initial_pipeline =
-            prop_filter_pipeline(Rc::clone(&self.requirements))
-                .new_tree(runner)?
-                .current();
+        const MIN_FILTERS: usize = 0;
+        const MAX_FILTERS: usize = 4;
+
+        let nfilters = (MIN_FILTERS..=MAX_FILTERS).new_tree(runner)?.current();
+
+        let input_datatype = if let Some(dt) = self.requirements.input_datatype
+        {
+            dt
+        } else {
+            any::<Datatype>().new_tree(runner)?.current()
+        };
+
+        let initial_pipeline = {
+            let mut filters = vec![];
+            let mut input_datatype = Some(input_datatype);
+            for i in 0..nfilters {
+                let req = Requirements {
+                    input_datatype,
+                    context: self.requirements.context.clone(),
+                    pipeline_position: Some(i),
+                };
+
+                let f = prop_filter(Rc::new(req)).new_tree(runner)?.current();
+
+                // If the transformed datatype is None then we have a bug.
+                // Do not panic here, that will swallow what the pipeline looked like.
+                // Let the unit test fail and print the input.
+                let output_datatype =
+                    input_datatype.and_then(|dt| f.transform_datatype(&dt));
+                input_datatype = output_datatype;
+
+                filters.push(f);
+            }
+
+            filters.into_iter().collect::<FilterListData>()
+        };
 
         Ok(FilterPipelineValueTree::new(initial_pipeline))
     }
@@ -468,7 +493,7 @@ mod tests {
     fn filter_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(filt in prop_filter_pipeline(Default::default()))| {
+        proptest!(|(filt in any::<FilterListData>())| {
             filt.create(&ctx).expect("Error constructing arbitrary filter");
         });
     }
@@ -479,11 +504,17 @@ mod tests {
     fn filter_arbitrary_for_datatype() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|((dt, filt) in prop_datatype().prop_flat_map(
-                |dt| (Just(dt), prop_filter(Rc::new(Requirements {
+        let strat = any::<Datatype>().prop_flat_map(|dt| {
+            (
+                Just(dt),
+                prop_filter(Rc::new(Requirements {
                     input_datatype: Some(dt),
                     ..Default::default()
-                })))))| {
+                })),
+            )
+        });
+
+        proptest!(|((dt, filt) in strat)| {
             let filt = filt.create(&ctx)
                 .expect("Error constructing arbitrary filter");
 
@@ -498,7 +529,7 @@ mod tests {
     fn filter_list_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(fl in prop_filter_pipeline(Default::default()))| {
+        proptest!(|(fl in any::<FilterListData>())| {
             fl.create(&ctx).expect("Error constructing arbitrary filter list");
         });
     }
@@ -509,11 +540,15 @@ mod tests {
     fn filter_list_arbitrary_for_datatype() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|((dt, fl) in prop_datatype_implemented().prop_flat_map(
-                |dt| (Just(dt), prop_filter_pipeline(Rc::new(Requirements {
-                    input_datatype: Some(dt),
-                    ..Default::default()
-                })))))| {
+        let strat = any::<Datatype>().prop_flat_map(|dt| {
+            let req = Rc::new(Requirements {
+                input_datatype: Some(dt),
+                ..Default::default()
+            });
+            (Just(dt), any_with::<FilterListData>(req))
+        });
+
+        proptest!(|((dt, fl) in strat)| {
             let fl = fl.create(&ctx)
                 .expect("Error constructing arbitrary filter");
 
@@ -550,7 +585,7 @@ mod tests {
     fn filter_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(pipeline in prop_filter_pipeline(Default::default()))| {
+        proptest!(|(pipeline in any::<FilterListData>())| {
             assert_eq!(pipeline, pipeline);
             assert_option_subset!(pipeline, pipeline);
 

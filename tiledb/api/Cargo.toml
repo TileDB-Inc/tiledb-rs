@@ -9,7 +9,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-arrow = { version = "50.0.0", features = ["prettyprint"], optional = true }
+arrow = { version = "51.0.0", features = ["prettyprint"], optional = true }
 itertools = "0"
 num-traits = { version = "0.2", optional = true }
 paste = "1.0"

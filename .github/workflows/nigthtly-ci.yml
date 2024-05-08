@@ -30,7 +30,10 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -Dwarnings
       - name: Lint
         if: ${{ matrix.version == 'nightly' }}
-        run: cargo clippy --all-targets --all-features -- --cfg ci_nightly -Dwarnings
+        # The nightly complier/clippy complain about the proptest derive
+        # macros. Originally I disabled via `--cfg` but now a new lint warns
+        # on that approach. So I'm just disabling the particular lint globally.
+        run: cargo clippy --all-targets --all-features -- --allow non_local_definitions -Dwarnings
       - name: Build
         run: cargo build --all-targets --all-features
       - name: Test
