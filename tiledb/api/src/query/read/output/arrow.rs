@@ -132,7 +132,6 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
 #[cfg(test)]
 mod tests {
     use std::any::TypeId;
-    use std::num::NonZeroU32;
 
     use super::*;
     use arrow::datatypes::Field;
@@ -401,14 +400,7 @@ mod tests {
 
     #[test]
     fn raw_read_to_record_batch() {
-        let strat = (
-            any::<Datatype>(),
-            any_with::<CellValNum>(Some(
-                NonZeroU32::new(1).unwrap()
-                    ..NonZeroU32::new(i32::MAX as u32).unwrap(),
-            )),
-            any::<bool>(),
-        )
+        let strat = (any::<Datatype>(), any::<CellValNum>(), any::<bool>())
             .prop_flat_map(|(dt, cv, is_nullable)| {
                 any_with::<TypedRawReadOutput>(Some((
                     dt,
