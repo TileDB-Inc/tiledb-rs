@@ -93,7 +93,7 @@ impl<'ctx> Dimension<'ctx> {
             )
         })?;
 
-        if c_domain_ptr == std::ptr::null() {
+        if c_domain_ptr.is_null() {
             Ok(None)
         } else {
             let c_domain: &[T; 2] = unsafe { &*c_domain_ptr.cast::<[T; 2]>() };
@@ -114,7 +114,7 @@ impl<'ctx> Dimension<'ctx> {
             )
         })?;
 
-        if c_extent_ptr == std::ptr::null() {
+        if c_extent_ptr.is_null() {
             Ok(None)
         } else {
             Ok(Some(unsafe { *c_extent_ptr.cast::<T>() }))

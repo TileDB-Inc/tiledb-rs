@@ -254,7 +254,7 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
                         Ok((mine_value, mine_nullable)),
                         Ok((theirs_value, theirs_nullable)),
                     ) => {
-                        mine_value.bits_eq(&theirs_value)
+                        mine_value.bits_eq(theirs_value)
                             && mine_nullable == theirs_nullable
                     }
                     _ => false,
@@ -265,7 +265,7 @@ impl<'c1, 'c2> PartialEq<Attribute<'c2>> for Attribute<'c1> {
                 type DT = <LT as LogicalType>::PhysicalType;
                 match (self.fill_value::<&[DT]>(), other.fill_value::<&[DT]>())
                 {
-                    (Ok(mine), Ok(theirs)) => mine.bits_eq(&theirs),
+                    (Ok(mine), Ok(theirs)) => mine.bits_eq(theirs),
                     _ => false,
                 }
             })
@@ -458,7 +458,7 @@ impl<T> FromFillValue<'_> for T
 where
     T: PhysicalType,
 {
-    fn from_raw<'a>(raw: &'a [Self::PhysicalType]) -> TileDBResult<Self> {
+    fn from_raw(raw: &[Self::PhysicalType]) -> TileDBResult<Self> {
         if raw.len() == 1 {
             Ok(raw[0])
         } else {
