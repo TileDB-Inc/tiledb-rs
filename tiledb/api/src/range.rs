@@ -11,6 +11,8 @@ use crate::error::{DatatypeErrorKind, Error};
 use crate::fn_typed;
 use crate::Result as TileDBResult;
 
+use util::option::OptionSubset;
+
 pub type NonEmptyDomain = Vec<TypedRange>;
 pub type MinimumBoundingRectangle = Vec<TypedRange>;
 
@@ -42,7 +44,7 @@ macro_rules! check_datatype {
     };
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, OptionSubset, Debug, Deserialize, Serialize, PartialEq)]
 pub enum SingleValueRange {
     UInt8(u8, u8),
     UInt16(u16, u16),
@@ -68,6 +70,12 @@ macro_rules! single_value_range_from {
         $(
             impl From<&[$U; 2]> for SingleValueRange {
                 fn from(value: &[$U; 2]) -> SingleValueRange {
+                    SingleValueRange::$V(value[0], value[1])
+                }
+            }
+
+            impl From<[$U; 2]> for SingleValueRange {
+                fn from(value: [$U; 2]) -> SingleValueRange {
                     SingleValueRange::$V(value[0], value[1])
                 }
             }

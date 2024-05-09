@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use util::option::OptionSubset;
@@ -9,9 +8,14 @@ use util::option::OptionSubset;
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::{LogicalType, PhysicalType};
-use crate::error::Error;
+use crate::error::{DatatypeErrorKind, Error};
+use crate::extent::Extent;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
-use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
+use crate::range::SingleValueRange;
+use crate::{
+    extent_go, fn_typed, single_value_range_go, Datatype, Factory,
+    Result as TileDBResult,
+};
 
 pub(crate) enum RawDimension {
     Owned(*mut ffi::tiledb_dimension_t),
@@ -171,8 +175,6 @@ pub struct Builder<'ctx> {
 }
 
 impl<'ctx> Builder<'ctx> {
-    // TODO: extent might be optional?
-    // and it
     pub fn new<T: PhysicalType>(
         context: &'ctx Context,
         name: &str,
@@ -207,50 +209,50 @@ impl<'ctx> Builder<'ctx> {
         })
     }
 
-    /// N.B., This API will eventually be removed when we fixup the current
-    /// implementation of `new` to take a `DimensionConstraint` argument instead
-    /// of the serde values for range and extent.
-    pub fn new_string(
+    pub fn new_optional(
         context: &'ctx Context,
         name: &str,
         datatype: Datatype,
+        domain: Option<SingleValueRange>,
+        extent: Option<Extent>,
     ) -> TileDBResult<Self> {
         let c_datatype = datatype.capi_enum();
-        let c_name = cstring!(name);
-        let mut c_dimension: *mut ffi::tiledb_dimension_t =
-            std::ptr::null_mut();
 
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_dimension_alloc(
-                ctx,
-                c_name.as_ptr(),
-                c_datatype,
-                std::ptr::null(),
-                std::ptr::null(),
-                &mut c_dimension,
-            )
-        })?;
-        Ok(Builder {
-            dim: Dimension {
-                context,
-                raw: RawDimension::Owned(c_dimension),
-            },
-        })
-    }
-
-    // This is internal only on purpose. It is used by the Factory trait on
-    // DimensionData to avoid requiring us to bake in logic that reimplements
-    // logic in core. This will likely be removed when we get to adding the
-    // DimensionConstraint type that will remove the need for new_string above.
-    fn new_raw(
-        context: &'ctx Context,
-        name: &str,
-        datatype: Datatype,
-        c_range: *const std::ffi::c_void,
-        c_extent: *const std::ffi::c_void,
-    ) -> TileDBResult<Self> {
         let c_name = cstring!(name);
-        let c_datatype = datatype.capi_enum();
+
+        let mut domain_data: Vec<u8> = Vec::new();
+        if let Some(domain) = domain {
+            single_value_range_go!(domain, _DT, start, end, {
+                for byte in start.to_le_bytes() {
+                    domain_data.push(byte);
+                }
+                for byte in end.to_le_bytes() {
+                    domain_data.push(byte);
+                }
+            });
+        }
+
+        let mut extent_data: Vec<u8> = Vec::new();
+        if let Some(extent) = extent {
+            extent_go!(extent, _DT, value, {
+                for byte in value.to_le_bytes() {
+                    extent_data.push(byte);
+                }
+            })
+        }
+
+        let c_domain = if !domain_data.is_empty() {
+            domain_data.as_ptr() as *const std::ffi::c_void
+        } else {
+            std::ptr::null()
+        };
+
+        let c_extent = if !extent_data.is_empty() {
+            extent_data.as_ptr() as *const std::ffi::c_void
+        } else {
+            std::ptr::null()
+        };
+
         let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
 
         context.capi_call(|ctx| unsafe {
@@ -258,11 +260,12 @@ impl<'ctx> Builder<'ctx> {
                 ctx,
                 c_name.as_ptr(),
                 c_datatype,
-                c_range,
+                c_domain,
                 c_extent,
                 &mut c_dimension,
             )
         })?;
+
         Ok(Builder {
             dim: Dimension {
                 context,
@@ -315,8 +318,8 @@ impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
 pub struct DimensionData {
     pub name: String,
     pub datatype: Datatype,
-    pub domain: Option<[serde_json::value::Value; 2]>,
-    pub extent: Option<serde_json::value::Value>,
+    pub domain: Option<SingleValueRange>,
+    pub extent: Option<Extent>,
     pub cell_val_num: Option<CellValNum>,
 
     /// Optional filters to apply to the dimension. If None or Some(empty),
@@ -338,16 +341,14 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
         let datatype = dim.datatype()?;
         let (domain, extent) = fn_typed!(datatype, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
-            let domain = dim.domain::<DT>()?;
-            let extent = dim.extent::<DT>()?;
-            match (domain, extent) {
-                (Some(domain), Some(extent)) => (
-                    Some([json!(domain[0]), json!(domain[1])]),
-                    Some(json!(extent)),
-                ),
-                (None, None) => (None, None),
-                _ => unreachable!(), /* TODO: internal error instead probably */
-            }
+            let domain = dim.domain::<DT>()?.map(SingleValueRange::from);
+            let extent =
+                if !matches!(datatype, Datatype::Float32 | Datatype::Float64) {
+                    dim.extent::<DT>()?.map(Extent::from)
+                } else {
+                    None
+                };
+            (domain, extent)
         });
         Ok(DimensionData {
             name: dim.name()?,
@@ -379,73 +380,39 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     type Item = Dimension<'ctx>;
 
     fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
-        let mut b = if self.datatype == Datatype::StringAscii {
-            Builder::new_raw(
-                context,
-                &self.name,
-                self.datatype,
-                std::ptr::null(),
-                std::ptr::null(),
-            )?
-        } else {
-            fn_typed!(self.datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
-                let mut range: Option<[DT; 2]> = None;
-                let mut extent: Option<DT> = None;
-                if let Some(json_range) = &self.domain {
-                    let d0 =
-                        serde_json::from_value::<DT>(json_range[0].clone())
-                            .map_err(|e| {
-                                Error::Deserialization(
-                                    format!(
-                                        "dimension '{}' lower bound",
-                                        self.name
-                                    ),
-                                    anyhow!(e),
-                                )
-                            })?;
-                    let d1 =
-                        serde_json::from_value::<DT>(json_range[1].clone())
-                            .map_err(|e| {
-                                Error::Deserialization(
-                                    format!(
-                                        "dimension '{}' upper bound",
-                                        self.name
-                                    ),
-                                    anyhow!(e),
-                                )
-                            })?;
-                    range = Some([d0, d1]);
+        if let Some(domain) = self.domain.as_ref() {
+            single_value_range_go!(domain, DT, _start, _end, {
+                if !self.datatype.is_compatible_type::<DT>() {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::TypeMismatch {
+                            user_type: std::any::type_name::<DT>(),
+                            tiledb_type: self.datatype,
+                        },
+                    ));
                 }
-                if let Some(json_extent) = &self.extent {
-                    let e = serde_json::from_value::<DT>(json_extent.clone())
-                        .map_err(|e| {
-                        Error::Deserialization(
-                            format!("dimension '{}' extent", self.name),
-                            anyhow!(e),
-                        )
-                    })?;
-                    extent = Some(e);
+            });
+        }
+
+        if let Some(extent) = self.extent.as_ref() {
+            extent_go!(extent, DT, _value, {
+                if !self.datatype.is_compatible_type::<DT>() {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::TypeMismatch {
+                            user_type: std::any::type_name::<DT>(),
+                            tiledb_type: self.datatype,
+                        },
+                    ));
                 }
-                let c_range = if let Some(range) = range {
-                    range.as_ptr() as *const std::ffi::c_void
-                } else {
-                    std::ptr::null()
-                };
-                let c_extent = if let Some(extent) = extent {
-                    &extent as *const DT as *const std::ffi::c_void
-                } else {
-                    std::ptr::null()
-                };
-                Builder::new_raw(
-                    context,
-                    &self.name,
-                    self.datatype,
-                    c_range,
-                    c_extent,
-                )?
-            })
-        };
+            });
+        }
+
+        let mut b = Builder::new_optional(
+            context,
+            &self.name,
+            self.datatype,
+            self.domain.clone(),
+            self.extent.clone(),
+        )?;
 
         if let Some(fl) = self.filters.as_ref() {
             b = b.filters(fl.create(context)?)?;

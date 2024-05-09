@@ -179,7 +179,9 @@ mod tests {
     ) -> TileDBResult<Schema> {
         let dim = fn_typed!(datatype, LT, {
             if datatype.is_string_type() {
-                DimensionBuilder::new_string(context, "d", datatype)
+                DimensionBuilder::new_optional(
+                    context, "d", datatype, None, None,
+                )
             } else {
                 type DT = <LT as LogicalType>::PhysicalType;
                 let domain: [DT; 2] = [0 as DT, 127 as DT];

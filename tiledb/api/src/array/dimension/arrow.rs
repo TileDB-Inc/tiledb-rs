@@ -11,8 +11,10 @@ use crate::array::{Dimension, DimensionBuilder};
 use crate::context::Context as TileDBContext;
 use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::datatype::LogicalType;
+use crate::extent::Extent;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
+use crate::range::SingleValueRange;
 use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 
 /// Encapsulates fields of a TileDB dimension which are not part of an Arrow
@@ -106,7 +108,7 @@ pub fn from_arrow<'ctx>(
             let deser = |v: &serde_json::value::Value| {
                 serde_json::from_value::<DT>(v.clone()).map_err(|e| {
                     TileDBError::Deserialization(
-                        format!("dimension {} lower bound", field.name()),
+                        format!("Dimension {} bound", field.name()),
                         anyhow!(e),
                     )
                 })
@@ -123,26 +125,31 @@ pub fn from_arrow<'ctx>(
                 None
             };
 
-            match (domain, extent) {
-                (Some(domain), Some(extent)) => DimensionBuilder::new::<DT>(
+            if domain.is_none() && extent.is_some() {
+                return Err(TileDBError::InvalidArgument(anyhow!(format!(
+                    "Field {} contains invalid TileDB metadata",
+                    field.name()
+                ))));
+            }
+
+            let domain = domain.map(SingleValueRange::from);
+            let extent = extent.map(Extent::from);
+
+            match domain {
+                Some(_) => DimensionBuilder::new_optional(
                     context,
                     field.name(),
                     datatype,
-                    &domain,
-                    &extent,
+                    domain,
+                    extent,
                 ),
-                (None, None) => DimensionBuilder::new_string(
+                None => DimensionBuilder::new_optional(
                     context,
                     field.name(),
                     datatype,
+                    None,
+                    None,
                 ),
-                _ => {
-                    /*
-                     * TODO: refactor so there is only one Option such that this is actually true.
-                     * Related to SC-466692
-                     */
-                    unreachable!()
-                }
             }
         })?;
 

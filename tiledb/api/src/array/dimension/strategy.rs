@@ -3,7 +3,6 @@ use std::rc::Rc;
 
 use num_traits::{Bounded, Num};
 use proptest::prelude::*;
-use serde_json::json;
 
 use tiledb_utils::numbers::{
     NextDirection, NextNumericValue, SmallestPositiveValue,
@@ -12,10 +11,12 @@ use tiledb_utils::numbers::{
 use crate::array::{ArrayType, CellValNum, DimensionData};
 use crate::datatype::strategy::*;
 use crate::datatype::LogicalType;
+use crate::extent::Extent;
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
     Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
+use crate::range::SingleValueRange;
 use crate::{fn_typed, Datatype};
 
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {
@@ -26,7 +27,7 @@ pub fn prop_dimension_name() -> impl Strategy<Value = String> {
 /// Construct a strategy to generate valid (domain, extent) pairs.
 /// A valid output satisfies
 /// `lower < lower + extent <= upper < upper + extent <= type_limit`.
-fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], T)>
+fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], Option<T>)>
 where
     T: Num
         + Bounded
@@ -103,10 +104,10 @@ where
 
         (
             Just([lower_bound, upper_bound]),
-            std::ops::Range::<T> {
+            proptest::option::of(std::ops::Range::<T> {
                 start: T::smallest_positive_value(),
                 end: extent_limit,
-            },
+            }),
         )
     })
 }
@@ -135,11 +136,21 @@ pub fn prop_dimension_for_datatype(
         (name, range_and_extent, filters)
             .prop_map(move |(name, values, filters)| {
                 let (domain, extent) = match values {
+                    Some((dom, extent)) => (Some(dom), extent),
                     None => (None, None),
-                    Some((domain, extent)) => (
-                        Some([json![domain[0]], json![domain[1]]]),
-                        Some(json!(extent)),
-                    ),
+                };
+                let domain = domain.map(SingleValueRange::from);
+                let extent = if domain.is_some() {
+                    extent
+                        .filter(|_| {
+                            !matches!(
+                                datatype,
+                                Datatype::Float32 | Datatype::Float64
+                            )
+                        })
+                        .map(Extent::from)
+                } else {
+                    None
                 };
 
                 DimensionData {

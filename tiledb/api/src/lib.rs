@@ -45,6 +45,7 @@ pub mod config;
 pub mod context;
 pub mod datatype;
 pub mod error;
+pub mod extent;
 pub mod filesystem;
 pub mod filter;
 pub mod group;
