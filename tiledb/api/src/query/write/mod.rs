@@ -81,7 +81,7 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             data.as_tiledb_input(
                 schema_field.cell_val_num()?,
                 schema_field.nullability()?,
-            )
+            )?
         };
 
         let c_query = **self.base().cquery();

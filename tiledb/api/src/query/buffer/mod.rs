@@ -51,7 +51,13 @@ impl<'data, T> Deref for Buffer<'data, T> {
 
 impl<'data, T> From<Vec<T>> for Buffer<'data, T> {
     fn from(value: Vec<T>) -> Self {
-        Buffer::Owned(value.into_boxed_slice())
+        Self::from(value.into_boxed_slice())
+    }
+}
+
+impl<'data, T> From<Box<[T]>> for Buffer<'data, T> {
+    fn from(value: Box<[T]>) -> Self {
+        Buffer::Owned(value)
     }
 }
 
