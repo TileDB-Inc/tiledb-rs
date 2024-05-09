@@ -98,11 +98,11 @@ pub enum DatatypeToArrowResult {
     /// ```
     /// use arrow::datatypes::DataType as Arrow;
     /// use tiledb::{Datatype as TileDB, array::CellValNum, datatype::arrow::DatatypeToArrowResult};
-    /// use tiledb::datatype::arrow::{to_arrow, ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH};
+    /// use tiledb::datatype::arrow::{to_arrow, ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT};
     /// let arrow = to_arrow(&TileDB::StringAscii, CellValNum::Var);
     /// let DatatypeToArrowResult::Exact(Arrow::LargeList(item)) = arrow else { unreachable!() };
     /// assert_eq!(*item.data_type(), Arrow::UInt8);
-    /// let Some(s) = item.metadata().get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+    /// let Some(s) = item.metadata().get(ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT)
     /// else { unreachable!() };
     /// assert_eq!(Some(TileDB::StringAscii), TileDB::from_string(s));
     /// ```
@@ -143,10 +143,9 @@ impl DatatypeToArrowResult {
  * are not granted to UInt8. We must be able to invert back to StringAscii.
  * We can do that by storing the exact input datatype on the arrow list field metadata.
  */
-/// `arrow::datatypes::Field` metadata key for an exact `tiledb::Datatype` variant
+/// `arrow::datatypes::Field` metadata key for the original `tiledb::Datatype` variant
 /// if there is no exact mapping from `tiledb::Datatype` to `arrow::datatypes::DataType`.
-pub const ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH: &str =
-    "tiledb_exact_datatype";
+pub const ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT: &str = "tiledb_type_hint";
 
 pub fn to_arrow(
     datatype: &Datatype,
@@ -240,7 +239,7 @@ pub fn to_arrow(
                         )),
                         Res::Inexact(item) => {
                             let metadata = HashMap::from_iter([(
-                                ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH
+                                ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT
                                     .to_string(),
                                 datatype.to_string(),
                             )]);
@@ -275,7 +274,7 @@ pub fn to_arrow(
                     }
                     Res::Inexact(item) => {
                         let metadata = HashMap::from_iter([(
-                            ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH
+                            ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT
                                 .to_string(),
                             datatype.to_string(),
                         )]);
@@ -418,7 +417,8 @@ pub fn from_arrow(
                 None => return Res::None,
             };
             if item.is_nullable() {
-                // no way to represent null values within a cell
+                // tiledb validity applies to the entire cell, not the values within the cell.
+                // there is currently no way to represent null values within a cell
                 Res::None
             } else if item.data_type().primitive_width().is_none() {
                 /*
@@ -428,7 +428,7 @@ pub fn from_arrow(
                 Res::None
             } else if let Some(exact_datatype) = item
                 .metadata()
-                .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+                .get(ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT)
                 .and_then(|s| Datatype::from_string(s))
             {
                 Res::Exact(exact_datatype, CellValNum::Fixed(len))
@@ -472,7 +472,8 @@ pub fn from_arrow(
         }
         ADT::LargeList(ref item) => {
             if item.is_nullable() {
-                // no way to represent null values within a cell
+                // tiledb validity applies to the entire cell, not the values within the cell.
+                // there is currently no way to represent null values within a cell
                 Res::None
             } else if item.data_type().primitive_width().is_none() {
                 /*
@@ -482,7 +483,7 @@ pub fn from_arrow(
                 Res::None
             } else if let Some(exact_datatype) = item
                 .metadata()
-                .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+                .get(ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT)
                 .and_then(|s| Datatype::from_string(s))
             {
                 Res::Exact(exact_datatype, CellValNum::Var)
@@ -519,7 +520,7 @@ pub fn from_arrow(
         | ADT::Utf8View
         | ADT::ListView(_)
         | ADT::LargeListView(_) => {
-            /* not something we can represent */
+            /* data does not arrive from tiledb core in this format */
             Res::None
         }
         ADT::Struct(_)
@@ -782,7 +783,7 @@ pub mod tests {
                     ADT::FixedSizeList(ref item, fixed_len_out) => {
                         if let Some(sub_exact) = item
                             .metadata()
-                            .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+                            .get(ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT)
                         {
                             let sub_exact =
                                 Datatype::from_string(sub_exact).unwrap();
@@ -902,7 +903,7 @@ pub mod tests {
                     ADT::LargeList(ref item) => {
                         if let Some(sub_exact) = item
                             .metadata()
-                            .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+                            .get(ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT)
                         {
                             let sub_exact =
                                 Datatype::from_string(sub_exact).unwrap();

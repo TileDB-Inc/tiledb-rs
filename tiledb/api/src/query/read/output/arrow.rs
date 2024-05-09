@@ -59,7 +59,7 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
                 CellValNum::single(),
             );
             let list_field_metadata = if arrow_datatype.is_inexact() {
-                HashMap::from([(crate::datatype::arrow::ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH.to_string(), datatype.to_string())])
+                HashMap::from([(crate::datatype::arrow::ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT.to_string(), datatype.to_string())])
             } else {
                 HashMap::new()
             };
