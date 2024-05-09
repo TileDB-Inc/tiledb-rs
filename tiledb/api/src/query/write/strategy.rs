@@ -637,8 +637,8 @@ impl ValueTree for WriteQueryDataValueTree {
             .map(|(i, _)| {
                 let f = self.schema.field(i);
                 (
-                    f.name.clone(),
-                    self.field_data[&f.name]
+                    f.name().to_owned(),
+                    self.field_data[f.name()]
                         .as_ref()
                         .unwrap()
                         .filter(&record_mask),
@@ -747,9 +747,9 @@ impl Strategy for WriteQueryDataStrategy {
             .map(|(i, f)| {
                 let field = self.schema.field(i);
                 let field_data = if f.is_included() {
-                    let datatype = field.datatype;
+                    let datatype = field.datatype();
                     let cell_val_num = field
-                        .cell_val_num
+                        .cell_val_num()
                         .unwrap_or(CellValNum::try_from(1).unwrap());
 
                     if cell_val_num == 1u32 {
@@ -795,7 +795,7 @@ impl Strategy for WriteQueryDataStrategy {
                 } else {
                     None
                 };
-                (field.name.clone(), field_data)
+                (field.name().to_owned(), field_data)
             })
             .collect::<HashMap<String, Option<FieldData>>>();
 
