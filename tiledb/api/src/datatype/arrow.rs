@@ -103,13 +103,13 @@ pub enum DatatypeToArrowResult {
     /// 2. a cell val num of greater than 1 maps to an arrow fixed size list.
     /// 3. a variable cell val num maps to an arrow list.
     ///
-    /// There are exceptions, such as `(Datatype::Utf8, CellValNum::Var)`
-    /// mapping to `arrow::datatypes::DataType::Utf8`, which is always variable-length.
+    /// There are exceptions, such as `(Datatype::Blob, CellValNum::Var)`
+    /// mapping to `arrow::datatypes::DataType::LargeBinary`, which is always variable-length.
     ///
     /// ```
-    /// use arrow::datatypes::DataType as ArrowDT;
-    /// use tiledb::{array::CellValNum, datatype::arrow::ArrowForDatatype};
-    /// assert_eq!(DatatypeFromArrow::Exact(ArrowDT::Utf8), DatatypeFromArrow::from((Datatype::Utf8, CellVarNum::Var)));
+    /// use tiledb::{array::CellValNum, datatype::arrow::DatatypeToArrowResult};
+    /// assert_eq!(DatatypeToArrowResult::Exact(arrow::datatypes::DataType::LargeBinary),
+    ///            tiledb::datatype::arrow::to_arrow(&tiledb::Datatype::Blob, CellValNum::Var));
     /// ```
     Exact(arrow::datatypes::DataType),
     /// There is no corresponding logical data type, but a phyiscal data type
