@@ -20,7 +20,7 @@ use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
     ReadCallbackVarArg, TypedReadHandle,
 };
-use crate::{fn_typed, typed_query_buffers_go};
+use crate::{fn_typed, typed_query_buffers_go, Datatype};
 
 /// Represents the write query input for a single field.
 /// For each variant, the outer Vec is the collection of records, and the interior is value in the
@@ -470,9 +470,7 @@ const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
 ///
 /// TODO: for var sized attributes, follow up by shrinking the values.
 struct WriteQueryDataValueTree {
-    schema: Rc<SchemaData>,
-    field_mask: Vec<WriteFieldMask>,
-    field_data: HashMap<String, Option<FieldData>>,
+    field_data: HashMap<String, (WriteFieldMask, Option<FieldData>)>,
     nrecords: usize,
     records_included: Vec<usize>,
     explore_results: [Option<bool>; WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES],
@@ -481,13 +479,11 @@ struct WriteQueryDataValueTree {
 
 impl WriteQueryDataValueTree {
     pub fn new(
-        schema: Rc<SchemaData>,
-        field_mask: Vec<WriteFieldMask>,
-        field_data: HashMap<String, Option<FieldData>>,
+        field_data: HashMap<String, (WriteFieldMask, Option<FieldData>)>,
     ) -> Self {
         let nrecords = field_data
             .values()
-            .filter_map(|f| f.as_ref())
+            .filter_map(|&(_, ref f)| f.as_ref())
             .take(1)
             .next()
             .unwrap()
@@ -495,8 +491,6 @@ impl WriteQueryDataValueTree {
         let records_included = (0..nrecords).collect::<Vec<usize>>();
 
         WriteQueryDataValueTree {
-            schema,
-            field_mask,
             field_data,
             nrecords,
             records_included,
@@ -624,25 +618,15 @@ impl ValueTree for WriteQueryDataValueTree {
         };
 
         let fields = self
-            .field_mask
+            .field_data
             .iter()
-            .enumerate()
-            .filter(|(_, f)| f.is_included())
-            .map(|(i, _)| {
-                let f = self.schema.field(i);
-                (
-                    f.name.clone(),
-                    self.field_data[&f.name]
-                        .as_ref()
-                        .unwrap()
-                        .filter(&record_mask),
-                )
+            .filter(|(_, &(mask, _))| mask.is_included())
+            .map(|(name, &(_, ref data))| {
+                (name.clone(), data.as_ref().unwrap().filter(&record_mask))
             })
-            .collect::<Vec<(String, FieldData)>>();
+            .collect::<HashMap<String, FieldData>>();
 
-        WriteQueryData {
-            fields: fields.into_iter().collect(),
-        }
+        WriteQueryData { fields }
     }
 
     fn simplify(&mut self) -> bool {
@@ -699,6 +683,46 @@ impl WriteQueryDataStrategy {
     }
 }
 
+fn new_write_field(
+    runner: &mut TestRunner,
+    params: &WriteQueryDataParameters,
+    datatype: Datatype,
+    cell_val_num: CellValNum,
+    nrecords: usize,
+) -> FieldData {
+    if cell_val_num == 1u32 {
+        fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
+            let data =
+                proptest::collection::vec(any::<DT>(), nrecords..=nrecords)
+                    .new_tree(runner)
+                    .expect("Error generating query data")
+                    .current();
+
+            FieldData::from(data)
+        })
+    } else {
+        let (min, max) = if cell_val_num.is_var_sized() {
+            (params.value_min_var_size, params.value_max_var_size)
+        } else {
+            let fixed_bound = Into::<u32>::into(cell_val_num) as usize;
+            (fixed_bound, fixed_bound)
+        };
+        fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
+            let data = proptest::collection::vec(
+                proptest::collection::vec(any::<DT>(), min..=max),
+                nrecords..=nrecords,
+            )
+            .new_tree(runner)
+            .expect("Error generating query data")
+            .current();
+
+            FieldData::from(data)
+        })
+    }
+}
+
 impl Strategy for WriteQueryDataStrategy {
     type Tree = WriteQueryDataValueTree;
     type Value = WriteQueryData;
@@ -711,93 +735,64 @@ impl Strategy for WriteQueryDataStrategy {
 
         /* generate an initial set of fields to write */
         let field_mask = {
-            let ndimensions = self.schema.domain.dimension.len();
-            let nattributes = self.schema.attributes.len();
+            use crate::array::schema::FieldData;
 
-            let dimensions_mask = match self.schema.array_type {
-                ArrayType::Dense => {
-                    /* dense array coordinates are handled by a subarray */
-                    vec![WriteFieldMask::Exclude; ndimensions]
-                }
-                ArrayType::Sparse => {
-                    /* sparse array must write coordinates */
-                    vec![WriteFieldMask::Include; ndimensions]
-                }
+            let dimensions_mask = {
+                let mask = match self.schema.array_type {
+                    ArrayType::Dense => {
+                        /* dense array coordinates are handled by a subarray */
+                        WriteFieldMask::Exclude
+                    }
+                    ArrayType::Sparse => {
+                        /* sparse array must write coordinates */
+                        WriteFieldMask::Include
+                    }
+                };
+                self.schema
+                    .domain
+                    .dimension
+                    .iter()
+                    .map(|d| (FieldData::from(d), mask))
+                    .collect::<Vec<(FieldData, WriteFieldMask)>>()
             };
 
             /* as of this writing, write queries must write to all attributes */
-            let attributes_mask =
-                std::iter::repeat(WriteFieldMask::Include).take(nattributes);
+            let attributes_mask = self
+                .schema
+                .attributes
+                .iter()
+                .map(|a| (FieldData::from(a), WriteFieldMask::Include))
+                .collect::<Vec<(FieldData, WriteFieldMask)>>();
 
             dimensions_mask
                 .into_iter()
                 .chain(attributes_mask)
-                .collect::<Vec<_>>()
+                .collect::<Vec<(FieldData, WriteFieldMask)>>()
         };
 
         let field_data = field_mask
-            .iter()
-            .enumerate()
-            .map(|(i, f)| {
-                let field = self.schema.field(i);
-                let field_data = if f.is_included() {
+            .into_iter()
+            .map(|(field, mask)| {
+                let field_data = if mask.is_included() {
                     let datatype = field.datatype;
                     let cell_val_num = field
                         .cell_val_num
                         .unwrap_or(CellValNum::try_from(1).unwrap());
-
-                    if cell_val_num == 1u32 {
-                        Some(fn_typed!(datatype, LT, {
-                            type DT = <LT as LogicalType>::PhysicalType;
-                            let data = proptest::collection::vec(
-                                any::<DT>(),
-                                nrecords..=nrecords,
-                            )
-                            .new_tree(runner)
-                            .expect("Error generating query data")
-                            .current();
-
-                            FieldData::from(data)
-                        }))
-                    } else {
-                        let (min, max) = if cell_val_num.is_var_sized() {
-                            (
-                                self.params.value_min_var_size,
-                                self.params.value_max_var_size,
-                            )
-                        } else {
-                            let fixed_bound =
-                                Into::<u32>::into(cell_val_num) as usize;
-                            (fixed_bound, fixed_bound)
-                        };
-                        Some(fn_typed!(datatype, LT, {
-                            type DT = <LT as LogicalType>::PhysicalType;
-                            let data = proptest::collection::vec(
-                                proptest::collection::vec(
-                                    any::<DT>(),
-                                    min..=max,
-                                ),
-                                nrecords..=nrecords,
-                            )
-                            .new_tree(runner)
-                            .expect("Error generating query data")
-                            .current();
-
-                            FieldData::from(data)
-                        }))
-                    }
+                    Some(new_write_field(
+                        runner,
+                        &self.params,
+                        datatype,
+                        cell_val_num,
+                        nrecords,
+                    ))
                 } else {
                     None
                 };
-                (field.name.clone(), field_data)
+                (field.name, (mask, field_data))
             })
-            .collect::<HashMap<String, Option<FieldData>>>();
+            .collect::<HashMap<String, (WriteFieldMask, Option<FieldData>)>>();
 
-        Ok(WriteQueryDataValueTree::new(
-            Rc::clone(&self.schema),
-            field_mask,
-            field_data,
-        ))
+        Ok(WriteQueryDataValueTree::new(field_data))
     }
 }
 
