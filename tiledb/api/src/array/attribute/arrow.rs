@@ -189,46 +189,42 @@ pub mod tests {
     use crate::Factory;
     use proptest::prelude::*;
 
-    fn do_tiledb_arrow(tdb_in: AttributeData) {
+    fn do_tiledb_arrow(tdb_spec: AttributeData) {
         let c: Context = Context::new().unwrap();
-        let tdb_in = tdb_in
+        let tdb_in = tdb_spec
             .create(&c)
             .expect("Error constructing arbitrary tiledb attribute");
         let arrow = to_arrow(&tdb_in).expect("Error reading tiledb attribute");
-        let is_inexact = arrow.is_inexact();
+        let is_to_arrow_exact = arrow.is_exact();
         let arrow = arrow.ok().expect("No arrow field for tiledb attribute");
 
         // convert back to TileDB attribute
         let tdb_out = from_arrow(&c, &arrow).unwrap();
-        match tdb_out {
-            AttributeFromArrowResult::None => unreachable!(),
-            AttributeFromArrowResult::Inexact(tdb_out) => {
-                assert!(is_inexact);
+        let is_from_arrow_exact = tdb_out.is_exact();
+        let tdb_out = tdb_out.ok().unwrap().build();
 
-                /* all should be the same but the datatype, which must be the same size */
-                assert_ne!(
-                    tdb_in.datatype().unwrap(),
-                    tdb_out.datatype().unwrap()
-                );
-                assert_eq!(
-                    tdb_in.datatype().unwrap().size(),
-                    tdb_out.datatype().unwrap().size()
-                );
+        if is_to_arrow_exact {
+            assert!(is_from_arrow_exact, "{:?}", tdb_out);
+            assert_eq!(tdb_in, tdb_out);
+        } else {
+            /*
+             * All should be the same but the datatype, which must be the same size.
+             * NB: the conversion *back* might be (probably is) Exact,
+             * which is a little misleading since we know the input was Inexact.
+             */
+            assert_ne!(tdb_in.datatype().unwrap(), tdb_out.datatype().unwrap());
+            assert_eq!(
+                tdb_in.datatype().unwrap().size(),
+                tdb_out.datatype().unwrap().size()
+            );
 
-                let tdb_out = tdb_out.build();
-                let mut tdb_in = AttributeData::try_from(tdb_in).unwrap();
-                tdb_in.datatype = Datatype::Any;
+            let mut tdb_in = AttributeData::try_from(tdb_in).unwrap();
+            tdb_in.datatype = Datatype::Any;
 
-                let mut tdb_out = AttributeData::try_from(tdb_out).unwrap();
-                tdb_out.datatype = Datatype::Any;
+            let mut tdb_out = AttributeData::try_from(tdb_out).unwrap();
+            tdb_out.datatype = Datatype::Any;
 
-                assert_eq!(tdb_in, tdb_out);
-            }
-            AttributeFromArrowResult::Exact(tdb_out) => {
-                assert!(!is_inexact);
-                let tdb_out = tdb_out.build();
-                assert_eq!(tdb_in, tdb_out);
-            }
+            assert_eq!(tdb_in, tdb_out);
         }
     }
 

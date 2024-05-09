@@ -196,7 +196,11 @@ mod tests {
             assert!(is_from_arrow_exact, "{:?}", tdb_out);
             assert_eq!(tdb_in, tdb_out);
         } else {
-            /* all should be the same but the datatype, which must be the same size */
+            /*
+             * All should be the same but the datatype, which must be the same size.
+             * NB: the conversion *back* might be (probably is) Exact,
+             * which is a little misleading since we know the input was Inexact.
+             */
             assert_ne!(tdb_in.datatype().unwrap(), tdb_out.datatype().unwrap());
             assert_eq!(
                 tdb_in.datatype().unwrap().size(),
