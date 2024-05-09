@@ -192,8 +192,7 @@ impl<'ctx> Debug for Enumeration<'ctx> {
         let name = self.name().map_err(|_| fmt::Error)?;
         let dtype = self.datatype().map_err(|_| fmt::Error)?;
 
-        let dtype_string =
-            dtype.to_string().unwrap_or("<unknown datatype>".to_owned());
+        let dtype_string = dtype.to_string();
         let cell_val_num = self.cell_val_num().map_err(|_| fmt::Error)?;
         let ordered = self.ordered().map_err(|_| fmt::Error)?;
 

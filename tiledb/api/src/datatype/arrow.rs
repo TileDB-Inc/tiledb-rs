@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -134,6 +135,17 @@ impl DatatypeToArrowResult {
     }
 }
 
+/*
+ * (Datatype::StringAscii, CellValNum::Var) does not have an exact analog in Arrow.
+ * Utf8 sounds pretty good, but we can't use it because Arrow validates Utf8 and
+ * tiledb does not. So we use `LargeList(UInt8)` instead.
+ * However, in tiledb StringAscii has several special accommodations which
+ * are not granted to UInt8. We must be able to invert back to StringAscii.
+ * We can do that by storing the exact input datatype on the arrow list field metadata.
+ */
+pub const ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH: &str =
+    "tiledb_exact_datatype";
+
 pub fn to_arrow(
     datatype: &Datatype,
     cell_val_num: CellValNum,
@@ -224,12 +236,19 @@ pub fn to_arrow(
                             )),
                             nz,
                         )),
-                        Res::Inexact(item) => Res::Inexact(ADT::FixedSizeList(
-                            Arc::new(arrow::datatypes::Field::new_list_field(
-                                item, false,
-                            )),
-                            nz,
-                        )),
+                        Res::Inexact(item) => {
+                            let metadata = HashMap::from_iter([(
+                                ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH
+                                    .to_string(),
+                                datatype.to_string(),
+                            )]);
+
+                            let item = Arc::new(
+                                Field::new_list_field(item, false)
+                                    .with_metadata(metadata),
+                            );
+                            Res::Exact(ADT::FixedSizeList(item, nz))
+                        }
                     }
                 }
             }
@@ -253,8 +272,16 @@ pub fn to_arrow(
                         Res::Exact(ADT::LargeList(item))
                     }
                     Res::Inexact(item) => {
-                        let item = Arc::new(Field::new_list_field(item, false));
-                        Res::Inexact(ADT::LargeList(item))
+                        let metadata = HashMap::from_iter([(
+                            ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH
+                                .to_string(),
+                            datatype.to_string(),
+                        )]);
+                        let item = Arc::new(
+                            Field::new_list_field(item, false)
+                                .with_metadata(metadata),
+                        );
+                        Res::Exact(ADT::LargeList(item))
                     }
                 }
             }
@@ -368,6 +395,13 @@ pub fn from_arrow(
             Err(_) => Res::None,
         },
         ADT::FixedSizeList(ref item, ref len) => {
+            let len = match u32::try_from(*len)
+                .ok()
+                .and_then(|len| NonZeroU32::new(len))
+            {
+                Some(len) => len,
+                None => return Res::None,
+            };
             if item.is_nullable() {
                 // no way to represent null values within a cell
                 Res::None
@@ -377,11 +411,13 @@ pub fn from_arrow(
                  * but let's omit for now
                  */
                 Res::None
+            } else if let Some(exact_datatype) = item
+                .metadata()
+                .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+                .and_then(|s| Datatype::from_string(s))
+            {
+                Res::Exact(exact_datatype, CellValNum::Fixed(len))
             } else {
-                let len = match NonZeroU32::new(*len as u32) {
-                    None => return Res::None,
-                    Some(nz) => nz,
-                };
                 match from_arrow(item.data_type()) {
                     Res::None => Res::None,
                     Res::Inexact(item, item_cell_val) => {
@@ -429,6 +465,12 @@ pub fn from_arrow(
                  * but let's omit for now
                  */
                 Res::None
+            } else if let Some(exact_datatype) = item
+                .metadata()
+                .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+                .and_then(|s| Datatype::from_string(s))
+            {
+                Res::Exact(exact_datatype, CellValNum::Var)
             } else {
                 match from_arrow(item.data_type()) {
                     Res::None => Res::None,
@@ -720,19 +762,43 @@ pub mod tests {
             DatatypeToArrowResult::Exact(arrow) => {
                 match arrow {
                     ADT::FixedSizeList(ref item, fixed_len_out) => {
-                        let item_expect =
-                            to_arrow(&tdb_dt, CellValNum::single());
-                        if let DatatypeToArrowResult::Exact(item_expect) =
-                            item_expect
+                        if let Some(sub_exact) = item
+                            .metadata()
+                            .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
                         {
-                            assert_eq!(item_expect, *item.data_type());
-                            assert_eq!(fixed_len_in, fixed_len_out as u32);
+                            let sub_exact =
+                                Datatype::from_string(sub_exact).unwrap();
+                            assert_eq!(sub_exact.size(), tdb_dt.size());
+
+                            // item must have been inexact, else we would not have the metadata
+                            let item_dt =
+                                to_arrow(&tdb_dt, CellValNum::single());
+                            if let DatatypeToArrowResult::Inexact(item_dt) =
+                                item_dt
+                            {
+                                assert_eq!(*item.data_type(), item_dt);
+                            } else {
+                                unreachable!(
+                                    "Expected inexact item match but found {:?}",
+                                    item_dt
+                                )
+                            }
                         } else {
-                            unreachable!(
-                                "Expected exact item match, found {:?}",
-                                item_expect
-                            )
+                            // item must be exact match
+                            let item_dt =
+                                to_arrow(&tdb_dt, CellValNum::single());
+                            if let DatatypeToArrowResult::Exact(item_dt) =
+                                item_dt
+                            {
+                                assert_eq!(*item.data_type(), item_dt);
+                            } else {
+                                unreachable!(
+                                    "Expected exact item match but found {:?}",
+                                    item_dt
+                                )
+                            }
                         }
+                        assert_eq!(fixed_len_in, fixed_len_out as u32);
                     }
                     ADT::FixedSizeBinary(fixed_len_out) => {
                         assert_eq!(tdb_dt, Datatype::Blob);
@@ -816,14 +882,40 @@ pub mod tests {
 
                 match arrow {
                     ADT::LargeList(ref item) => {
-                        let item_dt = to_arrow(&tdb_dt, CellValNum::single());
-                        if let DatatypeToArrowResult::Exact(item_dt) = item_dt {
-                            assert_eq!(*item.data_type(), item_dt);
-                        } else {
-                            unreachable!(
-                                "Expected exact item match but found {:?}",
+                        if let Some(sub_exact) = item
+                            .metadata()
+                            .get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+                        {
+                            let sub_exact =
+                                Datatype::from_string(sub_exact).unwrap();
+                            assert_eq!(sub_exact.size(), tdb_dt.size());
+
+                            // item must not have been exact, else we would not have the metadata
+                            let item_dt =
+                                to_arrow(&tdb_dt, CellValNum::single());
+                            if let DatatypeToArrowResult::Inexact(item_dt) =
                                 item_dt
-                            )
+                            {
+                                assert_eq!(*item.data_type(), item_dt);
+                            } else {
+                                unreachable!(
+                                    "Expected inexact item match but found {:?}",
+                                    item_dt
+                                )
+                            }
+                        } else {
+                            let item_dt =
+                                to_arrow(&tdb_dt, CellValNum::single());
+                            if let DatatypeToArrowResult::Exact(item_dt) =
+                                item_dt
+                            {
+                                assert_eq!(*item.data_type(), item_dt);
+                            } else {
+                                unreachable!(
+                                    "Expected exact item match but found {:?}",
+                                    item_dt
+                                )
+                            }
                         }
                     }
                     ADT::LargeUtf8 => assert!(matches!(

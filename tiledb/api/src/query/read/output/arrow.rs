@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow::array::{
@@ -43,7 +44,7 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
             p: PrimitiveArray<
                 <C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType,
             >,
-        ) -> Arc<dyn ArrowArray>
+        ) -> (Arc<dyn ArrowArray>, HashMap<String, String>)
         where
             C: ArrowPrimitiveTypeNative,
         {
@@ -56,14 +57,22 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
             let arrow_datatype = crate::datatype::arrow::to_arrow(
                 &datatype,
                 CellValNum::single(),
-            )
-            .into_inner();
-            arrow::array::make_array(
-                p.into_data()
-                    .into_builder()
-                    .data_type(arrow_datatype)
-                    .build()
-                    .unwrap(),
+            );
+            let list_field_metadata = if arrow_datatype.is_inexact() {
+                HashMap::from([(crate::datatype::arrow::ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH.to_string(), datatype.to_string())])
+            } else {
+                HashMap::new()
+            };
+
+            (
+                arrow::array::make_array(
+                    p.into_data()
+                        .into_builder()
+                        .data_type(arrow_datatype.into_inner())
+                        .build()
+                        .unwrap(),
+                ),
+                list_field_metadata,
             )
         }
 
@@ -75,7 +84,7 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
                 QueryBufferArrowArray::Primitive(p) => {
                     // the array data type has the phyiscal type,
                     // we need it to have the logical type
-                    Ok(assign_logical_type::<DT>(value.datatype, p))
+                    Ok(assign_logical_type::<DT>(value.datatype, p).0)
                 }
                 QueryBufferArrowArray::FixedSizeList(a) => {
                     let (fl, p) = a.unwrap();
@@ -83,14 +92,14 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
                         let (_, len, _, nulls) = fl.into_parts();
                         (len, nulls)
                     };
-                    let p = assign_logical_type::<DT>(
+                    let (p, list_field_metadata) = assign_logical_type::<DT>(
                         value.datatype,
                         Arc::into_inner(p).unwrap(),
                     );
-                    let field = Arc::new(Field::new_list_field(
-                        p.data_type().clone(),
-                        false,
-                    ));
+                    let field = Arc::new(
+                        Field::new_list_field(p.data_type().clone(), false)
+                            .with_metadata(list_field_metadata),
+                    );
 
                     let fl = FixedSizeListArray::new(field, len, p, nulls);
                     match value.datatype {
@@ -106,14 +115,14 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
                         let (_, offsets, _, nulls) = gl.into_parts();
                         (offsets, nulls)
                     };
-                    let p = assign_logical_type::<DT>(
+                    let (p, list_field_metadata) = assign_logical_type::<DT>(
                         value.datatype,
                         Arc::into_inner(p).unwrap(),
                     );
-                    let field = Arc::new(Field::new_list_field(
-                        p.data_type().clone(),
-                        false,
-                    ));
+                    let field = Arc::new(
+                        Field::new_list_field(p.data_type().clone(), false)
+                            .with_metadata(list_field_metadata),
+                    );
                     let gl =
                         GenericListArray::<i64>::new(field, offsets, p, nulls);
 

@@ -70,8 +70,9 @@ impl SchemaMetadata {
 pub fn to_arrow<'ctx>(
     tiledb: &'ctx Schema<'ctx>,
 ) -> TileDBResult<SchemaToArrowResult> {
-    let mut builder =
-        arrow::datatypes::SchemaBuilder::with_capacity(tiledb.nattributes()?);
+    let mut builder = arrow::datatypes::SchemaBuilder::with_capacity(
+        tiledb.num_attributes()?,
+    );
 
     let mut inexact = false;
 
@@ -96,7 +97,7 @@ pub fn to_arrow<'ctx>(
         };
     }
 
-    for a in 0..tiledb.nattributes()? {
+    for a in 0..tiledb.num_attributes()? {
         let attr = tiledb.attribute(a)?;
         match crate::array::attribute::arrow::to_arrow(&attr)? {
             FieldToArrowResult::None => {
@@ -226,7 +227,8 @@ pub fn from_arrow<'ctx>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::array::schema::SchemaData;
+    use crate::array::schema::{Field as SchemaField, SchemaData};
+    use crate::array::{AttributeData, DimensionData};
     use crate::Factory;
     use proptest::prelude::*;
 
@@ -250,14 +252,74 @@ mod tests {
                     unreachable!("Exact schema did not invert")
                 }
             }
-            SchemaToArrowResult::Inexact(_) => {
-                /* this could have missing attributes, inexact attributes, something */
+            SchemaToArrowResult::Inexact(arrow_schema) => {
+                let tdb_out = from_arrow(&c, &arrow_schema).unwrap();
+                let tdb_out = tdb_out.ok().unwrap().build().unwrap();
+
                 /*
-                 * NB: this is currently unreachable by schemata produced by `any::<SchemaData>()`
-                 * because the datatypes used for the attributes and dimensions are coincidentally
-                 * restricted to datatypes that have an exact match. SC-46813
+                 * All datatypes map *to* arrow, so it should be the same number of fields.
+                 * At least one datatype must be inexact, otherwise we should have an exact match
+                 * (If we started with arrow rather than tiledb then we would also need to check
+                 * for missing fields)
                  */
-                unimplemented!()
+                let mut inexact_field = false;
+
+                let fields_in = tdb_in.fields().unwrap();
+                let fields_out = tdb_out.fields().unwrap();
+                assert_eq!(fields_in.num_fields(), fields_out.num_fields());
+
+                for (field_in, field_out) in fields_in.zip(fields_out) {
+                    match (field_in.unwrap(), field_out.unwrap()) {
+                        (
+                            SchemaField::Attribute(attr_in),
+                            SchemaField::Attribute(attr_out),
+                        ) => {
+                            if attr_in == attr_out {
+                                continue;
+                            }
+                            inexact_field = true;
+
+                            let attr_out =
+                                AttributeData::try_from(attr_out).unwrap();
+                            let attr_in = {
+                                let mut a =
+                                    AttributeData::try_from(attr_in).unwrap();
+                                assert!(
+                                    attr_out.datatype.size()
+                                        == a.datatype.size()
+                                );
+                                a.datatype = attr_out.datatype;
+                                a
+                            };
+                            assert_eq!(attr_in, attr_out)
+                        }
+                        (
+                            SchemaField::Dimension(dim_in),
+                            SchemaField::Dimension(dim_out),
+                        ) => {
+                            if dim_in == dim_out {
+                                continue;
+                            }
+                            inexact_field = true;
+
+                            let dim_out =
+                                DimensionData::try_from(dim_out).unwrap();
+                            let dim_in = {
+                                let mut a =
+                                    DimensionData::try_from(dim_in).unwrap();
+                                assert!(
+                                    dim_out.datatype.size()
+                                        == a.datatype.size()
+                                );
+                                a.datatype = dim_out.datatype;
+                                a
+                            };
+                            assert_eq!(dim_in, dim_out)
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                assert!(inexact_field);
             }
         }
     }

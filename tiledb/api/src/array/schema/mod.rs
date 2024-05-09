@@ -173,7 +173,7 @@ impl Drop for RawSchema {
 }
 
 /// Holds a field of the schema, which may be either a dimension or an attribute.
-#[derive(ContextBound)]
+#[derive(ContextBound, PartialEq)]
 pub enum Field<'ctx> {
     Dimension(Dimension<'ctx>),
     Attribute(Attribute<'ctx>),
@@ -432,7 +432,7 @@ impl<'ctx> Schema<'ctx> {
         Ok(c_allows_duplicates != 0)
     }
 
-    pub fn nattributes(&self) -> TileDBResult<usize> {
+    pub fn num_attributes(&self) -> TileDBResult<usize> {
         let c_schema = *self.raw;
         let mut c_nattrs: u32 = out_ptr!();
         self.capi_call(|ctx| unsafe {
@@ -484,6 +484,10 @@ impl<'ctx> Schema<'ctx> {
         Ok(Attribute::new(self.context, RawAttribute::Owned(c_attr)))
     }
 
+    pub fn num_fields(&self) -> TileDBResult<usize> {
+        Ok(self.domain()?.ndim()? + self.num_attributes()?)
+    }
+
     /// Returns a reference to a field (dimension or attribute) in this schema.
     /// If the key is an index, then values `[0.. ndimensions]` will look
     /// up a dimension, and values outside that range will be adjusted by `ndimensions`
@@ -510,6 +514,10 @@ impl<'ctx> Schema<'ctx> {
                 }
             }
         }
+    }
+
+    pub fn fields(&self) -> TileDBResult<Fields<'ctx, '_>> {
+        Fields::new(self)
     }
 
     fn filter_list(
@@ -554,7 +562,7 @@ impl<'ctx> Debug for Schema<'ctx> {
 
 impl<'c1, 'c2> PartialEq<Schema<'c2>> for Schema<'c1> {
     fn eq(&self, other: &Schema<'c2>) -> bool {
-        eq_helper!(self.nattributes(), other.nattributes());
+        eq_helper!(self.num_attributes(), other.num_attributes());
         eq_helper!(self.version(), other.version());
         eq_helper!(self.array_type(), other.array_type());
         eq_helper!(self.capacity(), other.capacity());
@@ -565,7 +573,7 @@ impl<'c1, 'c2> PartialEq<Schema<'c2>> for Schema<'c1> {
         eq_helper!(self.offsets_filters(), other.offsets_filters());
         eq_helper!(self.nullity_filters(), other.nullity_filters());
 
-        for a in 0..self.nattributes().unwrap() {
+        for a in 0..self.num_attributes().unwrap() {
             eq_helper!(self.attribute(a), other.attribute(a));
         }
 
@@ -574,6 +582,47 @@ impl<'c1, 'c2> PartialEq<Schema<'c2>> for Schema<'c1> {
         true
     }
 }
+
+pub struct Fields<'ctx, 'a> {
+    schema: &'a Schema<'ctx>,
+    cursor: usize,
+    bound: usize,
+}
+
+impl<'ctx, 'a> Fields<'ctx, 'a> {
+    pub fn new(schema: &'a Schema<'ctx>) -> TileDBResult<Self> {
+        Ok(Fields {
+            schema,
+            cursor: 0,
+            bound: schema.num_fields()?,
+        })
+    }
+
+    pub fn num_fields(&self) -> usize {
+        self.bound
+    }
+}
+
+impl<'ctx, 'a> Iterator for Fields<'ctx, 'a> {
+    type Item = TileDBResult<Field<'ctx>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor < self.bound {
+            let item = self.schema.field(self.cursor);
+            self.cursor += 1;
+            Some(item)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = self.bound - self.cursor;
+        (exact, Some(exact))
+    }
+}
+
+impl std::iter::FusedIterator for Fields<'_, '_> {}
 
 type FnFilterListSet = unsafe extern "C" fn(
     *mut ffi::tiledb_ctx_t,
@@ -763,7 +812,7 @@ impl<'ctx> TryFrom<&Schema<'ctx>> for SchemaData {
             cell_order: Some(schema.cell_order()?),
             tile_order: Some(schema.tile_order()?),
             allow_duplicates: Some(schema.allows_duplicates()?),
-            attributes: (0..schema.nattributes()?)
+            attributes: (0..schema.num_attributes()?)
                 .map(|a| AttributeData::try_from(&schema.attribute(a)?))
                 .collect::<TileDBResult<Vec<AttributeData>>>()?,
             coordinate_filters: FilterListData::try_from(
@@ -1100,7 +1149,7 @@ mod tests {
                     .build()
                     .unwrap()
             };
-            assert_eq!(1, s.nattributes()?);
+            assert_eq!(1, s.num_attributes()?);
 
             let a1 = s.attribute(0)?;
             assert_eq!(Datatype::Int32, a1.datatype()?);
@@ -1121,7 +1170,7 @@ mod tests {
                     .build()
                     .unwrap()
             };
-            assert_eq!(2, s.nattributes()?);
+            assert_eq!(2, s.num_attributes()?);
 
             let a1 = s.attribute(0)?;
             assert_eq!(Datatype::Int32, a1.datatype()?);
