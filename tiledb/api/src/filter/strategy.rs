@@ -10,8 +10,9 @@ use crate::filter::*;
 
 #[derive(Clone, Debug)]
 pub enum StrategyContext {
-    Attribute(Datatype, CellValNum, ArrayType, Rc<DomainData>),
+    Attribute(Datatype, CellValNum),
     Dimension(Datatype, CellValNum),
+    SchemaAttribute(Datatype, CellValNum, ArrayType, Rc<DomainData>),
     SchemaCoordinates(Rc<DomainData>),
 }
 
@@ -22,10 +23,13 @@ impl StrategyContext {
         &self,
     ) -> Option<Vec<(Datatype, Option<CellValNum>)>> {
         match self {
-            StrategyContext::Attribute(dt, cvn, _, _) => {
+            StrategyContext::Attribute(dt, cvn) => {
                 Some(vec![(*dt, Some(*cvn))])
             }
             StrategyContext::Dimension(dt, cvn) => {
+                Some(vec![(*dt, Some(*cvn))])
+            }
+            StrategyContext::SchemaAttribute(dt, cvn, _, _) => {
                 Some(vec![(*dt, Some(*cvn))])
             }
             StrategyContext::SchemaCoordinates(domain) => Some(
@@ -248,7 +252,7 @@ fn prop_scalefloat() -> impl Strategy<Value = FilterData> {
 fn prop_webp(
     requirements: &Rc<Requirements>,
 ) -> Option<impl Strategy<Value = FilterData>> {
-    if let Some(StrategyContext::Attribute(
+    if let Some(StrategyContext::SchemaAttribute(
         attribute_type,
         _,
         array_type,
