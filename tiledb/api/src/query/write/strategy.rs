@@ -11,8 +11,9 @@ use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
 use super::*;
+use crate::array::schema::FieldData as SchemaField;
 use crate::array::{ArrayType, CellValNum, SchemaData};
-use crate::datatype::LogicalType;
+use crate::datatype::{LogicalType, PhysicalType};
 use crate::query::read::output::{
     FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
 };
@@ -686,24 +687,39 @@ impl WriteQueryDataStrategy {
     }
 }
 
-fn new_write_field(
+fn new_write_field_impl<DT: Arbitrary + PhysicalType>(
     runner: &mut TestRunner,
     params: &WriteQueryDataParameters,
-    field: &crate::array::schema::FieldData,
+    field: &SchemaField,
     nrecords: usize,
-) -> FieldData {
+) -> FieldData
+where
+    FieldData: From<Vec<DT>> + From<Vec<Vec<DT>>>,
+    std::ops::Range<DT>: Strategy<Value = DT>,
+{
+    let value_strat = match field {
+        SchemaField::Dimension(d) => {
+            if let Some(domain) = d.domain.as_ref() {
+                let lower_bound =
+                    serde_json::from_value::<DT>(domain[0].clone()).unwrap();
+                let upper_bound =
+                    serde_json::from_value::<DT>(domain[1].clone()).unwrap();
+                (lower_bound..upper_bound).boxed()
+            } else {
+                any::<DT>().boxed()
+            }
+        }
+        SchemaField::Attribute(_) => any::<DT>().boxed(),
+    };
+
     let cell_val_num = field.cell_val_num().unwrap_or(CellValNum::single());
     if cell_val_num == 1u32 {
-        fn_typed!(field.datatype(), LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
-            let data =
-                proptest::collection::vec(any::<DT>(), nrecords..=nrecords)
-                    .new_tree(runner)
-                    .expect("Error generating query data")
-                    .current();
+        let data = proptest::collection::vec(value_strat, nrecords..=nrecords)
+            .new_tree(runner)
+            .expect("Error generating query data")
+            .current();
 
-            FieldData::from(data)
-        })
+        FieldData::from(data)
     } else {
         let (min, max) = if cell_val_num.is_var_sized() {
             (params.value_min_var_size, params.value_max_var_size)
@@ -711,19 +727,29 @@ fn new_write_field(
             let fixed_bound = Into::<u32>::into(cell_val_num) as usize;
             (fixed_bound, fixed_bound)
         };
-        fn_typed!(field.datatype(), LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
-            let data = proptest::collection::vec(
-                proptest::collection::vec(any::<DT>(), min..=max),
-                nrecords..=nrecords,
-            )
-            .new_tree(runner)
-            .expect("Error generating query data")
-            .current();
 
-            FieldData::from(data)
-        })
+        let data = proptest::collection::vec(
+            proptest::collection::vec(value_strat, min..=max),
+            nrecords..=nrecords,
+        )
+        .new_tree(runner)
+        .expect("Error generating query data")
+        .current();
+
+        FieldData::from(data)
     }
+}
+
+fn new_write_field(
+    runner: &mut TestRunner,
+    params: &WriteQueryDataParameters,
+    field: &SchemaField,
+    nrecords: usize,
+) -> FieldData {
+    fn_typed!(field.datatype(), LT, {
+        type DT = <LT as LogicalType>::PhysicalType;
+        new_write_field_impl::<DT>(runner, params, field, nrecords)
+    })
 }
 
 impl Strategy for WriteQueryDataStrategy {
