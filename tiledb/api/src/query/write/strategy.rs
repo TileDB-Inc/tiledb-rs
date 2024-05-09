@@ -20,7 +20,7 @@ use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
     ReadCallbackVarArg, TypedReadHandle,
 };
-use crate::{fn_typed, typed_query_buffers_go, Datatype};
+use crate::{fn_typed, typed_query_buffers_go};
 
 /// Represents the write query input for a single field.
 /// For each variant, the outer Vec is the collection of records, and the interior is value in the
@@ -686,12 +686,12 @@ impl WriteQueryDataStrategy {
 fn new_write_field(
     runner: &mut TestRunner,
     params: &WriteQueryDataParameters,
-    datatype: Datatype,
-    cell_val_num: CellValNum,
+    field: &crate::array::schema::FieldData,
     nrecords: usize,
 ) -> FieldData {
+    let cell_val_num = field.cell_val_num().unwrap_or(CellValNum::single());
     if cell_val_num == 1u32 {
-        fn_typed!(datatype, LT, {
+        fn_typed!(field.datatype(), LT, {
             type DT = <LT as LogicalType>::PhysicalType;
             let data =
                 proptest::collection::vec(any::<DT>(), nrecords..=nrecords)
@@ -708,7 +708,7 @@ fn new_write_field(
             let fixed_bound = Into::<u32>::into(cell_val_num) as usize;
             (fixed_bound, fixed_bound)
         };
-        fn_typed!(datatype, LT, {
+        fn_typed!(field.datatype(), LT, {
             type DT = <LT as LogicalType>::PhysicalType;
             let data = proptest::collection::vec(
                 proptest::collection::vec(any::<DT>(), min..=max),
@@ -774,15 +774,10 @@ impl Strategy for WriteQueryDataStrategy {
             .into_iter()
             .map(|(field, mask)| {
                 let field_data = if mask.is_included() {
-                    let datatype = field.datatype();
-                    let cell_val_num = field
-                        .cell_val_num()
-                        .unwrap_or(CellValNum::try_from(1).unwrap());
                     Some(new_write_field(
                         runner,
                         &self.params,
-                        datatype,
-                        cell_val_num,
+                        &field,
                         nrecords,
                     ))
                 } else {
