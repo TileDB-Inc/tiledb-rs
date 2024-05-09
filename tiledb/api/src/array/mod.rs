@@ -375,10 +375,13 @@ pub mod strategy;
 
 #[cfg(test)]
 pub mod tests {
+    use crate::error::Error;
     use std::io;
     use tempfile::TempDir;
 
     use crate::array::*;
+    use crate::metadata::Value;
+    use crate::query::QueryType;
     use crate::Datatype;
 
     /// Create the array used in the "quickstart_dense" example
@@ -446,6 +449,90 @@ pub mod tests {
         // Make sure we can remove the array we created.
         tmp_dir.close()?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_array_metadata() -> TileDBResult<()> {
+        let tmp_dir =
+            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+
+        let tdb = Context::new()?;
+        let r = create_quickstart_dense(&tmp_dir, &tdb);
+        assert!(r.is_ok());
+
+        let arr_dir = tmp_dir.path().join("quickstart_dense");
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let res = array.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?);
+            assert!(res.is_err());
+        }
+
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+
+            array.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?)?;
+            array.put_metadata(Metadata::new(
+                "aaa".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?)?;
+            array.put_metadata(Metadata::new(
+                "bb".to_owned(),
+                Datatype::Float32,
+                vec![1.1f32, 2.2f32],
+            )?)?;
+        }
+
+        {
+            let array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+
+            let metadata_aaa =
+                array.metadata(LookupKey::Name("aaa".to_owned()))?;
+            assert_eq!(metadata_aaa.datatype, Datatype::Int32);
+            assert_eq!(metadata_aaa.value, Value::Int32Value(vec!(5)));
+            assert_eq!(metadata_aaa.key, "aaa");
+
+            let metadata_num = array.num_metadata()?;
+            assert_eq!(metadata_num, 3);
+
+            let metadata_bb = array.metadata(LookupKey::Index(1))?;
+            assert_eq!(metadata_bb.datatype, Datatype::Float32);
+            assert_eq!(metadata_bb.key, "bb");
+            assert_eq!(
+                metadata_bb.value,
+                Value::Float32Value(vec!(1.1f32, 2.2f32))
+            );
+
+            let has_aaa = array.has_metadata_key("aaa")?;
+            assert_eq!(has_aaa, Some(Datatype::Int32));
+        }
+
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            array.delete_metadata("aaa")?;
+        }
+
+        {
+            let array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let has_aaa = array.has_metadata_key("aaa")?;
+            assert_eq!(has_aaa, None);
+        }
+
+        tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
         Ok(())
     }
 }
