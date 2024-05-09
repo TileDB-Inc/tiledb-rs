@@ -752,7 +752,7 @@ impl Strategy for WriteQueryDataStrategy {
                     .domain
                     .dimension
                     .iter()
-                    .map(|d| (FieldData::from(d), mask))
+                    .map(|d| (FieldData::from(d.clone()), mask))
                     .collect::<Vec<(FieldData, WriteFieldMask)>>()
             };
 
@@ -761,7 +761,7 @@ impl Strategy for WriteQueryDataStrategy {
                 .schema
                 .attributes
                 .iter()
-                .map(|a| (FieldData::from(a), WriteFieldMask::Include))
+                .map(|a| (FieldData::from(a.clone()), WriteFieldMask::Include))
                 .collect::<Vec<(FieldData, WriteFieldMask)>>();
 
             dimensions_mask
@@ -774,9 +774,9 @@ impl Strategy for WriteQueryDataStrategy {
             .into_iter()
             .map(|(field, mask)| {
                 let field_data = if mask.is_included() {
-                    let datatype = field.datatype;
+                    let datatype = field.datatype();
                     let cell_val_num = field
-                        .cell_val_num
+                        .cell_val_num()
                         .unwrap_or(CellValNum::try_from(1).unwrap());
                     Some(new_write_field(
                         runner,
@@ -788,7 +788,7 @@ impl Strategy for WriteQueryDataStrategy {
                 } else {
                     None
                 };
-                (field.name, (mask, field_data))
+                (field.name().to_string(), (mask, field_data))
             })
             .collect::<HashMap<String, (WriteFieldMask, Option<FieldData>)>>();
 
