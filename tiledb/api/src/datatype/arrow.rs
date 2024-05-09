@@ -53,44 +53,6 @@ impl ArrowPrimitiveTypeNative for f64 {
     type ArrowPrimitiveType = arrow::datatypes::Float64Type;
 }
 
-/*
-pub trait ArrowLogicalType: LogicalType {
-    type ArrowPrimitiveType: ArrowPrimitiveType;
-}
-
-impl ArrowLogicalType for Int8Type {
-    type ArrowPrimitiveType = arrow::datatypes::Int8Type;
-}
-
-impl ArrowLogicalType for Int16Type {
-    type ArrowPrimitiveType = arrow::datatypes::Int16Type;
-}
-
-impl ArrowLogicalType for Int32Type {
-    type ArrowPrimitiveType = arrow::datatypes::Int32Type;
-}
-
-impl ArrowLogicalType for Int64Type {
-    type ArrowPrimitiveType = arrow::datatypes::Int64Type;
-}
-
-impl ArrowLogicalType for UInt8Type {
-    type ArrowPrimitiveType = arrow::datatypes::UInt8Type;
-}
-
-impl ArrowLogicalType for UInt16Type {
-    type ArrowPrimitiveType = arrow::datatypes::UInt16Type;
-}
-
-impl ArrowLogicalType for UInt32Type {
-    type ArrowPrimitiveType = arrow::datatypes::UInt32Type;
-}
-
-impl ArrowLogicalType for UInt64Type {
-    type ArrowPrimitiveType = arrow::datatypes::UInt64Type;
-}
-*/
-
 /// Represents tiledb (`Datatype`, `CellValNum`) compatibility for an arrow `DataType`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DatatypeToArrowResult {
