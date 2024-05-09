@@ -4,9 +4,12 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::array::{CellValNum, Dimension, DimensionBuilder};
+use crate::array::schema::arrow::{
+    DimensionFromArrowResult, FieldToArrowResult,
+};
+use crate::array::{Dimension, DimensionBuilder};
 use crate::context::Context as TileDBContext;
-use crate::datatype::arrow::{arrow_type_physical, tiledb_type_physical};
+use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::datatype::LogicalType;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
@@ -16,7 +19,6 @@ use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 /// field
 #[derive(Deserialize, Serialize)]
 pub struct DimensionMetadata {
-    pub cell_val_num: CellValNum,
     pub domain: Option<[serde_json::value::Value; 2]>,
     pub extent: Option<serde_json::value::Value>,
     pub filters: FilterMetadata,
@@ -30,7 +32,6 @@ impl DimensionMetadata {
             let extent = dim.extent::<DT>()?;
 
             Ok(DimensionMetadata {
-                cell_val_num: dim.cell_val_num()?,
                 domain: domain.map(|d| [json!(d[0]), json!(d[1])]),
                 extent: extent.map(|e| json!(e)),
                 filters: FilterMetadata::new(&dim.filters()?)?,
@@ -42,10 +43,11 @@ impl DimensionMetadata {
 /// Tries to construct an Arrow Field from the TileDB Dimension.
 /// Details about the Dimension are stored under the key "tiledb"
 /// in the Field's metadata.
-pub fn arrow_field(
-    dim: &Dimension,
-) -> TileDBResult<Option<arrow_schema::Field>> {
-    if let Some(arrow_dt) = arrow_type_physical(&dim.datatype()?) {
+pub fn to_arrow(dim: &Dimension) -> TileDBResult<FieldToArrowResult> {
+    let arrow_dt =
+        crate::datatype::arrow::to_arrow(&dim.datatype()?, dim.cell_val_num()?);
+
+    let construct = |adt| -> TileDBResult<arrow::datatypes::Field> {
         let name = dim.name()?;
         let metadata = serde_json::ser::to_string(&DimensionMetadata::new(
             dim,
@@ -56,112 +58,169 @@ pub fn arrow_field(
                 anyhow!(e),
             )
         })?;
-        Ok(Some(
-            arrow_schema::Field::new(name, arrow_dt, false).with_metadata(
+        Ok(
+            arrow::datatypes::Field::new(name, adt, false).with_metadata(
                 HashMap::<String, String>::from([(
                     String::from("tiledb"),
                     metadata,
                 )]),
             ),
-        ))
-    } else {
-        Ok(None)
+        )
+    };
+
+    match arrow_dt {
+        DatatypeToArrowResult::Exact(adt) => {
+            Ok(FieldToArrowResult::Exact(construct(adt)?))
+        }
+        DatatypeToArrowResult::Inexact(adt) => {
+            Ok(FieldToArrowResult::Inexact(construct(adt)?))
+        }
     }
 }
 
-pub fn tiledb_dimension<'ctx>(
+pub fn from_arrow<'ctx>(
     context: &'ctx TileDBContext,
-    field: &arrow_schema::Field,
-) -> TileDBResult<Option<DimensionBuilder<'ctx>>> {
-    let tiledb_datatype = match tiledb_type_physical(field.data_type()) {
-        Some(dt) => dt,
-        None => return Ok(None),
-    };
-    let metadata = match field.metadata().get("tiledb") {
-        Some(metadata) => serde_json::from_str::<DimensionMetadata>(metadata)
-            .map_err(|e| {
-            TileDBError::Deserialization(
-                format!("dimension {} metadata", field.name()),
-                anyhow!(e),
+    field: &arrow::datatypes::Field,
+) -> TileDBResult<DimensionFromArrowResult<'ctx>> {
+    let construct = |datatype,
+                     cell_val_num|
+     -> TileDBResult<DimensionBuilder<'ctx>> {
+        let metadata = match field.metadata().get("tiledb") {
+            Some(metadata) => serde_json::from_str::<DimensionMetadata>(
+                metadata,
             )
-        })?,
-        None => return Ok(None),
-    };
-
-    let dim = fn_typed!(tiledb_datatype, LT, {
-        type DT = <LT as LogicalType>::PhysicalType;
-        let deser = |v: &serde_json::value::Value| {
-            serde_json::from_value::<DT>(v.clone()).map_err(|e| {
+            .map_err(|e| {
                 TileDBError::Deserialization(
-                    format!("dimension {} lower bound", field.name()),
+                    format!("dimension {} metadata", field.name()),
                     anyhow!(e),
                 )
-            })
+            })?,
+            None => Err(TileDBError::InvalidArgument(anyhow!(format!(
+                "field {} missing metadata to construct dimension",
+                field.name()
+            ))))?,
         };
 
-        let domain = if let Some(d) = metadata.domain {
-            Some([deser(&d[0])?, deser(&d[1])?])
-        } else {
-            None
-        };
-        let extent = if let Some(e) = metadata.extent {
-            Some(deser(&e)?)
-        } else {
-            None
-        };
+        let dim = fn_typed!(datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
+            let deser = |v: &serde_json::value::Value| {
+                serde_json::from_value::<DT>(v.clone()).map_err(|e| {
+                    TileDBError::Deserialization(
+                        format!("dimension {} lower bound", field.name()),
+                        anyhow!(e),
+                    )
+                })
+            };
 
-        match (domain, extent) {
-            (Some(domain), Some(extent)) => DimensionBuilder::new::<DT>(
-                context,
-                field.name(),
-                tiledb_datatype,
-                &domain,
-                &extent,
-            ),
-            (None, None) => DimensionBuilder::new_string(
-                context,
-                field.name(),
-                tiledb_datatype,
-            ),
-            _ => {
-                /*
-                 * TODO: refactor so there is only one Option such that this is actually true.
-                 * Related to SC-466692
-                 */
-                unreachable!()
+            let domain = if let Some(d) = metadata.domain {
+                Some([deser(&d[0])?, deser(&d[1])?])
+            } else {
+                None
+            };
+            let extent = if let Some(e) = metadata.extent {
+                Some(deser(&e)?)
+            } else {
+                None
+            };
+
+            match (domain, extent) {
+                (Some(domain), Some(extent)) => DimensionBuilder::new::<DT>(
+                    context,
+                    field.name(),
+                    datatype,
+                    &domain,
+                    &extent,
+                ),
+                (None, None) => DimensionBuilder::new_string(
+                    context,
+                    field.name(),
+                    datatype,
+                ),
+                _ => {
+                    /*
+                     * TODO: refactor so there is only one Option such that this is actually true.
+                     * Related to SC-466692
+                     */
+                    unreachable!()
+                }
             }
+        })?;
+
+        let fl = metadata
+            .filters
+            .apply(FilterListBuilder::new(dim.context())?)?
+            .build();
+
+        dim.cell_val_num(cell_val_num)?.filters(fl)
+    };
+
+    match crate::datatype::arrow::from_arrow(field.data_type()) {
+        DatatypeFromArrowResult::None => Ok(DimensionFromArrowResult::None),
+        DatatypeFromArrowResult::Inexact(datatype, cell_val_num) => {
+            Ok(DimensionFromArrowResult::Inexact(construct(
+                datatype,
+                cell_val_num,
+            )?))
         }
-    })?;
-
-    let fl = metadata
-        .filters
-        .apply(FilterListBuilder::new(dim.context())?)?
-        .build();
-
-    Ok(Some(dim.cell_val_num(metadata.cell_val_num)?.filters(fl)?))
+        DatatypeFromArrowResult::Exact(datatype, cell_val_num) => Ok(
+            DimensionFromArrowResult::Exact(construct(datatype, cell_val_num)?),
+        ),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Factory;
+    use crate::array::dimension::DimensionData;
+    use crate::{Datatype, Factory};
     use proptest::prelude::*;
 
-    #[test]
-    fn test_tiledb_arrow_tiledb() {
+    fn do_to_arrow(tdb_in: DimensionData) {
         let c: TileDBContext = TileDBContext::new().unwrap();
 
-        proptest!(|(tdb_in in crate::array::dimension::strategy::prop_dimension())| {
-            let tdb_in = tdb_in.create(&c)
-                .expect("Error constructing arbitrary tiledb dimension");
-            if let Some(arrow_dimension) = arrow_field(&tdb_in)
-                    .expect("Error constructing arrow field") {
-                let tdb_out = tiledb_dimension(&c, &arrow_dimension)
-                    .expect("Error converting back to tiledb dimension")
-                    .unwrap()
-                    .build();
-                assert_eq!(tdb_in, tdb_out);
-            }
-        });
+        let tdb_in = tdb_in
+            .create(&c)
+            .expect("Error constructing arbitrary tiledb dimension");
+
+        let arrow_dimension =
+            to_arrow(&tdb_in).expect("Error constructing arrow field");
+
+        let is_to_arrow_exact = arrow_dimension.is_exact();
+
+        let tdb_out = from_arrow(&c, &arrow_dimension.ok().unwrap()).unwrap();
+
+        let is_from_arrow_exact = tdb_out.is_exact();
+        let tdb_out = tdb_out.ok().unwrap().build();
+
+        if is_to_arrow_exact {
+            assert!(is_from_arrow_exact, "{:?}", tdb_out);
+            assert_eq!(tdb_in, tdb_out);
+        } else {
+            /*
+             * All should be the same but the datatype, which must be the same size.
+             * NB: the conversion *back* might be (probably is) Exact,
+             * which is a little misleading since we know the input was Inexact.
+             */
+            assert_ne!(tdb_in.datatype().unwrap(), tdb_out.datatype().unwrap());
+            assert_eq!(
+                tdb_in.datatype().unwrap().size(),
+                tdb_out.datatype().unwrap().size()
+            );
+
+            let mut tdb_in = DimensionData::try_from(tdb_in).unwrap();
+            tdb_in.datatype = Datatype::Any;
+
+            let mut tdb_out = DimensionData::try_from(tdb_out).unwrap();
+            tdb_out.datatype = Datatype::Any;
+
+            assert_eq!(tdb_in, tdb_out);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_to_arrow(tdb_in in crate::array::dimension::strategy::prop_dimension()) {
+            do_to_arrow(tdb_in);
+        }
     }
 }

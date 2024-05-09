@@ -1,247 +1,139 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow::array::{
-    Array as ArrowArray, FixedSizeListArray, GenericListArray, PrimitiveArray,
+    Array as ArrowArray, FixedSizeBinaryArray, FixedSizeListArray,
+    GenericListArray, LargeBinaryArray, PrimitiveArray,
 };
-use arrow::buffer::{OffsetBuffer, ScalarBuffer};
 use arrow::datatypes::Field;
 
 use crate::array::CellValNum;
 use crate::datatype::arrow::ArrowPrimitiveTypeNative;
-use crate::error::{DatatypeErrorKind, Error};
-use crate::query::buffer::{
-    Buffer, CellStructure, QueryBuffers, TypedQueryBuffers,
-};
+use crate::query::buffer::arrow::{Celled, QueryBufferArrowArray};
+use crate::query::buffer::TypedQueryBuffers;
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
-use crate::{typed_query_buffers_go, Result as TileDBResult};
+use crate::{typed_query_buffers_go, Datatype};
 
-impl<'data, C> TryFrom<RawReadOutput<'data, C>>
-    for PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>
+impl<C> TryFrom<RawReadOutput<'_, C>> for QueryBufferArrowArray<C>
 where
     C: ArrowPrimitiveTypeNative,
     PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>:
         From<Vec<C>> + From<Vec<Option<C>>>,
 {
-    type Error = crate::error::Error;
+    type Error = std::num::TryFromIntError;
 
-    fn try_from(value: RawReadOutput<C>) -> TileDBResult<Self> {
-        type MyPrimitiveArray<C> =
-            PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
-
-        match value.input.cell_structure {
-            CellStructure::Fixed(nz) if nz.get() == 1 => {}
-            structure => {
-                return Err(Error::Datatype(
-                    DatatypeErrorKind::UnexpectedCellStructure {
-                        context: None,
-                        expected: CellValNum::single(),
-                        found: structure.as_cell_val_num(),
-                    },
-                ))
-            }
-        }
-
-        Ok(if let Some(validity) = value.input.validity {
-            let data: Vec<C> = match value.input.data {
-                Buffer::Empty => vec![],
-                Buffer::Owned(data) => {
-                    let mut data = data.into_vec();
-                    data.truncate(value.ncells);
-                    data
-                }
-                Buffer::Borrowed(data) => data[0..value.ncells].to_vec(),
-            };
-
-            let validity = match validity {
-                Buffer::Empty => vec![],
-                Buffer::Owned(v) => {
-                    let mut v = v.into_vec();
-                    v.truncate(value.ncells);
-                    v
-                }
-                Buffer::Borrowed(v) => v[0..value.ncells].to_vec(),
-            };
-            let validity = validity
-                .into_iter()
-                .map(|v| v != 0)
-                .collect::<arrow::buffer::NullBuffer>();
-            MyPrimitiveArray::<C>::new(data.into(), Some(validity))
-        } else {
-            let mut v: Vec<C> = match value.input.data {
-                Buffer::Empty => vec![],
-                Buffer::Owned(b) => b.into_vec(),
-                Buffer::Borrowed(b) => b.to_vec(),
-            };
-            v.truncate(value.ncells);
-            v.into()
-        })
+    fn try_from(value: RawReadOutput<C>) -> Result<Self, Self::Error> {
+        Self::try_from(Celled(value.ncells, value.input))
     }
 }
 
-impl<'data, C> From<RawReadOutput<'data, C>> for Arc<dyn ArrowArray>
-where
-    C: ArrowPrimitiveTypeNative,
-    PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>:
-        From<Vec<C>> + From<Vec<Option<C>>>,
-{
-    fn from(value: RawReadOutput<'data, C>) -> Self {
-        type MyPrimitiveArray<C> =
-            PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
+impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
+    type Error = std::num::TryFromIntError;
 
-        match value.input.cell_structure {
-            CellStructure::Fixed(nz) if nz.get() == 1 => {
-                let flat = MyPrimitiveArray::<C>::try_from(value).unwrap();
-                Arc::new(flat)
-            }
-            CellStructure::Fixed(nz) => {
-                let flat = {
-                    let rr = RawReadOutput {
-                        ncells: value.ncells * nz.get() as usize,
-                        input: QueryBuffers {
-                            data: value.input.data,
-                            cell_structure: CellStructure::single(),
-                            validity: None, /* TODO */
-                        },
-                    };
-                    // the `unwrap` will succeed because the `Err` conditions are
-                    // on the cell val num
-                    MyPrimitiveArray::<C>::try_from(rr).unwrap()
-                };
-                let flat: Arc<dyn ArrowArray> = Arc::new(flat);
-                let field =
-                    Field::new_list_field(flat.data_type().clone(), false);
+    fn try_from(value: TypedRawReadOutput<'_>) -> Result<Self, Self::Error> {
+        /*
+         * See `TryFrom<RawReadOutput<C>> for QueryBufferArrowArray<C>`.
+         * `C` is a physical type, not a logical type, so we end up
+         * with an arrow array whose type is based on the physical type.
+         * We must re-type the array so that its logical type matches
+         * what is represented by `value.datatype`.  It suffices
+         * to change the type of the primitive array of values.
+         */
+        fn assign_logical_type<C>(
+            datatype: Datatype,
+            p: PrimitiveArray<
+                <C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType,
+            >,
+        ) -> (Arc<dyn ArrowArray>, HashMap<String, String>)
+        where
+            C: ArrowPrimitiveTypeNative,
+        {
+            /*
+             * NB: `PrimitiveArray::with_datatype` is very restrictive
+             * and only allows conversions of timezones, etc. whereas
+             * we have an array of something like `i64` and need to
+             * turn that into `ADT::Time64(TimeUnit::Microsecond)` for example.
+             */
+            let arrow_datatype = crate::datatype::arrow::to_arrow(
+                &datatype,
+                CellValNum::single(),
+            );
+            let list_field_metadata = if arrow_datatype.is_inexact() {
+                HashMap::from([(crate::datatype::arrow::ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT.to_string(), datatype.to_string())])
+            } else {
+                HashMap::new()
+            };
 
-                let fixed_len = match i32::try_from(nz.get()) {
-                    Ok(len) => len,
-                    Err(_) => {
-                        /*
-                         * What we probably want to do here is cry, I mean conjure up a
-                         * generic list array with some large offsets. Leaving it out
-                         * for now because we need more work from the Attribute/RecordBatch
-                         * to identify if that's actually true.
-                         */
-                        unimplemented!()
-                    }
-                };
-
-                let arrow_validity =
-                    if let Some(validity) = value.input.validity {
-                        let validity: Vec<u8> = match validity {
-                            Buffer::Empty => vec![],
-                            Buffer::Owned(validity) => validity.into_vec(),
-                            Buffer::Borrowed(validity) => {
-                                validity[0..value.ncells].to_vec()
-                            }
-                        };
-                        let arrow_validity = validity
-                            .into_iter()
-                            .take(value.ncells)
-                            .map(|v: u8| v != 0)
-                            .collect::<arrow::buffer::NullBuffer>();
-                        Some(arrow_validity)
-                    } else {
-                        None
-                    };
-
-                let fixed = FixedSizeListArray::new(
-                    Arc::new(field),
-                    fixed_len,
-                    flat,
-                    arrow_validity,
-                );
-                Arc::new(fixed)
-            }
-            CellStructure::Var(offsets) => {
-                let nvalues = if value.ncells < 1 {
-                    0
-                } else {
-                    *offsets.as_ref().last().unwrap() as usize
-                };
-                let flat = {
-                    let rr = RawReadOutput {
-                        ncells: nvalues,
-                        input: QueryBuffers {
-                            data: value.input.data,
-                            cell_structure: CellStructure::single(),
-                            validity: None,
-                        },
-                    };
-                    // the `unwrap` will succeed because the `Err` conditions are
-                    // on the cell val num
-                    MyPrimitiveArray::<C>::try_from(rr).unwrap()
-                };
-                let flat: Arc<dyn ArrowArray> = Arc::new(flat);
-
-                let offsets = if value.ncells == 0 {
-                    vec![0u64]
-                } else {
-                    let noffsets = value.ncells + 1;
-                    match offsets {
-                        Buffer::Empty => vec![0u64],
-                        Buffer::Borrowed(offsets) => {
-                            offsets[0..noffsets].to_vec()
-                        }
-                        Buffer::Owned(offsets) => {
-                            let mut offsets = offsets.into_vec();
-                            offsets.truncate(noffsets);
-                            offsets
-                        }
-                    }
-                };
-
-                // convert u64 byte offsets to i64 element offsets
-                let offsets =
-                    offsets.into_iter().map(|o| o as i64).collect::<Vec<i64>>();
-
-                let field = Arc::new(Field::new_list_field(
-                    flat.data_type().clone(),
-                    value.input.validity.is_some(),
-                ));
-
-                let arrow_offsets = OffsetBuffer::<i64>::new(
-                    ScalarBuffer::<i64>::from(offsets),
-                );
-                let arrow_validity =
-                    if let Some(validity) = value.input.validity {
-                        let validity: Vec<u8> = match validity {
-                            Buffer::Empty => vec![],
-                            Buffer::Owned(validity) => validity.into_vec(),
-                            Buffer::Borrowed(validity) => {
-                                validity[0..value.ncells].to_vec()
-                            }
-                        };
-                        let arrow_validity = validity
-                            .into_iter()
-                            .take(value.ncells)
-                            .map(|v: u8| v != 0)
-                            .collect::<arrow::buffer::NullBuffer>();
-                        Some(arrow_validity)
-                    } else {
-                        None
-                    };
-
-                let list_array = GenericListArray::<i64>::try_new(
-                    field,
-                    arrow_offsets,
-                    Arc::new(flat),
-                    arrow_validity,
-                )
-                .expect("TileDB internal error constructing Arrow buffers");
-
-                Arc::new(list_array)
-            }
+            (
+                arrow::array::make_array(
+                    p.into_data()
+                        .into_builder()
+                        .data_type(arrow_datatype.into_inner())
+                        .build()
+                        .unwrap(),
+                ),
+                list_field_metadata,
+            )
         }
-    }
-}
 
-impl From<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
-    fn from(value: TypedRawReadOutput<'_>) -> Self {
-        typed_query_buffers_go!(value.buffers, _DT, input, {
-            RawReadOutput {
-                ncells: value.ncells,
-                input,
+        typed_query_buffers_go!(value.buffers, DT, input, {
+            let array =
+                QueryBufferArrowArray::try_from(Celled(value.ncells, input))?;
+
+            match array {
+                QueryBufferArrowArray::Primitive(p) => {
+                    // the array data type has the phyiscal type,
+                    // we need it to have the logical type
+                    Ok(assign_logical_type::<DT>(value.datatype, p).0)
+                }
+                QueryBufferArrowArray::FixedSizeList(a) => {
+                    let (fl, p) = a.unwrap();
+                    let (len, nulls) = {
+                        let (_, len, _, nulls) = fl.into_parts();
+                        (len, nulls)
+                    };
+                    let (p, list_field_metadata) = assign_logical_type::<DT>(
+                        value.datatype,
+                        Arc::into_inner(p).unwrap(),
+                    );
+                    let field = Arc::new(
+                        Field::new_list_field(p.data_type().clone(), false)
+                            .with_metadata(list_field_metadata),
+                    );
+
+                    let fl = FixedSizeListArray::new(field, len, p, nulls);
+                    match value.datatype {
+                        Datatype::Blob => {
+                            Ok(Arc::new(FixedSizeBinaryArray::from(fl)))
+                        }
+                        _ => Ok(Arc::new(fl)),
+                    }
+                }
+                QueryBufferArrowArray::VarSizeList(a) => {
+                    let (gl, p) = a.unwrap();
+                    let (offsets, nulls) = {
+                        let (_, offsets, _, nulls) = gl.into_parts();
+                        (offsets, nulls)
+                    };
+                    let (p, list_field_metadata) = assign_logical_type::<DT>(
+                        value.datatype,
+                        Arc::into_inner(p).unwrap(),
+                    );
+                    let field = Arc::new(
+                        Field::new_list_field(p.data_type().clone(), false)
+                            .with_metadata(list_field_metadata),
+                    );
+                    let gl =
+                        GenericListArray::<i64>::new(field, offsets, p, nulls);
+
+                    match value.datatype {
+                        Datatype::Blob => {
+                            Ok(Arc::new(LargeBinaryArray::from(gl)))
+                        }
+                        _ => Ok(Arc::new(gl)),
+                    }
+                }
             }
-            .into()
         })
     }
 }
@@ -251,7 +143,14 @@ mod tests {
     use std::any::TypeId;
 
     use super::*;
+    use arrow::datatypes::Field;
+    use arrow::record_batch::RecordBatch;
     use proptest::prelude::*;
+
+    use crate::array::CellValNum;
+    use crate::query::read::output::strategy::RawReadOutputParameters;
+    use crate::query::read::output::CellStructure;
+    use crate::Datatype;
 
     fn raw_read_to_arrow<C>(rr: RawReadOutput<C>)
     where
@@ -262,12 +161,16 @@ mod tests {
         type MyPrimitiveArray<C> =
             PrimitiveArray<<C as ArrowPrimitiveTypeNative>::ArrowPrimitiveType>;
 
-        let arrow = {
+        let arrow: Arc<dyn ArrowArray> = {
             let rrborrow = RawReadOutput {
                 ncells: rr.ncells,
                 input: rr.input.borrow(),
             };
-            Arc::<dyn ArrowArray>::from(rrborrow)
+            Arc::from(
+                QueryBufferArrowArray::<C>::try_from(rrborrow)
+                    .expect("Integer overflow")
+                    .boxed(),
+            )
         };
 
         match rr.input.cell_structure {
@@ -480,5 +383,46 @@ mod tests {
         fn raw_read_to_arrow_f64(rr in any::<RawReadOutput<f64>>()) {
             raw_read_to_arrow(rr);
         }
+    }
+
+    fn do_raw_read_to_record_batch(rr: TypedRawReadOutput) {
+        let arrow = crate::datatype::arrow::to_arrow(
+            &rr.datatype,
+            rr.cell_structure().as_cell_val_num(),
+        )
+        .into_inner();
+
+        let arrow_schema = arrow::datatypes::Schema::new(vec![Field::new(
+            "f",
+            arrow,
+            rr.is_nullable(),
+        )]);
+
+        let cols = vec![
+            Arc::<dyn ArrowArray>::try_from(rr).expect("Integer overflow")
+        ];
+
+        // NB: even constructing this successfully is a big deal due to schema match
+        let _ = RecordBatch::try_new(Arc::new(arrow_schema), cols)
+            .expect("Error constructing record batch");
+    }
+
+    #[test]
+    fn raw_read_to_record_batch() {
+        let strat = (any::<Datatype>(), any::<CellValNum>(), any::<bool>())
+            .prop_flat_map(|(dt, cv, is_nullable)| {
+                any_with::<TypedRawReadOutput>(Some((
+                    dt,
+                    RawReadOutputParameters {
+                        cell_val_num: Some(cv),
+                        is_nullable: Some(is_nullable),
+                        ..Default::default()
+                    },
+                )))
+            });
+
+        proptest!(|(rr in strat)| {
+            do_raw_read_to_record_batch(rr)
+        });
     }
 }

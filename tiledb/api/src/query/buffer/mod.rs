@@ -4,6 +4,10 @@ use std::ops::{Deref, DerefMut};
 
 use crate::array::CellValNum;
 
+#[cfg(feature = "arrow")]
+pub mod arrow;
+
+#[derive(Debug)]
 pub enum Buffer<'data, T = u8> {
     Empty,
     Borrowed(&'data [T]),
@@ -53,13 +57,14 @@ impl<'data, T> From<Vec<T>> for Buffer<'data, T> {
 
 /// Contains the structural information needed to interpret the values of a
 /// query buffer into distinct cells of an attribute or dimension.
+#[derive(Debug)]
 pub enum CellStructure<'data> {
     /// The number of values per cell is a specific fixed number.
     Fixed(NonZeroU32),
     /// The number of values per cell varies.
     /// The contained buffer indicates the offset of each cell into an accompanying
     /// values buffer. The values contained within cell `x` are those within the
-    /// range `offsets[x].. offsets[x + 1]`, except for the last record which
+    /// range `offsets[x].. offsets[x + 1]`, except for the last value which
     /// begins at `offset[x]` and ends at the end of the values buffer.
     Var(Buffer<'data, u64>),
 }
@@ -70,12 +75,17 @@ impl<'data> CellStructure<'data> {
         CellStructure::Fixed(NonZeroU32::new(1).unwrap())
     }
 
-    /// Returns whether the cells contain a fixed number of records.
+    /// Returns whether the cells contain exactly one value.
+    pub fn is_single(&self) -> bool {
+        matches!(self, Self::Fixed(nz) if nz.get() == 1)
+    }
+
+    /// Returns whether the cells contain a fixed number of values.
     pub fn is_fixed(&self) -> bool {
         matches!(self, Self::Fixed(_))
     }
 
-    /// Returns whether the cells contain a variable number of records.
+    /// Returns whether the cells contain a variable number of values.
     pub fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
     }
@@ -153,6 +163,7 @@ impl<'data> From<NonZeroU32> for CellStructure<'data> {
     }
 }
 
+#[derive(Debug)]
 pub struct QueryBuffers<'data, C> {
     pub data: Buffer<'data, C>,
     pub cell_structure: CellStructure<'data>,
@@ -174,6 +185,7 @@ impl<'data, C> QueryBuffers<'data, C> {
     }
 }
 
+#[derive(Debug)]
 pub enum BufferMut<'data, C> {
     Empty,
     Borrowed(&'data mut [C]),
@@ -251,6 +263,7 @@ impl<'data, T> From<Vec<T>> for BufferMut<'data, T> {
 
 /// Contains the structural information needed to interpret the values of a
 /// query buffer into distinct cells of an attribute or dimension.
+#[derive(Debug)]
 pub enum CellStructureMut<'data> {
     /// The number of values per cell is a specific fixed number.
     Fixed(NonZeroU32),
@@ -267,12 +280,17 @@ impl<'data> CellStructureMut<'data> {
         CellStructureMut::Fixed(NonZeroU32::new(1).unwrap())
     }
 
-    /// Returns whether the cells contain a fixed number of records.
+    /// Returns whether the cells contain exactly one value.
+    pub fn is_single(&self) -> bool {
+        matches!(self, Self::Fixed(nz) if nz.get() == 1)
+    }
+
+    /// Returns whether the cells contain a fixed number of values.
     pub fn is_fixed(&self) -> bool {
         matches!(self, Self::Fixed(_))
     }
 
-    /// Returns whether the cells contain a variable number of records.
+    /// Returns whether the cells contain a variable number of values.
     pub fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
     }
@@ -371,6 +389,7 @@ impl<'data> From<NonZeroU32> for CellStructureMut<'data> {
     }
 }
 
+#[derive(Debug)]
 pub struct QueryBuffersMut<'data, T = u8> {
     pub data: BufferMut<'data, T>,
     pub cell_structure: CellStructureMut<'data>,
@@ -393,6 +412,104 @@ impl<'data, T> QueryBuffersMut<'data, T> {
     }
 }
 
+/// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Fixed(1)`.
+pub struct QueryBuffersCellStructureSingle<'data, C>(QueryBuffers<'data, C>);
+
+impl<'data, C> TryFrom<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureSingle<'data, C>
+{
+    type Error = QueryBuffers<'data, C>;
+    fn try_from(value: QueryBuffers<'data, C>) -> Result<Self, Self::Error> {
+        if value.cell_structure.is_single() {
+            Ok(Self(value))
+        } else {
+            Err(value)
+        }
+    }
+}
+
+impl<'data, C> AsRef<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureSingle<'data, C>
+{
+    fn as_ref(&self) -> &QueryBuffers<'data, C> {
+        &self.0
+    }
+}
+
+impl<'data, C> AsMut<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureSingle<'data, C>
+{
+    fn as_mut(&mut self) -> &mut QueryBuffers<'data, C> {
+        &mut self.0
+    }
+}
+
+/// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Fixed(nz)`
+/// for some `1 < nz < u32::MAX`.
+pub struct QueryBuffersCellStructureFixed<'data, C>(QueryBuffers<'data, C>);
+
+impl<'data, C> TryFrom<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureFixed<'data, C>
+{
+    type Error = QueryBuffers<'data, C>;
+    fn try_from(value: QueryBuffers<'data, C>) -> Result<Self, Self::Error> {
+        if matches!(&value.cell_structure, CellStructure::Fixed(ref nz) if nz.get() != 1)
+        {
+            Ok(Self(value))
+        } else {
+            Err(value)
+        }
+    }
+}
+
+impl<'data, C> AsRef<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureFixed<'data, C>
+{
+    fn as_ref(&self) -> &QueryBuffers<'data, C> {
+        &self.0
+    }
+}
+
+impl<'data, C> AsMut<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureFixed<'data, C>
+{
+    fn as_mut(&mut self) -> &mut QueryBuffers<'data, C> {
+        &mut self.0
+    }
+}
+
+/// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Var(_)`.
+pub struct QueryBuffersCellStructureVar<'data, C>(QueryBuffers<'data, C>);
+
+impl<'data, C> TryFrom<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureVar<'data, C>
+{
+    type Error = QueryBuffers<'data, C>;
+    fn try_from(value: QueryBuffers<'data, C>) -> Result<Self, Self::Error> {
+        if value.cell_structure.is_var() {
+            Ok(Self(value))
+        } else {
+            Err(value)
+        }
+    }
+}
+
+impl<'data, C> AsRef<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureVar<'data, C>
+{
+    fn as_ref(&self) -> &QueryBuffers<'data, C> {
+        &self.0
+    }
+}
+
+impl<'data, C> AsMut<QueryBuffers<'data, C>>
+    for QueryBuffersCellStructureVar<'data, C>
+{
+    fn as_mut(&mut self) -> &mut QueryBuffers<'data, C> {
+        &mut self.0
+    }
+}
+
 pub enum TypedQueryBuffers<'data> {
     UInt8(QueryBuffers<'data, u8>),
     UInt16(QueryBuffers<'data, u16>),
@@ -404,6 +521,12 @@ pub enum TypedQueryBuffers<'data> {
     Int64(QueryBuffers<'data, i64>),
     Float32(QueryBuffers<'data, f32>),
     Float64(QueryBuffers<'data, f64>),
+}
+
+impl<'data> TypedQueryBuffers<'data> {
+    pub fn cell_structure(&self) -> &CellStructure<'data> {
+        crate::typed_query_buffers_go!(self, _DT, ref qb, &qb.cell_structure)
+    }
 }
 
 pub enum RefTypedQueryBuffersMut<'cell, 'data> {

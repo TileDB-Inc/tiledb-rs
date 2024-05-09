@@ -187,19 +187,6 @@ impl Datatype {
         unsafe { ffi::tiledb_datatype_size(copy as ffi::tiledb_datatype_t) }
     }
 
-    pub fn to_string(&self) -> Option<String> {
-        let copy = *self;
-        let c_dtype = copy as ffi::tiledb_datatype_t;
-        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
-        let res = unsafe { ffi::tiledb_datatype_to_str(c_dtype, &mut c_str) };
-        if res == ffi::TILEDB_OK {
-            let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
-            Some(String::from(c_msg.to_string_lossy()))
-        } else {
-            None
-        }
-    }
-
     pub fn from_string(dtype: &str) -> Option<Self> {
         let c_dtype =
             std::ffi::CString::new(dtype).expect("Error creating CString");
@@ -456,14 +443,19 @@ impl Debug for Datatype {
 
 impl Display for Datatype {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(
-            f,
-            "{}",
-            match self.to_string() {
-                Some(s) => s,
-                None => String::from("<UNKNOWN DATA TYPE>"),
-            }
-        )
+        let copy = *self;
+        let c_dtype = copy as ffi::tiledb_datatype_t;
+        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
+        let res = unsafe { ffi::tiledb_datatype_to_str(c_dtype, &mut c_str) };
+
+        /*
+         * this cannot error if you provide a valid value, and the strong Rust
+         * enum ensures that we have a valid value
+         */
+        assert_eq!(res, ffi::TILEDB_OK);
+
+        let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
+        write!(f, "{}", c_msg.to_string_lossy())
     }
 }
 
@@ -788,7 +780,7 @@ mod tests {
             let maybe_dt = Datatype::try_from(i);
             if maybe_dt.is_ok() {
                 let dt = maybe_dt.unwrap();
-                let dt_str = dt.to_string().expect("Error creating string.");
+                let dt_str = dt.to_string();
                 let str_dt = Datatype::from_string(&dt_str)
                     .expect("Error round tripping datatype string.");
                 assert_eq!(str_dt, dt);

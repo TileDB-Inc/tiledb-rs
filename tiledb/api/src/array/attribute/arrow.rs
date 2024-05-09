@@ -4,13 +4,16 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::array::schema::arrow::{
+    AttributeFromArrowResult, FieldToArrowResult,
+};
 use crate::array::{Attribute, AttributeBuilder, CellValNum};
-use crate::datatype::arrow::*;
+use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::datatype::LogicalType;
 use crate::error::Error;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
-use crate::{fn_typed, Context, Result as TileDBResult};
+use crate::{fn_typed, Context, Datatype, Result as TileDBResult};
 
 /// Encapsulates TileDB Attribute fill value data for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
@@ -22,7 +25,6 @@ pub struct FillValueMetadata {
 /// Encapsulates details of a TileDB attribute for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
 pub struct AttributeMetadata {
-    pub cell_val_num: CellValNum,
     pub fill_value: FillValueMetadata,
     pub filters: FilterMetadata,
 }
@@ -30,7 +32,6 @@ pub struct AttributeMetadata {
 impl AttributeMetadata {
     pub fn new(attr: &Attribute) -> TileDBResult<Self> {
         Ok(AttributeMetadata {
-            cell_val_num: attr.cell_val_num()?,
             fill_value: fn_typed!(attr.datatype()?, LT, {
                 type DT = <LT as LogicalType>::PhysicalType;
                 let (fill_value, fill_nullable) =
@@ -65,7 +66,6 @@ impl AttributeMetadata {
                         )
                     })?;
             builder
-                .cell_val_num(self.cell_val_num)?
                 .filter_list(&fl)?
                 .fill_value_nullability(fill_value, self.fill_value.nullable)
         })
@@ -75,10 +75,8 @@ impl AttributeMetadata {
 /// Tries to construct an Arrow Field from the TileDB Attribute.
 /// Details about the Attribute are stored under the key "tiledb"
 /// in the Field's metadata.
-pub fn arrow_field(
-    attr: &Attribute,
-) -> TileDBResult<Option<arrow_schema::Field>> {
-    if let Some(arrow_dt) = arrow_type_physical(&attr.datatype()?) {
+pub fn to_arrow(attr: &Attribute) -> TileDBResult<FieldToArrowResult> {
+    let construct = |adt| -> TileDBResult<arrow::datatypes::Field> {
         let name = attr.name()?;
         let metadata =
             serde_json::ser::to_string(&AttributeMetadata::new(attr)?)
@@ -88,121 +86,204 @@ pub fn arrow_field(
                         anyhow!(e),
                     )
                 })?;
-        Ok(Some(
-            arrow_schema::Field::new(name, arrow_dt, attr.is_nullable()?)
-                .with_metadata(HashMap::<String, String>::from([(
-                    String::from("tiledb"),
-                    metadata,
-                )])),
-        ))
-    } else {
-        Ok(None)
+        Ok(arrow::datatypes::Field::new(name, adt, attr.is_nullable()?)
+            .with_metadata(HashMap::<String, String>::from([(
+                String::from("tiledb"),
+                metadata,
+            )])))
+    };
+
+    let arrow_dt = crate::datatype::arrow::to_arrow(
+        &attr.datatype()?,
+        attr.cell_val_num()?,
+    );
+
+    match arrow_dt {
+        DatatypeToArrowResult::Exact(adt) => {
+            Ok(FieldToArrowResult::Exact(construct(adt)?))
+        }
+        DatatypeToArrowResult::Inexact(adt) => {
+            Ok(FieldToArrowResult::Inexact(construct(adt)?))
+        }
     }
 }
 
 /// Tries to construct a TileDB array Attribute from the Arrow Field.
 /// Details about the Attribute are stored under the key "tiledb"
 /// in the Field's metadata, if it is present.
-pub fn tiledb_attribute<'ctx>(
+pub fn from_arrow<'ctx>(
     context: &'ctx Context,
-    field: &arrow_schema::Field,
-) -> TileDBResult<Option<AttributeBuilder<'ctx>>> {
-    if let Some(tiledb_dt) = tiledb_type_physical(field.data_type()) {
-        let attr = AttributeBuilder::new(context, field.name(), tiledb_dt)?
-            .nullability(field.is_nullable())?;
+    field: &arrow::datatypes::Field,
+) -> TileDBResult<AttributeFromArrowResult<'ctx>> {
+    let construct = |datatype: Datatype, cell_val_num: CellValNum| {
+        let attr = if Datatype::Any == datatype && cell_val_num.is_var_sized() {
+            /*
+             * sc-46696: cannot call cell_val_num() with Any datatype,
+             * not even with CellValNum::Var
+             */
+            AttributeBuilder::new(context, field.name(), datatype)?
+                .nullability(field.is_nullable())?
+        } else {
+            AttributeBuilder::new(context, field.name(), datatype)?
+                .nullability(field.is_nullable())?
+                .cell_val_num(cell_val_num)?
+        };
 
         if let Some(tiledb_metadata) = field.metadata().get("tiledb") {
             match serde_json::from_str::<AttributeMetadata>(
                 tiledb_metadata.as_ref(),
             ) {
-                Ok(attr_metadata) => Ok(Some(attr_metadata.apply(attr)?)),
+                Ok(attr_metadata) => Ok(attr_metadata.apply(attr)?),
                 Err(e) => Err(Error::Deserialization(
                     format!("attribute {} metadata", field.name()),
                     anyhow!(e),
                 )),
             }
         } else {
-            Ok(Some(attr))
+            Ok(attr)
         }
-    } else {
-        Ok(None)
+    };
+
+    match crate::datatype::arrow::from_arrow(field.data_type()) {
+        DatatypeFromArrowResult::None => Ok(AttributeFromArrowResult::None),
+        DatatypeFromArrowResult::Inexact(datatype, cell_val_num) => {
+            Ok(AttributeFromArrowResult::Inexact(construct(
+                datatype,
+                cell_val_num,
+            )?))
+        }
+        DatatypeFromArrowResult::Exact(datatype, cell_val_num) => Ok(
+            AttributeFromArrowResult::Exact(construct(datatype, cell_val_num)?),
+        ),
     }
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy {
+    use std::collections::HashMap;
+
     use proptest::prelude::*;
 
-    pub fn prop_arrow_field() -> impl Strategy<Value = arrow_schema::Field> {
+    pub fn prop_arrow_field() -> impl Strategy<Value = arrow::datatypes::Field>
+    {
         (
             crate::array::attribute::strategy::prop_attribute_name(),
-            crate::datatype::arrow::strategy::prop_arrow_implemented(),
-            proptest::prelude::any::<bool>(),
+            crate::datatype::arrow::strategy::any_datatype(Default::default()),
+            any::<bool>(),
+            Just(HashMap::<String, String>::new()), /* TODO: we'd like to check that metadata is preserved,
+                                                     * but right now the CAPI doesn't appear to have a way
+                                                     * to attach metadata to an attribute
+                                                     */
         )
-            .prop_map(|(name, data_type, nullable)| {
-                arrow_schema::Field::new(name, data_type, nullable)
+            .prop_map(|(name, data_type, nullable, metadata)| {
+                arrow::datatypes::Field::new(name, data_type, nullable)
+                    .with_metadata(metadata)
             })
-
-        /*
-         * TODO: generate arbitrary metadata?
-         * Without doing so the test does not demonstrate that metadata is
-         * preserved. Which the CAPI doesn't appear to offer a way to do anyway.
-         */
     }
 }
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
+    use crate::array::attribute::AttributeData;
     use crate::Factory;
     use proptest::prelude::*;
 
-    #[test]
-    fn test_tiledb_arrow_tiledb() -> TileDBResult<()> {
-        let c: Context = Context::new()?;
+    fn do_tiledb_arrow(tdb_spec: AttributeData) {
+        let c: Context = Context::new().unwrap();
+        let tdb_in = tdb_spec
+            .create(&c)
+            .expect("Error constructing arbitrary tiledb attribute");
+        let arrow = to_arrow(&tdb_in).expect("Error reading tiledb attribute");
+        let is_to_arrow_exact = arrow.is_exact();
+        let arrow = arrow.ok().expect("No arrow field for tiledb attribute");
 
-        /* tiledb => arrow => tiledb */
-        proptest!(|(tdb_in in crate::array::attribute::strategy::prop_attribute(Default::default()))| {
-            let tdb_in = tdb_in.create(&c)
-                .expect("Error constructing arbitrary tiledb attribute");
-            if let Some(arrow_field) = arrow_field(&tdb_in)
-                .expect("Error reading tiledb attribute") {
-                // convert back to TileDB attribute
-                let tdb_out = tiledb_attribute(&c, &arrow_field)?
-                    .expect("Arrow attribute did not invert").build();
-                assert_eq!(tdb_in, tdb_out);
-            }
-        });
+        // convert back to TileDB attribute
+        let tdb_out = from_arrow(&c, &arrow).unwrap();
+        let is_from_arrow_exact = tdb_out.is_exact();
+        let tdb_out = tdb_out.ok().unwrap().build();
 
-        Ok(())
+        if is_to_arrow_exact {
+            assert!(is_from_arrow_exact, "{:?}", tdb_out);
+            assert_eq!(tdb_in, tdb_out);
+        } else {
+            /*
+             * All should be the same but the datatype, which must be the same size.
+             * NB: the conversion *back* might be (probably is) Exact,
+             * which is a little misleading since we know the input was Inexact.
+             */
+            assert_ne!(tdb_in.datatype().unwrap(), tdb_out.datatype().unwrap());
+            assert_eq!(
+                tdb_in.datatype().unwrap().size(),
+                tdb_out.datatype().unwrap().size()
+            );
+
+            let mut tdb_in = AttributeData::try_from(tdb_in).unwrap();
+            tdb_in.datatype = Datatype::Any;
+
+            let mut tdb_out = AttributeData::try_from(tdb_out).unwrap();
+            tdb_out.datatype = Datatype::Any;
+
+            assert_eq!(tdb_in, tdb_out);
+        }
     }
 
-    #[test]
-    fn test_arrow_tiledb_arrow() -> TileDBResult<()> {
-        let c: Context = Context::new()?;
-        /* arrow => tiledb => arrow */
-        proptest!(|(arrow_in in strategy::prop_arrow_field())| {
-            let tdb = tiledb_attribute(&c, &arrow_in);
-            assert!(tdb.is_ok());
-            let tdb = tdb.unwrap();
-            assert!(tdb.is_some());
-            let tdb = tdb.unwrap().build();
-            let arrow_out = arrow_field(&tdb);
-            assert!(arrow_out.is_ok());
-            let arrow_out = arrow_out.unwrap();
-            assert!(arrow_out.is_some());
-            let arrow_out = {
-                let arrow_out = arrow_out.unwrap();
-                let metadata = {
-                    let mut metadata = arrow_out.metadata().clone();
-                    metadata.remove("tiledb");
-                    metadata
-                };
-                arrow_out.with_metadata(metadata)
-            };
-            assert_eq!(arrow_in, arrow_out);
-        });
+    fn do_arrow_tiledb(arrow_in: arrow::datatypes::Field) {
+        let c: Context = Context::new().unwrap();
+        let tdb = from_arrow(&c, &arrow_in)
+            .expect("Error constructing tiledb attribute");
 
-        Ok(())
+        let is_from_arrow_exact = tdb.is_exact();
+
+        let tdb = match tdb.ok() {
+            None => return,
+            Some(tdb) => tdb.build(),
+        };
+
+        let arrow_out = to_arrow(&tdb).unwrap();
+
+        let is_to_arrow_exact = arrow_out.is_exact();
+
+        let arrow_out = {
+            let arrow_out = arrow_out.ok().unwrap();
+            let mut metadata = arrow_out.metadata().clone();
+            metadata.remove("tiledb");
+            arrow_out.with_metadata(metadata)
+        };
+
+        if is_from_arrow_exact {
+            assert!(is_to_arrow_exact, "{:?} => {:?}", arrow_in, arrow_out);
+
+            /* this should be perfectly invertible */
+            assert_eq!(arrow_in, arrow_out);
+        } else {
+            /* not perfectly invertible but we should get something close back */
+            assert_eq!(arrow_in.name(), arrow_out.name());
+            assert_eq!(arrow_in.is_nullable(), arrow_out.is_nullable());
+
+            /* break out some datatypes */
+            use crate::datatype::arrow::tests::arrow_datatype_is_inexact_compatible;
+            assert!(
+                arrow_datatype_is_inexact_compatible(
+                    arrow_in.data_type(),
+                    arrow_out.data_type()
+                ),
+                "{:?} => {:?}",
+                arrow_in.data_type(),
+                arrow_out.data_type()
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_tiledb_arrow(tdb_in in crate::array::attribute::strategy::prop_attribute(Default::default())) {
+            do_tiledb_arrow(tdb_in);
+        }
+
+        #[test]
+        fn test_arrow_tiledb(arrow_in in strategy::prop_arrow_field()) {
+            do_arrow_tiledb(arrow_in);
+        }
     }
 }

@@ -58,14 +58,18 @@ fn prop_filters(
     };
 
     let pipeline_requirements = FilterRequirements {
-        context: requirements.context.as_ref().map(
-            |StrategyContext::Schema(array_type, domain)| {
-                FilterContext::Attribute(
+        context: Some(
+            if let Some(StrategyContext::Schema(array_type, domain)) =
+                requirements.context.as_ref()
+            {
+                FilterContext::SchemaAttribute(
                     datatype,
                     cell_val_num,
                     *array_type,
                     domain.clone(),
                 )
+            } else {
+                FilterContext::Attribute(datatype, cell_val_num)
             },
         ),
         input_datatype: Some(datatype),
