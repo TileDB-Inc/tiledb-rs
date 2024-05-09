@@ -540,13 +540,16 @@ pub mod strategy {
 
     impl Default for FieldParameters {
         fn default() -> Self {
+            const DEFAULT_MAX_FIXED_BINARY_LEN: i32 = 1024 * 1024;
+            const DEFAULT_MAX_FIXED_LIST_LEN: i32 = 2048;
+
             FieldParameters {
                 min_fixed_binary_len: 1,
-                max_fixed_binary_len: i32::MAX,
+                max_fixed_binary_len: DEFAULT_MAX_FIXED_BINARY_LEN,
                 min_numeric_precision: 1,
                 max_numeric_precision: u8::MAX,
                 min_fixed_list_len: 0,
-                max_fixed_list_len: i32::MAX,
+                max_fixed_list_len: DEFAULT_MAX_FIXED_LIST_LEN,
                 min_struct_fields: 0,
                 max_struct_fields: 16,
                 min_recursion_depth: 0,
@@ -624,38 +627,38 @@ pub mod strategy {
             ),
             move |strategy| {
                 prop_oneof![
-                (strategy.clone(), any::<bool>())
-                    .prop_map(|(s, b)| ADT::new_list(s, b)),
-                (
-                    strategy.clone(),
-                    params.min_fixed_list_len..=params.max_fixed_list_len,
-                    any::<bool>()
-                )
-                    .prop_map(|(s, l, b)| ADT::FixedSizeList(
-                        Arc::new(Field::new_list_field(s, b)),
-                        l
-                    )),
-                (strategy.clone(), any::<bool>()).prop_map(|(s, b)| {
-                    ADT::LargeList(Arc::new(Field::new_list_field(s, b)))
-                }),
-                proptest::collection::vec(
+                    (strategy.clone(), any::<bool>())
+                        .prop_map(|(s, b)| ADT::new_list(s, b)),
                     (
-                        crate::array::attribute::strategy::prop_attribute_name(
-                        ),
                         strategy.clone(),
+                        params.min_fixed_list_len..=params.max_fixed_list_len,
                         any::<bool>()
-                    ),
-                    params.min_struct_fields..=params.max_struct_fields
-                )
-                .prop_map(|v| ADT::Struct(
-                    v.into_iter()
-                        .map(|(n, dt, b)| Field::new(n, dt, b))
-                        .collect::<Fields>()
-                )) // union goes here
-                   // dictionary goes here
-                   // map goes here
-                   // run-end encoded goes here
-            ]
+                    )
+                        .prop_map(|(s, l, b)| ADT::FixedSizeList(
+                            Arc::new(Field::new_list_field(s, b)),
+                            l
+                        )),
+                    (strategy.clone(), any::<bool>()).prop_map(|(s, b)| {
+                        ADT::LargeList(Arc::new(Field::new_list_field(s, b)))
+                    }),
+                    proptest::collection::vec(
+                        (
+                            crate::array::attribute::strategy::prop_attribute_name(
+                            ),
+                            strategy.clone(),
+                            any::<bool>()
+                        ),
+                        params.min_struct_fields..=params.max_struct_fields
+                    )
+                    .prop_map(|v| ADT::Struct(
+                        v.into_iter()
+                            .map(|(n, dt, b)| Field::new(n, dt, b))
+                            .collect::<Fields>()
+                    )) // union goes here
+                       // dictionary goes here
+                       // map goes here
+                       // run-end encoded goes here
+                ]
             },
         )
     }
