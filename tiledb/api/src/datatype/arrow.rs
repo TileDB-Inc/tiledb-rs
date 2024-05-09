@@ -451,10 +451,7 @@ pub fn from_arrow(
             Err(_) => Res::None,
         },
         ADT::FixedSizeList(ref item, ref len) => {
-            let len = match u32::try_from(*len)
-                .ok()
-                .and_then(|len| NonZeroU32::new(len))
-            {
+            let len = match u32::try_from(*len).ok().and_then(NonZeroU32::new) {
                 Some(len) => len,
                 None => return Res::None,
             };

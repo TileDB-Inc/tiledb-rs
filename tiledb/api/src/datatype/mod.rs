@@ -187,22 +187,6 @@ impl Datatype {
         unsafe { ffi::tiledb_datatype_size(copy as ffi::tiledb_datatype_t) }
     }
 
-    pub fn to_string(&self) -> String {
-        let copy = *self;
-        let c_dtype = copy as ffi::tiledb_datatype_t;
-        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
-        let res = unsafe { ffi::tiledb_datatype_to_str(c_dtype, &mut c_str) };
-
-        /*
-         * this cannot error if you provide a valid value, and the strong Rust
-         * enum ensures that we have a valid value
-         */
-        assert_eq!(res, ffi::TILEDB_OK);
-
-        let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        String::from(c_msg.to_string_lossy())
-    }
-
     pub fn from_string(dtype: &str) -> Option<Self> {
         let c_dtype =
             std::ffi::CString::new(dtype).expect("Error creating CString");
@@ -459,7 +443,19 @@ impl Debug for Datatype {
 
 impl Display for Datatype {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", self.to_string())
+        let copy = *self;
+        let c_dtype = copy as ffi::tiledb_datatype_t;
+        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
+        let res = unsafe { ffi::tiledb_datatype_to_str(c_dtype, &mut c_str) };
+
+        /*
+         * this cannot error if you provide a valid value, and the strong Rust
+         * enum ensures that we have a valid value
+         */
+        assert_eq!(res, ffi::TILEDB_OK);
+
+        let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
+        write!(f, "{}", c_msg.to_string_lossy())
     }
 }
 
