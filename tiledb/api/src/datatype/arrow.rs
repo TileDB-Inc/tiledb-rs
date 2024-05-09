@@ -99,11 +99,31 @@ pub enum DatatypeToArrowResult {
     /// and are meant to be interpreted the same way.
     ///
     /// In general, this means that:
-    /// 1. a cell val num of 1 maps to an arrow primitive or date/time type.
-    /// 2. a cell val num of greater than 1 maps to an arrow fixed size list.
-    /// 3. a variable cell val num maps to an arrow list.
+    /// 1. `CellValNum::Fixed(1)` maps to an arrow primitive or date/time type.
+    /// ```
+    /// use tiledb::{array::CellValNum, datatype::arrow::DatatypeToArrowResult};
+    /// assert_eq!(DatatypeToArrowResult::Exact(arrow::datatypes::DataType::UInt8),
+    ///            tiledb::datatype::arrow::to_arrow(&tiledb::Datatype::UInt8, CellValNum::single()));
+    /// ```
+    /// 2. `CellValNum::Fixed(n) if n > 1` 1 maps to an arrow fixed size list.
+    /// ```
+    /// use arrow::datatypes::DataType as Arrow;
+    /// use tiledb::{Datatype as TileDB, array::CellValNum, datatype::arrow::DatatypeToArrowResult};
+    /// let arrow = tiledb::datatype::arrow::to_arrow(&TileDB::UInt8, CellValNum::try_from(8).unwrap());
+    /// let DatatypeToArrowResult::Exact(Arrow::FixedSizeList(item, fixed_len)) = arrow else { unreachable!() };
+    /// assert_eq!(*item.data_type(), Arrow::UInt8);
+    /// assert_eq!(fixed_len, 8);
+    /// ```
+    /// 3. `CellValNum::Var` maps to an arrow `LargeList`.
+    /// ```
+    /// use arrow::datatypes::DataType as Arrow;
+    /// use tiledb::{Datatype as TileDB, array::CellValNum, datatype::arrow::DatatypeToArrowResult};
+    /// let arrow = tiledb::datatype::arrow::to_arrow(&TileDB::UInt8, CellValNum::Var);
+    /// let DatatypeToArrowResult::Exact(Arrow::LargeList(item)) = arrow else { unreachable!() };
+    /// assert_eq!(*item.data_type(), Arrow::UInt8);
+    /// ```
     ///
-    /// There are exceptions, such as `(Datatype::Blob, CellValNum::Var)`
+    /// There are some exceptions, such as `(Datatype::Blob, CellValNum::Var)`
     /// mapping to `arrow::datatypes::DataType::LargeBinary`, which is always variable-length.
     ///
     /// ```
@@ -111,10 +131,28 @@ pub enum DatatypeToArrowResult {
     /// assert_eq!(DatatypeToArrowResult::Exact(arrow::datatypes::DataType::LargeBinary),
     ///            tiledb::datatype::arrow::to_arrow(&tiledb::Datatype::Blob, CellValNum::Var));
     /// ```
+    /// When the output is any kind of list, field metadata may be used to represent the exact
+    /// input datatype if the input on its own is an inexact match.
+    /// ```
+    /// use arrow::datatypes::DataType as Arrow;
+    /// use tiledb::{Datatype as TileDB, array::CellValNum, datatype::arrow::DatatypeToArrowResult};
+    /// use tiledb::datatype::arrow::{to_arrow, ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH};
+    /// let arrow = to_arrow(&TileDB::StringAscii, CellValNum::Var);
+    /// let DatatypeToArrowResult::Exact(Arrow::LargeList(item)) = arrow else { unreachable!() };
+    /// assert_eq!(*item.data_type(), Arrow::UInt8);
+    /// let Some(s) = item.metadata().get(ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH)
+    /// else { unreachable!() };
+    /// assert_eq!(Some(TileDB::StringAscii), TileDB::from_string(s));
+    /// ```
     Exact(arrow::datatypes::DataType),
-    /// There is no corresponding logical data type, but a phyiscal data type
+    /// There is no corresponding logical data type, but a physical data type
     /// with the same bit width can be used to represent primitive values,
-    /// and there is a trivial or cheap conersion between value structural data.
+    /// and there is a trivial or cheap conversion between value structural data.
+    /// ```
+    /// use tiledb::{array::CellValNum, datatype::arrow::DatatypeToArrowResult};
+    /// assert_eq!(DatatypeToArrowResult::Inexact(arrow::datatypes::DataType::UInt8),
+    ///            tiledb::datatype::arrow::to_arrow(&tiledb::Datatype::StringAscii, CellValNum::single()));
+    /// ```
     Inexact(arrow::datatypes::DataType),
 }
 
@@ -143,6 +181,8 @@ impl DatatypeToArrowResult {
  * are not granted to UInt8. We must be able to invert back to StringAscii.
  * We can do that by storing the exact input datatype on the arrow list field metadata.
  */
+/// `arrow::datatypes::Field` metadata key for an exact `tiledb::Datatype` variant
+/// if there is no exact mapping from `tiledb::Datatype` to `arrow::datatypes::DataType`.
 pub const ARROW_FIELD_METADATA_KEY_TILEDB_EXACT_MATCH: &str =
     "tiledb_exact_datatype";
 
@@ -293,14 +333,30 @@ pub fn to_arrow(
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DatatypeFromArrowResult {
     /// There is no reasonable matching type in tiledb.
+    /// This includes, but is not limited to,
+    /// types with 32-bit offsets; complex data types; view types; decimal types; and the null type.
     None,
     /// There is an exact logical match for the arrow `DataType`.
     /// The individual values of the respective types have the same bit width
     /// and are meant to be interpreted the same way.
+    /// ```
+    /// use arrow::datatypes::DataType as Arrow;
+    /// use tiledb::{Datatype as TileDB, array::CellValNum};
+    /// use tiledb::datatype::arrow::{from_arrow, DatatypeFromArrowResult};
+    /// let tiledb = from_arrow(&Arrow::new_large_list(Arrow::Date32, false));
+    /// assert_eq!(DatatypeFromArrowResult::Inexact(TileDB::Int32, CellValNum::Var), tiledb);
+    /// ```
     Exact(Datatype, CellValNum),
-    /// There is no corresponding logical data type, but a phyiscal data type
+    /// There is no corresponding logical data type, but a physical data type
     /// with the same bit width can be used to represent primitive values,
     /// and there is a trivial or cheap conversion between value structural data.
+    /// ```
+    /// use arrow::datatypes::DataType as Arrow;
+    /// use tiledb::{Datatype as TileDB, array::CellValNum};
+    /// use tiledb::datatype::arrow::{from_arrow, DatatypeFromArrowResult};
+    /// let tiledb = from_arrow(&Arrow::Date32);
+    /// assert_eq!(DatatypeFromArrowResult::Inexact(TileDB::Int32, CellValNum::single()), tiledb);
+    /// ```
     Inexact(Datatype, CellValNum),
 }
 
