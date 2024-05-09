@@ -556,7 +556,10 @@ impl WriteQueryDataValueTree {
                         /* run another round on the updated input */
                         true
                     }
-                    Ordering::Greater => unreachable!(),
+                    Ordering::Greater => {
+                        assert_eq!(0, nchunks);
+                        false
+                    }
                 }
             }
             Some(ShrinkSearchStep::Recur) => {
