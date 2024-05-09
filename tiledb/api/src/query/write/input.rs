@@ -2,17 +2,20 @@ use std::num::NonZeroU32;
 
 use crate::array::CellValNum;
 use crate::datatype::PhysicalType;
+use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
     Buffer, CellStructure, QueryBuffers, QueryBuffersMut,
 };
+use crate::Result as TileDBResult;
 
 pub trait DataProvider {
     type Unit: PhysicalType;
+
     fn as_tiledb_input(
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit>;
+    ) -> TileDBResult<QueryBuffers<Self::Unit>>;
 }
 
 impl<'data, C> DataProvider for QueryBuffers<'data, C>
@@ -25,17 +28,17 @@ where
         &self,
         _cell_val_num: CellValNum,
         _is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit> {
+    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
-        QueryBuffers {
+        Ok(QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_structure: self.cell_structure.borrow(),
             validity: Option::map(self.validity.as_ref(), |v| {
                 Buffer::Borrowed(v.as_ref())
             }),
-        }
+        })
     }
 }
 
@@ -49,17 +52,17 @@ where
         &self,
         _cell_val_num: CellValNum,
         _is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit> {
+    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
-        QueryBuffers {
+        Ok(QueryBuffers {
             data: Buffer::Borrowed(raw_slice),
             cell_structure: self.cell_structure.borrow(),
             validity: Option::map(self.validity.as_ref(), |v| {
                 Buffer::Borrowed(v.as_ref())
             }),
-        }
+        })
     }
 }
 
@@ -73,7 +76,7 @@ where
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit> {
+    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
         self.as_slice().as_tiledb_input(cell_val_num, is_nullable)
     }
 }
@@ -88,18 +91,18 @@ where
         &self,
         _cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit> {
+    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
         let validity = if is_nullable {
             Some(Buffer::Owned(vec![1u8; self.len()].into_boxed_slice()))
         } else {
             None
         };
 
-        QueryBuffers {
+        Ok(QueryBuffers {
             data: Buffer::Borrowed(self),
             cell_structure: NonZeroU32::new(1).unwrap().into(),
             validity,
-        }
+        })
     }
 }
 
@@ -111,19 +114,40 @@ where
 
     fn as_tiledb_input(
         &self,
-        _cell_val_num: CellValNum,
+        cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit> {
+    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
         let mut offset_accumulator = 0;
-        let offsets = self
-            .iter()
-            .map(|s| {
-                let my_offset = offset_accumulator;
-                offset_accumulator += s.len();
-                my_offset as u64
-            })
-            .collect::<Vec<u64>>()
-            .into_boxed_slice();
+
+        let cell_structure = match cell_val_num {
+            CellValNum::Fixed(nz) => {
+                let expect_len = nz.get() as usize;
+                for cell in self.iter() {
+                    if cell.len() != expect_len {
+                        return Err(Error::Datatype(
+                            DatatypeErrorKind::UnexpectedCellStructure {
+                                context: None,
+                                expected: CellValNum::Fixed(nz),
+                                found: CellValNum::Var,
+                            },
+                        ));
+                    }
+                }
+                CellStructure::Fixed(nz)
+            }
+            CellValNum::Var => {
+                let offsets = self
+                    .iter()
+                    .map(|s| {
+                        let my_offset = offset_accumulator;
+                        offset_accumulator += s.len();
+                        my_offset as u64
+                    })
+                    .collect::<Vec<u64>>()
+                    .into_boxed_slice();
+                CellStructure::Var(offsets.into())
+            }
+        };
 
         let mut data = Vec::with_capacity(offset_accumulator);
         self.iter().for_each(|s| {
@@ -136,11 +160,11 @@ where
             None
         };
 
-        QueryBuffers {
+        Ok(QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_structure: CellStructure::Var(Buffer::Owned(offsets)),
+            cell_structure,
             validity,
-        }
+        })
     }
 }
 
@@ -149,18 +173,39 @@ impl DataProvider for Vec<&str> {
 
     fn as_tiledb_input(
         &self,
-        _cell_val_num: CellValNum,
+        cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit> {
+    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
         let mut offset_accumulator = 0;
-        let offsets = self
-            .iter()
-            .map(|s| {
-                let my_offset = offset_accumulator;
-                offset_accumulator += s.len();
-                my_offset as u64
-            })
-            .collect::<Vec<u64>>();
+
+        let cell_structure = match cell_val_num {
+            CellValNum::Fixed(nz) => {
+                let expect_len = nz.get() as usize;
+                for s in self.iter() {
+                    if s.len() != expect_len {
+                        return Err(Error::Datatype(
+                            DatatypeErrorKind::UnexpectedCellStructure {
+                                context: None,
+                                expected: CellValNum::Fixed(nz),
+                                found: CellValNum::Var,
+                            },
+                        ));
+                    }
+                }
+                CellStructure::Fixed(nz)
+            }
+            CellValNum::Var => {
+                let offsets = self
+                    .iter()
+                    .map(|s| {
+                        let my_offset = offset_accumulator;
+                        offset_accumulator += s.len();
+                        my_offset as u64
+                    })
+                    .collect::<Vec<u64>>();
+                CellStructure::Var(offsets.into())
+            }
+        };
 
         let mut data = Vec::with_capacity(offset_accumulator);
         self.iter().for_each(|s| {
@@ -168,18 +213,16 @@ impl DataProvider for Vec<&str> {
         });
 
         let validity = if is_nullable {
-            Some(Buffer::Owned(vec![1u8; offsets.len()].into_boxed_slice()))
+            Some(Buffer::Owned(vec![1u8; self.len()].into_boxed_slice()))
         } else {
             None
         };
 
-        QueryBuffers {
+        Ok(QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_structure: CellStructure::Var(Buffer::Owned(
-                offsets.into_boxed_slice(),
-            )),
+            cell_structure,
             validity,
-        }
+        })
     }
 }
 
@@ -188,18 +231,38 @@ impl DataProvider for Vec<String> {
 
     fn as_tiledb_input(
         &self,
-        _cell_val_num: CellValNum,
+        cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> QueryBuffers<Self::Unit> {
+    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
         let mut offset_accumulator = 0;
-        let offsets = self
-            .iter()
-            .map(|s| {
-                let my_offset = offset_accumulator;
-                offset_accumulator += s.len();
-                my_offset as u64
-            })
-            .collect::<Vec<u64>>();
+        let cell_structure = match cell_val_num {
+            CellValNum::Fixed(nz) => {
+                let expect_len = nz.get() as usize;
+                for s in self.iter() {
+                    if s.len() != expect_len {
+                        return Err(Error::Datatype(
+                            DatatypeErrorKind::UnexpectedCellStructure {
+                                context: None,
+                                expected: CellValNum::Fixed(nz),
+                                found: CellValNum::Var,
+                            },
+                        ));
+                    }
+                }
+                CellStructure::Fixed(nz)
+            }
+            CellValNum::Var => {
+                let offsets = self
+                    .iter()
+                    .map(|s| {
+                        let my_offset = offset_accumulator;
+                        offset_accumulator += s.len();
+                        my_offset as u64
+                    })
+                    .collect::<Vec<u64>>();
+                CellStructure::Var(offsets.into())
+            }
+        };
 
         let mut data = Vec::with_capacity(offset_accumulator);
         self.iter().for_each(|s| {
@@ -207,18 +270,16 @@ impl DataProvider for Vec<String> {
         });
 
         let validity = if is_nullable {
-            Some(Buffer::Owned(vec![1u8; offsets.len()].into_boxed_slice()))
+            Some(Buffer::Owned(vec![1u8; self.len()].into_boxed_slice()))
         } else {
             None
         };
 
-        QueryBuffers {
+        Ok(QueryBuffers {
             data: Buffer::Owned(data.into_boxed_slice()),
-            cell_structure: CellStructure::Var(Buffer::Owned(
-                offsets.into_boxed_slice(),
-            )),
+            cell_structure,
             validity,
-        }
+        })
     }
 }
 
@@ -234,7 +295,7 @@ mod tests {
     proptest! {
         #[test]
         fn input_provider_u64(u64vec in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
-            let input = u64vec.as_tiledb_input(CellValNum::try_from(1).unwrap(), false);
+            let input = u64vec.as_tiledb_input(CellValNum::try_from(1).unwrap(), false).unwrap();
             let (u64in, offsets) = (input.data.as_ref(), input.cell_structure.offsets_ref());
             assert!(offsets.is_none());
 
@@ -256,7 +317,7 @@ mod tests {
                 (MIN_RECORDS..=MAX_RECORDS).into()
             )
         ) {
-            let input = stringvec.as_tiledb_input(CellValNum::Var, false);
+            let input = stringvec.as_tiledb_input(CellValNum::Var, false).unwrap();
             let (bytes, structure) = (input.data.as_ref(), input.cell_structure);
             assert!(structure.is_var());
             let mut offsets = structure.unwrap().unwrap().to_vec();
