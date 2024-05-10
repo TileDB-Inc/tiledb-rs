@@ -10,7 +10,6 @@ use arrow::datatypes::Field;
 use crate::array::CellValNum;
 use crate::datatype::arrow::ArrowPrimitiveTypeNative;
 use crate::query::buffer::arrow::{Celled, QueryBufferArrowArray};
-use crate::query::buffer::TypedQueryBuffers;
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
 use crate::{typed_query_buffers_go, Datatype};
 

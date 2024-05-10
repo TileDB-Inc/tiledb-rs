@@ -1,9 +1,18 @@
+use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::rc::Rc;
 
 use paste::paste;
 use proptest::bits::{BitSetLike, VarBitSet};
+use proptest::prelude::*;
+use proptest::strategy::{NewTree, ValueTree};
+use proptest::test_runner::TestRunner;
 
+use crate::array::schema::FieldData as SchemaField;
+use crate::array::{ArrayType, CellValNum, SchemaData};
+use crate::datatype::physical::BitsOrd;
 use crate::datatype::LogicalType;
 use crate::query::read::output::{
     FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
@@ -13,7 +22,9 @@ use crate::query::read::{
     ReadCallbackVarArg, ReadQueryBuilder, TypedReadHandle,
 };
 use crate::query::WriteBuilder;
-use crate::{fn_typed, typed_query_buffers_go, Result as TileDBResult};
+use crate::{
+    fn_typed, typed_query_buffers_go, Datatype, Result as TileDBResult,
+};
 
 /// Represents the write query input for a single field.
 /// For each variant, the outer Vec is the collection of records, and the interior is value in the
@@ -304,6 +315,144 @@ impl FieldData {
             )
         })
     }
+
+    pub fn extend(&mut self, other: Self) {
+        typed_field_data_go!(
+            self,
+            other,
+            _DT,
+            ref mut data,
+            other_data,
+            {
+                // the field types match
+                data.extend(other_data);
+            },
+            {
+                // if they do not match
+                panic!("Field types do not match in `FieldData::extend`")
+            }
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum FieldStrategyDatatype {
+    Datatype(Datatype, CellValNum),
+    SchemaField(SchemaField),
+}
+
+#[derive(Clone, Debug)]
+pub struct FieldDataParameters {
+    nrecords: Option<usize>,
+    datatype: Option<FieldStrategyDatatype>,
+    value_min_var_size: usize,
+    value_max_var_size: usize,
+}
+
+impl Default for FieldDataParameters {
+    fn default() -> Self {
+        FieldDataParameters {
+            nrecords: None,
+            datatype: None,
+            value_min_var_size: 0,
+            value_max_var_size: 8, /* TODO */
+        }
+    }
+}
+
+impl Arbitrary for FieldData {
+    type Strategy = BoxedStrategy<FieldData>;
+    type Parameters = FieldDataParameters;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        fn body<DT: Debug + 'static>(
+            params: FieldDataParameters,
+            value_strat: BoxedStrategy<DT>,
+            cell_val_num: CellValNum,
+        ) -> BoxedStrategy<FieldData>
+        where
+            FieldData: From<Vec<DT>> + From<Vec<Vec<DT>>>,
+        {
+            let nrecords = if let Some(nrecords) = params.nrecords {
+                nrecords..=nrecords
+            } else {
+                0..=1024 /* TODO: configure */
+            };
+
+            if cell_val_num == 1u32 {
+                proptest::collection::vec(value_strat, nrecords)
+                    .prop_map(FieldData::from)
+                    .boxed()
+            } else {
+                let (min, max) = if cell_val_num.is_var_sized() {
+                    (params.value_min_var_size, params.value_max_var_size)
+                } else {
+                    let fixed_bound = Into::<u32>::into(cell_val_num) as usize;
+                    (fixed_bound, fixed_bound)
+                };
+
+                let cell_strat =
+                    proptest::collection::vec(value_strat, min..=max);
+
+                proptest::collection::vec(cell_strat, nrecords)
+                    .prop_map(FieldData::from)
+                    .boxed()
+            }
+        }
+
+        match params.datatype.clone() {
+            Some(FieldStrategyDatatype::SchemaField(
+                SchemaField::Dimension(d),
+            )) => {
+                let cell_val_num =
+                    d.cell_val_num.unwrap_or(CellValNum::single());
+
+                fn_typed!(d.datatype, LT, {
+                    type DT = <LT as LogicalType>::PhysicalType;
+                    let value_strat = if let Some(domain) = d.domain.as_ref() {
+                        let lower_bound =
+                            serde_json::from_value::<DT>(domain[0].clone())
+                                .unwrap();
+                        let upper_bound =
+                            serde_json::from_value::<DT>(domain[1].clone())
+                                .unwrap();
+                        (lower_bound..upper_bound).boxed()
+                    } else {
+                        any::<DT>().boxed()
+                    };
+                    body::<DT>(params, value_strat, cell_val_num)
+                })
+            }
+            Some(FieldStrategyDatatype::SchemaField(
+                SchemaField::Attribute(a),
+            )) => {
+                let cell_val_num =
+                    a.cell_val_num.unwrap_or(CellValNum::single());
+
+                fn_typed!(a.datatype, LT, {
+                    type DT = <LT as LogicalType>::PhysicalType;
+                    let value_strat = any::<DT>().boxed();
+                    body::<DT>(params, value_strat, cell_val_num)
+                })
+            }
+            Some(FieldStrategyDatatype::Datatype(datatype, cell_val_num)) => {
+                fn_typed!(datatype, LT, {
+                    type DT = <LT as LogicalType>::PhysicalType;
+                    let value_strat = any::<DT>().boxed();
+                    body::<DT>(params, value_strat, cell_val_num)
+                })
+            }
+            None => (any::<Datatype>(), any::<CellValNum>())
+                .prop_flat_map(move |(datatype, cell_val_num)| {
+                    fn_typed!(datatype, LT, {
+                        type DT = <LT as LogicalType>::PhysicalType;
+                        let value_strat = any::<DT>().boxed();
+                        body::<DT>(params.clone(), value_strat, cell_val_num)
+                    })
+                })
+                .boxed(),
+        }
+    }
 }
 
 pub struct RawReadQueryResult(pub HashMap<String, FieldData>);
@@ -340,10 +489,38 @@ impl ReadCallbackVarArg for RawResultCallback {
 
 #[derive(Clone, Debug)]
 pub struct Cells {
-    pub fields: HashMap<String, FieldData>,
+    fields: HashMap<String, FieldData>,
 }
 
 impl Cells {
+    /// # Panics
+    ///
+    /// Panics if the fields do not all have the same number of cells.
+    pub fn new(fields: HashMap<String, FieldData>) -> Self {
+        let mut expect_len: Option<usize> = None;
+        for (_, d) in fields.iter() {
+            if let Some(expect_len) = expect_len {
+                assert_eq!(d.len(), expect_len);
+            } else {
+                expect_len = Some(d.len())
+            }
+        }
+
+        Cells { fields }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.fields.values().next().unwrap().is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.fields.values().next().unwrap().len()
+    }
+
+    pub fn fields(&self) -> &HashMap<String, FieldData> {
+        &self.fields
+    }
+
     pub fn attach_write<'ctx, 'data>(
         &'data self,
         b: WriteBuilder<'ctx, 'data>,
@@ -414,6 +591,653 @@ impl Cells {
                     );
                 }
             }
+        }
+    }
+
+    /// Extends this cell data with the contents of another.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the set of fields in `self` and `other` do not match.
+    ///
+    /// Panics if any field in `self` and `other` has a different type.
+    pub fn extend(&mut self, other: Self) {
+        let mut other = other;
+        for (field, data) in self.fields.iter_mut() {
+            let other_data = other.fields.remove(field).unwrap();
+            data.extend(other_data);
+        }
+        assert_eq!(other.fields.len(), 0);
+    }
+
+    fn index_comparator<'a>(
+        &'a self,
+    ) -> impl Fn(&usize, &usize) -> Ordering + 'a {
+        let key_order = {
+            let mut keys = self.fields.keys().collect::<Vec<&String>>();
+            keys.sort_unstable();
+            keys
+        };
+
+        let index_comparator = move |l: &usize, r: &usize| -> Ordering {
+            for key in key_order.iter() {
+                typed_field_data_go!(self.fields[*key], ref data, {
+                    match BitsOrd::bits_cmp(&data[*l], &data[*r]) {
+                        Ordering::Less => return Ordering::Less,
+                        Ordering::Greater => return Ordering::Greater,
+                        Ordering::Equal => continue,
+                    }
+                })
+            }
+            Ordering::Equal
+        };
+
+        index_comparator
+    }
+
+    /// Returns whether the cells are sorted.
+    /// The first sort key is the first field in alphabetical order,
+    /// the second key is the second, and so on.
+    pub fn is_sorted(&self) -> bool {
+        let index_comparator = self.index_comparator();
+        for i in 1..self.len() {
+            if index_comparator(&(i - 1), &i) == Ordering::Greater {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Sorts the cells of the argument for comparing a write and read set.
+    /// The first sort key is the first field in alphabetical order,
+    /// the second key is the second, and so on.
+    pub fn sort(&mut self) {
+        let mut idx = std::iter::repeat(())
+            .take(self.len())
+            .enumerate()
+            .map(|(i, _)| i)
+            .collect::<Vec<usize>>();
+
+        let idx_comparator = self.index_comparator();
+        idx.sort_by(idx_comparator);
+
+        for data in self.fields.values_mut() {
+            typed_field_data_go!(data, ref mut data, {
+                let mut unsorted = std::mem::replace(
+                    data,
+                    vec![Default::default(); data.len()],
+                );
+                for i in 0..unsorted.len() {
+                    data[i] = std::mem::replace(
+                        &mut unsorted[idx[i]],
+                        Default::default(),
+                    );
+                }
+            });
+        }
+    }
+}
+
+/// Mask for whether a field should be included in a write query.
+// As of this writing, core does not support default values being filled in,
+// so this construct is not terribly useful. But someday that may change
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum FieldMask {
+    /// This field must appear in the write set
+    Include,
+    /// This field appears in the write set but simplification may change that
+    TentativelyInclude,
+    /// This field may appear in the write set again after complication
+    _TentativelyExclude,
+    /// This field may not appear in the write set again
+    Exclude,
+}
+
+impl FieldMask {
+    pub fn is_included(&self) -> bool {
+        matches!(self, FieldMask::Include | FieldMask::TentativelyInclude)
+    }
+}
+
+/// Tracks the last step taken for the write shrinking.
+enum ShrinkSearchStep {
+    /// Remove a range of records
+    Explore(usize),
+    Recur,
+    Done,
+}
+
+const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
+
+/// Value tree to shrink cells.
+/// For a failing test which writes N records, there are 2^N possible
+/// candidate subsets and we want to find the smallest one which fails the test
+/// in the shortest number of iterations.
+/// That would be ideal but really finding any input that's small enough
+/// to be human readable sounds good enough. We divide the record space
+/// into CELLS_VALUE_TREE_EXPLORE_PIECES chunks and identify which
+/// of those chunks are necessary for the failure.
+/// Recur until all of the chunks are necessary for failure, or there
+/// is only one record.
+///
+/// TODO: for var sized attributes, follow up by shrinking the values.
+struct CellsValueTree {
+    field_data: HashMap<String, (FieldMask, Option<FieldData>)>,
+    nrecords: usize,
+    last_records_included: Option<Vec<usize>>,
+    records_included: Vec<usize>,
+    explore_results: Box<[Option<bool>]>,
+    search: Option<ShrinkSearchStep>,
+}
+
+impl CellsValueTree {
+    pub fn new(
+        field_data: HashMap<String, (FieldMask, Option<FieldData>)>,
+    ) -> Self {
+        let nrecords = field_data
+            .values()
+            .filter_map(|&(_, ref f)| f.as_ref())
+            .take(1)
+            .next()
+            .unwrap()
+            .len();
+
+        let nchunks = WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES;
+        let records_included = (0..nrecords).collect::<Vec<usize>>();
+
+        CellsValueTree {
+            field_data,
+            nrecords,
+            last_records_included: None,
+            records_included,
+            explore_results: vec![None; nchunks].into_boxed_slice(),
+            search: None,
+        }
+    }
+
+    fn explore_step(&mut self, failed: bool) -> bool {
+        match self.search {
+            None => {
+                if failed && self.nrecords > 0 {
+                    /* failed on the whole input, begin the search */
+                    self.search = Some(ShrinkSearchStep::Explore(0));
+                    true
+                } else {
+                    /* passed on the whole input, nothing to do */
+                    false
+                }
+            }
+            Some(ShrinkSearchStep::Explore(c)) => {
+                let nchunks = std::cmp::min(
+                    self.records_included.len(),
+                    self.explore_results.len(),
+                );
+
+                self.explore_results[c] = Some(failed);
+
+                match (c + 1).cmp(&nchunks) {
+                    Ordering::Less => {
+                        self.search = Some(ShrinkSearchStep::Explore(c + 1));
+                        true
+                    }
+                    Ordering::Equal => {
+                        /* finished exploring at this level, either recur or finish */
+                        let approx_chunk_len =
+                            self.records_included.len() / nchunks;
+                        let mut new_records_included = vec![];
+                        for i in 0..nchunks {
+                            let chunk_min = i * approx_chunk_len;
+                            let chunk_max = if i + 1 == nchunks {
+                                self.records_included.len()
+                            } else {
+                                (i + 1) * approx_chunk_len
+                            };
+
+                            if !self.explore_results[i].take().unwrap() {
+                                /* the test passed when chunk `i` was not included; keep it */
+                                new_records_included.extend_from_slice(
+                                    &self.records_included
+                                        [chunk_min..chunk_max],
+                                );
+                            }
+                        }
+
+                        /*
+                        if new_records_included.is_empty() {
+                            /*
+                             * This means that we failed on every chunk.
+                             * TODO: pivot to a linear search strategy?
+                             */
+                            self.search = Some(ShrinkSearchStep::Empty);
+                        } else
+                            */
+                        if new_records_included == self.records_included {
+                            /* everything was needed to pass */
+                            self.search = Some(ShrinkSearchStep::Done);
+                        } else {
+                            self.last_records_included =
+                                Some(std::mem::replace(
+                                    &mut self.records_included,
+                                    new_records_included,
+                                ));
+                            self.search = Some(ShrinkSearchStep::Recur);
+                        }
+                        /* run another round on the updated input */
+                        true
+                    }
+                    Ordering::Greater => {
+                        assert_eq!(0, nchunks);
+                        false
+                    }
+                }
+            }
+            /*
+            Some(ShrinkSearchStep::Empty) => {
+                if failed {
+                    false
+                } else {
+                    self.search = Some(ShrinkSearchStep::EmptyPassed);
+                    true
+                }
+            }
+            Some(ShrinkSearchStep::EmptyPassed) => {
+                assert!(failed);
+                false
+            }
+            */
+            Some(ShrinkSearchStep::Recur) => {
+                if failed {
+                    self.search = Some(ShrinkSearchStep::Explore(0));
+                } else {
+                    /*
+                     * This means that removing more than one chunk causes the
+                     * test to no longer fail.
+                     * Try again with a larger chunk size if possible
+                     */
+                    if self.explore_results.len() == 1 {
+                        unreachable!()
+                    }
+                    let Some(last_records_included) =
+                        self.last_records_included.take()
+                    else {
+                        unreachable!()
+                    };
+                    self.last_records_included = None;
+                    self.records_included = last_records_included;
+                    self.explore_results =
+                        vec![None; self.explore_results.len() / 2]
+                            .into_boxed_slice();
+                }
+                self.search = Some(ShrinkSearchStep::Explore(0));
+                true
+            }
+            Some(ShrinkSearchStep::Done) => false,
+        }
+    }
+}
+
+impl ValueTree for CellsValueTree {
+    type Value = Cells;
+
+    fn current(&self) -> Self::Value {
+        let record_mask = match self.search {
+            None => VarBitSet::saturated(self.nrecords),
+            Some(ShrinkSearchStep::Explore(c)) => {
+                let nchunks = self
+                    .records_included
+                    .len()
+                    .clamp(1, self.explore_results.len());
+
+                let approx_chunk_len = self.records_included.len() / nchunks;
+
+                if approx_chunk_len == 0 {
+                    /* no records are included, we have shrunk down to empty */
+                    VarBitSet::new_bitset(self.nrecords)
+                } else {
+                    let mut record_mask = VarBitSet::new_bitset(self.nrecords);
+
+                    let exclude_min = c * approx_chunk_len;
+                    let exclude_max = if c + 1 == nchunks {
+                        self.records_included.len()
+                    } else {
+                        (c + 1) * approx_chunk_len
+                    };
+
+                    for r in self.records_included[0..exclude_min]
+                        .iter()
+                        .chain(self.records_included[exclude_max..].iter())
+                    {
+                        record_mask.set(*r)
+                    }
+
+                    record_mask
+                }
+            }
+            /*
+            Some(ShrinkSearchStep::Empty) => {
+                VarBitSet::new_bitset(self.nrecords)
+            }
+            */
+            Some(ShrinkSearchStep::Recur)
+            | Some(ShrinkSearchStep::Done)
+            /*| Some(ShrinkSearchStep::EmptyPassed)*/ => {
+                let mut record_mask = VarBitSet::new_bitset(self.nrecords);
+                for r in self.records_included.iter() {
+                    record_mask.set(*r);
+                }
+                record_mask
+            }
+        };
+
+        let fields = self
+            .field_data
+            .iter()
+            .filter(|(_, &(mask, _))| mask.is_included())
+            .map(|(name, &(_, ref data))| {
+                (name.clone(), data.as_ref().unwrap().filter(&record_mask))
+            })
+            .collect::<HashMap<String, FieldData>>();
+
+        Cells::new(fields)
+    }
+
+    fn simplify(&mut self) -> bool {
+        self.explore_step(true)
+    }
+
+    fn complicate(&mut self) -> bool {
+        self.explore_step(false)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum CellsStrategySchema {
+    /// Quick-and-dirty set of fields to write to
+    Fields(HashMap<String, (Datatype, CellValNum)>),
+    /// Schema for writing
+    WriteSchema(Rc<SchemaData>),
+    /// Schema for reading
+    ReadSchema(Rc<SchemaData>),
+}
+
+impl CellsStrategySchema {
+    fn new_field_tree(
+        &self,
+        runner: &mut TestRunner,
+        nrecords: usize,
+    ) -> HashMap<String, (FieldMask, Option<FieldData>)> {
+        let field_data_parameters_base = FieldDataParameters::default();
+
+        match self {
+            Self::Fields(fields) => {
+                let field_mask = fields
+                    .iter()
+                    .map(|(k, v)| {
+                        (k.to_string(), (FieldMask::TentativelyInclude, v))
+                    })
+                    .collect::<HashMap<_, _>>();
+
+                field_mask
+                    .into_iter()
+                    .map(|(field, (mask, (datatype, cell_val_num)))| {
+                        let field_data = if mask.is_included() {
+                            let params = FieldDataParameters {
+                                nrecords: Some(nrecords),
+                                datatype: Some(
+                                    FieldStrategyDatatype::Datatype(
+                                        *datatype,
+                                        *cell_val_num,
+                                    ),
+                                ),
+                                ..field_data_parameters_base.clone()
+                            };
+                            Some(
+                                any_with::<FieldData>(params)
+                                    .new_tree(runner)
+                                    .unwrap()
+                                    .current(),
+                            )
+                        } else {
+                            None
+                        };
+                        (field, (mask, field_data))
+                    })
+                    .collect::<HashMap<String, (FieldMask, Option<FieldData>)>>(
+                    )
+            }
+            Self::WriteSchema(schema) => {
+                let field_mask = {
+                    let dimensions_mask = {
+                        let mask = match schema.array_type {
+                            ArrayType::Dense => {
+                                /* dense array coordinates are handled by a subarray */
+                                FieldMask::Exclude
+                            }
+                            ArrayType::Sparse => {
+                                /* sparse array must write coordinates */
+                                FieldMask::Include
+                            }
+                        };
+                        schema
+                            .domain
+                            .dimension
+                            .iter()
+                            .map(|d| (SchemaField::from(d.clone()), mask))
+                            .collect::<Vec<(SchemaField, FieldMask)>>()
+                    };
+
+                    /* as of this writing, write queries must write to all attributes */
+                    let attributes_mask = schema
+                        .attributes
+                        .iter()
+                        .map(|a| {
+                            (SchemaField::from(a.clone()), FieldMask::Include)
+                        })
+                        .collect::<Vec<(SchemaField, FieldMask)>>();
+
+                    dimensions_mask
+                        .into_iter()
+                        .chain(attributes_mask)
+                        .collect::<Vec<(SchemaField, FieldMask)>>()
+                };
+
+                field_mask
+                    .into_iter()
+                    .map(|(field, mask)| {
+                        let field_name = field.name().to_string();
+                        let field_data = if mask.is_included() {
+                            let params = FieldDataParameters {
+                                nrecords: Some(nrecords),
+                                datatype: Some(
+                                    FieldStrategyDatatype::SchemaField(field),
+                                ),
+                                ..field_data_parameters_base.clone()
+                            };
+                            Some(
+                                any_with::<FieldData>(params)
+                                    .new_tree(runner)
+                                    .unwrap()
+                                    .current(),
+                            )
+                        } else {
+                            None
+                        };
+                        (field_name, (mask, field_data))
+                    })
+                    .collect::<HashMap<String, (FieldMask, Option<FieldData>)>>(
+                    )
+            }
+            Self::ReadSchema(_) => {
+                /* presumably any subset of the fields */
+                unimplemented!()
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CellsParameters {
+    pub schema: Option<CellsStrategySchema>,
+    pub min_records: usize,
+    pub max_records: usize,
+    pub value_min_var_size: usize,
+    pub value_max_var_size: usize,
+}
+
+impl Default for CellsParameters {
+    fn default() -> Self {
+        const WRITE_QUERY_MIN_RECORDS: usize = 0;
+        const WRITE_QUERY_MAX_RECORDS: usize = 16;
+
+        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
+        const WRITE_QUERY_MAX_VAR_SIZE: usize = 8;
+
+        CellsParameters {
+            schema: None,
+            min_records: WRITE_QUERY_MIN_RECORDS,
+            max_records: WRITE_QUERY_MAX_RECORDS,
+            value_min_var_size: WRITE_QUERY_MIN_VAR_SIZE,
+            value_max_var_size: WRITE_QUERY_MAX_VAR_SIZE,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CellsStrategy {
+    schema: CellsStrategySchema,
+    params: CellsParameters,
+}
+
+impl CellsStrategy {
+    pub fn new(schema: CellsStrategySchema, params: CellsParameters) -> Self {
+        CellsStrategy { schema, params }
+    }
+}
+
+impl Strategy for CellsStrategy {
+    type Tree = CellsValueTree;
+    type Value = Cells;
+
+    fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        /* Choose the maximum number of records */
+        let nrecords = (self.params.min_records..=self.params.max_records)
+            .new_tree(runner)?
+            .current();
+
+        /* generate an initial set of fields to write */
+        let field_tree = self.schema.new_field_tree(runner, nrecords);
+
+        Ok(CellsValueTree::new(field_tree))
+    }
+}
+
+impl Arbitrary for Cells {
+    type Parameters = CellsParameters;
+    type Strategy = BoxedStrategy<Cells>;
+
+    fn arbitrary_with(mut args: Self::Parameters) -> Self::Strategy {
+        if let Some(schema) = args.schema.take() {
+            CellsStrategy::new(schema, args).boxed()
+        } else {
+            let keys = crate::array::attribute::strategy::prop_attribute_name();
+            let values = (any::<Datatype>(), any::<CellValNum>());
+            proptest::collection::hash_map(keys, values, 1..16)
+                .prop_flat_map(move |values| {
+                    CellsStrategy::new(
+                        CellsStrategySchema::Fields(values),
+                        args.clone(),
+                    )
+                })
+                .boxed()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn do_field_data_extend(dst: FieldData, src: FieldData) {
+        let orig_dst = dst.clone();
+        let orig_src = src.clone();
+
+        let mut dst = dst;
+        dst.extend(src);
+
+        typed_field_data_go!(dst, dst, {
+            assert_eq!(
+                orig_dst,
+                FieldData::from(dst[0..orig_dst.len()].to_vec())
+            );
+            assert_eq!(
+                orig_src,
+                FieldData::from(dst[orig_dst.len()..dst.len()].to_vec())
+            );
+            assert_eq!(dst.len(), orig_dst.len() + orig_src.len());
+        })
+    }
+
+    fn do_cells_extend(dst: Cells, src: Cells) {
+        let orig_dst = dst.clone();
+        let orig_src = src.clone();
+
+        let mut dst = dst;
+        dst.extend(src);
+
+        for (fname, data) in dst.fields().iter() {
+            let orig_dst = orig_dst.fields().get(fname).unwrap();
+            let orig_src = orig_src.fields().get(fname).unwrap();
+
+            typed_field_data_go!(data, ref dst, {
+                assert_eq!(
+                    *orig_dst,
+                    FieldData::from(dst[0..orig_dst.len()].to_vec())
+                );
+                assert_eq!(
+                    *orig_src,
+                    FieldData::from(dst[orig_dst.len()..dst.len()].to_vec())
+                );
+                assert_eq!(dst.len(), orig_dst.len() + orig_src.len());
+            });
+        }
+
+        // all Cells involved should have same set of fields
+        assert_eq!(orig_dst.fields.len(), dst.fields.len());
+        assert_eq!(orig_src.fields.len(), dst.fields.len());
+    }
+
+    fn do_cells_sort(cells: Cells) {
+        let mut cells = cells;
+        cells.sort();
+        assert!(cells.is_sorted());
+    }
+
+    proptest! {
+        #[test]
+        fn field_data_extend((dst, src) in (any::<Datatype>(), any::<CellValNum>()).prop_flat_map(|(dt, cvn)| {
+            let params = FieldDataParameters {
+                datatype: Some(FieldStrategyDatatype::Datatype(dt, cvn)),
+                ..Default::default()
+            };
+            (any_with::<FieldData>(params.clone()), any_with::<FieldData>(params.clone()))
+        })) {
+            do_field_data_extend(dst, src)
+        }
+
+        #[test]
+        fn cells_extend((dst, src) in any::<SchemaData>().prop_flat_map(|s| {
+            let params = CellsParameters {
+                schema: Some(CellsStrategySchema::WriteSchema(Rc::new(s))),
+                ..Default::default()
+            };
+            (any_with::<Cells>(params.clone()), any_with::<Cells>(params.clone()))
+        })) {
+            do_cells_extend(dst, src)
+        }
+
+        #[test]
+        fn cells_sort(cells in any::<Cells>()) {
+            do_cells_sort(cells)
         }
     }
 }
