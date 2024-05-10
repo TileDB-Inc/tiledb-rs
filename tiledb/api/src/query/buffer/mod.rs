@@ -583,7 +583,8 @@ typed_query_buffers!(Float32: f32, Float64: f64);
 
 #[macro_export]
 macro_rules! typed_query_buffers_go {
-    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {{
+        use $crate::query::buffer::TypedQueryBuffers;
         match $expr {
             TypedQueryBuffers::UInt8($inner) => {
                 type $DT = u8;
@@ -626,11 +627,12 @@ macro_rules! typed_query_buffers_go {
                 $then
             }
         }
-    };
+    }};
 }
 
 macro_rules! ref_typed_query_buffers_go {
-    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {{
+        use $crate::query::buffer::RefTypedQueryBuffersMut;
         match $expr {
             RefTypedQueryBuffersMut::UInt8($inner) => {
                 type $DT = u8;
@@ -673,7 +675,7 @@ macro_rules! ref_typed_query_buffers_go {
                 $then
             }
         }
-    };
+    }};
 }
 
 impl<'cell, 'data> RefTypedQueryBuffersMut<'cell, 'data> {
