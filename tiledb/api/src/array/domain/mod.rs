@@ -307,12 +307,11 @@ mod tests {
             let dim_buildfn = || {
                 let dim_domain: [i32; 2] = [1, 4];
                 let extent: i32 = 4;
-                DimensionBuilder::new::<i32>(
+                DimensionBuilder::new(
                     &context,
                     "d1",
                     Datatype::Int32,
-                    &dim_domain,
-                    &extent,
+                    (dim_domain, extent),
                 )
                 .unwrap()
                 .build()
@@ -356,12 +355,11 @@ mod tests {
             let dim1_buildfn = || {
                 let dim1_domain: [i32; 2] = [1, 4];
                 let extent: i32 = 4;
-                DimensionBuilder::new::<i32>(
+                DimensionBuilder::new(
                     &context,
                     "d1",
                     Datatype::Int32,
-                    &dim1_domain,
-                    &extent,
+                    (dim1_domain, extent),
                 )
                 .unwrap()
                 .build()
@@ -373,12 +371,11 @@ mod tests {
             let dim2_buildfn = || {
                 let dim2_domain: [f64; 2] = [-365f64, 365f64];
                 let extent: f64 = 128f64;
-                DimensionBuilder::new::<f64>(
+                DimensionBuilder::new(
                     &context,
                     "d2",
                     Datatype::Float64,
-                    &dim2_domain,
-                    &extent,
+                    (dim2_domain, extent),
                 )
                 .unwrap()
                 .build()
@@ -439,12 +436,11 @@ mod tests {
         let domain_d1_int32 = Builder::new(&context)
             .unwrap()
             .add_dimension(
-                DimensionBuilder::new::<i32>(
+                DimensionBuilder::new(
                     &context,
                     "d1",
                     Datatype::Int32,
-                    &[0, 1000],
-                    &100,
+                    ([0, 1000], 100),
                 )
                 .unwrap()
                 .build(),
@@ -458,12 +454,11 @@ mod tests {
         let domain_d1_float64 = Builder::new(&context)
             .unwrap()
             .add_dimension(
-                DimensionBuilder::new::<f64>(
+                DimensionBuilder::new(
                     &context,
                     "d1",
                     Datatype::Float64,
-                    &[0f64, 1000f64],
-                    &100f64,
+                    ([0f64, 1000f64], 100f64),
                 )
                 .unwrap()
                 .build(),

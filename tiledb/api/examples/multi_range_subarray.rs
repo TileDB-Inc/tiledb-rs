@@ -7,11 +7,9 @@ use tiledb::array::{
     SchemaData, TileOrder,
 };
 use tiledb::context::Context;
-use tiledb::extent::Extent;
 use tiledb::query::{
     Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
 };
-use tiledb::range::SingleValueRange;
 use tiledb::Result as TileDBResult;
 use tiledb::{Datatype, Factory};
 
@@ -79,16 +77,16 @@ fn create_array(ctx: &Context) -> TileDBResult<()> {
                 DimensionData {
                     name: "rows".to_owned(),
                     datatype: Datatype::Int32,
-                    domain: Some(SingleValueRange::from([1i32, 4])),
-                    extent: Some(Extent::from(4i32)),
-                    ..Default::default()
+                    constraints: ([1i32, 4], 4i32).into(),
+                    cell_val_num: None,
+                    filters: None,
                 },
                 DimensionData {
                     name: "cols".to_owned(),
                     datatype: Datatype::Int32,
-                    domain: Some(SingleValueRange::from([1i32, 4])),
-                    extent: Some(Extent::from(4i32)),
-                    ..Default::default()
+                    constraints: ([1i32, 4], 4i32).into(),
+                    cell_val_num: None,
+                    filters: None,
                 },
             ],
         },

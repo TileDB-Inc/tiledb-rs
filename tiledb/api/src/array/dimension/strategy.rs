@@ -8,15 +8,14 @@ use tiledb_utils::numbers::{
     NextDirection, NextNumericValue, SmallestPositiveValue,
 };
 
+use crate::array::dimension::DimensionConstraints;
 use crate::array::{ArrayType, CellValNum, DimensionData};
 use crate::datatype::strategy::*;
 use crate::datatype::LogicalType;
-use crate::extent::Extent;
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
     Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
-use crate::range::SingleValueRange;
 use crate::{fn_typed, Datatype};
 
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {
@@ -157,29 +156,16 @@ pub fn prop_dimension_for_datatype(
         }));
         (name, range_and_extent, filters)
             .prop_map(move |(name, values, filters)| {
-                let (domain, extent) = match values {
-                    Some((dom, extent)) => (Some(dom), extent),
-                    None => (None, None),
+                let constraints = match values {
+                    Some((dom, extent)) => {
+                        DimensionConstraints::from((dom, extent))
+                    }
+                    None => DimensionConstraints::StringAscii,
                 };
-                let domain = domain.map(SingleValueRange::from);
-                let extent = if domain.is_some() {
-                    extent
-                        .filter(|_| {
-                            !matches!(
-                                datatype,
-                                Datatype::Float32 | Datatype::Float64
-                            )
-                        })
-                        .map(Extent::from)
-                } else {
-                    None
-                };
-
                 DimensionData {
                     name,
                     datatype,
-                    domain,
-                    extent,
+                    constraints,
                     cell_val_num: Some(cell_val_num),
                     filters: if filters.is_empty() {
                         None

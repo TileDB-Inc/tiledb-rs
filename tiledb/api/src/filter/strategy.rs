@@ -4,9 +4,9 @@ use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
+use crate::array::dimension::DimensionConstraints;
 use crate::array::{ArrayType, CellValNum, DomainData};
-use crate::extent::Extent;
-use crate::extent_go;
+use crate::dimension_constraints_go;
 use crate::filter::list::FilterListData;
 use crate::filter::*;
 
@@ -273,37 +273,40 @@ fn prop_webp(
 
         const MAX_EXTENT: usize = 16383;
 
-        if domain.dimension[0].extent.is_none()
-            || domain.dimension[1].extent.is_none()
-        {
-            return None;
-        }
-
-        let e0 = domain.dimension[0].extent.as_ref().unwrap().clone();
-        let e1 = domain.dimension[1].extent.as_ref().unwrap().clone();
-
-        extent_go!(e0, _DT, value, {
-            if matches!(e0, Extent::Invalid) || value as usize > MAX_EXTENT {
-                return None;
-            }
-        });
+        dimension_constraints_go!(
+            domain.dimension[0].constraints,
+            _DT,
+            _range,
+            extent,
+            {
+                extent.filter(|ext| *ext as usize <= MAX_EXTENT)?;
+            },
+            return None
+        );
 
         let mut formats: Vec<WebPFilterInputFormat> = vec![];
-        extent_go!(e1, _DT, value, {
-            if matches!(e1, Extent::Invalid) {
-                return None;
-            }
-
-            let value = value as usize;
-            if value / 3 <= MAX_EXTENT && value % 3 == 0 {
-                formats.push(WebPFilterInputFormat::Rgb);
-                formats.push(WebPFilterInputFormat::Bgr);
-            }
-            if value / 4 <= MAX_EXTENT && value % 4 == 0 {
-                formats.push(WebPFilterInputFormat::Rgba);
-                formats.push(WebPFilterInputFormat::Bgra);
-            }
-        });
+        dimension_constraints_go!(
+            domain.dimension[1].constraints,
+            _DT,
+            _range,
+            extent,
+            {
+                if let Some(extent) = extent {
+                    let extent = extent as usize;
+                    if extent / 3 <= MAX_EXTENT && extent % 3 == 0 {
+                        formats.push(WebPFilterInputFormat::Rgb);
+                        formats.push(WebPFilterInputFormat::Bgr);
+                    }
+                    if extent / 4 <= MAX_EXTENT && extent % 4 == 0 {
+                        formats.push(WebPFilterInputFormat::Rgba);
+                        formats.push(WebPFilterInputFormat::Bgra);
+                    }
+                } else {
+                    return None;
+                }
+            },
+            return None
+        );
 
         if formats.is_empty() {
             return None;

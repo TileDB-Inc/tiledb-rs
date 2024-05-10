@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use util::option::OptionSubset;
@@ -10,13 +9,8 @@ use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::{LogicalType, PhysicalType};
 use crate::error::{DatatypeErrorKind, Error};
-use crate::extent::Extent;
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
-use crate::range::SingleValueRange;
-use crate::{
-    extent_go, fn_typed, single_value_range_go, Datatype, Factory,
-    Result as TileDBResult,
-};
+use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawDimension {
     Owned(*mut ffi::tiledb_dimension_t),
@@ -169,6 +163,189 @@ impl<'c1, 'c2> PartialEq<Dimension<'c2>> for Dimension<'c1> {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
+pub enum DimensionConstraints {
+    Int8([i8; 2], Option<i8>),
+    Int16([i16; 2], Option<i16>),
+    Int32([i32; 2], Option<i32>),
+    Int64([i64; 2], Option<i64>),
+    UInt8([u8; 2], Option<u8>),
+    UInt16([u16; 2], Option<u16>),
+    UInt32([u32; 2], Option<u32>),
+    UInt64([u64; 2], Option<u64>),
+    Float32([f32; 2], Option<f32>),
+    Float64([f64; 2], Option<f64>),
+    StringAscii,
+}
+
+#[macro_export]
+macro_rules! dimension_constraints_go {
+    ($expr:expr, $DT:ident, $range:pat, $extent:pat, $then:expr, $string:expr) => {
+        match $expr {
+            DimensionConstraints::Int8($range, $extent) => {
+                type $DT = i8;
+                $then
+            }
+            DimensionConstraints::Int16($range, $extent) => {
+                type $DT = i16;
+                $then
+            }
+            DimensionConstraints::Int32($range, $extent) => {
+                type $DT = i32;
+                $then
+            }
+            DimensionConstraints::Int64($range, $extent) => {
+                type $DT = i64;
+                $then
+            }
+            DimensionConstraints::UInt8($range, $extent) => {
+                type $DT = u8;
+                $then
+            }
+            DimensionConstraints::UInt16($range, $extent) => {
+                type $DT = u16;
+                $then
+            }
+            DimensionConstraints::UInt32($range, $extent) => {
+                type $DT = u32;
+                $then
+            }
+            DimensionConstraints::UInt64($range, $extent) => {
+                type $DT = u64;
+                $then
+            }
+            DimensionConstraints::Float32($range, $extent) => {
+                type $DT = f32;
+                $then
+            }
+            DimensionConstraints::Float64($range, $extent) => {
+                type $DT = f64;
+                $then
+            }
+            DimensionConstraints::StringAscii => $string,
+        }
+    };
+}
+
+macro_rules! dimension_constraints_impl {
+    ($($V:ident : $U:ty),+) => {
+        $(
+            impl From<[$U; 2]> for DimensionConstraints {
+                fn from(value: [$U; 2]) -> DimensionConstraints {
+                    DimensionConstraints::$V(value, None)
+                }
+            }
+
+            impl From<&[$U; 2]> for DimensionConstraints {
+                fn from(value: &[$U; 2]) -> DimensionConstraints {
+                    DimensionConstraints::$V([value[0], value[1]], None)
+                }
+            }
+
+            impl From<([$U; 2], $U)> for DimensionConstraints {
+                fn from(value: ([$U; 2], $U)) -> DimensionConstraints {
+                    DimensionConstraints::$V([value.0[0], value.0[1]], Some(value.1))
+                }
+            }
+
+            impl From<(&[$U; 2], $U)> for DimensionConstraints {
+                fn from(value: (&[$U; 2], $U)) -> DimensionConstraints {
+                    DimensionConstraints::$V([value.0[0], value.0[1]], Some(value.1))
+                }
+            }
+
+            impl From<([$U; 2], Option<$U>)> for DimensionConstraints {
+                fn from(value: ([$U; 2], Option<$U>)) -> DimensionConstraints {
+                    DimensionConstraints::$V([value.0[0], value.0[1]], value.1)
+                }
+            }
+
+            impl From<(&[$U; 2], Option<$U>)> for DimensionConstraints {
+                fn from(value: (&[$U; 2], Option<$U>)) -> DimensionConstraints {
+                    DimensionConstraints::$V([value.0[0], value.0[1]], value.1)
+                }
+            }
+        )+
+    }
+}
+
+impl From<()> for DimensionConstraints {
+    fn from(_value: ()) -> DimensionConstraints {
+        DimensionConstraints::StringAscii
+    }
+}
+
+dimension_constraints_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
+dimension_constraints_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
+dimension_constraints_impl!(Float32: f32, Float64: f64);
+
+impl DimensionConstraints {
+    pub fn verify_type_compatible(
+        &self,
+        datatype: Datatype,
+    ) -> TileDBResult<()> {
+        dimension_constraints_go!(
+            self,
+            DT,
+            _range,
+            _extent,
+            {
+                if !datatype.is_compatible_type::<DT>() {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::TypeMismatch {
+                            user_type: std::any::type_name::<DT>(),
+                            tiledb_type: datatype,
+                        },
+                    ));
+                }
+            },
+            {
+                if !matches!(datatype, Datatype::StringAscii) {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::InvalidDatatype {
+                            context: Some(
+                                "DimensionConstraints::StringAscii".to_owned(),
+                            ),
+                            found: datatype,
+                            expected: Datatype::StringAscii,
+                        },
+                    ));
+                }
+            }
+        );
+
+        Ok(())
+    }
+
+    pub fn domain_ptr(&self) -> *const std::ffi::c_void {
+        dimension_constraints_go!(
+            self,
+            DT,
+            range,
+            _extent,
+            range.as_ptr() as *const DT as *const std::ffi::c_void,
+            std::ptr::null()
+        )
+    }
+
+    pub fn extent_ptr(&self) -> *const std::ffi::c_void {
+        dimension_constraints_go!(
+            self,
+            DT,
+            _range,
+            extent,
+            {
+                if let Some(extent) = extent {
+                    extent as *const DT as *const std::ffi::c_void
+                } else {
+                    std::ptr::null()
+                }
+            },
+            std::ptr::null()
+        )
+    }
+}
+
 #[derive(ContextBound)]
 pub struct Builder<'ctx> {
     #[base(ContextBound)]
@@ -176,18 +353,19 @@ pub struct Builder<'ctx> {
 }
 
 impl<'ctx> Builder<'ctx> {
-    pub fn new<T: PhysicalType>(
+    pub fn new<Constraints: Into<DimensionConstraints>>(
         context: &'ctx Context,
         name: &str,
         datatype: Datatype,
-        domain: &[T; 2],
-        extent: &T,
+        constraints: Constraints,
     ) -> TileDBResult<Self> {
-        let c_datatype = datatype.capi_enum();
+        let constraints = constraints.into();
+        constraints.verify_type_compatible(datatype)?;
 
+        let c_datatype = datatype.capi_enum();
         let c_name = cstring!(name);
-        let c_domain = &domain[0] as *const T as *const std::ffi::c_void;
-        let c_extent = extent as *const T as *const std::ffi::c_void;
+        let c_domain = constraints.domain_ptr();
+        let c_extent = constraints.extent_ptr();
 
         let mut c_dimension: *mut ffi::tiledb_dimension_t =
             std::ptr::null_mut();
@@ -202,78 +380,6 @@ impl<'ctx> Builder<'ctx> {
                 &mut c_dimension,
             )
         })?;
-        Ok(Builder {
-            dim: Dimension {
-                context,
-                raw: RawDimension::Owned(c_dimension),
-            },
-        })
-    }
-
-    pub fn new_optional(
-        context: &'ctx Context,
-        name: &str,
-        datatype: Datatype,
-        domain: Option<SingleValueRange>,
-        extent: Option<Extent>,
-    ) -> TileDBResult<Self> {
-        let c_datatype = datatype.capi_enum();
-
-        let c_name = cstring!(name);
-
-        let mut domain_data: Vec<u8> = Vec::new();
-        if let Some(domain) = domain {
-            single_value_range_go!(domain, _DT, start, end, {
-                for byte in start.to_le_bytes() {
-                    domain_data.push(byte);
-                }
-                for byte in end.to_le_bytes() {
-                    domain_data.push(byte);
-                }
-            });
-        }
-
-        if matches!(extent, Some(Extent::Invalid)) {
-            return Err(Error::InvalidArgument(anyhow!(format!(
-                "Invalid extent for dimension: {}",
-                name
-            ))));
-        }
-
-        let mut extent_data: Vec<u8> = Vec::new();
-        if let Some(extent) = extent {
-            extent_go!(extent, _DT, value, {
-                for byte in value.to_le_bytes() {
-                    extent_data.push(byte);
-                }
-            })
-        }
-
-        let c_domain = if !domain_data.is_empty() {
-            domain_data.as_ptr() as *const std::ffi::c_void
-        } else {
-            std::ptr::null()
-        };
-
-        let c_extent = if !extent_data.is_empty() {
-            extent_data.as_ptr() as *const std::ffi::c_void
-        } else {
-            std::ptr::null()
-        };
-
-        let mut c_dimension: *mut ffi::tiledb_dimension_t = out_ptr!();
-
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_dimension_alloc(
-                ctx,
-                c_name.as_ptr(),
-                c_datatype,
-                c_domain,
-                c_extent,
-                &mut c_dimension,
-            )
-        })?;
-
         Ok(Builder {
             dim: Dimension {
                 context,
@@ -320,14 +426,11 @@ impl<'ctx> From<Builder<'ctx>> for Dimension<'ctx> {
 }
 
 /// Encapsulation of data needed to construct a Dimension
-#[derive(
-    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct DimensionData {
     pub name: String,
     pub datatype: Datatype,
-    pub domain: Option<SingleValueRange>,
-    pub extent: Option<Extent>,
+    pub constraints: DimensionConstraints,
     pub cell_val_num: Option<CellValNum>,
 
     /// Optional filters to apply to the dimension. If None or Some(empty),
@@ -347,22 +450,22 @@ impl<'ctx> TryFrom<&Dimension<'ctx>> for DimensionData {
 
     fn try_from(dim: &Dimension<'ctx>) -> TileDBResult<Self> {
         let datatype = dim.datatype()?;
-        let (domain, extent) = fn_typed!(datatype, LT, {
+        let constraints = fn_typed!(datatype, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
-            let domain = dim.domain::<DT>()?.map(SingleValueRange::from);
-            let extent =
-                if !matches!(datatype, Datatype::Float32 | Datatype::Float64) {
-                    dim.extent::<DT>()?.map(Extent::from)
-                } else {
-                    None
-                };
-            (domain, extent)
+            let domain = dim.domain::<DT>()?;
+            let extent = dim.extent::<DT>()?;
+            if let Some(domain) = domain {
+                DimensionConstraints::from((domain, extent))
+            } else {
+                assert!(extent.is_none());
+                DimensionConstraints::StringAscii
+            }
         });
+
         Ok(DimensionData {
             name: dim.name()?,
             datatype,
-            domain,
-            extent,
+            constraints,
             cell_val_num: Some(dim.cell_val_num()?),
             filters: {
                 let fl = FilterListData::try_from(&dim.filters()?)?;
@@ -388,38 +491,11 @@ impl<'ctx> Factory<'ctx> for DimensionData {
     type Item = Dimension<'ctx>;
 
     fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
-        if let Some(domain) = self.domain.as_ref() {
-            single_value_range_go!(domain, DT, _start, _end, {
-                if !self.datatype.is_compatible_type::<DT>() {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>(),
-                            tiledb_type: self.datatype,
-                        },
-                    ));
-                }
-            });
-        }
-
-        if let Some(extent) = self.extent.as_ref() {
-            extent_go!(extent, DT, _value, {
-                if !self.datatype.is_compatible_type::<DT>() {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>(),
-                            tiledb_type: self.datatype,
-                        },
-                    ));
-                }
-            });
-        }
-
-        let mut b = Builder::new_optional(
+        let mut b = Builder::new(
             context,
             &self.name,
             self.datatype,
-            self.domain.clone(),
-            self.extent.clone(),
+            self.constraints.clone(),
         )?;
 
         if let Some(fl) = self.filters.as_ref() {
@@ -454,14 +530,11 @@ mod tests {
         // normal use case, should succeed, no memory issues
         {
             let name = "test_dimension_alloc";
-            let domain: [i32; 2] = [1, 4];
-            let extent: i32 = 4;
-            let dimension = Builder::new::<i32>(
+            let dimension = Builder::new(
                 &context,
                 name,
                 Datatype::Int32,
-                &domain,
-                &extent,
+                ([1i32, 4], 4i32),
             )
             .unwrap()
             .build();
@@ -471,28 +544,22 @@ mod tests {
 
         // bad domain, should error
         {
-            let domain: [i32; 2] = [4, 1];
-            let extent: i32 = 4;
-            let b = Builder::new::<i32>(
+            let b = Builder::new(
                 &context,
                 "test_dimension_alloc",
                 Datatype::Int32,
-                &domain,
-                &extent,
+                ([4i32, 1], 4i32),
             );
             assert!(b.is_err());
         }
 
         // bad extent, should error
         {
-            let domain: [i32; 2] = [1, 4];
-            let extent: i32 = 0;
-            let b = Builder::new::<i32>(
+            let b = Builder::new(
                 &context,
                 "test_dimension_alloc",
                 Datatype::Int32,
-                &domain,
-                &extent,
+                ([1i32, 4], 0i32),
             );
             assert!(b.is_err());
         }
@@ -506,12 +573,11 @@ mod tests {
         {
             let domain_in: [i32; 2] = [1, 4];
             let extent_in: i32 = 4;
-            let dim = Builder::new::<i32>(
+            let dim = Builder::new(
                 &context,
                 "test_dimension_domain",
                 Datatype::Int32,
-                &domain_in,
-                &extent_in,
+                (domain_in, extent_in),
             )
             .unwrap()
             .build();
@@ -535,14 +601,11 @@ mod tests {
         {
             let cell_val_num = CellValNum::try_from(1).unwrap();
             let dimension = {
-                let domain_in: [i32; 2] = [1, 4];
-                let extent: i32 = 4;
-                Builder::new::<i32>(
+                Builder::new(
                     &context,
                     "test_dimension_cell_val_num",
                     Datatype::Int32,
-                    &domain_in,
-                    &extent,
+                    ([1i32, 4], 4),
                 )
                 .unwrap()
                 .cell_val_num(cell_val_num)
@@ -555,14 +618,11 @@ mod tests {
 
         // anything else should error
         for cell_val_num in vec![2, 4, 8].into_iter() {
-            let domain_in: [i32; 2] = [1, 4];
-            let extent: i32 = 4;
-            let b = Builder::new::<i32>(
+            let b = Builder::new(
                 &context,
                 "test_dimension_cell_val_num",
                 Datatype::Int32,
-                &domain_in,
-                &extent,
+                ([1i32, 4], 4),
             )
             .unwrap()
             .cell_val_num(CellValNum::try_from(cell_val_num).unwrap());
@@ -576,14 +636,11 @@ mod tests {
 
         // none set
         {
-            let domain: [i32; 2] = [1, 4];
-            let extent: i32 = 4;
-            let dimension: Dimension = Builder::new::<i32>(
+            let dimension: Dimension = Builder::new(
                 &context,
                 "test_dimension_alloc",
                 Datatype::Int32,
-                &domain,
-                &extent,
+                ([1, 4], 4),
             )
             .unwrap()
             .into();
@@ -594,8 +651,6 @@ mod tests {
 
         // with some
         {
-            let domain: [i32; 2] = [1, 4];
-            let extent: i32 = 4;
             let fl = FilterListBuilder::new(&context)?
                 .add_filter(Filter::create(
                     &context,
@@ -604,12 +659,11 @@ mod tests {
                     )),
                 )?)?
                 .build();
-            let dimension: Dimension = Builder::new::<i32>(
+            let dimension: Dimension = Builder::new(
                 &context,
                 "test_dimension_alloc",
                 Datatype::Int32,
-                &domain,
-                &extent,
+                ([1, 4], 4),
             )
             .unwrap()
             .filters(fl)
@@ -636,40 +690,29 @@ mod tests {
     fn test_eq() {
         let context = Context::new().unwrap();
 
-        let base = Builder::new::<i32>(
-            &context,
-            "d1",
-            Datatype::Int32,
-            &[0, 1000],
-            &100,
-        )
-        .unwrap()
-        .build();
+        let base =
+            Builder::new(&context, "d1", Datatype::Int32, ([0, 1000], 100))
+                .unwrap()
+                .build();
         assert_eq!(base, base);
 
         // change name
         {
-            let cmp = Builder::new::<i32>(
-                &context,
-                "d2",
-                Datatype::Int32,
-                &[0, 1000],
-                &100,
-            )
-            .unwrap()
-            .build();
+            let cmp =
+                Builder::new(&context, "d2", Datatype::Int32, ([0, 1000], 100))
+                    .unwrap()
+                    .build();
             assert_eq!(cmp, cmp);
             assert_ne!(base, cmp);
         }
 
         // change type
         {
-            let cmp = Builder::new::<i32>(
+            let cmp = Builder::new(
                 &context,
                 "d1",
                 Datatype::UInt32,
-                &[0, 1000],
-                &100,
+                ([0u32, 1000], 100u32),
             )
             .unwrap()
             .build();
@@ -679,55 +722,40 @@ mod tests {
 
         // change domain
         {
-            let cmp = Builder::new::<i32>(
-                &context,
-                "d1",
-                Datatype::Int32,
-                &[1, 1000],
-                &100,
-            )
-            .unwrap()
-            .build();
+            let cmp =
+                Builder::new(&context, "d1", Datatype::Int32, ([1, 1000], 100))
+                    .unwrap()
+                    .build();
             assert_eq!(cmp, cmp);
             assert_ne!(base, cmp);
         }
 
         // change extent
         {
-            let cmp = Builder::new::<i32>(
-                &context,
-                "d1",
-                Datatype::Int32,
-                &[0, 1000],
-                &99,
-            )
-            .unwrap()
-            .build();
+            let cmp =
+                Builder::new(&context, "d1", Datatype::Int32, ([0, 1000], 99))
+                    .unwrap()
+                    .build();
             assert_eq!(cmp, cmp);
             assert_ne!(base, cmp);
         }
 
         // change filters
         {
-            let cmp = Builder::new::<i32>(
-                &context,
-                "d1",
-                Datatype::Int32,
-                &[0, 1000],
-                &99,
-            )
-            .unwrap()
-            .filters(
-                FilterListBuilder::new(&context)
+            let cmp =
+                Builder::new(&context, "d1", Datatype::Int32, ([0, 1000], 99))
                     .unwrap()
-                    .add_filter_data(FilterData::Compression(
-                        CompressionData::new(CompressionType::Lz4),
-                    ))
+                    .filters(
+                        FilterListBuilder::new(&context)
+                            .unwrap()
+                            .add_filter_data(FilterData::Compression(
+                                CompressionData::new(CompressionType::Lz4),
+                            ))
+                            .unwrap()
+                            .build(),
+                    )
                     .unwrap()
-                    .build(),
-            )
-            .unwrap()
-            .build();
+                    .build();
             assert_eq!(cmp, cmp);
             assert_ne!(base, cmp);
         }

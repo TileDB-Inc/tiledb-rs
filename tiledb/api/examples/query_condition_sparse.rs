@@ -105,12 +105,11 @@ fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
 ///  - "d" (type f32)
 fn create_array(ctx: &Context) -> TileDBResult<()> {
     let domain = {
-        let index = DimensionBuilder::new::<i32>(
+        let index = DimensionBuilder::new(
             ctx,
             "index",
             Datatype::Int32,
-            &[0, NUM_ELEMS - 1],
-            &4,
+            ([0, NUM_ELEMS - 1], 4),
         )?
         .build();
 

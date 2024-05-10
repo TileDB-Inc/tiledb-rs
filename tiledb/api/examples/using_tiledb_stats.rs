@@ -47,22 +47,20 @@ pub fn create_array(
 
     let domain = {
         let rows: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<u32>(
+            tiledb::array::DimensionBuilder::new(
                 &tdb,
                 "row",
                 Datatype::UInt32,
-                &[1, 12000],
-                &row_tile_extent,
+                ([1, 12000], row_tile_extent),
             )?
             .build();
 
         let cols: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<u32>(
+            tiledb::array::DimensionBuilder::new(
                 &tdb,
                 "col",
                 Datatype::UInt32,
-                &[1, 12000],
-                &col_tile_extent,
+                ([1, 12000], col_tile_extent),
             )?
             .build();
 

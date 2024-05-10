@@ -28,21 +28,19 @@ where
     // The array will be 4x4 with dimensions "rows" and "cols", with domain [1,4].
     let domain = {
         let rows: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<i32>(
+            tiledb::array::DimensionBuilder::new(
                 &tdb,
                 "rows",
                 Datatype::Int32,
-                &[1, 4],
-                &4,
+                ([1, 4], 4),
             )?
             .build();
         let cols: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<i32>(
+            tiledb::array::DimensionBuilder::new(
                 &tdb,
                 "cols",
                 Datatype::Int32,
-                &[1, 4],
-                &4,
+                ([1, 4], 4),
             )?
             .build();
 

@@ -4,6 +4,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::array::dimension::DimensionConstraints;
 use crate::array::schema::arrow::{
     DimensionFromArrowResult, FieldToArrowResult,
 };
@@ -11,10 +12,8 @@ use crate::array::{Dimension, DimensionBuilder};
 use crate::context::Context as TileDBContext;
 use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::datatype::LogicalType;
-use crate::extent::Extent;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
-use crate::range::SingleValueRange;
 use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
 
 /// Encapsulates fields of a TileDB dimension which are not part of an Arrow
@@ -132,25 +131,18 @@ pub fn from_arrow<'ctx>(
                 ))));
             }
 
-            let domain = domain.map(SingleValueRange::from);
-            let extent = extent.map(Extent::from).filter(|_| {
-                !matches!(datatype, Datatype::Float32 | Datatype::Float64)
-            });
-
             match domain {
-                Some(_) => DimensionBuilder::new_optional(
+                Some(domain) => DimensionBuilder::new(
                     context,
                     field.name(),
                     datatype,
-                    domain,
-                    extent,
+                    (domain, extent),
                 ),
-                None => DimensionBuilder::new_optional(
+                None => DimensionBuilder::new(
                     context,
                     field.name(),
                     datatype,
-                    None,
-                    None,
+                    DimensionConstraints::StringAscii,
                 ),
             }
         })?;
