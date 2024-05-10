@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use util::option::OptionSubset;
@@ -230,6 +231,13 @@ impl<'ctx> Builder<'ctx> {
                     domain_data.push(byte);
                 }
             });
+        }
+
+        if matches!(extent, Some(Extent::Invalid)) {
+            return Err(Error::InvalidArgument(anyhow!(format!(
+                "Invalid extent for dimension: {}",
+                name
+            ))));
         }
 
         let mut extent_data: Vec<u8> = Vec::new();

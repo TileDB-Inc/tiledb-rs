@@ -133,7 +133,9 @@ pub fn from_arrow<'ctx>(
             }
 
             let domain = domain.map(SingleValueRange::from);
-            let extent = extent.map(Extent::from);
+            let extent = extent.map(Extent::from).filter(|_| {
+                !matches!(datatype, Datatype::Float32 | Datatype::Float64)
+            });
 
             match domain {
                 Some(_) => DimensionBuilder::new_optional(
