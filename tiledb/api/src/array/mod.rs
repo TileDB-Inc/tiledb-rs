@@ -278,21 +278,19 @@ pub mod tests {
     ) -> TileDBResult<String> {
         let arr_dir = dir.path().join("quickstart_dense");
         let d: Domain = {
-            let rows: Dimension = DimensionBuilder::new::<i32>(
+            let rows: Dimension = DimensionBuilder::new(
                 context,
                 "rows",
                 Datatype::Int32,
-                &[1, 4],
-                &4,
+                ([1, 4], 4),
             )
             .expect("Error constructing rows dimension")
             .build();
-            let cols: Dimension = DimensionBuilder::new::<i32>(
+            let cols: Dimension = DimensionBuilder::new(
                 context,
                 "cols",
                 Datatype::Int32,
-                &[1, 4],
-                &4,
+                ([1, 4], 4),
             )
             .expect("Error constructing cols dimension")
             .build();

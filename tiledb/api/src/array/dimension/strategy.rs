@@ -3,12 +3,12 @@ use std::rc::Rc;
 
 use num_traits::{Bounded, Num};
 use proptest::prelude::*;
-use serde_json::json;
 
 use tiledb_utils::numbers::{
     NextDirection, NextNumericValue, SmallestPositiveValue,
 };
 
+use crate::array::dimension::DimensionConstraints;
 use crate::array::{ArrayType, CellValNum, DimensionData};
 use crate::datatype::strategy::*;
 use crate::datatype::LogicalType;
@@ -26,7 +26,7 @@ pub fn prop_dimension_name() -> impl Strategy<Value = String> {
 /// Construct a strategy to generate valid (domain, extent) pairs.
 /// A valid output satisfies
 /// `lower < lower + extent <= upper < upper + extent <= type_limit`.
-fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], T)>
+fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], Option<T>)>
 where
     T: Num
         + Bounded
@@ -72,14 +72,17 @@ where
         )
     })
     .prop_flat_map(move |(lower_bound, upper_bound)| {
-        let extent_limit = {
+        let (extent_limit, would_overflow) = {
             let zero = <T as num_traits::Zero>::zero();
+
+            let mut would_overflow = false;
             let extent_limit = if lower_bound >= zero {
                 upper_bound - lower_bound
             } else if upper_bound >= zero {
                 if upper_limit + lower_bound > upper_bound {
                     upper_bound - lower_bound
                 } else {
+                    would_overflow = true;
                     upper_limit - upper_bound
                 }
             } else {
@@ -87,9 +90,9 @@ where
             };
 
             if upper_limit - extent_limit < upper_bound {
-                upper_limit - upper_bound
+                (upper_limit - upper_bound, would_overflow)
             } else {
-                extent_limit
+                (extent_limit, would_overflow)
             }
         };
 
@@ -101,13 +104,32 @@ where
             extent_limit
         };
 
+        // Bug SC-47034: Core does not correctly handle ranges on signed
+        // dimensions when the size of the range overflows the signed type's
+        // range. I.e., [-70i8, 121] has a range of 191 which is larger than
+        // the maximum byte value 127i8. Our round trip tests rely on getting
+        // correct values from core. To avoid triggering the bug we force an
+        // extent when overflow would happen.
+        if would_overflow {
+            return (
+                Just([lower_bound, upper_bound]),
+                std::ops::Range::<T> {
+                    start: T::smallest_positive_value(),
+                    end: extent_limit,
+                }
+                .prop_map(|extent| Some(extent)),
+            )
+                .boxed();
+        }
+
         (
             Just([lower_bound, upper_bound]),
-            std::ops::Range::<T> {
+            proptest::option::of(std::ops::Range::<T> {
                 start: T::smallest_positive_value(),
                 end: extent_limit,
-            },
+            }),
         )
+            .boxed()
     })
 }
 
@@ -134,19 +156,16 @@ pub fn prop_dimension_for_datatype(
         }));
         (name, range_and_extent, filters)
             .prop_map(move |(name, values, filters)| {
-                let (domain, extent) = match values {
-                    None => (None, None),
-                    Some((domain, extent)) => (
-                        Some([json![domain[0]], json![domain[1]]]),
-                        Some(json!(extent)),
-                    ),
+                let constraints = match values {
+                    Some((dom, extent)) => {
+                        DimensionConstraints::from((dom, extent))
+                    }
+                    None => DimensionConstraints::StringAscii,
                 };
-
                 DimensionData {
                     name,
                     datatype,
-                    domain,
-                    extent,
+                    constraints,
                     cell_val_num: Some(cell_val_num),
                     filters: if filters.is_empty() {
                         None

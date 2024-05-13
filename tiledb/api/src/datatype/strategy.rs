@@ -162,6 +162,7 @@ impl Arbitrary for Datatype {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array::dimension::DimensionConstraints;
     use crate::array::{
         ArrayType, AttributeBuilder, DimensionBuilder, DomainBuilder, Schema,
         SchemaBuilder,
@@ -178,15 +179,18 @@ mod tests {
         datatype: Datatype,
     ) -> TileDBResult<Schema> {
         let dim = fn_typed!(datatype, LT, {
-            if datatype.is_string_type() {
-                DimensionBuilder::new_string(context, "d", datatype)
+            if matches!(datatype, Datatype::StringAscii) {
+                DimensionBuilder::new(
+                    context,
+                    "d",
+                    datatype,
+                    DimensionConstraints::StringAscii,
+                )
             } else {
                 type DT = <LT as LogicalType>::PhysicalType;
                 let domain: [DT; 2] = [0 as DT, 127 as DT];
                 let extent: DT = 16 as DT;
-                DimensionBuilder::new::<DT>(
-                    context, "d", datatype, &domain, &extent,
-                )
+                DimensionBuilder::new(context, "d", datatype, (domain, extent))
             }
         })?
         .build();

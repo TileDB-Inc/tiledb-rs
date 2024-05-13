@@ -31,33 +31,33 @@ fn main() -> TileDBResult<()> {
 
     println!("Reading: a is null");
     let qc = QC::field("a").is_null();
-    read_array(&ctx, Some(&qc))?;
+    read_array(&ctx, Some(qc))?;
 
     println!("Reading: b < \"eve\"");
     let qc = QC::field("b").lt("eve");
-    read_array(&ctx, Some(&qc))?;
+    read_array(&ctx, Some(qc))?;
 
     println!("Reading: c >= 1");
     let qc = QC::field("c").ge(1i32);
-    read_array(&ctx, Some(&qc))?;
+    read_array(&ctx, Some(qc))?;
 
     println!("Reading: 3.0 <= d <= 4.0");
     let qc = QC::field("d").ge(3.0f32) & QC::field("d").le(4.0f32);
-    read_array(&ctx, Some(&qc))?;
+    read_array(&ctx, Some(qc))?;
 
     println!("Reading: (a is not null) && (b < \"eve\") && (3.0 <= d <= 4.0)");
     let qc = QC::field("a").not_null()
         & QC::field("b").lt("eve")
         & QC::field("d").ge(3.0f32)
         & QC::field("d").le(4.0f32);
-    read_array(&ctx, Some(&qc))?;
+    read_array(&ctx, Some(qc))?;
 
     Ok(())
 }
 
 /// Read the array with the optional query condition and print the results
 /// to stdout.
-fn read_array(ctx: &Context, qc: Option<&QC>) -> TileDBResult<()> {
+fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
     let array = tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
     let mut query = ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
@@ -74,7 +74,7 @@ fn read_array(ctx: &Context, qc: Option<&QC>) -> TileDBResult<()> {
         .finish_subarray()?;
 
     query = if let Some(qc) = qc {
-        query.query_condition(qc.build(ctx)?)?
+        query.query_condition(qc)?
     } else {
         query
     };
@@ -105,12 +105,11 @@ fn read_array(ctx: &Context, qc: Option<&QC>) -> TileDBResult<()> {
 ///  - "d" (type f32)
 fn create_array(ctx: &Context) -> TileDBResult<()> {
     let domain = {
-        let index = DimensionBuilder::new::<i32>(
+        let index = DimensionBuilder::new(
             ctx,
             "index",
             Datatype::Int32,
-            &[0, NUM_ELEMS - 1],
-            &4,
+            ([0, NUM_ELEMS - 1], 4),
         )?
         .build();
 

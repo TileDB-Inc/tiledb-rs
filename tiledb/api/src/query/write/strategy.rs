@@ -6,13 +6,14 @@ use proptest::prelude::*;
 
 use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
 use crate::datatype::physical::BitsOrd;
-use crate::datatype::LogicalType;
 use crate::query::strategy::{
     Cells, CellsParameters, CellsStrategySchema, FieldDataParameters,
 };
 use crate::query::{QueryBuilder, WriteBuilder};
 use crate::range::SingleValueRange;
-use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
+use crate::{
+    dimension_constraints_go, single_value_range_go, Result as TileDBResult,
+};
 
 #[derive(Debug)]
 pub struct DenseWriteInput {
@@ -91,31 +92,36 @@ fn prop_dense_write(
         .dimension
         .iter()
         .map(|d| {
-            let Some(domain) = d.domain.as_ref() else {
-                unreachable!()
-            };
+            dimension_constraints_go!(
+                d.constraints,
+                DT,
+                ref domain,
+                _,
+                {
+                    let dim_lower = domain[0]; // copy so we don't borrow schema for closure
+                    let dim_range = domain[1] - dim_lower;
 
-            fn_typed!(d.datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
-                let dim_lower = serde_json::from_value::<DT>(domain[0].clone()).unwrap();
-                let dim_upper = serde_json::from_value::<DT>(domain[1].clone()).unwrap();
-                let dim_range = dim_upper - dim_lower;
+                    let lower_cell_bound = 0 as DT;
+                    let upper_cell_bound =
+                        match dim_range.bits_cmp(&(cell_limit as DT)) {
+                            Ordering::Less => dim_range,
+                            _ => cell_limit as DT,
+                        };
 
-                let lower_cell_bound = 0 as DT;
-                let upper_cell_bound = match dim_range.bits_cmp(&(cell_limit as DT)) {
-                    Ordering::Less => dim_range,
-                    _ => cell_limit as DT
-                };
-
-                (lower_cell_bound..upper_cell_bound)
-                    .prop_flat_map(move |upper| ((lower_cell_bound..=upper), Just(upper)))
-                    .prop_map(move |(lower, upper)| {
-                        SingleValueRange::from(&[dim_lower + lower, dim_lower + upper])
-                    })
-                    .boxed()
-            })
-
-            /* TODO: bound each dimension so as to bound total number of cells */
+                    (lower_cell_bound..upper_cell_bound)
+                        .prop_flat_map(move |upper| {
+                            ((lower_cell_bound..=upper), Just(upper))
+                        })
+                        .prop_map(move |(lower, upper)| {
+                            SingleValueRange::from(&[
+                                dim_lower + lower,
+                                dim_lower + upper,
+                            ])
+                        })
+                        .boxed()
+                },
+                unimplemented!()
+            )
         })
         .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
 

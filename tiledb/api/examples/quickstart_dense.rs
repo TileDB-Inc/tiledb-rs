@@ -29,21 +29,19 @@ fn create_array() -> TileDBResult<()> {
 
     let domain = {
         let rows: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<i32>(
+            tiledb::array::DimensionBuilder::new(
                 &tdb,
                 "rows",
                 Datatype::Int32,
-                &[1, 4],
-                &4,
+                ([1, 4], 4),
             )?
             .build();
         let cols: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new::<i32>(
+            tiledb::array::DimensionBuilder::new(
                 &tdb,
                 "columns",
                 Datatype::Int32,
-                &[1, 4],
-                &4,
+                ([1, 4], 4),
             )?
             .build();
 

@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use proptest::prelude::*;
-use serde_json::json;
 
 use crate::array::{
     attribute::FillData, ArrayType, AttributeData, CellValNum, DomainData,
@@ -123,7 +122,7 @@ fn prop_attribute_for_datatype(
                                 nullability: Some(nullable),
                                 cell_val_num: Some(cell_val_num),
                                 fill: Some(FillData {
-                                    data: json!(fill),
+                                    data: fill.into(),
                                     nullability: Some(
                                         nullable && fill_nullable,
                                     ),

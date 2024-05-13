@@ -23,7 +23,8 @@ use crate::query::read::{
 };
 use crate::query::WriteBuilder;
 use crate::{
-    fn_typed, typed_query_buffers_go, Datatype, Result as TileDBResult,
+    dimension_constraints_go, fn_typed, typed_query_buffers_go, Datatype,
+    Result as TileDBResult,
 };
 
 /// Represents the write query input for a single field.
@@ -407,21 +408,21 @@ impl Arbitrary for FieldData {
                 let cell_val_num =
                     d.cell_val_num.unwrap_or(CellValNum::single());
 
-                fn_typed!(d.datatype, LT, {
-                    type DT = <LT as LogicalType>::PhysicalType;
-                    let value_strat = if let Some(domain) = d.domain.as_ref() {
-                        let lower_bound =
-                            serde_json::from_value::<DT>(domain[0].clone())
-                                .unwrap();
-                        let upper_bound =
-                            serde_json::from_value::<DT>(domain[1].clone())
-                                .unwrap();
-                        (lower_bound..upper_bound).boxed()
-                    } else {
-                        any::<DT>().boxed()
-                    };
-                    body::<DT>(params, value_strat, cell_val_num)
-                })
+                dimension_constraints_go!(
+                    d.constraints,
+                    DT,
+                    ref domain,
+                    _,
+                    {
+                        let value_strat = (domain[0]..=domain[1]).boxed();
+                        body::<DT>(params, value_strat, cell_val_num)
+                    },
+                    {
+                        assert_eq!(d.datatype, Datatype::StringAscii);
+                        let value_strat = any::<u8>().boxed();
+                        body::<u8>(params, value_strat, cell_val_num)
+                    }
+                )
             }
             Some(FieldStrategyDatatype::SchemaField(
                 SchemaField::Attribute(a),

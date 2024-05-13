@@ -13,7 +13,7 @@ pub mod write;
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
-pub use self::conditions::{QueryCondition, QueryConditionExpr};
+pub use self::conditions::QueryConditionExpr;
 pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };
@@ -200,9 +200,10 @@ pub trait QueryBuilder<'ctx>: Sized {
         SubarrayBuilder::for_query(self)
     }
 
-    fn query_condition(self, qc: QueryCondition<'ctx>) -> TileDBResult<Self> {
+    fn query_condition(self, qc: QueryConditionExpr) -> TileDBResult<Self> {
+        let raw = qc.build(self.base().context())?;
         let c_query = **self.base().cquery();
-        let c_cond = qc.capi();
+        let c_cond = *raw;
         self.base().capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_condition(ctx, c_query, c_cond)
         })?;

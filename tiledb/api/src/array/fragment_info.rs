@@ -922,12 +922,11 @@ pub mod tests {
         let array_uri = String::from(array_dir.to_str().unwrap());
 
         let domain = {
-            let rows = DimensionBuilder::new::<i32>(
+            let rows = DimensionBuilder::new(
                 ctx,
                 "id",
                 Datatype::Int32,
-                &[1, 10],
-                &4,
+                ([1, 10], 4),
             )?
             .build();
 
@@ -967,12 +966,11 @@ pub mod tests {
         let array_uri = String::from(array_dir.to_str().unwrap());
 
         let domain = {
-            let rows = DimensionBuilder::new::<i32>(
+            let rows = DimensionBuilder::new(
                 ctx,
                 "id",
                 Datatype::Int32,
-                &[1, 10],
-                &4,
+                ([1, 10], 4),
             )?
             .build();
 
