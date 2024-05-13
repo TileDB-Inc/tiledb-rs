@@ -800,6 +800,10 @@ pub struct SchemaData {
 }
 
 impl SchemaData {
+    pub fn num_fields(&self) -> usize {
+        self.domain.dimension.len() + self.attributes.len()
+    }
+
     pub fn field(&self, idx: usize) -> FieldData {
         if idx < self.domain.dimension.len() {
             FieldData::from(self.domain.dimension[idx].clone())
@@ -808,6 +812,10 @@ impl SchemaData {
                 self.attributes[idx - self.domain.dimension.len()].clone(),
             )
         }
+    }
+
+    pub fn fields(&self) -> FieldDataIter {
+        FieldDataIter::new(self)
     }
 }
 
@@ -883,6 +891,32 @@ impl<'ctx> Factory<'ctx> for SchemaData {
         b.build()
     }
 }
+
+pub struct FieldDataIter<'a> {
+    schema: &'a SchemaData,
+    cursor: usize,
+}
+
+impl<'a> FieldDataIter<'a> {
+    pub fn new(schema: &'a SchemaData) -> Self {
+        FieldDataIter { schema, cursor: 0 }
+    }
+}
+
+impl<'a> Iterator for FieldDataIter<'a> {
+    type Item = FieldData;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor < self.schema.num_fields() {
+            let item = self.schema.field(self.cursor);
+            self.cursor += 1;
+            Some(item)
+        } else {
+            None
+        }
+    }
+}
+
+impl std::iter::FusedIterator for FieldDataIter<'_> {}
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
