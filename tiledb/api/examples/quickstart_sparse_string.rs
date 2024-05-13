@@ -2,6 +2,7 @@ extern crate tiledb;
 
 use itertools::izip;
 
+use tiledb::array::dimension::DimensionConstraints;
 use tiledb::array::{
     Array, ArrayType, AttributeData, CellOrder, DimensionData, DomainData,
     SchemaData, TileOrder,
@@ -52,7 +53,7 @@ fn create_array(ctx: &Context) -> TileDBResult<()> {
                 DimensionData {
                     name: "rows".to_owned(),
                     datatype: Datatype::StringAscii,
-                    constraints: ().into(),
+                    constraints: DimensionConstraints::StringAscii,
                     cell_val_num: None,
                     filters: None,
                 },

@@ -162,6 +162,7 @@ impl Arbitrary for Datatype {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::array::dimension::DimensionConstraints;
     use crate::array::{
         ArrayType, AttributeBuilder, DimensionBuilder, DomainBuilder, Schema,
         SchemaBuilder,
@@ -178,8 +179,13 @@ mod tests {
         datatype: Datatype,
     ) -> TileDBResult<Schema> {
         let dim = fn_typed!(datatype, LT, {
-            if datatype.is_string_type() {
-                DimensionBuilder::new(context, "d", datatype, ())
+            if matches!(datatype, Datatype::StringAscii) {
+                DimensionBuilder::new(
+                    context,
+                    "d",
+                    datatype,
+                    DimensionConstraints::StringAscii,
+                )
             } else {
                 type DT = <LT as LogicalType>::PhysicalType;
                 let domain: [DT; 2] = [0 as DT, 127 as DT];
@@ -208,23 +214,19 @@ mod tests {
             datatype,
         );
         assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
-        match r {
-            Err(Error::LibTileDB(s)) => {
-                assert!(
-                    s.contains("not a valid Dimension Datatype")
-                        || s.contains("do not support dimension datatype"),
-                    "Expected dimension datatype error, received: {}",
-                    s
-                );
-            }
-            Err(Error::Datatype(reason)) => {
-                let msg = format!("{}", reason);
-                assert!(msg.contains("DimensionConstraints"));
-            }
-            Err(invalid) => {
-                panic!("Invalid error: {}", invalid);
-            }
-            _ => (),
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
         }
     }
 
@@ -239,23 +241,19 @@ mod tests {
             datatype,
         );
         assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
-        match r {
-            Err(Error::LibTileDB(s)) => {
-                assert!(
-                    s.contains("not a valid Dimension Datatype")
-                        || s.contains("do not support dimension datatype"),
-                    "Expected dimension datatype error, received: {}",
-                    s
-                );
-            }
-            Err(Error::Datatype(reason)) => {
-                let msg = format!("{}", reason);
-                assert!(msg.contains("DimensionConstraints"));
-            }
-            Err(invalid) => {
-                panic!("Invalid error: {}", invalid);
-            }
-            _ => (),
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
         }
     }
 

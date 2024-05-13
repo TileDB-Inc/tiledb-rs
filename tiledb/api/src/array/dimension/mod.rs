@@ -269,12 +269,6 @@ macro_rules! dimension_constraints_impl {
     }
 }
 
-impl From<()> for DimensionConstraints {
-    fn from(_value: ()) -> DimensionConstraints {
-        DimensionConstraints::StringAscii
-    }
-}
-
 dimension_constraints_impl!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 dimension_constraints_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 dimension_constraints_impl!(Float32: f32, Float64: f64);
@@ -317,7 +311,7 @@ impl DimensionConstraints {
         Ok(())
     }
 
-    pub fn domain_ptr(&self) -> *const std::ffi::c_void {
+    pub(crate) fn domain_ptr(&self) -> *const std::ffi::c_void {
         dimension_constraints_go!(
             self,
             DT,
@@ -328,7 +322,7 @@ impl DimensionConstraints {
         )
     }
 
-    pub fn extent_ptr(&self) -> *const std::ffi::c_void {
+    pub(crate) fn extent_ptr(&self) -> *const std::ffi::c_void {
         dimension_constraints_go!(
             self,
             DT,
