@@ -424,6 +424,8 @@ mod tests {
 
             let accumulated_write = accumulated_write.as_ref().unwrap();
 
+            array = Array::open(ctx, array.uri(), Mode::Read).unwrap();
+
             /* then read it back */
             {
                 let mut cursors = accumulated_write
