@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use num_traits::{Bounded, Num};
+use num_traits::{Bounded, FromPrimitive, Num};
 use proptest::prelude::*;
 
 use tiledb_utils::numbers::{
@@ -10,6 +10,7 @@ use tiledb_utils::numbers::{
 
 use crate::array::dimension::DimensionConstraints;
 use crate::array::{ArrayType, CellValNum, DimensionData};
+use crate::datatype::physical::BitsOrd;
 use crate::datatype::strategy::*;
 use crate::datatype::LogicalType;
 use crate::filter::list::FilterListData;
@@ -29,7 +30,9 @@ pub fn prop_dimension_name() -> impl Strategy<Value = String> {
 fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], Option<T>)>
 where
     T: Num
+        + BitsOrd
         + Bounded
+        + FromPrimitive
         + NextNumericValue
         + SmallestPositiveValue
         + Clone
@@ -87,6 +90,15 @@ where
                 }
             } else {
                 upper_bound - lower_bound
+            };
+
+            // see SC-47277, we need to prevent the extent from getting too big
+            let extent_limit_limit = T::from_usize(1024 * 1024).unwrap();
+
+            let extent_limit = match extent_limit.bits_cmp(&extent_limit_limit)
+            {
+                std::cmp::Ordering::Less => extent_limit,
+                _ => extent_limit_limit,
             };
 
             if upper_limit - extent_limit < upper_bound {
