@@ -188,6 +188,12 @@ impl Deref for FilterListData {
     }
 }
 
+impl From<Vec<FilterData>> for FilterListData {
+    fn from(value: Vec<FilterData>) -> Self {
+        Self(value)
+    }
+}
+
 impl FromIterator<FilterData> for FilterListData {
     fn from_iter<T>(iter: T) -> Self
     where
