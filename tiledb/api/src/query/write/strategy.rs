@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 
-use crate::array::{ArrayType, CellValNum, SchemaData};
+use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
 use crate::datatype::physical::BitsOrd;
 use crate::datatype::LogicalType;
 use crate::query::strategy::{
@@ -16,6 +16,7 @@ use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
 
 #[derive(Debug)]
 pub struct DenseWriteInput {
+    pub layout: CellOrder,
     pub data: Cells,
     pub subarray: Vec<SingleValueRange>,
 }
@@ -31,18 +32,20 @@ impl DenseWriteInput {
             subarray = subarray.add_range(i, self.subarray[i].clone())?;
         }
 
-        subarray.finish_subarray()
+        subarray.finish_subarray()?.layout(self.layout)
     }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct DenseWriteParameters {
     schema: Option<Rc<SchemaData>>,
+    layout: Option<CellOrder>,
     memory_limit: Option<usize>,
 }
 
 fn prop_dense_write(
     schema: Rc<SchemaData>,
+    layout: CellOrder,
     params: DenseWriteParameters,
 ) -> impl Strategy<Value = DenseWriteInput> {
     /*
@@ -54,6 +57,11 @@ fn prop_dense_write(
         let memory_limit = params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
         memory_limit / schema.domain.dimension.len()
     };
+
+    if matches!(layout, CellOrder::Global) {
+        // necessary to align to tile boundaries
+        unimplemented!()
+    }
 
     let est_cell_size: usize = schema
         .fields()
@@ -132,12 +140,13 @@ fn prop_dense_write(
             ..Default::default()
         };
 
-        (Just(ranges), any_with::<Cells>(params)).prop_map(|(ranges, cells)| {
-            DenseWriteInput {
+        (Just(ranges), any_with::<Cells>(params)).prop_map(
+            move |(ranges, cells)| DenseWriteInput {
+                layout,
                 data: cells,
                 subarray: ranges,
-            }
-        })
+            },
+        )
     })
 }
 
@@ -146,18 +155,32 @@ impl Arbitrary for DenseWriteInput {
     type Strategy = BoxedStrategy<DenseWriteInput>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = args.schema.as_ref() {
-            prop_dense_write(Rc::clone(schema), args).boxed()
-        } else {
-            let schema_req = crate::array::schema::strategy::Requirements {
-                array_type: Some(ArrayType::Dense),
-            };
-            any_with::<SchemaData>(Rc::new(schema_req))
-                .prop_flat_map(move |schema| {
-                    prop_dense_write(Rc::new(schema), args.clone())
-                })
-                .boxed()
-        }
+        let mut args = args;
+        let strat_schema = match args.schema.take() {
+            None => {
+                let schema_req = crate::array::schema::strategy::Requirements {
+                    array_type: Some(ArrayType::Dense),
+                };
+                any_with::<SchemaData>(Rc::new(schema_req))
+                    .prop_map(Rc::new)
+                    .boxed()
+            }
+            Some(schema) => Just(schema).boxed(),
+        };
+        let strat_layout = match args.layout.take() {
+            None => prop_oneof![
+                Just(CellOrder::RowMajor),
+                Just(CellOrder::ColumnMajor),
+                /* TODO: CellOrder::Global is possible but has more constraints */
+            ].boxed(),
+            Some(layout) => Just(layout).boxed()
+        };
+
+        (strat_schema, strat_layout)
+            .prop_flat_map(move |(schema, layout)| {
+                prop_dense_write(schema, layout, args.clone())
+            })
+            .boxed()
     }
 }
 
