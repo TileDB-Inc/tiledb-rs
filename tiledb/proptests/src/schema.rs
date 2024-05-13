@@ -1,69 +1,87 @@
 use proptest::collection::vec;
 use proptest::prelude::*;
+use proptest::strategy::{NewTree, Strategy, ValueTree};
+use proptest::test_runner::{TestRng, TestRunner};
 
+use tiledb::array::attribute::AttributeData;
 use tiledb::array::schema::{CellValNum, SchemaData};
 use tiledb::array::{ArrayType, CellOrder, TileOrder};
 use tiledb::datatype::Datatype;
 
-use crate::attribute as pt_attribute;
-use crate::domain as pt_domain;
-use crate::filter::list as pt_list;
+use crate::attribute;
+use crate::domain;
+use crate::filter::list;
+use crate::util;
 
-fn prop_array_type() -> impl Strategy<Value = ArrayType> {
-    prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
+fn gen_array_type(rng: &mut TestRng) -> ArrayType {
+    if rng.gen_bool(0.5) {
+        ArrayType::Dense
+    } else {
+        ArrayType::Sparse
+    }
 }
 
-fn add_capacity(schema: SchemaData) -> impl Strategy<Value = SchemaData> {
-    (Just(schema), 0u64..4096).prop_flat_map(|(mut schema, capacity)| {
-        schema.capacity = Some(capacity);
-        Just(schema)
-    })
+fn gen_capacity(rng: &mut TestRng) -> Option<u64> {
+    if rng.gen_bool(0.5) {
+        Some(rng.gen_range(0u64..4096))
+    } else {
+        None
+    }
 }
 
-fn add_cell_order(schema: SchemaData) -> impl Strategy<Value = SchemaData> {
-    let prop = prop_oneof![
-        Just(CellOrder::Unordered),
-        Just(CellOrder::Global),
-        Just(CellOrder::RowMajor),
-        Just(CellOrder::ColumnMajor),
-    ];
-
-    (Just(schema), prop).prop_flat_map(|(mut schema, cell_order)| {
-        schema.cell_order = Some(cell_order);
-        Just(schema)
-    })
+fn gen_cell_order(rng: &mut TestRng) -> Option<CellOrder> {
+    if rng.gen_bool(0.5) {
+        Some(util::choose(
+            rng,
+            &[
+                CellOrder::Unordered,
+                CellOrder::Global,
+                CellOrder::RowMajor,
+                CellOrder::ColumnMajor,
+            ],
+        ))
+    } else {
+        None
+    }
 }
 
-fn add_tile_order(schema: SchemaData) -> impl Strategy<Value = SchemaData> {
-    let prop =
-        prop_oneof![Just(TileOrder::RowMajor), Just(TileOrder::ColumnMajor),];
-
-    (Just(schema), prop).prop_flat_map(|(mut schema, tile_order)| {
-        schema.tile_order = Some(tile_order);
-        Just(schema)
-    })
+fn gen_tile_order(rng: &mut TestRng) -> Option<TileOrder> {
+    if rng.gen_bool(0.5) {
+        Some(util::choose(
+            rng,
+            &[TileOrder::RowMajor, TileOrder::ColumnMajor],
+        ))
+    } else {
+        None
+    }
 }
 
-fn add_allow_duplicates(
-    schema: SchemaData,
-) -> impl Strategy<Value = SchemaData> {
-    (Just(schema), any::<bool>()).prop_flat_map(|(mut schema, allow_dups)| {
-        let allow_dups =
-            allow_dups && matches!(schema.array_type, ArrayType::Sparse);
-        schema.allow_duplicates = Some(allow_dups);
-        Just(schema)
-    })
+fn gen_allow_duplicates(
+    rng: &mut TestRng,
+    schema: &SchemaData,
+) -> Option<bool> {
+    if rng.gen_bool(0.5) {
+        Some(
+            rng.gen_bool(0.5) && matches!(schema.array_type, ArrayType::Sparse),
+        )
+    } else {
+        None
+    }
 }
 
-fn add_attributes(schema: SchemaData) -> impl Strategy<Value = SchemaData> {
-    let attrs = vec(pt_attribute::prop_attribute_for(&schema), 1..32);
-    (Just(schema), attrs).prop_flat_map(|(mut schema, attrs)| {
-        schema.attributes = attrs;
-        Just(schema)
-    })
+fn gen_attributes(
+    rng: &mut TestRng,
+    schema: &SchemaData,
+) -> Vec<AttributeData> {
+    let num_attrs = rng.gen_range(1..32);
+    let mut ret = Vec::new();
+    for _ in 0..num_attrs {
+        ret.push(attribute::generate(rng, schema))
+    }
+    ret
 }
 
-fn add_coordinate_filters(
+fn gen_coordinate_filters(
     schema: SchemaData,
 ) -> impl Strategy<Value = SchemaData> {
     let filters =
@@ -96,26 +114,91 @@ fn add_nullity_filters(
     })
 }
 
-pub fn prop_schema_data() -> BoxedStrategy<SchemaData> {
-    prop_array_type()
-        .prop_flat_map(|array_type| {
-            let domain = pt_domain::prop_domain_data(array_type);
-            (Just(array_type), domain).prop_flat_map(|(array_type, domain)| {
-                let schema = SchemaData {
-                    array_type,
-                    domain,
-                    ..Default::default()
-                };
-
-                add_capacity(schema)
-                    .prop_flat_map(add_cell_order)
-                    .prop_flat_map(add_tile_order)
-                    .prop_flat_map(add_allow_duplicates)
-                    .prop_flat_map(add_attributes)
-                    .prop_flat_map(add_coordinate_filters)
-                    .prop_flat_map(add_offsets_filters)
-                    .prop_flat_map(add_nullity_filters)
-            })
-        })
-        .boxed()
+pub struct SchemaValueTree {
+    data: SchemaData,
 }
+
+impl SchemaValueTree {
+    pub fn new(data: SchemaData) -> Self {
+        Self { data }
+    }
+}
+
+impl ValueTree for SchemaValueTree {
+    type Value = SchemaData;
+
+    fn current(&self) -> Self::Value {
+        self.data.clone()
+    }
+
+    fn simplify(&mut self) -> bool {
+        false
+    }
+
+    fn complicate(&mut self) -> bool {
+        false
+    }
+}
+
+#[derive(Debug)]
+pub struct SchemaStrategy {}
+
+impl SchemaStrategy {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+// pub struct SchemaData {
+//     pub array_type: ArrayType,
+//     pub domain: DomainData,
+//     pub capacity: Option<u64>,
+//     pub cell_order: Option<CellOrder>,
+//     pub tile_order: Option<TileOrder>,
+//     pub allow_duplicates: Option<bool>,
+//     pub attributes: Vec<AttributeData>,
+//     pub coordinate_filters: FilterListData,
+//     pub offsets_filters: FilterListData,
+//     pub nullity_filters: FilterListData,
+// }
+
+impl Strategy for SchemaStrategy {
+    type Tree = SchemaValueTree;
+    type Value = SchemaData;
+    fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        let array_type = gen_array_type(runner.rng());
+        let domain = domain::generate(runner.rng(), array_type);
+        let data = SchemaData {
+            array_type,
+            domain,
+            capacity: gen_capacity(runner.rng()),
+            ..Default::default()
+        };
+
+        Ok(FilterListDataValueTree::new(filters))
+    }
+}
+
+// pub fn prop_schema_data() -> impl Strategy<Value = SchemaData> {
+//     prop_array_type()
+//         .prop_flat_map(|array_type| {
+//             let domain = pt_domain::prop_domain_data(array_type);
+//             (Just(array_type), domain).prop_flat_map(|(array_type, domain)| {
+//                 let schema = SchemaData {
+//                     array_type,
+//                     domain,
+//                     ..Default::default()
+//                 };
+//
+//                 add_capacity(schema)
+//                     .prop_flat_map(add_cell_order)
+//                     .prop_flat_map(add_tile_order)
+//                     .prop_flat_map(add_allow_duplicates)
+//                     .prop_flat_map(add_attributes)
+//                     .prop_flat_map(add_coordinate_filters)
+//                     .prop_flat_map(add_offsets_filters)
+//                     .prop_flat_map(add_nullity_filters)
+//             })
+//         })
+//         .boxed()
+// }

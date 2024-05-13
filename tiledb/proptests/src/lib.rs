@@ -3,5 +3,6 @@ pub mod datatype;
 pub mod dimension;
 pub mod domain;
 pub mod filter;
+pub mod filter_list;
 pub mod schema;
 pub mod util;

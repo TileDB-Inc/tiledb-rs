@@ -10,8 +10,9 @@ use tiledb::datatype::Datatype;
 use tiledb::filter::list::FilterListData;
 use tiledb::filter::FilterData;
 
-use crate::datatype as pt_datatype;
-use crate::util as pt_util;
+use crate::datatype;
+use crate::filter;
+use crate::util;
 
 pub struct FilterListDataValueTree {
     filters: Vec<FilterData>,
@@ -72,7 +73,7 @@ impl FilterListDataStrategy {
         Self {
             datatype,
             cell_val_num,
-            len_dist: rand::distributions::Uniform::new_inclusive(0, max_len),
+            len_dist: Uniform::new_inclusive(0, max_len),
         }
     }
 }
@@ -85,12 +86,12 @@ impl Strategy for FilterListDataStrategy {
         let mut curr_type = self.datatype;
         let mut filters = Vec::new();
         for idx in 0..len {
-            let fprop = super::prop_filter_data_with_constraints(
+            let fdata = filter::generate_with_constraints(
+                runner,
                 curr_type,
                 self.cell_val_num,
                 idx,
             );
-            let fdata = fprop.new_tree(runner)?.current();
             let next_type = fdata.transform_datatype(&curr_type);
             if next_type.is_none() {
                 return Err(format!(
@@ -127,4 +128,48 @@ pub fn prop_any_filter_list(
             prop_filter_list(datatype, cell_val_num, max_len),
         )
     })
+}
+
+pub fn generate(
+    rng: &mut TestRng,
+    datatype: Datatype,
+    cell_val_num: CellValNum,
+) -> FilterListData {
+    let num_filters = rng.gen_range(0..=6);
+    let mut filters = Vec::new();
+    let mut curr_type = datatype;
+    for idx in 0..len {
+        let fdata = filter::generate_with_constraints(
+            runner,
+            curr_type,
+            cell_val_num,
+            idx,
+        );
+        let next_type = fdata.transform_datatype(&curr_type);
+        if next_type.is_none() {
+            return Err(format!(
+                "INVALID FILTER DATA: {} {} {:?}",
+                curr_type, self.cell_val_num, fdata
+            )
+            .into());
+        }
+        filters.push(fdata);
+        curr_type = next_type.unwrap();
+    }
+
+    Ok(FilterListDataValueTree::new(filters))
+}
+
+pub fn gen_for_dimension(
+    rng: &mut TestRng,
+    dim: &DimensionData,
+) -> FilterListData {
+    generate(rng, dim.datatype, dim.cell_val_num.unwrap())
+}
+
+pub fn gen_for_attribute(
+    rng: &mut TestRng,
+    attr: &AttributeData,
+) -> FilterListData {
+    generate(rng, attr.datatype, attr.cell_val_num.unwrap())
 }

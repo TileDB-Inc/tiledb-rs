@@ -2,10 +2,11 @@ use std::fmt::Debug;
 
 use num_traits::{Bounded, Num};
 use proptest::prelude::*;
+use proptest::test_runner::TestRng;
 use serde_json::json;
 
 use tiledb::array::dimension::DimensionData;
-use tiledb::array::schema::{ArrayType, CellValNum};
+use tiledb::array::schema::CellValNum;
 use tiledb::datatype::{Datatype, LogicalType};
 use tiledb::fn_typed;
 
@@ -13,20 +14,9 @@ use tiledb_utils::numbers::{
     NextDirection, NextNumericValue, SmallestPositiveValue,
 };
 
-use crate::datatype as pt_datatype;
-use crate::filter::list as pt_list;
-
-pub fn prop_dimension_name() -> impl Strategy<Value = String> {
-    let name = proptest::string::string_regex("[a-zA-Z0-9][a-zA-Z0-9_]*")
-        .expect("Error creating dimension name property.");
-    name.prop_flat_map(|name| {
-        if name.starts_with("__") {
-            Just("d".to_string() + &name)
-        } else {
-            Just(name)
-        }
-    })
-}
+use crate::datatype;
+use crate::filter_list;
+use crate::util;
 
 /// Construct a strategy to generate valid (domain, extent) pairs.
 /// A valid output satisfies
@@ -119,9 +109,10 @@ where
     })
 }
 
-pub fn add_domain_and_extent(
-    dim: DimensionData,
-) -> BoxedStrategy<DimensionData> {
+pub fn gen_domain_and_extent(
+    rng: &mut TestRng,
+    dim: &DimensionData,
+) -> (Option<[serde_json::Value; 2]>, Option<serde_json::Value>) {
     if matches!(dim.datatype, Datatype::StringAscii) {
         return Just(dim).boxed();
     }
@@ -174,35 +165,30 @@ fn add_filters(dim: DimensionData) -> impl Strategy<Value = DimensionData> {
     })
 }
 
-pub fn prop_dimension_data_for_type(
-    datatype: Datatype,
-) -> BoxedStrategy<DimensionData> {
-    let name = prop_dimension_name();
-    (name, Just(datatype))
-        .prop_flat_map(|(name, datatype)| {
-            let dim = DimensionData {
-                name,
-                datatype,
-                ..Default::default()
-            };
+// pub struct DimensionData {
+//     pub name: String,
+//     pub datatype: Datatype,
+//     pub domain: Option<[serde_json::value::Value; 2]>,
+//     pub extent: Option<serde_json::value::Value>,
+//     pub cell_val_num: Option<CellValNum>,
+//     pub filters: Option<FilterListData>,
+// }
 
-            add_domain_and_extent(dim)
-                .prop_flat_map(add_cell_val_num)
-                .prop_flat_map(add_filters)
-        })
-        .boxed()
-}
-
-pub fn prop_dimension_data(
-    array_type: ArrayType,
-) -> BoxedStrategy<DimensionData> {
-    let name = prop_dimension_name();
-    let datatype = if matches!(array_type, ArrayType::Dense) {
-        pt_datatype::prop_dense_dimension_datatypes().boxed()
-    } else {
-        pt_datatype::prop_sparse_dimension_datatypes().boxed()
+pub fn generate(rng: &mut TestRng, datatype: Datatype) -> Dimension {
+    let name = util::gen_name(rng);
+    let mut dim = DimensionData {
+        name,
+        datatype,
+        ..Default::default()
     };
-    (name, datatype)
+
+    let (domain, extent) = gen_domain_and_extent(rng, datatype);
+    dim.domain = domain;
+    dim.extent = extent;
+    dim.cell_val_num = gen_cell_val_num(datatype);
+    dim.filters = filter_list::gen_for_dimension(rng, datatype);
+
+    (name, Just(datatype))
         .prop_flat_map(|(name, datatype)| {
             let dim = DimensionData {
                 name,
