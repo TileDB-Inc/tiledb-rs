@@ -582,7 +582,7 @@ impl<'a> FromFillValue<'a> for String {
 /// Encapsulation of data needed to construct an Attribute's fill value
 #[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub struct FillData {
-    pub data: serde_json::value::Value,
+    pub data: crate::metadata::Value,
     pub nullability: Option<bool>,
 }
 
@@ -615,7 +615,7 @@ impl<'ctx> TryFrom<&Attribute<'ctx>> for AttributeData {
             let (fill_value, fill_value_nullability) =
                 attr.fill_value_nullable::<&[DT]>()?;
             FillData {
-                data: json!(fill_value),
+                data: fill_value.to_vec().into(),
                 nullability: Some(fill_value_nullability),
             }
         });
@@ -656,20 +656,11 @@ impl<'ctx> Factory<'ctx> for AttributeData {
             }
         }
         if let Some(ref fill) = self.fill {
-            b = fn_typed!(self.datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
-                let fill_value: Vec<DT> =
-                    serde_json::from_value::<Vec<DT>>(fill.data.clone())
-                        .map_err(|e| {
-                            Error::Deserialization(
-                                format!("attribute '{}' fill value", self.name),
-                                anyhow!(e),
-                            )
-                        })?;
+            b = crate::metadata::value_typed!(fill.data, _DT, value, {
                 if let Some(fill_nullability) = fill.nullability {
-                    b.fill_value_nullability(fill_value, fill_nullability)
+                    b.fill_value_nullability(value.as_slice(), fill_nullability)
                 } else {
-                    b.fill_value(fill_value)
+                    b.fill_value(value.as_slice())
                 }
             })?;
         }

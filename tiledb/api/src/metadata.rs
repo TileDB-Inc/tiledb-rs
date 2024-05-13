@@ -5,7 +5,10 @@ use crate::Result as TileDBResult;
 use core::slice;
 use std::convert::From;
 
-#[derive(Debug, PartialEq)]
+use serde::{Deserialize, Serialize};
+use util::option::OptionSubset;
+
+#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
 pub enum Value {
     UInt8Value(Vec<u8>),
     UInt16Value(Vec<u16>),
@@ -28,8 +31,10 @@ fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
     (vec_ptr, vec_size)
 }
 
+#[macro_export]
 macro_rules! value_typed {
-    ($valuetype:expr, $typename:ident, $vec:ident, $then: expr) => {
+    ($valuetype:expr, $typename:ident, $vec:ident, $then: expr) => {{
+        use $crate::metadata::Value;
         match $valuetype {
             Value::Int8Value(ref $vec) => {
                 type $typename = i8;
@@ -72,8 +77,9 @@ macro_rules! value_typed {
                 $then
             }
         }
-    };
+    }};
 }
+pub use value_typed;
 
 impl Value {
     pub fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
