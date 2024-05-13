@@ -20,7 +20,7 @@ use crate::filter::strategy::{
 
 #[derive(Clone, Default)]
 pub struct Requirements {
-    array_type: Option<ArrayType>,
+    pub array_type: Option<ArrayType>,
 }
 
 impl Arbitrary for CellValNum {

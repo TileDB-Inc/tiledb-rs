@@ -343,10 +343,10 @@ pub enum FieldStrategyDatatype {
 
 #[derive(Clone, Debug)]
 pub struct FieldDataParameters {
-    nrecords: Option<usize>,
-    datatype: Option<FieldStrategyDatatype>,
-    value_min_var_size: usize,
-    value_max_var_size: usize,
+    pub nrecords: Option<usize>,
+    pub datatype: Option<FieldStrategyDatatype>,
+    pub value_min_var_size: usize,
+    pub value_max_var_size: usize,
 }
 
 impl Default for FieldDataParameters {

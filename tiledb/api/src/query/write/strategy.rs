@@ -1,11 +1,15 @@
+use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::rc::Rc;
 
 use proptest::prelude::*;
 
-use crate::array::{ArrayType, SchemaData};
+use crate::array::{ArrayType, CellValNum, SchemaData};
+use crate::datatype::physical::BitsOrd;
 use crate::datatype::LogicalType;
-use crate::query::strategy::{Cells, CellsParameters, CellsStrategySchema};
+use crate::query::strategy::{
+    Cells, CellsParameters, CellsStrategySchema, FieldDataParameters,
+};
 use crate::query::{QueryBuilder, WriteBuilder};
 use crate::range::SingleValueRange;
 use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
@@ -31,9 +35,48 @@ impl DenseWriteInput {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct DenseWriteParameters {
+    schema: Option<Rc<SchemaData>>,
+    memory_limit: Option<usize>,
+}
+
 fn prop_dense_write(
-    schema: &Rc<SchemaData>,
+    schema: Rc<SchemaData>,
+    params: DenseWriteParameters,
 ) -> impl Strategy<Value = DenseWriteInput> {
+    /*
+     * For simplicity, we will bound the memory used at each dimension
+     * rather than keeping a moving product of the accumulated memory
+     */
+    let memory_limit: usize = {
+        const MEMORY_LIMIT_DEFAULT: usize = 1 * 1024; // chosen arbitrarily
+        let memory_limit = params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
+        memory_limit / schema.domain.dimension.len()
+    };
+
+    let est_cell_size: usize = schema
+        .fields()
+        .map(|field| {
+            match field.cell_val_num().unwrap_or(CellValNum::single()) {
+                CellValNum::Fixed(nz) => {
+                    /* exact */
+                    nz.get() as usize * field.datatype().size() as usize
+                }
+                CellValNum::Var => {
+                    /* estimate */
+                    let params = <FieldDataParameters as Default>::default();
+                    let est_nvalues = (params.value_min_var_size
+                        + params.value_max_var_size)
+                        / 2;
+                    est_nvalues * field.datatype().size() as usize
+                }
+            }
+        })
+        .sum();
+
+    let cell_limit: usize = memory_limit / est_cell_size;
+
     /* determine range for each dimension */
     let strat_ranges = schema
         .domain
@@ -46,13 +89,20 @@ fn prop_dense_write(
 
             fn_typed!(d.datatype, LT, {
                 type DT = <LT as LogicalType>::PhysicalType;
-                let lower = serde_json::from_value::<DT>(domain[0].clone()).unwrap();
-                let upper = serde_json::from_value::<DT>(domain[1].clone()).unwrap();
+                let dim_lower = serde_json::from_value::<DT>(domain[0].clone()).unwrap();
+                let dim_upper = serde_json::from_value::<DT>(domain[1].clone()).unwrap();
+                let dim_range = dim_upper - dim_lower;
 
-                (lower..upper)
-                    .prop_flat_map(move |upper| ((lower..=upper), Just(upper)))
-                    .prop_map(|(lower, upper)| {
-                        SingleValueRange::from(&[lower, upper])
+                let lower_cell_bound = 0 as DT;
+                let upper_cell_bound = match dim_range.bits_cmp(&(cell_limit as DT)) {
+                    Ordering::Less => dim_range,
+                    _ => cell_limit as DT
+                };
+
+                (lower_cell_bound..upper_cell_bound)
+                    .prop_flat_map(move |upper| ((lower_cell_bound..=upper), Just(upper)))
+                    .prop_map(move |(lower, upper)| {
+                        SingleValueRange::from(&[dim_lower + lower, dim_lower + upper])
                     })
                     .boxed()
             })
@@ -60,8 +110,6 @@ fn prop_dense_write(
             /* TODO: bound each dimension so as to bound total number of cells */
         })
         .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
-
-    let schema = Rc::clone(schema);
 
     strat_ranges.prop_flat_map(move |ranges| {
         let ncells = ranges
@@ -94,15 +142,20 @@ fn prop_dense_write(
 }
 
 impl Arbitrary for DenseWriteInput {
-    type Parameters = Option<Rc<SchemaData>>;
+    type Parameters = DenseWriteParameters;
     type Strategy = BoxedStrategy<DenseWriteInput>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = args {
-            prop_dense_write(&schema).boxed()
+        if let Some(schema) = args.schema.as_ref() {
+            prop_dense_write(Rc::clone(schema), args).boxed()
         } else {
-            any::<SchemaData>()
-                .prop_flat_map(|schema| prop_dense_write(&Rc::new(schema)))
+            let schema_req = crate::array::schema::strategy::Requirements {
+                array_type: Some(ArrayType::Dense),
+            };
+            any_with::<SchemaData>(Rc::new(schema_req))
+                .prop_flat_map(move |schema| {
+                    prop_dense_write(Rc::new(schema), args.clone())
+                })
                 .boxed()
         }
     }
@@ -118,15 +171,17 @@ pub struct DenseWriteSequence {
 }
 
 impl Arbitrary for DenseWriteSequence {
-    type Parameters = Option<Rc<SchemaData>>;
+    type Parameters = DenseWriteParameters;
     type Strategy = BoxedStrategy<DenseWriteSequence>;
 
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = args {
-            prop_write_sequence(&schema).boxed()
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        if let Some(schema) = params.schema.as_ref() {
+            prop_write_sequence(Rc::clone(schema), params).boxed()
         } else {
             any::<SchemaData>()
-                .prop_flat_map(|schema| prop_write_sequence(&Rc::new(schema)))
+                .prop_flat_map(move |schema| {
+                    prop_write_sequence(Rc::new(schema), params.clone())
+                })
                 .boxed()
         }
     }
@@ -142,11 +197,17 @@ impl IntoIterator for DenseWriteSequence {
 }
 
 pub fn prop_write_sequence(
-    schema: &Rc<SchemaData>,
+    schema: Rc<SchemaData>,
+    params: DenseWriteParameters,
 ) -> impl Strategy<Value = DenseWriteSequence> {
+    let params = DenseWriteParameters {
+        schema: Some(schema),
+        ..params
+    };
+
     const MAX_WRITES: usize = 8;
     proptest::collection::vec(
-        any_with::<DenseWriteInput>(Some(Rc::clone(schema))),
+        any_with::<DenseWriteInput>(params),
         0..MAX_WRITES,
     )
     .prop_map(|writes| DenseWriteSequence { writes })
@@ -177,27 +238,38 @@ impl WriteInput {
     }
 }
 
+#[derive(Debug)]
+pub enum WriteParameters {
+    Dense(DenseWriteParameters),
+}
+
+impl WriteParameters {
+    pub fn default_for(schema: Rc<SchemaData>) -> Self {
+        match schema.array_type {
+            ArrayType::Dense => Self::Dense(DenseWriteParameters {
+                schema: Some(schema),
+                ..Default::default()
+            }),
+            ArrayType::Sparse => unimplemented!(),
+        }
+    }
+}
+
+impl Default for WriteParameters {
+    fn default() -> Self {
+        Self::Dense(DenseWriteParameters::default())
+    }
+}
+
 impl Arbitrary for WriteInput {
-    type Parameters = Option<Rc<SchemaData>>;
+    type Parameters = WriteParameters;
     type Strategy = BoxedStrategy<WriteInput>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
-            ArrayType::Dense => {
-                any_with::<DenseWriteInput>(Some(schema.clone()))
-                    .prop_map(WriteInput::Dense)
-                    .boxed()
-            }
-            ArrayType::Sparse => unimplemented!(),
-        };
-
-        if let Some(schema) = params {
-            strat_schema(schema)
-        } else {
-            any::<SchemaData>()
-                .prop_flat_map(move |schema| strat_schema(Rc::new(schema)))
-                .boxed()
-        }
+        let WriteParameters::Dense(d) = params;
+        any_with::<DenseWriteInput>(d)
+            .prop_map(WriteInput::Dense)
+            .boxed()
     }
 }
 
@@ -231,9 +303,16 @@ impl Arbitrary for WriteSequence {
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
-            ArrayType::Dense => any_with::<DenseWriteSequence>(Some(schema))
-                .prop_map(WriteSequence::Dense)
-                .boxed(),
+            ArrayType::Dense => {
+                let params = DenseWriteParameters {
+                    schema: Some(schema),
+                    ..Default::default()
+                };
+
+                any_with::<DenseWriteSequence>(params)
+                    .prop_map(WriteSequence::Dense)
+                    .boxed()
+            }
             ArrayType::Sparse => unimplemented!(),
         };
 
@@ -385,7 +464,7 @@ mod tests {
             let schema = Rc::new(schema);
             (
                 Just(Rc::clone(&schema)),
-                any_with::<WriteInput>(Some(Rc::clone(&schema)))
+                any_with::<WriteInput>(WriteParameters::default_for(schema))
                     .prop_map(|w| WriteSequence::from(w)),
             )
         });
