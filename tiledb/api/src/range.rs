@@ -42,7 +42,7 @@ macro_rules! check_datatype {
     };
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum SingleValueRange {
     UInt8(u8, u8),
     UInt16(u16, u16),
@@ -480,6 +480,12 @@ impl From<(String, String)> for Range {
 impl From<[String; 2]> for Range {
     fn from(value: [String; 2]) -> Range {
         Range::Var(VarValueRange::from(value))
+    }
+}
+
+impl From<SingleValueRange> for Range {
+    fn from(value: SingleValueRange) -> Self {
+        Range::Single(value)
     }
 }
 
