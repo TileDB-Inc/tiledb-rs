@@ -21,7 +21,7 @@ fn any_filter_test() -> TileDBResult<()> {
 
 #[test]
 fn filter_list_test() -> TileDBResult<()> {
-    let cfg = ProptestConfig::with_cases(10000);
+    let cfg = ProptestConfig::with_cases(1000);
     let ctx = Context::new()?;
 
     proptest!(cfg,

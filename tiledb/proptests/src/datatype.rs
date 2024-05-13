@@ -95,7 +95,6 @@ pub fn dense_dimension_datatypes_vec() -> Vec<Datatype> {
         Datatype::TimePicosecond,
         Datatype::TimeFemtosecond,
         Datatype::TimeAttosecond,
-        Datatype::Boolean,
     ]
 }
 
@@ -140,7 +139,6 @@ pub fn sparse_dimension_datatypes_vec() -> Vec<Datatype> {
         Datatype::TimePicosecond,
         Datatype::TimeFemtosecond,
         Datatype::TimeAttosecond,
-        Datatype::Boolean,
     ]
 }
 

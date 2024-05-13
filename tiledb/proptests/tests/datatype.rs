@@ -16,12 +16,7 @@ fn check_capi_roundtrip(datatype: Datatype) -> TileDBResult<()> {
 }
 
 fn check_string_roundtrip(datatype: Datatype) -> TileDBResult<()> {
-    let dtstring = if let Some(dtstring) = datatype.to_string() {
-        dtstring
-    } else {
-        return Err(Error::Other("Invalid datatype.".to_string()));
-    };
-
+    let dtstring = datatype.to_string();
     if let Some(roundtrip) = Datatype::from_string(&dtstring) {
         assert_eq!(roundtrip, datatype);
     } else {

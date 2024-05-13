@@ -9,4 +9,8 @@ version.workspace = true
 [dependencies]
 proptest = { version = "1.0.0" }
 rand = { version = "0.8.5" }
+num-traits = { version = "0.2" }
 tiledb = { workspace = true }
+tiledb-utils = { workspace = true, features = ["serde_json"] }
+serde_json = { workspace = true }
+tempfile = "3"
