@@ -176,6 +176,7 @@ impl Drop for RawArray {
 pub struct Array<'ctx> {
     #[context]
     context: &'ctx Context,
+    uri: String,
     pub(crate) raw: RawArray,
 }
 
@@ -232,8 +233,14 @@ impl<'ctx> Array<'ctx> {
 
         Ok(Array {
             context,
+            uri: uri.as_ref().to_owned(),
             raw: RawArray::Owned(array_raw),
         })
+    }
+
+    /// Returns the URI that this array is located at
+    pub fn uri(&self) -> &str {
+        self.uri.as_ref()
     }
 
     pub fn schema(&self) -> TileDBResult<Schema<'ctx>> {
