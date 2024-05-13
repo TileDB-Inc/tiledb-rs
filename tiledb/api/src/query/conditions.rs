@@ -3,7 +3,7 @@ use std::ops::{BitAnd, BitOr, Deref, Not};
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 
-use crate::context::{Context, ContextBound};
+use crate::context::Context;
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
@@ -255,21 +255,15 @@ pub struct EqualityPredicate {
 }
 
 impl EqualityPredicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_query_condition_alloc(ctx, &mut c_cond)
         })?;
 
-        let cond = QueryCondition {
-            context: ctx,
-            raw: RawQueryCondition::Owned(c_cond),
-        };
+        let raw = RawQueryCondition::Owned(c_cond);
 
-        let c_cond = cond.capi();
+        let c_cond = *raw;
         let c_name = cstring!(self.field.as_str());
         let val = self.value.to_bytes();
         let c_ptr = val.as_ptr() as *const std::ffi::c_void;
@@ -286,7 +280,7 @@ impl EqualityPredicate {
             )
         })?;
 
-        Ok(cond)
+        Ok(raw)
     }
 }
 
@@ -298,10 +292,7 @@ pub struct SetMembershipPredicate {
 }
 
 impl SetMembershipPredicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         // First things first, sets require a non-zero length vector. I would
         // prefer if we couldn't even create SetMemberValues with zero length
         // vectors, but that would make creation fallible which would make the
@@ -394,10 +385,7 @@ impl SetMembershipPredicate {
             })?;
         }
 
-        Ok(QueryCondition {
-            context: ctx,
-            raw: RawQueryCondition::Owned(c_cond),
-        })
+        Ok(RawQueryCondition::Owned(c_cond))
     }
 }
 
@@ -408,21 +396,15 @@ pub struct NullnessPredicate {
 }
 
 impl NullnessPredicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
             ffi::tiledb_query_condition_alloc(ctx, &mut c_cond)
         })?;
 
-        let cond = QueryCondition {
-            context: ctx,
-            raw: RawQueryCondition::Owned(c_cond),
-        };
+        let raw = RawQueryCondition::Owned(c_cond);
 
-        let c_cond = cond.capi();
+        let c_cond = *raw;
         let c_name = cstring!(self.field.as_str());
         let c_op = self.op.capi_enum();
         ctx.capi_call(|ctx| unsafe {
@@ -436,7 +418,7 @@ impl NullnessPredicate {
             )
         })?;
 
-        Ok(cond)
+        Ok(raw)
     }
 }
 
@@ -448,10 +430,7 @@ pub enum Predicate {
 }
 
 impl Predicate {
-    fn build<'ctx>(
-        &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+    fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         match self {
             Self::Equality(pred) => pred.build(ctx),
             Self::SetMembership(pred) => pred.build(ctx),
@@ -567,18 +546,18 @@ impl QueryConditionExpr {
         }
     }
 
-    pub fn build<'ctx>(
+    pub(crate) fn build(
         &self,
-        ctx: &'ctx Context,
-    ) -> TileDBResult<QueryCondition<'ctx>> {
+        ctx: &Context,
+    ) -> TileDBResult<RawQueryCondition> {
         match self {
             Self::Cond(cond) => cond.build(ctx),
             Self::Comb { lhs, rhs, op } => {
                 let lhs = lhs.build(ctx)?;
                 let rhs = rhs.build(ctx)?;
 
-                let c_lhs = lhs.capi();
-                let c_rhs = rhs.capi();
+                let c_lhs = *lhs;
+                let c_rhs = *rhs;
                 let c_op = op.capi_enum();
                 let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
                 ctx.capi_call(|ctx| unsafe {
@@ -591,14 +570,11 @@ impl QueryConditionExpr {
                     )
                 })?;
 
-                Ok(QueryCondition {
-                    context: ctx,
-                    raw: RawQueryCondition::Owned(c_cond),
-                })
+                Ok(RawQueryCondition::Owned(c_cond))
             }
             Self::Negate(expr) => {
                 let cond = expr.build(ctx)?;
-                let c_cond = cond.capi();
+                let c_cond = *cond;
                 let mut c_neg_cond: *mut ffi::tiledb_query_condition_t =
                     out_ptr!();
                 ctx.capi_call(|ctx| unsafe {
@@ -609,10 +585,7 @@ impl QueryConditionExpr {
                     )
                 })?;
 
-                Ok(QueryCondition {
-                    context: ctx,
-                    raw: RawQueryCondition::Owned(c_neg_cond),
-                })
+                Ok(RawQueryCondition::Owned(c_neg_cond))
             }
         }
     }
@@ -665,19 +638,6 @@ impl Drop for RawQueryCondition {
         unsafe {
             ffi::tiledb_query_condition_free(ffi);
         }
-    }
-}
-
-#[derive(ContextBound)]
-pub struct QueryCondition<'ctx> {
-    #[context]
-    context: &'ctx Context,
-    raw: RawQueryCondition,
-}
-
-impl<'ctx> QueryCondition<'ctx> {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_query_condition_t {
-        *self.raw
     }
 }
 
