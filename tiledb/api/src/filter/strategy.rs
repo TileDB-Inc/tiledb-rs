@@ -4,7 +4,9 @@ use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
+use crate::array::dimension::DimensionConstraints;
 use crate::array::{ArrayType, CellValNum, DomainData};
+use crate::dimension_constraints_go;
 use crate::filter::list::FilterListData;
 use crate::filter::*;
 
@@ -271,28 +273,40 @@ fn prop_webp(
 
         const MAX_EXTENT: usize = 16383;
 
-        let e0 = serde_json::value::from_value::<usize>(
-            domain.dimension[0].extent.as_ref().unwrap().clone(),
-        )
-        .ok()?;
-        let e1 = serde_json::value::from_value::<usize>(
-            domain.dimension[1].extent.as_ref().unwrap().clone(),
-        )
-        .ok()?;
-
-        if e0 > MAX_EXTENT {
-            return None;
-        }
+        dimension_constraints_go!(
+            domain.dimension[0].constraints,
+            _DT,
+            _range,
+            extent,
+            {
+                extent.filter(|ext| *ext as usize <= MAX_EXTENT)?;
+            },
+            return None
+        );
 
         let mut formats: Vec<WebPFilterInputFormat> = vec![];
-        if e1 / 3 <= MAX_EXTENT && e1 % 3 == 0 {
-            formats.push(WebPFilterInputFormat::Rgb);
-            formats.push(WebPFilterInputFormat::Bgr);
-        }
-        if e1 / 4 <= MAX_EXTENT && e1 % 4 == 0 {
-            formats.push(WebPFilterInputFormat::Rgba);
-            formats.push(WebPFilterInputFormat::Bgra);
-        }
+        dimension_constraints_go!(
+            domain.dimension[1].constraints,
+            _DT,
+            _range,
+            extent,
+            {
+                if let Some(extent) = extent {
+                    let extent = extent as usize;
+                    if extent / 3 <= MAX_EXTENT && extent % 3 == 0 {
+                        formats.push(WebPFilterInputFormat::Rgb);
+                        formats.push(WebPFilterInputFormat::Bgr);
+                    }
+                    if extent / 4 <= MAX_EXTENT && extent % 4 == 0 {
+                        formats.push(WebPFilterInputFormat::Rgba);
+                        formats.push(WebPFilterInputFormat::Bgra);
+                    }
+                } else {
+                    return None;
+                }
+            },
+            return None
+        );
 
         if formats.is_empty() {
             return None;

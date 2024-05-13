@@ -901,12 +901,11 @@ mod tests {
     }
 
     fn sample_domain_builder(c: &Context) -> DomainBuilder {
-        let dim = DimensionBuilder::new::<i32>(
+        let dim = DimensionBuilder::new(
             c,
             "test",
             Datatype::Int32,
-            &[-100, 100],
-            &100,
+            ([-100, 100], 100),
         )
         .unwrap()
         .build();
@@ -1490,12 +1489,11 @@ mod tests {
         {
             let domain = sample_domain_builder(&c)
                 .add_dimension(
-                    DimensionBuilder::new::<f64>(
+                    DimensionBuilder::new(
                         &c,
                         "d2",
                         Datatype::Float64,
-                        &[-200f64, 200f64],
-                        &50f64,
+                        ([-200f64, 200f64], 50f64),
                     )
                     .unwrap()
                     .build(),

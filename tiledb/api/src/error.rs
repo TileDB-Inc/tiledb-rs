@@ -38,6 +38,11 @@ pub enum DatatypeErrorKind {
         found: CellValNum,
         expected: CellValNum,
     },
+    InvalidDatatype {
+        context: Option<String>,
+        found: Datatype,
+        expected: Datatype,
+    },
 }
 
 impl Display for DatatypeErrorKind {
@@ -71,6 +76,25 @@ impl Display for DatatypeErrorKind {
                     write!(
                         f,
                         "Unexpected cell val num: expected {}, found {}",
+                        expected, found
+                    )
+                }
+            }
+            DatatypeErrorKind::InvalidDatatype {
+                ref context,
+                found,
+                expected,
+            } => {
+                if let Some(context) = context.as_ref() {
+                    write!(
+                        f,
+                        "Unexpected datatype for {}: expected {}, found {}",
+                        context, expected, found
+                    )
+                } else {
+                    write!(
+                        f,
+                        "Unexpected datatype: expected {}, found {}",
                         expected, found
                     )
                 }

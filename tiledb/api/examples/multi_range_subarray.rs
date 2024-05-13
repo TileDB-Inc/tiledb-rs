@@ -1,7 +1,6 @@
 extern crate tiledb;
 
 use itertools::izip;
-use serde_json::json;
 
 use tiledb::array::{
     Array, ArrayType, AttributeData, CellOrder, DimensionData, DomainData,
@@ -78,16 +77,16 @@ fn create_array(ctx: &Context) -> TileDBResult<()> {
                 DimensionData {
                     name: "rows".to_owned(),
                     datatype: Datatype::Int32,
-                    domain: Some([json!(1), json!(4)]),
-                    extent: Some(json!(4)),
-                    ..Default::default()
+                    constraints: ([1i32, 4], 4i32).into(),
+                    cell_val_num: None,
+                    filters: None,
                 },
                 DimensionData {
                     name: "cols".to_owned(),
                     datatype: Datatype::Int32,
-                    domain: Some([json!(1), json!(4)]),
-                    extent: Some(json!(4)),
-                    ..Default::default()
+                    constraints: ([1i32, 4], 4i32).into(),
+                    cell_val_num: None,
+                    filters: None,
                 },
             ],
         },
