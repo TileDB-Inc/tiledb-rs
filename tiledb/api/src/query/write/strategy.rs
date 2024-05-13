@@ -3,17 +3,123 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 
-use crate::array::SchemaData;
+use crate::array::{ArrayType, SchemaData};
+use crate::datatype::LogicalType;
 use crate::query::strategy::{Cells, CellsParameters, CellsStrategySchema};
+use crate::query::{QueryBuilder, WriteBuilder};
+use crate::range::SingleValueRange;
+use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
 
 #[derive(Debug)]
-pub struct WriteSequence {
-    writes: Vec<Cells>,
+pub struct DenseWriteInput {
+    pub data: Cells,
+    pub subarray: Vec<SingleValueRange>,
 }
 
-impl Arbitrary for WriteSequence {
+impl DenseWriteInput {
+    pub fn attach_write<'ctx, 'data>(
+        &'data self,
+        b: WriteBuilder<'ctx, 'data>,
+    ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
+        let mut subarray = self.data.attach_write(b)?.start_subarray()?;
+
+        for i in 0..self.subarray.len() {
+            subarray = subarray.add_range(i, self.subarray[i].clone())?;
+        }
+
+        subarray.finish_subarray()
+    }
+}
+
+fn prop_dense_write(
+    schema: &Rc<SchemaData>,
+) -> impl Strategy<Value = DenseWriteInput> {
+    /* determine range for each dimension */
+    let strat_ranges = schema
+        .domain
+        .dimension
+        .iter()
+        .map(|d| {
+            let Some(domain) = d.domain.as_ref() else {
+                unreachable!()
+            };
+
+            fn_typed!(d.datatype, LT, {
+                type DT = <LT as LogicalType>::PhysicalType;
+                let lower = serde_json::from_value::<DT>(domain[0].clone()).unwrap();
+                let upper = serde_json::from_value::<DT>(domain[1].clone()).unwrap();
+
+                (lower..upper)
+                    .prop_flat_map(move |upper| ((lower..=upper), Just(upper)))
+                    .prop_map(|(lower, upper)| {
+                        SingleValueRange::from(&[lower, upper])
+                    })
+                    .boxed()
+            })
+
+            /* TODO: bound each dimension so as to bound total number of cells */
+        })
+        .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
+
+    let schema = Rc::clone(schema);
+
+    strat_ranges.prop_flat_map(move |ranges| {
+        let ncells = ranges
+            .iter()
+            .map(|r| {
+                single_value_range_go!(
+                    r,
+                    _DT,
+                    ref lower,
+                    ref upper,
+                    (upper - lower) as usize
+                )
+            })
+            .product();
+
+        let params = CellsParameters {
+            schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(&schema))),
+            min_records: ncells,
+            max_records: ncells,
+            ..Default::default()
+        };
+
+        (Just(ranges), any_with::<Cells>(params)).prop_map(|(ranges, cells)| {
+            DenseWriteInput {
+                data: cells,
+                subarray: ranges,
+            }
+        })
+    })
+}
+
+impl Arbitrary for DenseWriteInput {
     type Parameters = Option<Rc<SchemaData>>;
-    type Strategy = BoxedStrategy<WriteSequence>;
+    type Strategy = BoxedStrategy<DenseWriteInput>;
+
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        if let Some(schema) = args {
+            prop_dense_write(&schema).boxed()
+        } else {
+            any::<SchemaData>()
+                .prop_flat_map(|schema| prop_dense_write(&Rc::new(schema)))
+                .boxed()
+        }
+    }
+}
+
+pub struct SparseWriteInput {
+    pub data: Cells,
+}
+
+#[derive(Debug)]
+pub struct DenseWriteSequence {
+    writes: Vec<DenseWriteInput>,
+}
+
+impl Arbitrary for DenseWriteSequence {
+    type Parameters = Option<Rc<SchemaData>>;
+    type Strategy = BoxedStrategy<DenseWriteSequence>;
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         if let Some(schema) = args {
@@ -26,8 +132,8 @@ impl Arbitrary for WriteSequence {
     }
 }
 
-impl IntoIterator for WriteSequence {
-    type Item = Cells;
+impl IntoIterator for DenseWriteSequence {
+    type Item = DenseWriteInput;
     type IntoIter = <Vec<Self::Item> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -37,16 +143,121 @@ impl IntoIterator for WriteSequence {
 
 pub fn prop_write_sequence(
     schema: &Rc<SchemaData>,
-) -> impl Strategy<Value = WriteSequence> {
+) -> impl Strategy<Value = DenseWriteSequence> {
     const MAX_WRITES: usize = 8;
     proptest::collection::vec(
-        any_with::<Cells>(CellsParameters {
-            schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(schema))),
-            ..Default::default()
-        }),
+        any_with::<DenseWriteInput>(Some(Rc::clone(schema))),
         0..MAX_WRITES,
     )
-    .prop_map(|writes| WriteSequence { writes })
+    .prop_map(|writes| DenseWriteSequence { writes })
+}
+
+#[derive(Debug)]
+pub enum WriteInput {
+    Dense(DenseWriteInput),
+}
+
+impl WriteInput {
+    pub fn cells(&self) -> &Cells {
+        let Self::Dense(ref dense) = self;
+        &dense.data
+    }
+
+    pub fn unwrap_cells(self) -> Cells {
+        let Self::Dense(dense) = self;
+        dense.data
+    }
+
+    pub fn attach_write<'ctx, 'data>(
+        &'data self,
+        b: WriteBuilder<'ctx, 'data>,
+    ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
+        let Self::Dense(ref d) = self;
+        d.attach_write(b)
+    }
+}
+
+impl Arbitrary for WriteInput {
+    type Parameters = Option<Rc<SchemaData>>;
+    type Strategy = BoxedStrategy<WriteInput>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
+            ArrayType::Dense => {
+                any_with::<DenseWriteInput>(Some(schema.clone()))
+                    .prop_map(WriteInput::Dense)
+                    .boxed()
+            }
+            ArrayType::Sparse => unimplemented!(),
+        };
+
+        if let Some(schema) = params {
+            strat_schema(schema)
+        } else {
+            any::<SchemaData>()
+                .prop_flat_map(move |schema| strat_schema(Rc::new(schema)))
+                .boxed()
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum WriteSequence {
+    Dense(DenseWriteSequence),
+}
+
+impl From<WriteInput> for WriteSequence {
+    fn from(value: WriteInput) -> Self {
+        let WriteInput::Dense(dense) = value;
+        Self::Dense(DenseWriteSequence {
+            writes: vec![dense],
+        })
+    }
+}
+
+impl IntoIterator for WriteSequence {
+    type Item = WriteInput;
+    type IntoIter = WriteSequenceIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let Self::Dense(dense) = self;
+        WriteSequenceIter::Dense(dense.into_iter())
+    }
+}
+
+impl Arbitrary for WriteSequence {
+    type Parameters = Option<Rc<SchemaData>>;
+    type Strategy = BoxedStrategy<WriteSequence>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
+            ArrayType::Dense => any_with::<DenseWriteSequence>(Some(schema))
+                .prop_map(WriteSequence::Dense)
+                .boxed(),
+            ArrayType::Sparse => unimplemented!(),
+        };
+
+        if let Some(schema) = params {
+            strat_schema(schema)
+        } else {
+            any::<SchemaData>()
+                .prop_flat_map(move |schema| strat_schema(Rc::new(schema)))
+                .boxed()
+        }
+    }
+}
+
+pub enum WriteSequenceIter {
+    Dense(<DenseWriteSequence as IntoIterator>::IntoIter),
+}
+
+impl Iterator for WriteSequenceIter {
+    type Item = WriteInput;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let Self::Dense(ref mut dense) = self;
+        dense.next().map(WriteInput::Dense)
+    }
 }
 
 #[cfg(test)]
@@ -98,9 +309,9 @@ mod tests {
 
             /* update accumulated expected array data */
             if let Some(acc) = accumulated_write.as_mut() {
-                acc.copy_from(write)
+                acc.copy_from(write.unwrap_cells())
             } else {
-                accumulated_write = Some(write);
+                accumulated_write = Some(write.unwrap_cells());
             }
 
             let accumulated_write = accumulated_write.as_ref().unwrap();
@@ -163,6 +374,25 @@ mod tests {
                 array = read.finalize().expect("Error finalizing read query");
             }
         }
+    }
+
+    /// Test that a single write can be read back correctly
+    #[test]
+    fn write_once_readback() {
+        let ctx = Context::new().expect("Error creating context");
+
+        let strategy = any::<SchemaData>().prop_flat_map(|schema| {
+            let schema = Rc::new(schema);
+            (
+                Just(Rc::clone(&schema)),
+                any_with::<WriteInput>(Some(Rc::clone(&schema)))
+                    .prop_map(|w| WriteSequence::from(w)),
+            )
+        });
+
+        proptest!(|((schema_spec, write_sequence) in strategy)| {
+            do_write_readback(&ctx, schema_spec, write_sequence)
+        })
     }
 
     /// Test that each write in the sequence can be read back correctly at the right timestamp
