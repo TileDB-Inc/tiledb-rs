@@ -52,15 +52,20 @@ impl Arbitrary for CellOrder {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         match args {
-            None | Some(ArrayType::Sparse) => prop_oneof![
+            None => prop_oneof![
                 Just(CellOrder::Unordered),
                 Just(CellOrder::RowMajor),
                 Just(CellOrder::ColumnMajor),
                 Just(CellOrder::Hilbert),
             ]
             .boxed(),
+            Some(ArrayType::Sparse) => prop_oneof![
+                Just(CellOrder::RowMajor),
+                Just(CellOrder::ColumnMajor),
+                Just(CellOrder::Hilbert),
+            ]
+            .boxed(),
             Some(ArrayType::Dense) => prop_oneof![
-                Just(CellOrder::Unordered),
                 Just(CellOrder::RowMajor),
                 Just(CellOrder::ColumnMajor),
             ]
