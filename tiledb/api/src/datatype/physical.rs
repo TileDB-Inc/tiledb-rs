@@ -35,6 +35,15 @@ where
     }
 }
 
+impl<T> BitsEq for Vec<T>
+where
+    T: BitsEq,
+{
+    fn bits_eq(&self, other: &Self) -> bool {
+        self.as_slice().bits_eq(other.as_slice())
+    }
+}
+
 /// Trait for ordering based on value bits.
 /// This exists to work around float `NaN` which prevents float from being
 /// a total order for use with generic operations.

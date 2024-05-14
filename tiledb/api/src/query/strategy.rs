@@ -12,7 +12,7 @@ use proptest::test_runner::TestRunner;
 
 use crate::array::schema::FieldData as SchemaField;
 use crate::array::{ArrayType, CellValNum, SchemaData};
-use crate::datatype::physical::BitsOrd;
+use crate::datatype::physical::{BitsEq, BitsOrd};
 use crate::datatype::LogicalType;
 use crate::query::read::output::{
     FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
@@ -336,6 +336,20 @@ impl FieldData {
     }
 }
 
+impl BitsEq for FieldData {
+    fn bits_eq(&self, other: &Self) -> bool {
+        typed_field_data_go!(
+            self,
+            other,
+            _DT,
+            ref data,
+            ref other_data,
+            data.bits_eq(other_data), // match
+            false                     // fields do not match
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum FieldStrategyDatatype {
     Datatype(Datatype, CellValNum),
@@ -488,7 +502,50 @@ impl ReadCallbackVarArg for RawResultCallback {
     }
 }
 
-#[derive(Clone, Debug)]
+/// Query callback which accumulates results from each step into `Cells`
+/// and returns the `Cells` as the final result.
+pub struct CellsCallback {
+    raw_result_callback: RawResultCallback,
+    cells: Option<Cells>,
+}
+
+impl CellsCallback {
+    pub fn new(field_order: Vec<String>) -> Self {
+        CellsCallback {
+            raw_result_callback: RawResultCallback { field_order },
+            cells: None,
+        }
+    }
+}
+
+impl ReadCallbackVarArg for CellsCallback {
+    type Intermediate = ();
+    type Final = Cells;
+    type Error = std::convert::Infallible;
+
+    fn intermediate_result(
+        &mut self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Intermediate, Self::Error> {
+        let batch =
+            Cells::new(self.raw_result_callback.intermediate_result(args)?.0);
+        if let Some(cells) = self.cells.as_mut() {
+            cells.extend(batch);
+        } else {
+            self.cells = Some(batch)
+        }
+        Ok(())
+    }
+
+    fn final_result(
+        mut self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Final, Self::Error> {
+        self.intermediate_result(args).map(|_| self.cells.unwrap())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Cells {
     fields: HashMap<String, FieldData>,
 }
@@ -676,6 +733,28 @@ impl Cells {
                 }
             });
         }
+    }
+
+    /// Returns a copy of the cells, sorted as if by `self.sort()`.
+    pub fn sorted(&self) -> Self {
+        let mut sorted = self.clone();
+        sorted.sort();
+        sorted
+    }
+}
+
+impl BitsEq for Cells {
+    fn bits_eq(&self, other: &Self) -> bool {
+        for (key, mine) in self.fields().iter() {
+            if let Some(theirs) = other.fields().get(key) {
+                if !mine.bits_eq(theirs) {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        self.fields().keys().len() == other.fields().keys().len()
     }
 }
 

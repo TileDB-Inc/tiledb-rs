@@ -6,13 +6,20 @@ use proptest::prelude::*;
 
 use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
 use crate::datatype::physical::BitsOrd;
-use crate::query::strategy::{
-    Cells, CellsParameters, CellsStrategySchema, FieldDataParameters,
+use crate::datatype::LogicalType;
+use crate::query::read::{
+    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
+    TypedReadHandle,
 };
-use crate::query::{QueryBuilder, WriteBuilder};
+use crate::query::strategy::{
+    Cells, CellsCallback, CellsParameters, CellsStrategySchema,
+    FieldDataParameters,
+};
+use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
 use crate::range::SingleValueRange;
 use crate::{
-    dimension_constraints_go, single_value_range_go, Result as TileDBResult,
+    dimension_constraints_go, fn_typed, single_value_range_go,
+    Result as TileDBResult,
 };
 
 #[derive(Debug)]
@@ -34,6 +41,47 @@ impl DenseWriteInput {
         }
 
         subarray.finish_subarray()?.layout(self.layout)
+    }
+
+    pub fn attach_read<'ctx, 'data, B>(
+        &'data self,
+        b: B,
+    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
+    where
+        B: ReadQueryBuilder<'ctx, 'data>,
+    {
+        let mut subarray = b.start_subarray()?;
+
+        for i in 0..self.subarray.len() {
+            subarray = subarray.add_range(i, self.subarray[i].clone())?;
+        }
+
+        let b: B = subarray.finish_subarray()?.layout(self.layout)?;
+
+        // copied from `Cells::attach_read`, yuck
+        let field_order =
+            self.data.fields().keys().cloned().collect::<Vec<_>>();
+        let handles = {
+            let schema = b.base().array().schema().unwrap();
+
+            field_order
+                .iter()
+                .map(|name| {
+                    let field = schema.field(name.clone()).unwrap();
+                    fn_typed!(field.datatype().unwrap(), LT, {
+                        type DT = <LT as LogicalType>::PhysicalType;
+                        let managed: ManagedBuffer<DT> = ManagedBuffer::new(
+                            field.query_scratch_allocator().unwrap(),
+                        );
+                        let metadata = FieldMetadata::try_from(&field).unwrap();
+                        let rr = RawReadHandle::managed(metadata, managed);
+                        TypedReadHandle::from(rr)
+                    })
+                })
+                .collect::<Vec<TypedReadHandle>>()
+        };
+
+        b.register_callback_var(handles, CellsCallback::new(field_order))
     }
 }
 
@@ -265,6 +313,17 @@ impl WriteInput {
         let Self::Dense(ref d) = self;
         d.attach_write(b)
     }
+
+    pub fn attach_read<'ctx, 'data, B>(
+        &'data self,
+        b: B,
+    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
+    where
+        B: ReadQueryBuilder<'ctx, 'data>,
+    {
+        let Self::Dense(ref d) = self;
+        d.attach_read(b)
+    }
 }
 
 #[derive(Debug)]
@@ -413,6 +472,29 @@ mod tests {
                     .build();
                 write.submit().expect("Error running write query");
                 array = write.finalize().expect("Error finalizing write query");
+            }
+
+            array = Array::open(ctx, array.uri(), Mode::Read).unwrap();
+
+            /* NB: results are not read back in a defined order, so we must sort and compare */
+
+            /* first, read back what we just wrote */
+            {
+                let mut read = write
+                    .attach_read(ReadBuilder::new(array).unwrap())
+                    .unwrap()
+                    .build();
+
+                let (mut cells, _) = read.execute().unwrap();
+
+                /* `cells` should match the write */
+                {
+                    let write_sorted = write.cells().sorted();
+                    cells.sort();
+                    assert_eq!(cells, write_sorted);
+                }
+
+                array = read.finalize().unwrap();
             }
 
             /* update accumulated expected array data */
