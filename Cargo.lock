@@ -1305,6 +1305,7 @@ dependencies = [
 name = "tiledb-proptests"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "num-traits",
  "proptest",
  "rand",

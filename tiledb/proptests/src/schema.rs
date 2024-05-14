@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+
+use anyhow::anyhow;
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, Strategy, ValueTree};
 use proptest::test_runner::{TestRng, TestRunner};
@@ -6,11 +9,11 @@ use tiledb::array::attribute::AttributeData;
 use tiledb::array::schema::{CellValNum, SchemaData};
 use tiledb::array::{ArrayType, CellOrder, TileOrder};
 use tiledb::datatype::Datatype;
-use tiledb::filter::list::FilterListData;
+use tiledb::Result as TileDBResult;
 
 use crate::attribute;
 use crate::domain;
-use crate::filter_list;
+use crate::filter_list::{self, FilterListContextKind};
 use crate::util;
 
 fn gen_array_type(rng: &mut TestRng) -> ArrayType {
@@ -23,7 +26,7 @@ fn gen_array_type(rng: &mut TestRng) -> ArrayType {
 
 fn gen_capacity(rng: &mut TestRng) -> Option<u64> {
     if rng.gen_bool(0.5) {
-        Some(rng.gen_range(0u64..4096))
+        Some(rng.gen_range(1u64..4096))
     } else {
         None
     }
@@ -72,25 +75,14 @@ fn gen_allow_duplicates(
 fn gen_attributes(
     rng: &mut TestRng,
     schema: &SchemaData,
-) -> Vec<AttributeData> {
+    field_names: &mut HashSet<String>,
+) -> TileDBResult<Vec<AttributeData>> {
     let num_attrs = rng.gen_range(1..32);
     let mut ret = Vec::new();
     for _ in 0..num_attrs {
-        ret.push(attribute::generate(rng, schema))
+        ret.push(attribute::generate(rng, schema, field_names)?)
     }
-    ret
-}
-
-fn gen_coordinate_filters(rng: &mut TestRng) -> FilterListData {
-    filter_list::generate(rng, Datatype::Any, CellValNum::single())
-}
-
-fn add_offsets_filters(rng: &mut TestRng) -> FilterListData {
-    filter_list::generate(rng, Datatype::UInt64, CellValNum::single())
-}
-
-fn add_nullity_filters(rng: &mut TestRng) -> FilterListData {
-    filter_list::generate(rng, Datatype::UInt8, CellValNum::single())
+    Ok(ret)
 }
 
 pub struct SchemaValueTree {
@@ -111,15 +103,17 @@ impl ValueTree for SchemaValueTree {
     }
 
     fn simplify(&mut self) -> bool {
+        println!("SIMPLIFY!");
         false
     }
 
     fn complicate(&mut self) -> bool {
+        println!("COMPLICATE!");
         false
     }
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub struct SchemaStrategy {}
 
 impl SchemaStrategy {
@@ -128,76 +122,87 @@ impl SchemaStrategy {
     }
 }
 
-// pub struct SchemaData {
-//     pub array_type: ArrayType,
-//     pub domain: DomainData,
-//     pub capacity: Option<u64>,
-//     pub cell_order: Option<CellOrder>,
-//     pub tile_order: Option<TileOrder>,
-//     pub allow_duplicates: Option<bool>,
-//     pub attributes: Vec<AttributeData>,
-//     pub coordinate_filters: FilterListData,
-//     pub offsets_filters: FilterListData,
-//     pub nullity_filters: FilterListData,
-// }
-
 impl Strategy for SchemaStrategy {
     type Tree = SchemaValueTree;
     type Value = SchemaData;
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        let mut field_names: HashSet<String> = HashSet::new();
         let array_type = gen_array_type(runner.rng());
-        let domain = domain::generate(runner.rng(), array_type);
+
         let mut schema = SchemaData {
             array_type,
-            domain,
-            capacity: gen_capacity(runner.rng()),
-            cell_order: gen_cell_order(runner.rng()),
-            tile_order: gen_tile_order(runner.rng()),
-            allow_duplicates: None,
-            attributes: Vec::new(),
-            coordinate_filters: filter_list::generate(
-                runner.rng(),
-                Datatype::Any,
-                CellValNum::single(),
-            ),
-            offsets_filters: filter_list::generate(
-                runner.rng(),
-                Datatype::UInt64,
-                CellValNum::single(),
-            ),
-            nullity_filters: filter_list::generate(
-                runner.rng(),
-                Datatype::UInt8,
-                CellValNum::single(),
-            ),
+            ..Default::default()
         };
 
+        schema.domain =
+            domain::generate(runner.rng(), &schema, &mut field_names).map_err(
+                |e| {
+                    format!(
+                        "{}",
+                        anyhow!("Error creating domain for schema").context(e)
+                    )
+                },
+            )?;
+
+        schema.capacity = gen_capacity(runner.rng());
+        schema.cell_order = gen_cell_order(runner.rng());
+        schema.tile_order = gen_tile_order(runner.rng());
         schema.allow_duplicates = gen_allow_duplicates(runner.rng(), &schema);
-        schema.attributes = gen_attributes(runner.rng(), &schema);
+
+        schema.attributes =
+            gen_attributes(runner.rng(), &schema, &mut field_names).map_err(
+                |e| {
+                    format!(
+                        "{}",
+                        anyhow!("Error creating attributes for schema.")
+                            .context(e)
+                    )
+                },
+            )?;
+
+        schema.coordinate_filters = filter_list::generate(
+            runner.rng(),
+            FilterListContextKind::Coordinates,
+            &schema,
+            Datatype::Any,
+            CellValNum::single(),
+        )
+        .map_err(|e| {
+            format!(
+                "{}",
+                anyhow!("Error creating coordinate filters for schema")
+                    .context(e)
+            )
+        })?;
+
+        schema.offsets_filters = filter_list::generate(
+            runner.rng(),
+            FilterListContextKind::Offsets,
+            &schema,
+            Datatype::UInt64,
+            CellValNum::single(),
+        )
+        .map_err(|e| {
+            format!(
+                "{}",
+                anyhow!("Error creating offsets filters for schema").context(e)
+            )
+        })?;
+
+        schema.nullity_filters = filter_list::generate(
+            runner.rng(),
+            FilterListContextKind::Nullity,
+            &schema,
+            Datatype::UInt8,
+            CellValNum::single(),
+        )
+        .map_err(|e| {
+            format!(
+                "{}",
+                anyhow!("Error creating nullity filters for schema").context(e)
+            )
+        })?;
+
         Ok(SchemaValueTree::new(schema))
     }
 }
-
-// pub fn prop_schema_data() -> impl Strategy<Value = SchemaData> {
-//     prop_array_type()
-//         .prop_flat_map(|array_type| {
-//             let domain = pt_domain::prop_domain_data(array_type);
-//             (Just(array_type), domain).prop_flat_map(|(array_type, domain)| {
-//                 let schema = SchemaData {
-//                     array_type,
-//                     domain,
-//                     ..Default::default()
-//                 };
-//
-//                 add_capacity(schema)
-//                     .prop_flat_map(add_cell_order)
-//                     .prop_flat_map(add_tile_order)
-//                     .prop_flat_map(add_allow_duplicates)
-//                     .prop_flat_map(add_attributes)
-//                     .prop_flat_map(add_coordinate_filters)
-//                     .prop_flat_map(add_offsets_filters)
-//                     .prop_flat_map(add_nullity_filters)
-//             })
-//         })
-//         .boxed()
-// }

@@ -7,6 +7,7 @@ version.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = { workspace = true }
 proptest = { version = "1.0.0" }
 rand = { version = "0.8.5" }
 num-traits = { version = "0.2" }
