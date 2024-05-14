@@ -63,6 +63,36 @@ pub trait BitsOrd {
     }
 }
 
+/// Implements lexicographic comparison of slices using the `BitsOrd` trait of the element.
+impl<T> BitsOrd for [T]
+where
+    T: BitsOrd,
+{
+    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+
+        for (l, r) in self.iter().zip(other.iter()) {
+            match l.bits_cmp(r) {
+                Ordering::Less => return Ordering::Less,
+                Ordering::Greater => return Ordering::Greater,
+                Ordering::Equal => continue,
+            }
+        }
+
+        self.len().cmp(&other.len())
+    }
+}
+
+/// Implements lexicographic comparison of vectors using the `BitsOrd` trait of the element.
+impl<T> BitsOrd for Vec<T>
+where
+    T: BitsOrd,
+{
+    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.as_slice().bits_cmp(other.as_slice())
+    }
+}
+
 /// Trait for generic operations on primitive data types.
 ///
 /// Types which implement this trait can be used to interface with TileDB

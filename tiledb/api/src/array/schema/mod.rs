@@ -215,15 +215,53 @@ impl<'ctx> Field<'ctx> {
     }
 }
 
+impl<'ctx> From<Dimension<'ctx>> for Field<'ctx> {
+    fn from(dim: Dimension<'ctx>) -> Field<'ctx> {
+        Field::Dimension(dim)
+    }
+}
+
+impl<'ctx> From<Attribute<'ctx>> for Field<'ctx> {
+    fn from(attr: Attribute<'ctx>) -> Field<'ctx> {
+        Field::Attribute(attr)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
-pub struct FieldData {
-    pub name: String,
-    pub datatype: Datatype,
-    pub nullability: Option<bool>,
-    pub cell_val_num: Option<CellValNum>,
+pub enum FieldData {
+    Dimension(DimensionData),
+    Attribute(AttributeData),
 }
 
 impl FieldData {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Dimension(d) => &d.name,
+            Self::Attribute(a) => &a.name,
+        }
+    }
+
+    pub fn datatype(&self) -> Datatype {
+        match self {
+            Self::Dimension(d) => d.datatype,
+            Self::Attribute(a) => a.datatype,
+        }
+    }
+
+    pub fn cell_val_num(&self) -> Option<CellValNum> {
+        match self {
+            Self::Dimension(d) => d.cell_val_num,
+            Self::Attribute(a) => a.cell_val_num,
+        }
+    }
+
+    pub fn nullability(&self) -> Option<bool> {
+        match self {
+            Self::Dimension(_) => Some(false),
+            Self::Attribute(a) => a.nullability,
+        }
+    }
+
     pub fn query_scratch_allocator(
         &self,
     ) -> crate::query::read::output::FieldScratchAllocator {
@@ -238,9 +276,9 @@ impl FieldData {
         let record_capacity = 1024 * 1024;
 
         FieldScratchAllocator {
-            cell_val_num: self.cell_val_num.unwrap_or_default(),
+            cell_val_num: self.cell_val_num().unwrap_or_default(),
             record_capacity: NonZeroUsize::new(record_capacity).unwrap(),
-            is_nullable: self.nullability.unwrap_or(true),
+            is_nullable: self.nullability().unwrap_or(true),
         }
     }
 }
@@ -251,25 +289,15 @@ impl Display for FieldData {
     }
 }
 
-impl From<&AttributeData> for FieldData {
-    fn from(attr: &AttributeData) -> Self {
-        FieldData {
-            name: attr.name.clone(),
-            cell_val_num: attr.cell_val_num,
-            datatype: attr.datatype,
-            nullability: attr.nullability,
-        }
+impl From<AttributeData> for FieldData {
+    fn from(attr: AttributeData) -> Self {
+        FieldData::Attribute(attr)
     }
 }
 
-impl From<&DimensionData> for FieldData {
-    fn from(dim: &DimensionData) -> Self {
-        FieldData {
-            name: dim.name.clone(),
-            cell_val_num: dim.cell_val_num,
-            datatype: dim.datatype,
-            nullability: Some(false),
-        }
+impl From<DimensionData> for FieldData {
+    fn from(dim: DimensionData) -> Self {
+        FieldData::Dimension(dim)
     }
 }
 
@@ -277,12 +305,10 @@ impl<'ctx> TryFrom<&Field<'ctx>> for FieldData {
     type Error = crate::error::Error;
 
     fn try_from(field: &Field<'ctx>) -> TileDBResult<Self> {
-        Ok(FieldData {
-            name: field.name()?,
-            cell_val_num: Some(field.cell_val_num()?),
-            datatype: field.datatype()?,
-            nullability: Some(field.nullability()?),
-        })
+        match field {
+            Field::Dimension(d) => Ok(Self::from(DimensionData::try_from(d)?)),
+            Field::Attribute(a) => Ok(Self::from(AttributeData::try_from(a)?)),
+        }
     }
 }
 
@@ -291,18 +317,6 @@ impl<'ctx> TryFrom<Field<'ctx>> for FieldData {
 
     fn try_from(field: Field<'ctx>) -> TileDBResult<Self> {
         Self::try_from(&field)
-    }
-}
-
-impl<'ctx> From<Dimension<'ctx>> for Field<'ctx> {
-    fn from(dim: Dimension<'ctx>) -> Field<'ctx> {
-        Field::Dimension(dim)
-    }
-}
-
-impl<'ctx> From<Attribute<'ctx>> for Field<'ctx> {
-    fn from(attr: Attribute<'ctx>) -> Field<'ctx> {
-        Field::Attribute(attr)
     }
 }
 
@@ -786,12 +800,22 @@ pub struct SchemaData {
 }
 
 impl SchemaData {
+    pub fn num_fields(&self) -> usize {
+        self.domain.dimension.len() + self.attributes.len()
+    }
+
     pub fn field(&self, idx: usize) -> FieldData {
         if idx < self.domain.dimension.len() {
-            FieldData::from(&self.domain.dimension[idx])
+            FieldData::from(self.domain.dimension[idx].clone())
         } else {
-            FieldData::from(&self.attributes[idx - self.domain.dimension.len()])
+            FieldData::from(
+                self.attributes[idx - self.domain.dimension.len()].clone(),
+            )
         }
+    }
+
+    pub fn fields(&self) -> FieldDataIter {
+        FieldDataIter::new(self)
     }
 }
 
@@ -867,6 +891,32 @@ impl<'ctx> Factory<'ctx> for SchemaData {
         b.build()
     }
 }
+
+pub struct FieldDataIter<'a> {
+    schema: &'a SchemaData,
+    cursor: usize,
+}
+
+impl<'a> FieldDataIter<'a> {
+    pub fn new(schema: &'a SchemaData) -> Self {
+        FieldDataIter { schema, cursor: 0 }
+    }
+}
+
+impl<'a> Iterator for FieldDataIter<'a> {
+    type Item = FieldData;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor < self.schema.num_fields() {
+            let item = self.schema.field(self.cursor);
+            self.cursor += 1;
+            Some(item)
+        } else {
+            None
+        }
+    }
+}
+
+impl std::iter::FusedIterator for FieldDataIter<'_> {}
 
 #[cfg(feature = "arrow")]
 pub mod arrow;

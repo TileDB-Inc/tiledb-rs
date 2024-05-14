@@ -14,7 +14,8 @@ use super::*;
 use crate::array::{ArrayType, CellValNum, SchemaData};
 use crate::datatype::LogicalType;
 use crate::query::read::output::{
-    FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
+    CellStructureSingleIterator, FixedDataIterator, RawReadOutput,
+    TypedRawReadOutput, VarDataIterator,
 };
 use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
@@ -93,19 +94,24 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
                 ncells: value.ncells,
                 input: handle.borrow(),
             };
-            if rr.input.cell_structure.is_var() {
-                Self::from(
+            match rr.input.cell_structure.as_cell_val_num() {
+                CellValNum::Fixed(nz) if nz.get() == 1 => Self::from(
+                    CellStructureSingleIterator::try_from(rr)
+                        .unwrap()
+                        .collect::<Vec<DT>>(),
+                ),
+                CellValNum::Fixed(_) => Self::from(
+                    FixedDataIterator::try_from(rr)
+                        .unwrap()
+                        .map(|slice| slice.to_vec())
+                        .collect::<Vec<Vec<DT>>>(),
+                ),
+                CellValNum::Var => Self::from(
                     VarDataIterator::try_from(rr)
                         .unwrap()
                         .map(|s| s.to_vec())
                         .collect::<Vec<Vec<DT>>>(),
-                )
-            } else {
-                Self::from(
-                    FixedDataIterator::try_from(rr)
-                        .unwrap()
-                        .collect::<Vec<DT>>(),
-                )
+                ),
             }
         })
     }
@@ -631,8 +637,8 @@ impl ValueTree for WriteQueryDataValueTree {
             .map(|(i, _)| {
                 let f = self.schema.field(i);
                 (
-                    f.name.clone(),
-                    self.field_data[&f.name]
+                    f.name().to_owned(),
+                    self.field_data[f.name()]
                         .as_ref()
                         .unwrap()
                         .filter(&record_mask),
@@ -741,9 +747,9 @@ impl Strategy for WriteQueryDataStrategy {
             .map(|(i, f)| {
                 let field = self.schema.field(i);
                 let field_data = if f.is_included() {
-                    let datatype = field.datatype;
+                    let datatype = field.datatype();
                     let cell_val_num = field
-                        .cell_val_num
+                        .cell_val_num()
                         .unwrap_or(CellValNum::try_from(1).unwrap());
 
                     if cell_val_num == 1u32 {
@@ -789,7 +795,7 @@ impl Strategy for WriteQueryDataStrategy {
                 } else {
                     None
                 };
-                (field.name.clone(), field_data)
+                (field.name().to_owned(), field_data)
             })
             .collect::<HashMap<String, Option<FieldData>>>();
 

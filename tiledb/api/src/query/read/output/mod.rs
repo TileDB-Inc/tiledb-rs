@@ -8,10 +8,7 @@ use serde_json::json;
 use crate::array::CellValNum;
 use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::query::buffer::{
-    Buffer, BufferMut, CellStructure, CellStructureMut, QueryBuffers,
-    QueryBuffersMut, TypedQueryBuffers,
-};
+use crate::query::buffer::*;
 use crate::Result as TileDBResult;
 use crate::{typed_query_buffers_go, Datatype};
 
@@ -597,20 +594,127 @@ where
     }
 }
 
-pub struct FixedDataIterator<'data, C> {
-    location: QueryBuffers<'data, C>,
+pub struct CellStructureSingleIterator<'data, C> {
+    ncells: usize,
     index: usize,
+    location: QueryBuffers<'data, C>,
 }
 
-impl<'data, C> Iterator for FixedDataIterator<'data, C>
+impl<'data, C> CellStructureSingleIterator<'data, C> {
+    pub fn new(
+        ncells: usize,
+        input: QueryBuffersCellStructureSingle<'data, C>,
+    ) -> Self {
+        CellStructureSingleIterator {
+            ncells,
+            index: 0,
+            location: input.into_inner(),
+        }
+    }
+
+    pub fn try_new(
+        ncells: usize,
+        input: QueryBuffers<'data, C>,
+    ) -> TileDBResult<Self> {
+        match QueryBuffersCellStructureSingle::try_from(input) {
+            Ok(qb) => Ok(Self::new(ncells, qb)),
+            Err(qb) => Err(Error::Datatype(
+                DatatypeErrorKind::UnexpectedCellStructure {
+                    context: None,
+                    expected: CellValNum::single(),
+                    found: qb.cell_structure.as_cell_val_num(),
+                },
+            )),
+        }
+    }
+}
+
+impl<'data, C> Iterator for CellStructureSingleIterator<'data, C>
 where
     C: Copy,
 {
     type Item = C;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.index < self.location.data.len() {
+        if self.index < self.ncells {
             self.index += 1;
             Some(self.location.data[self.index - 1])
+        } else {
+            None
+        }
+    }
+}
+
+impl<'data, C> FusedIterator for CellStructureSingleIterator<'data, C> where
+    C: Copy
+{
+}
+
+impl<'data, C> TryFrom<RawReadOutput<'data, C>>
+    for CellStructureSingleIterator<'data, C>
+{
+    type Error = crate::error::Error;
+    fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
+        Self::try_new(value.ncells, value.input)
+    }
+}
+
+pub struct FixedDataIterator<'data, C> {
+    ncells: usize,
+    index: usize,
+    location: QueryBuffers<'data, C>,
+}
+
+impl<'data, C> FixedDataIterator<'data, C> {
+    pub fn new(
+        ncells: usize,
+        input: QueryBuffersCellStructureFixed<'data, C>,
+    ) -> Self {
+        FixedDataIterator {
+            ncells,
+            index: 0,
+            location: input.into_inner(),
+        }
+    }
+
+    pub fn try_new(
+        ncells: usize,
+        input: QueryBuffers<'data, C>,
+    ) -> TileDBResult<Self> {
+        match QueryBuffersCellStructureFixed::try_from(input) {
+            Ok(qb) => Ok(Self::new(ncells, qb)),
+            Err(qb) => {
+                Err(Error::Datatype(
+                    DatatypeErrorKind::UnexpectedCellStructure {
+                        context: None,
+                        expected: CellValNum::single(), /* TODO: this is not really accurate, any Fixed */
+                        found: qb.cell_structure.as_cell_val_num(),
+                    },
+                ))
+            }
+        }
+    }
+}
+
+impl<'data, C> Iterator for FixedDataIterator<'data, C> {
+    type Item = &'data [C];
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.ncells {
+            self.index += 1;
+            match self.location.cell_structure {
+                CellStructure::Fixed(nz) => {
+                    let len = nz.get() as usize;
+                    let lb = (self.index - 1) * len;
+                    let ub = self.index * len;
+
+                    /* this is not sound for the same reason as VarDataIterator::next() */
+                    let data: &'data [C] = unsafe {
+                        &*(self.location.data.as_ref() as *const [C])
+                            as &'data [C]
+                    };
+                    Some(&data[lb..ub])
+                }
+                _ => unreachable!(),
+            }
         } else {
             None
         }
@@ -624,20 +728,7 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
 {
     type Error = crate::error::Error;
     fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
-        if value.input.cell_structure.is_var() {
-            Err(Error::Datatype(
-                DatatypeErrorKind::UnexpectedCellStructure {
-                    context: None,
-                    expected: CellValNum::single(),
-                    found: CellValNum::Var,
-                },
-            ))
-        } else {
-            Ok(FixedDataIterator {
-                location: value.input,
-                index: 0,
-            })
-        }
+        Self::try_new(value.ncells, value.input)
     }
 }
 
@@ -651,22 +742,28 @@ pub struct VarDataIterator<'data, C> {
 impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
         ncells: usize,
+        location: QueryBuffersCellStructureVar<'data, C>,
+    ) -> Self {
+        VarDataIterator {
+            ncells,
+            offset_cursor: 0,
+            location: location.into_inner(),
+        }
+    }
+
+    pub fn try_new(
+        ncells: usize,
         location: QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
-        if let CellStructure::Fixed(nz) = location.cell_structure {
-            Err(Error::Datatype(
+        match QueryBuffersCellStructureVar::try_from(location) {
+            Ok(qb) => Ok(Self::new(ncells, qb)),
+            Err(qb) => Err(Error::Datatype(
                 DatatypeErrorKind::UnexpectedCellStructure {
                     context: None,
                     expected: CellValNum::Var,
-                    found: CellValNum::Fixed(nz),
+                    found: qb.cell_structure.as_cell_val_num(),
                 },
-            ))
-        } else {
-            Ok(VarDataIterator {
-                ncells,
-                offset_cursor: 0,
-                location,
-            })
+            )),
         }
     }
 }
@@ -725,7 +822,7 @@ impl<'data, C> FusedIterator for VarDataIterator<'data, C> {}
 impl<'data, C> TryFrom<RawReadOutput<'data, C>> for VarDataIterator<'data, C> {
     type Error = crate::error::Error;
     fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
-        Self::new(value.ncells, value.input)
+        Self::try_new(value.ncells, value.input)
     }
 }
 
@@ -766,7 +863,7 @@ where
     C: PhysicalType,
 {
     type Unit = C;
-    type Iterator<'data> = FixedDataIterator<'data, Self::Unit> where C: 'data;
+    type Iterator<'data> = CellStructureSingleIterator<'data, Self::Unit> where C: 'data;
 }
 
 impl FromQueryOutput for String {
@@ -778,6 +875,96 @@ impl FromQueryOutput for String {
 mod tests {
     use super::*;
     use crate::query::buffer::Buffer;
+
+    #[test]
+    fn cell_val_num_single_iterator() {
+        let bufs: QueryBuffers<u64> = QueryBuffers {
+            data: std::iter::repeat(())
+                .enumerate()
+                .map(|(i, _)| i as u64)
+                .take(1024)
+                .collect::<Vec<u64>>()
+                .into(),
+            cell_structure: CellStructure::single(),
+            validity: None,
+        };
+
+        {
+            let vals = CellStructureSingleIterator::try_new(1, bufs.borrow())
+                .unwrap()
+                .collect::<Vec<u64>>();
+            assert_eq!(vals, vec![0]);
+        }
+        {
+            let vals = CellStructureSingleIterator::try_new(10, bufs.borrow())
+                .unwrap()
+                .collect::<Vec<u64>>();
+            assert_eq!(vals, vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        }
+    }
+
+    #[test]
+    fn cell_val_num_fixed_iterator() {
+        let bufs: QueryBuffers<u64> = QueryBuffers {
+            data: std::iter::repeat(())
+                .enumerate()
+                .map(|(i, _)| i as u64)
+                .take(1024)
+                .collect::<Vec<u64>>()
+                .into(),
+            cell_structure: CellStructure::from(NonZeroU32::new(4).unwrap()),
+            validity: None,
+        };
+
+        {
+            let vals = FixedDataIterator::try_new(1, bufs.borrow())
+                .unwrap()
+                .collect::<Vec<&[u64]>>();
+            assert_eq!(vals, vec![&[0, 1, 2, 3]]);
+        }
+        {
+            let vals = FixedDataIterator::try_new(3, bufs.borrow())
+                .unwrap()
+                .collect::<Vec<&[u64]>>();
+            assert_eq!(
+                vals,
+                vec![&[0, 1, 2, 3], &[4, 5, 6, 7], &[8, 9, 10, 11]]
+            );
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn test_fixed_data_iterator_lifetime() {
+        let data = vec![0u8, 1, 2, 3, 4, 5, 6, 7];
+
+        let mut databuf = Buffer::Borrowed(&data);
+
+        let item = {
+            let _ = std::mem::replace(
+                &mut databuf,
+                Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
+            );
+
+            FixedDataIterator::try_new(
+                2,
+                QueryBuffers {
+                    data: databuf,
+                    cell_structure: CellStructure::from(
+                        NonZeroU32::new(4).unwrap(),
+                    ),
+                    validity: None,
+                },
+            )
+            .unwrap()
+            .next()
+        }
+        .unwrap();
+
+        // this is a use after free which passes if you're lucky. valgrind catches it
+        // SC-46534
+        assert_eq!(item, vec![0, 1, 2, 3].as_slice());
+    }
 
     #[test]
     #[ignore]
@@ -793,7 +980,7 @@ mod tests {
                 Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
             );
 
-            VarDataIterator::new(
+            VarDataIterator::try_new(
                 offsets.len(),
                 QueryBuffers {
                     data: databuf,

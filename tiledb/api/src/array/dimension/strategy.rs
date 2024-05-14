@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::rc::Rc;
 
-use num_traits::{Bounded, Num};
+use num_traits::{Bounded, FromPrimitive, Num};
 use proptest::prelude::*;
 
 use tiledb_utils::numbers::{
@@ -10,6 +10,7 @@ use tiledb_utils::numbers::{
 
 use crate::array::dimension::DimensionConstraints;
 use crate::array::{ArrayType, CellValNum, DimensionData};
+use crate::datatype::physical::BitsOrd;
 use crate::datatype::strategy::*;
 use crate::datatype::LogicalType;
 use crate::filter::list::FilterListData;
@@ -29,7 +30,9 @@ pub fn prop_dimension_name() -> impl Strategy<Value = String> {
 fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], Option<T>)>
 where
     T: Num
+        + BitsOrd
         + Bounded
+        + FromPrimitive
         + NextNumericValue
         + SmallestPositiveValue
         + Clone
@@ -118,6 +121,33 @@ where
                     end: extent_limit,
                 }
                 .prop_map(|extent| Some(extent)),
+            )
+                .boxed();
+        }
+
+        // see SC-47322, we need to prevent the extent from getting too big
+        // because core does not treat it for memory allocations
+        let extent_limit_limit = {
+            const DIMENSION_EXTENT_LIMIT: usize = 1024 * 1024;
+            match T::from_usize(DIMENSION_EXTENT_LIMIT) {
+                Some(t) => t,
+                None => {
+                    /* the type range is small enough that we need not worry */
+                    upper_limit
+                }
+            }
+        };
+        if matches!(
+            extent_limit_limit.bits_cmp(&extent_limit),
+            std::cmp::Ordering::Less
+        ) {
+            return (
+                Just([lower_bound, upper_bound]),
+                std::ops::Range::<T> {
+                    start: T::smallest_positive_value(),
+                    end: extent_limit_limit,
+                }
+                .prop_map(Some),
             )
                 .boxed();
         }
