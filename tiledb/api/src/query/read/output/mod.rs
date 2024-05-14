@@ -8,11 +8,7 @@ use serde_json::json;
 use crate::array::CellValNum;
 use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::query::buffer::{
-    Buffer, BufferMut, CellStructure, CellStructureMut, QueryBuffers,
-    QueryBuffersCellStructureFixed, QueryBuffersCellStructureSingle,
-    QueryBuffersMut, TypedQueryBuffers,
-};
+use crate::query::buffer::*;
 use crate::Result as TileDBResult;
 use crate::{typed_query_buffers_go, Datatype};
 
@@ -746,22 +742,28 @@ pub struct VarDataIterator<'data, C> {
 impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
         ncells: usize,
+        location: QueryBuffersCellStructureVar<'data, C>,
+    ) -> Self {
+        VarDataIterator {
+            ncells,
+            offset_cursor: 0,
+            location: location.into_inner(),
+        }
+    }
+
+    pub fn try_new(
+        ncells: usize,
         location: QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
-        if let CellStructure::Fixed(nz) = location.cell_structure {
-            Err(Error::Datatype(
+        match QueryBuffersCellStructureVar::try_from(location) {
+            Ok(qb) => Ok(Self::new(ncells, qb)),
+            Err(qb) => Err(Error::Datatype(
                 DatatypeErrorKind::UnexpectedCellStructure {
                     context: None,
                     expected: CellValNum::Var,
-                    found: CellValNum::Fixed(nz),
+                    found: qb.cell_structure.as_cell_val_num(),
                 },
-            ))
-        } else {
-            Ok(VarDataIterator {
-                ncells,
-                offset_cursor: 0,
-                location,
-            })
+            )),
         }
     }
 }
@@ -820,7 +822,7 @@ impl<'data, C> FusedIterator for VarDataIterator<'data, C> {}
 impl<'data, C> TryFrom<RawReadOutput<'data, C>> for VarDataIterator<'data, C> {
     type Error = crate::error::Error;
     fn try_from(value: RawReadOutput<'data, C>) -> TileDBResult<Self> {
-        Self::new(value.ncells, value.input)
+        Self::try_new(value.ncells, value.input)
     }
 }
 
@@ -978,7 +980,7 @@ mod tests {
                 Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
             );
 
-            VarDataIterator::new(
+            VarDataIterator::try_new(
                 offsets.len(),
                 QueryBuffers {
                     data: databuf,
