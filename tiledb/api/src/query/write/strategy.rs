@@ -14,7 +14,8 @@ use super::*;
 use crate::array::{ArrayType, CellValNum, SchemaData};
 use crate::datatype::LogicalType;
 use crate::query::read::output::{
-    FixedDataIterator, RawReadOutput, TypedRawReadOutput, VarDataIterator,
+    CellStructureSingleIterator, FixedDataIterator, RawReadOutput,
+    TypedRawReadOutput, VarDataIterator,
 };
 use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
@@ -93,19 +94,24 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
                 ncells: value.ncells,
                 input: handle.borrow(),
             };
-            if rr.input.cell_structure.is_var() {
-                Self::from(
+            match rr.input.cell_structure.as_cell_val_num() {
+                CellValNum::Fixed(nz) if nz.get() == 1 => Self::from(
+                    CellStructureSingleIterator::try_from(rr)
+                        .unwrap()
+                        .collect::<Vec<DT>>(),
+                ),
+                CellValNum::Fixed(_) => Self::from(
+                    FixedDataIterator::try_from(rr)
+                        .unwrap()
+                        .map(|slice| slice.to_vec())
+                        .collect::<Vec<Vec<DT>>>(),
+                ),
+                CellValNum::Var => Self::from(
                     VarDataIterator::try_from(rr)
                         .unwrap()
                         .map(|s| s.to_vec())
                         .collect::<Vec<Vec<DT>>>(),
-                )
-            } else {
-                Self::from(
-                    FixedDataIterator::try_from(rr)
-                        .unwrap()
-                        .collect::<Vec<DT>>(),
-                )
+                ),
             }
         })
     }
