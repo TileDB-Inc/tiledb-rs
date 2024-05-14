@@ -1,6 +1,6 @@
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, Strategy, ValueTree};
-use proptest::test_runner::TestRunner;
+use proptest::test_runner::{TestRng, TestRunner};
 
 use rand::distributions::Uniform;
 use rand::Rng;
@@ -119,8 +119,8 @@ pub fn prop_filter_list(
 pub fn prop_any_filter_list(
     max_len: usize,
 ) -> impl Strategy<Value = (Datatype, CellValNum, FilterListData)> {
-    let datatype = pt_datatype::prop_all_datatypes();
-    let cell_val_num = pt_util::prop_cell_val_num();
+    let datatype = datatype::prop_all_datatypes();
+    let cell_val_num = util::prop_cell_val_num();
     (datatype, cell_val_num).prop_flat_map(move |(datatype, cell_val_num)| {
         (
             Just(datatype),
@@ -135,12 +135,12 @@ pub fn generate(
     datatype: Datatype,
     cell_val_num: CellValNum,
 ) -> FilterListData {
-    let num_filters = rng.gen_range(0..=6);
+    let num_filters = rng.gen_range(0..=8);
     let mut filters = Vec::new();
     let mut curr_type = datatype;
-    for idx in 0..len {
+    for idx in 0..num_filters {
         let fdata = filter::generate_with_constraints(
-            runner,
+            rng,
             curr_type,
             cell_val_num,
             idx,
@@ -149,7 +149,7 @@ pub fn generate(
         if next_type.is_none() {
             return Err(format!(
                 "INVALID FILTER DATA: {} {} {:?}",
-                curr_type, self.cell_val_num, fdata
+                curr_type, cell_val_num, fdata
             )
             .into());
         }

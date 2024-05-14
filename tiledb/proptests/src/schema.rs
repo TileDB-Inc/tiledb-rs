@@ -1,4 +1,3 @@
-use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, Strategy, ValueTree};
 use proptest::test_runner::{TestRng, TestRunner};
@@ -7,10 +6,11 @@ use tiledb::array::attribute::AttributeData;
 use tiledb::array::schema::{CellValNum, SchemaData};
 use tiledb::array::{ArrayType, CellOrder, TileOrder};
 use tiledb::datatype::Datatype;
+use tiledb::filter::list::FilterListData;
 
 use crate::attribute;
 use crate::domain;
-use crate::filter::list;
+use crate::filter_list;
 use crate::util;
 
 fn gen_array_type(rng: &mut TestRng) -> ArrayType {
@@ -81,37 +81,16 @@ fn gen_attributes(
     ret
 }
 
-fn gen_coordinate_filters(
-    schema: SchemaData,
-) -> impl Strategy<Value = SchemaData> {
-    let filters =
-        pt_list::prop_filter_list(Datatype::Any, CellValNum::single(), 6);
-    (Just(schema), filters).prop_flat_map(|(mut schema, filters)| {
-        schema.coordinate_filters = filters;
-        Just(schema)
-    })
+fn gen_coordinate_filters(rng: &mut TestRng) -> FilterListData {
+    filter_list::generate(rng, Datatype::Any, CellValNum::single())
 }
 
-fn add_offsets_filters(
-    schema: SchemaData,
-) -> impl Strategy<Value = SchemaData> {
-    let filters =
-        pt_list::prop_filter_list(Datatype::UInt64, CellValNum::single(), 6);
-    (Just(schema), filters).prop_flat_map(|(mut schema, filters)| {
-        schema.coordinate_filters = filters;
-        Just(schema)
-    })
+fn add_offsets_filters(rng: &mut TestRng) -> FilterListData {
+    filter_list::generate(rng, Datatype::UInt64, CellValNum::single())
 }
 
-fn add_nullity_filters(
-    schema: SchemaData,
-) -> impl Strategy<Value = SchemaData> {
-    let filters =
-        pt_list::prop_filter_list(Datatype::UInt8, CellValNum::single(), 6);
-    (Just(schema), filters).prop_flat_map(|(mut schema, filters)| {
-        schema.coordinate_filters = filters;
-        Just(schema)
-    })
+fn add_nullity_filters(rng: &mut TestRng) -> FilterListData {
+    filter_list::generate(rng, Datatype::UInt8, CellValNum::single())
 }
 
 pub struct SchemaValueTree {
@@ -168,14 +147,34 @@ impl Strategy for SchemaStrategy {
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
         let array_type = gen_array_type(runner.rng());
         let domain = domain::generate(runner.rng(), array_type);
-        let data = SchemaData {
+        let mut schema = SchemaData {
             array_type,
             domain,
             capacity: gen_capacity(runner.rng()),
-            ..Default::default()
+            cell_order: gen_cell_order(runner.rng()),
+            tile_order: gen_tile_order(runner.rng()),
+            allow_duplicates: None,
+            attributes: Vec::new(),
+            coordinate_filters: filter_list::generate(
+                runner.rng(),
+                Datatype::Any,
+                CellValNum::single(),
+            ),
+            offsets_filters: filter_list::generate(
+                runner.rng(),
+                Datatype::UInt64,
+                CellValNum::single(),
+            ),
+            nullity_filters: filter_list::generate(
+                runner.rng(),
+                Datatype::UInt8,
+                CellValNum::single(),
+            ),
         };
 
-        Ok(FilterListDataValueTree::new(filters))
+        schema.allow_duplicates = gen_allow_duplicates(runner.rng(), &schema);
+        schema.attributes = gen_attributes(runner.rng(), &schema);
+        Ok(SchemaValueTree::new(schema))
     }
 }
 
