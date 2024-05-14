@@ -74,9 +74,57 @@
 /// check that all of the things we think are errors are actually errors.
 use std::fmt::Debug;
 
+use proptest::test_runner::TestCaseError;
+
 pub trait ValueTreeExplorer {
     type Value: Debug;
 
-    /// We might need to specify this a bit further.
-    fn and_then_miracle_occurs(&self) -> Self::Value;
+    /// Get the root case from the failing example. This should be the simplest
+    /// representation of the failing test case. If the result of this call
+    /// fails the test, exploration is aborted.
+    fn root(&self) -> Self::Value;
+
+    /// Get the current value of the explored state to check against the
+    /// test. Each time value returned from this method passes the test case,
+    /// the `explore` method is called to search further for the original
+    /// error.
+    ///
+    /// If the test case fails with this input and the error matches the
+    /// original error for the failing test, we call the `refine()` method
+    /// to allow for efficiently searching for the error cause.
+    ///
+    /// If the test fails with any other error we abort this branch of the
+    /// exploration.
+    fn current(&self) -> Self::Value;
+
+    /// Explore some new state in the search space to check and see if we can
+    /// discover the error. The previous (if any) test case has succeeded so
+    /// here we can either generate the next state to test or delegate further
+    /// into a tree of explorers.
+    ///
+    /// The return value is a bit wonky with the Result<Option<T>>. Returning
+    /// Ok(None) means that current() will be called on the self again. An
+    /// Ok(impl ValueTreeExplorer) indicates that we want to pop a delegate
+    /// explorer implementation onto the current stack.
+    ///
+    /// Any error returned causes exploration of this branch to be abandoned.
+    fn explore(
+        &mut self,
+    ) -> Result<
+        Option<impl ValueTreeExplorer<Value = Self::Value>>,
+        TestCaseError,
+    >;
+
+    /// If a value returned by `current()` fails the test case, this method is
+    /// called to check if the case can be refined further to allow for
+    /// implementations to efficiently search through their error state space.
+    ///
+    /// If no refinement is possible, this method should return false to
+    /// indicate that the search should terminate. If this method returns true
+    /// then `current()` is called again to test the refined value.
+    ///
+    /// If the refined value no longer fails the test, explore() is invoked.
+    /// Otherwise the refine -> current -> test loop runs until this method
+    /// returns false.
+    fn refine(&mut self) -> bool;
 }
