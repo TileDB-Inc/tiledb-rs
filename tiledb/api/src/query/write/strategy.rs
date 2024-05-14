@@ -156,7 +156,7 @@ fn prop_dense_write(
                             _ => cell_limit as DT,
                         };
 
-                    (lower_cell_bound..upper_cell_bound)
+                    (lower_cell_bound..=upper_cell_bound)
                         .prop_flat_map(move |upper| {
                             ((lower_cell_bound..=upper), Just(upper))
                         })
@@ -174,18 +174,7 @@ fn prop_dense_write(
         .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
 
     strat_ranges.prop_flat_map(move |ranges| {
-        let ncells = ranges
-            .iter()
-            .map(|r| {
-                single_value_range_go!(
-                    r,
-                    _DT,
-                    ref lower,
-                    ref upper,
-                    (upper - lower) as usize
-                )
-            })
-            .product();
+        let ncells = ranges.iter().map(|r| r.len().unwrap()).product();
 
         let params = CellsParameters {
             schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(&schema))),
