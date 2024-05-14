@@ -92,15 +92,6 @@ where
                 upper_bound - lower_bound
             };
 
-            // see SC-47277, we need to prevent the extent from getting too big
-            let extent_limit_limit = T::from_usize(1024 * 1024).unwrap();
-
-            let extent_limit = match extent_limit.bits_cmp(&extent_limit_limit)
-            {
-                std::cmp::Ordering::Less => extent_limit,
-                _ => extent_limit_limit,
-            };
-
             if upper_limit - extent_limit < upper_bound {
                 (upper_limit - upper_bound, would_overflow)
             } else {
@@ -130,6 +121,24 @@ where
                     end: extent_limit,
                 }
                 .prop_map(|extent| Some(extent)),
+            )
+                .boxed();
+        }
+
+        // see SC-47322, we need to prevent the extent from getting too big
+        // because core does not treat it for memory allocations
+        let extent_limit_limit = T::from_usize(1024 * 1024).unwrap();
+        if matches!(
+            extent_limit_limit.bits_cmp(&extent_limit),
+            std::cmp::Ordering::Less
+        ) {
+            return (
+                Just([lower_bound, upper_bound]),
+                std::ops::Range::<T> {
+                    start: T::smallest_positive_value(),
+                    end: extent_limit_limit,
+                }
+                .prop_map(Some),
             )
                 .boxed();
         }
