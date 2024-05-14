@@ -52,6 +52,20 @@ pub struct Requirements {
     pub pipeline_position: Option<usize>,
 }
 
+impl Requirements {
+    // SC-47328: assertion failed in XOR filter
+    // Likely due to an earlier compression filter, but in general the threading of dataytpe
+    // through a filter pipeline looks suspicious, so until analysis from the
+    // core team clarifies, we will only allow XOR in the first filter position.
+    // There are other instances of the datatypes not being correct either.
+    // Ideally the datatype transformations would be adequate to construct a correct
+    // pipeline, but until they are some filters much check if they are at the beginning of the
+    // pipeline.
+    pub fn begins_pipeline(&self) -> bool {
+        matches!(self.pipeline_position, None | Some(0))
+    }
+}
+
 fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
     const MIN_WINDOW: u32 = 8;
     const MAX_WINDOW: u32 = 1024;
@@ -163,7 +177,7 @@ fn prop_compression(
 
     let try_dict = try_rle;
 
-    let try_delta =
+    let try_delta = if requirements.begins_pipeline() {
         if let Some(StrategyContext::SchemaCoordinates(ref domain)) =
             requirements.context
         {
@@ -181,7 +195,10 @@ fn prop_compression(
             })
         } else {
             true
-        };
+        }
+    } else {
+        false
+    };
 
     let strat_kind = {
         let mut strats = compression_types
@@ -369,11 +386,15 @@ pub fn prop_filter(
         filter_strategies.push(webp.boxed());
     }
 
-    let ok_xor = match requirements.input_datatype {
-        Some(input_datatype) => {
-            [1, 2, 4, 8].contains(&(input_datatype.size() as usize))
+    let ok_xor = if requirements.begins_pipeline() {
+        match requirements.input_datatype {
+            Some(input_datatype) => {
+                [1, 2, 4, 8].contains(&(input_datatype.size() as usize))
+            }
+            None => true,
         }
-        None => true,
+    } else {
+        false
     };
     if ok_xor {
         filter_strategies.push(Just(FilterData::Xor).boxed());
