@@ -188,9 +188,12 @@ impl Deref for FilterListData {
     }
 }
 
-impl From<Vec<FilterData>> for FilterListData {
-    fn from(value: Vec<FilterData>) -> Self {
-        Self(value)
+impl<V> From<V> for FilterListData
+where
+    V: Into<Vec<FilterData>>,
+{
+    fn from(value: V) -> Self {
+        Self(value.into())
     }
 }
 
