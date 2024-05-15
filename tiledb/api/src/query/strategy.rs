@@ -1,7 +1,8 @@
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
+use std::ops::Range;
 use std::rc::Rc;
 
 use paste::paste;
@@ -309,6 +310,12 @@ impl FieldData {
         typed_field_data_go!(self, v, v.len())
     }
 
+    pub fn slice(&self, start: usize, len: usize) -> FieldData {
+        typed_field_data_go!(self, ref values, {
+            FieldData::from(values[start..start + len].to_vec().clone())
+        })
+    }
+
     pub fn filter(&self, set: &VarBitSet) -> FieldData {
         typed_field_data_go!(self, ref values, {
             FieldData::from(
@@ -321,6 +328,10 @@ impl FieldData {
                     .collect::<Vec<_>>(),
             )
         })
+    }
+
+    pub fn truncate(&mut self, len: usize) {
+        typed_field_data_go!(self, ref mut data, data.truncate(len))
     }
 
     pub fn extend(&mut self, other: Self) {
@@ -658,6 +669,13 @@ impl Cells {
         }
     }
 
+    /// Shortens the cells, keeping the first `len` records and dropping the rest.
+    pub fn truncate(&mut self, len: usize) {
+        for data in self.fields.values_mut() {
+            data.truncate(len)
+        }
+    }
+
     /// Extends this cell data with the contents of another.
     ///
     /// # Panics
@@ -747,6 +765,16 @@ impl Cells {
         sorted.sort();
         sorted
     }
+
+    /// Returns a subset of the records using the bitmap to determine which are included
+    pub fn filter(&self, set: &VarBitSet) -> Cells {
+        Self::new(
+            self.fields()
+                .iter()
+                .map(|(k, v)| (k.clone(), v.filter(set)))
+                .collect::<HashMap<String, FieldData>>(),
+        )
+    }
 }
 
 impl BitsEq for Cells {
@@ -761,6 +789,123 @@ impl BitsEq for Cells {
             }
         }
         self.fields().keys().len() == other.fields().keys().len()
+    }
+}
+
+pub struct StructuredCells {
+    dimensions: Vec<usize>,
+    cells: Cells,
+}
+
+impl StructuredCells {
+    pub fn new(dimensions: Vec<usize>, cells: Cells) -> Self {
+        let expected_cells: usize = dimensions.iter().cloned().product();
+        assert_eq!(expected_cells, cells.len());
+
+        StructuredCells { dimensions, cells }
+    }
+
+    pub fn num_dimensions(&self) -> usize {
+        self.dimensions.len()
+    }
+
+    /// Returns the span of dimension `d`
+    pub fn dimension_len(&self, d: usize) -> usize {
+        self.dimensions[d]
+    }
+
+    pub fn into_inner(self) -> Cells {
+        self.cells
+    }
+
+    pub fn slice(&self, slices: Vec<Range<usize>>) -> Self {
+        assert_eq!(slices.len(), self.dimensions.len()); // this is doable but unimportant
+
+        struct NextIndex<'a> {
+            dimensions: &'a [usize],
+            ranges: &'a [Range<usize>],
+            cursors: Option<Vec<usize>>,
+        }
+
+        impl<'a> NextIndex<'a> {
+            fn new(
+                dimensions: &'a [usize],
+                ranges: &'a [Range<usize>],
+            ) -> Self {
+                for r in ranges {
+                    if r.is_empty() {
+                        return NextIndex {
+                            dimensions,
+                            ranges,
+                            cursors: None,
+                        };
+                    }
+                }
+
+                NextIndex {
+                    dimensions,
+                    ranges,
+                    cursors: Some(
+                        ranges.iter().map(|r| r.start).collect::<Vec<usize>>(),
+                    ),
+                }
+            }
+
+            fn compute(&self) -> usize {
+                let Some(cursors) = self.cursors.as_ref() else {
+                    unreachable!()
+                };
+                let mut index = 0;
+                let mut scale = 1;
+                for i in 0..self.dimensions.len() {
+                    let i = self.dimensions.len() - i - 1;
+                    index += cursors[i] * scale;
+                    scale *= self.dimensions[i];
+                }
+                index
+            }
+
+            fn advance(&mut self) {
+                let Some(cursors) = self.cursors.as_mut() else {
+                    return;
+                };
+                for d in 0..self.dimensions.len() {
+                    let d = self.dimensions.len() - d - 1;
+                    if cursors[d] + 1 < self.ranges[d].end {
+                        cursors[d] += 1;
+                        return;
+                    } else {
+                        cursors[d] = self.ranges[d].start;
+                    }
+                }
+
+                // this means that we reset the final dimension
+                self.cursors = None;
+            }
+        }
+
+        impl<'a> Iterator for NextIndex<'a> {
+            type Item = usize;
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.cursors.is_some() {
+                    let index = self.compute();
+                    self.advance();
+                    Some(index)
+                } else {
+                    None
+                }
+            }
+        }
+
+        let mut v = VarBitSet::new_bitset(self.cells.len());
+
+        NextIndex::new(self.dimensions.as_slice(), slices.as_slice())
+            .for_each(|idx| v.set(idx));
+
+        StructuredCells {
+            dimensions: self.dimensions.clone(),
+            cells: self.cells.filter(&v),
+        }
     }
 }
 
@@ -1296,6 +1441,151 @@ mod tests {
         let mut cells = cells;
         cells.sort();
         assert!(cells.is_sorted());
+
+        // TODO: check that the data is still correct
+    }
+
+    fn do_cells_slice_1d(cells: Cells, slice: Range<usize>) {
+        let cells = StructuredCells::new(vec![cells.len()], cells);
+        let sliced = cells.slice(vec![slice.clone()]).into_inner();
+        let cells = cells.into_inner();
+
+        assert_eq!(cells.fields().len(), sliced.fields().len());
+
+        for (key, value) in cells.fields().iter() {
+            let Some(sliced) = sliced.fields().get(key) else {
+                unreachable!()
+            };
+            assert_eq!(
+                value.slice(slice.start, slice.end - slice.start),
+                *sliced
+            );
+        }
+    }
+
+    fn do_cells_slice_2d(
+        cells: Cells,
+        d1: usize,
+        d2: usize,
+        s1: Range<usize>,
+        s2: Range<usize>,
+    ) {
+        let mut cells = cells;
+        cells.truncate(d1 * d2);
+
+        let cells = StructuredCells::new(vec![d1, d2], cells);
+        let sliced = cells.slice(vec![s1.clone(), s2.clone()]).into_inner();
+        let cells = cells.into_inner();
+
+        assert_eq!(cells.fields().len(), sliced.fields().len());
+
+        for (key, value) in cells.fields.iter() {
+            let Some(sliced) = sliced.fields().get(key) else {
+                unreachable!()
+            };
+
+            assert_eq!(s1.len() * s2.len(), sliced.len());
+
+            typed_field_data_go!(
+                value,
+                sliced,
+                _DT,
+                ref value_data,
+                ref sliced_data,
+                {
+                    for r in s1.clone() {
+                        let value_start = (r * d2) + s2.start;
+                        let value_end = (r * d2) + s2.end;
+                        let value_expect = &value_data[value_start..value_end];
+
+                        let sliced_start = (r - s1.start) * s2.len();
+                        let sliced_end = (r + 1 - s1.start) * s2.len();
+                        let sliced_cmp = &sliced_data[sliced_start..sliced_end];
+
+                        assert_eq!(value_expect, sliced_cmp);
+                    }
+                },
+                unreachable!()
+            );
+        }
+    }
+
+    fn do_cells_slice_3d(
+        cells: Cells,
+        d1: usize,
+        d2: usize,
+        d3: usize,
+        s1: Range<usize>,
+        s2: Range<usize>,
+        s3: Range<usize>,
+    ) {
+        let mut cells = cells;
+        cells.truncate(d1 * d2 * d3);
+
+        let cells = StructuredCells::new(vec![d1, d2, d3], cells);
+        let sliced = cells
+            .slice(vec![s1.clone(), s2.clone(), s3.clone()])
+            .into_inner();
+        let cells = cells.into_inner();
+
+        assert_eq!(cells.fields().len(), sliced.fields().len());
+
+        for (key, value) in cells.fields.iter() {
+            let Some(sliced) = sliced.fields.get(key) else {
+                unreachable!()
+            };
+
+            assert_eq!(s1.len() * s2.len() * s3.len(), sliced.len());
+
+            typed_field_data_go!(
+                value,
+                sliced,
+                _DT,
+                ref value_data,
+                ref sliced_data,
+                {
+                    for z in s1.clone() {
+                        for y in s2.clone() {
+                            let value_start =
+                                (z * d2 * d3) + (y * d3) + s3.start;
+                            let value_end = (z * d2 * d3) + (y * d3) + s3.end;
+                            let value_expect =
+                                &value_data[value_start..value_end];
+
+                            let sliced_start =
+                                ((z - s1.start) * s2.len() * s3.len())
+                                    + ((y - s2.start) * s3.len());
+                            let sliced_end =
+                                ((z - s1.start) * s2.len() * s3.len())
+                                    + ((y + 1 - s2.start) * s3.len());
+                            let sliced_cmp =
+                                &sliced_data[sliced_start..sliced_end];
+
+                            assert_eq!(value_expect, sliced_cmp);
+                        }
+                    }
+                },
+                unreachable!()
+            );
+        }
+    }
+
+    #[test]
+    fn cells_3d_example() {
+        let cells = Cells::new(
+            [(
+                "a".to_owned(),
+                FieldData::Int64(vec![
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+                    32, 33, 34, 35,
+                ]),
+            )]
+            .into_iter()
+            .collect::<HashMap<_, _>>(),
+        );
+
+        do_cells_slice_3d(cells, 2, 1, 1, 0..2, 0..1, 0..1)
     }
 
     proptest! {
@@ -1324,6 +1614,72 @@ mod tests {
         #[test]
         fn cells_sort(cells in any::<Cells>()) {
             do_cells_sort(cells)
+        }
+
+        #[test]
+        fn cells_slice_1d((cells, bound1, bound2) in any::<Cells>().prop_flat_map(|cells| {
+            let slice_min = 0;
+            let slice_max = cells.len();
+            (Just(cells),
+            slice_min..=slice_max,
+            slice_min..=slice_max)
+        })) {
+            let start = std::cmp::min(bound1, bound2);
+            let end = std::cmp::max(bound1, bound2);
+            do_cells_slice_1d(cells, start.. end)
+        }
+
+        #[test]
+        fn cells_slice_2d((cells, d1, d2, b11, b12, b21, b22) in any_with::<Cells>(CellsParameters {
+            min_records: 1,
+            ..Default::default()
+        }).prop_flat_map(|cells| {
+            let ncells = cells.len();
+            (Just(cells),
+            1..=((ncells as f64).sqrt() as usize),
+            1..=((ncells as f64).sqrt() as usize))
+                .prop_flat_map(|(cells, d1, d2)| {
+                    (Just(cells),
+                    Just(d1),
+                    Just(d2),
+                    0..=d1,
+                    0..=d1,
+                    0..=d2,
+                    0..=d2)
+                })
+        })) {
+            let s1 = std::cmp::min(b11, b12).. std::cmp::max(b11, b12);
+            let s2 = std::cmp::min(b21, b22).. std::cmp::max(b21, b22);
+            do_cells_slice_2d(cells, d1, d2, s1, s2)
+        }
+
+        #[test]
+        fn cells_slice_3d((cells, d1, d2, d3, b11, b12, b21, b22, b31, b32) in any_with::<Cells>(CellsParameters {
+            min_records: 1,
+            ..Default::default()
+        }).prop_flat_map(|cells| {
+            let ncells = cells.len();
+            (Just(cells),
+            1..=((ncells as f64).cbrt() as usize),
+            1..=((ncells as f64).cbrt() as usize),
+            1..=((ncells as f64).cbrt() as usize))
+                .prop_flat_map(|(cells, d1, d2, d3)| {
+                    (Just(cells),
+                    Just(d1),
+                    Just(d2),
+                    Just(d3),
+                    0..=d1,
+                    0..=d1,
+                    0..=d2,
+                    0..=d2,
+                    0..=d3,
+                    0..=d3)
+                })
+        })) {
+            let s1 = std::cmp::min(b11, b12).. std::cmp::max(b11, b12);
+            let s2 = std::cmp::min(b21, b22).. std::cmp::max(b21, b22);
+            let s3 = std::cmp::min(b31, b32).. std::cmp::max(b31, b32);
+            do_cells_slice_3d(cells, d1, d2, d3, s1, s2, s3)
         }
     }
 }
