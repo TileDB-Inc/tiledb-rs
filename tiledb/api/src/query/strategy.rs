@@ -953,6 +953,7 @@ const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
 ///
 /// TODO: for var sized attributes, follow up by shrinking the values.
 struct CellsValueTree {
+    params: CellsParameters,
     field_data: HashMap<String, (FieldMask, Option<FieldData>)>,
     nrecords: usize,
     last_records_included: Option<Vec<usize>>,
@@ -963,6 +964,7 @@ struct CellsValueTree {
 
 impl CellsValueTree {
     pub fn new(
+        params: CellsParameters,
         field_data: HashMap<String, (FieldMask, Option<FieldData>)>,
     ) -> Self {
         let nrecords = field_data
@@ -977,6 +979,7 @@ impl CellsValueTree {
         let records_included = (0..nrecords).collect::<Vec<usize>>();
 
         CellsValueTree {
+            params,
             field_data,
             nrecords,
             last_records_included: None,
@@ -1033,15 +1036,21 @@ impl CellsValueTree {
                             }
                         }
 
-                        /*
-                        if new_records_included.is_empty() {
-                            /*
-                             * This means that we failed on every chunk.
-                             * TODO: pivot to a linear search strategy?
-                             */
-                            self.search = Some(ShrinkSearchStep::Empty);
-                        } else
-                            */
+                        if new_records_included.len() < self.params.min_records
+                        {
+                            /* buffer with some extras because the strategy requires it */
+                            let mut rec = new_records_included
+                                .into_iter()
+                                .collect::<BTreeSet<usize>>();
+                            let mut i = 0;
+                            while rec.len() < self.params.min_records {
+                                rec.insert(i);
+                                i += 1;
+                            }
+                            new_records_included =
+                                rec.into_iter().collect::<Vec<usize>>();
+                        }
+
                         if new_records_included == self.records_included {
                             /* everything was needed to pass */
                             self.search = Some(ShrinkSearchStep::Done);
@@ -1062,20 +1071,6 @@ impl CellsValueTree {
                     }
                 }
             }
-            /*
-            Some(ShrinkSearchStep::Empty) => {
-                if failed {
-                    false
-                } else {
-                    self.search = Some(ShrinkSearchStep::EmptyPassed);
-                    true
-                }
-            }
-            Some(ShrinkSearchStep::EmptyPassed) => {
-                assert!(failed);
-                false
-            }
-            */
             Some(ShrinkSearchStep::Recur) => {
                 if failed {
                     self.search = Some(ShrinkSearchStep::Explore(0));
@@ -1358,7 +1353,7 @@ impl Strategy for CellsStrategy {
         /* generate an initial set of fields to write */
         let field_tree = self.schema.new_field_tree(runner, nrecords);
 
-        Ok(CellsValueTree::new(field_tree))
+        Ok(CellsValueTree::new(self.params.clone(), field_tree))
     }
 }
 
