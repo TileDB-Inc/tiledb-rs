@@ -339,6 +339,21 @@ impl DimensionConstraints {
             std::ptr::null()
         )
     }
+
+    /// Returns the number of elements spanned by this constraint, if applicable
+    pub fn len(&self) -> Option<usize> {
+        match self {
+            Self::Int8([low, high], _) => Some((1 + high - low) as usize),
+            Self::Int16([low, high], _) => Some((1 + high - low) as usize),
+            Self::Int32([low, high], _) => Some((1 + high - low) as usize),
+            Self::Int64([low, high], _) => Some((1 + high - low) as usize),
+            Self::UInt8([low, high], _) => Some((1 + high - low) as usize),
+            Self::UInt16([low, high], _) => Some((1 + high - low) as usize),
+            Self::UInt32([low, high], _) => Some((1 + high - low) as usize),
+            Self::UInt64([low, high], _) => Some((1 + high - low) as usize),
+            _ => None,
+        }
+    }
 }
 
 #[derive(ContextBound)]
