@@ -9,6 +9,7 @@ use tiledb::array::Array;
 use tiledb::context::Context;
 use tiledb::{Factory, Result as TileDBResult};
 
+use tiledb_proptests::explorer::ExplorationStrategyAdaptor;
 use tiledb_proptests::schema;
 
 const NUM_ITERS: u64 = 1_000u64;
@@ -17,11 +18,14 @@ const NUM_ITERS: u64 = 1_000u64;
 fn schema_creation() -> TileDBResult<()> {
     let cfg = ProptestConfig::with_cases(NUM_ITERS as u32);
     let ctx = Context::new()?;
+
+    let iter: Rc<RefCell<u64>> = Rc::new(RefCell::new(0));
+    let start = Instant::now();
+
     let uris = proptest::string::string_regex("[a-z]+")
         .expect("Error creating URI property.");
     let schemas = schema::SchemaStrategy::new();
-    let iter: Rc<RefCell<u64>> = Rc::new(RefCell::new(0));
-    let start = Instant::now();
+    let wrapped = ExplorationStrategyAdaptor::new(schemas);
 
     proptest!(cfg, move |(uri in uris, schema in schemas)| {
         let mut tmp = iter.borrow_mut();

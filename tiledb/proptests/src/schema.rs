@@ -13,6 +13,7 @@ use tiledb::Result as TileDBResult;
 
 use crate::attribute;
 use crate::domain;
+use crate::explorer::ValueTreeExplorer;
 use crate::filter_list::{self, FilterListContextKind};
 use crate::util;
 
@@ -85,13 +86,37 @@ fn gen_attributes(
     Ok(ret)
 }
 
+#[derive(Debug)]
+enum Phase {
+    Dimensions,
+    Attributes,
+    Finished,
+}
+
+#[derive(Debug)]
 pub struct SchemaValueTree {
-    data: SchemaData,
+    root: SchemaData,
+    current: SchemaData,
+    schema: SchemaData,
+    phase: Phase,
 }
 
 impl SchemaValueTree {
-    pub fn new(data: SchemaData) -> Self {
-        Self { data }
+    pub fn new(schema: SchemaData) -> Self {
+        let mut root = schema.clone();
+        if !schema.domain.dimension.is_empty() {
+            root.domain.dimension = vec![schema.domain.dimension[0].clone()];
+        }
+        if !schema.attributes.is_empty() {
+            root.attributes = vec![schema.attributes[0].clone()];
+        }
+
+        Self {
+            root: root.clone(),
+            current: root.clone(),
+            schema,
+            phase: Phase::Dimensions,
+        }
     }
 }
 
@@ -99,16 +124,80 @@ impl ValueTree for SchemaValueTree {
     type Value = SchemaData;
 
     fn current(&self) -> Self::Value {
-        self.data.clone()
+        self.schema.clone()
     }
 
     fn simplify(&mut self) -> bool {
-        println!("SIMPLIFY!");
-        false
+        panic!("ExplorationStrategyAdaptor is broken.")
     }
 
     fn complicate(&mut self) -> bool {
-        println!("COMPLICATE!");
+        panic!("ExplorationStrategyAdaptor is broken.")
+    }
+}
+
+impl ValueTreeExplorer for SchemaValueTree {
+    type Value = SchemaData;
+
+    fn root(&self) -> Self::Value {
+        self.root.clone()
+    }
+
+    fn current(&self) -> Self::Value {
+        self.current.clone()
+    }
+
+    fn explore(
+        &mut self,
+    ) -> Result<
+        Option<Box<dyn ValueTreeExplorer<Value = Self::Value>>>,
+        TestCaseError,
+    > {
+        // We explore the schema error state in two phases. First, we extend
+        // out all dimensions, then attributes.
+        match self.phase {
+            Phase::Dimensions => {
+                let curr_dims = self.current.domain.dimension.len();
+                let schema_dims = self.schema.domain.dimension.len();
+
+                if curr_dims < schema_dims {
+                    self.current
+                        .domain
+                        .dimension
+                        .push(self.schema.domain.dimension[curr_dims].clone());
+                }
+
+                if curr_dims + 1 >= schema_dims {
+                    self.phase = Phase::Attributes;
+                }
+
+                Ok(None)
+            }
+            Phase::Attributes => {
+                let curr_attrs = self.current.attributes.len();
+                let schema_attrs = self.schema.attributes.len();
+
+                if curr_attrs < schema_attrs {
+                    self.current
+                        .attributes
+                        .push(self.schema.attributes[curr_attrs].clone());
+                }
+
+                if curr_attrs + 1 >= schema_attrs {
+                    self.phase = Phase::Finished;
+                }
+
+                Ok(None)
+            }
+            Phase::Finished => Err(TestCaseError::Fail(
+                "Failed to find error.".to_string().into(),
+            )),
+        }
+    }
+
+    fn refine(&mut self) -> bool {
+        // Ignore for now. We'll skip efficient searching until I can prove
+        // this isn't all a terrible idea.
         false
     }
 }

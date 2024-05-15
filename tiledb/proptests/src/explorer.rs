@@ -72,12 +72,16 @@
 /// something like "search exact correctness" where we can sample successful
 /// inputs and then attempt to use this error state space search thing to
 /// check that all of the things we think are errors are actually errors.
-use std::fmt::Debug;
+use std::fmt;
 
-use proptest::test_runner::TestCaseError;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-pub trait ValueTreeExplorer {
-    type Value: Debug;
+use proptest::strategy::{BoxedStrategy, NewTree, Strategy, ValueTree};
+use proptest::test_runner::{TestCaseError, TestRunner};
+
+pub trait ValueTreeExplorer: fmt::Debug {
+    type Value: fmt::Debug;
 
     /// Get the root case from the failing example. This should be the simplest
     /// representation of the failing test case. If the result of this call
@@ -111,7 +115,7 @@ pub trait ValueTreeExplorer {
     fn explore(
         &mut self,
     ) -> Result<
-        Option<impl ValueTreeExplorer<Value = Self::Value>>,
+        Option<Box<dyn ValueTreeExplorer<Value = Self::Value>>>,
         TestCaseError,
     >;
 
@@ -127,4 +131,159 @@ pub trait ValueTreeExplorer {
     /// Otherwise the refine -> current -> test loop runs until this method
     /// returns false.
     fn refine(&mut self) -> bool;
+}
+
+// Note to self: The shrink loop has this shape:
+//
+// if tree.simplify() {
+//     loop {
+//         if max_iters or timed_out {
+//             while tree.complicate()
+//             break;
+//         }
+//
+//         result = run_test(tree.current())
+//
+//         match result {
+//             case Ok | Rejected {
+//                 if !tree.complicate() {
+//                     break;
+//                 }
+//             }
+//             Err {
+//                 if !tree.simplify() {
+//                     break;
+//                 }
+//             }
+//         }
+//     }
+// }
+
+pub struct ExplorationTreeAdaptor<ValueAdaptor: fmt::Debug> {
+    tree: Box<dyn ValueTree<Value = ValueAdaptor>>,
+    exploration_root: Rc<RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
+    stack: Vec<Box<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
+    simplifications: usize,
+    complications: usize,
+    search_failed: bool,
+}
+
+impl<ValueAdaptor: fmt::Debug> ExplorationTreeAdaptor<ValueAdaptor> {
+    pub fn new(
+        tree: Box<dyn ValueTree<Value = ValueAdaptor>>,
+        exploration_root: Rc<
+            RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>,
+        >,
+    ) -> Self {
+        Self {
+            tree,
+            exploration_root,
+            stack: Vec::new(),
+            simplifications: 0,
+            complications: 0,
+            search_failed: false,
+        }
+    }
+}
+
+impl<ValueAdaptor: fmt::Debug> ValueTree
+    for ExplorationTreeAdaptor<ValueAdaptor>
+{
+    type Value = ValueAdaptor;
+
+    fn current(&self) -> ValueAdaptor {
+        if self.search_failed {
+            if self.stack.is_empty() {
+                return self.exploration_root.borrow().current();
+            } else {
+                return self.stack.last().unwrap().current();
+            }
+        }
+
+        if self.simplifications > 1 {
+            if self.stack.is_empty() {
+                self.exploration_root.borrow().current()
+            } else {
+                self.stack.last().unwrap().current()
+            }
+        } else {
+            self.exploration_root.borrow().root()
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        if self.search_failed {
+            return false;
+        }
+
+        self.simplifications += 1;
+        if self.stack.is_empty() {
+            self.exploration_root.borrow_mut().refine()
+        } else {
+            self.stack.last_mut().unwrap().refine()
+        }
+    }
+
+    fn complicate(&mut self) -> bool {
+        if self.search_failed {
+            return false;
+        }
+
+        self.complications += 1;
+        let result = if self.stack.is_empty() {
+            self.exploration_root.borrow_mut().explore()
+        } else {
+            self.stack.last_mut().unwrap().explore()
+        };
+
+        if result.is_err() {
+            println!("Error exploring tree: {:?}", result.err().unwrap());
+
+            if !self.stack.is_empty() {
+                self.stack.pop();
+            } else {
+                self.search_failed = true;
+            }
+
+            return false;
+        }
+
+        assert!(result.is_ok());
+        let result = result.unwrap();
+
+        if let Some(result) = result {
+            self.stack.push(result);
+        }
+
+        true
+    }
+}
+
+#[derive(Debug)]
+pub struct ExplorationStrategyAdaptor<ValueAdaptor: fmt::Debug> {
+    strategy: BoxedStrategy<ValueAdaptor>,
+    explorer: Rc<RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
+}
+
+impl<ValueAdaptor: fmt::Debug> ExplorationStrategyAdaptor<ValueAdaptor> {
+    pub fn new(
+        strategy: BoxedStrategy<ValueAdaptor>,
+        explorer: Rc<RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
+    ) -> Self {
+        Self { strategy, explorer }
+    }
+}
+
+impl<ValueAdaptor: fmt::Debug> Strategy
+    for ExplorationStrategyAdaptor<ValueAdaptor>
+{
+    type Tree = ExplorationTreeAdaptor<ValueAdaptor>;
+    type Value = ValueAdaptor;
+
+    fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        Ok(ExplorationTreeAdaptor::new(
+            self.strategy.new_tree(runner)?,
+            Rc::clone(&self.explorer),
+        ))
+    }
 }
