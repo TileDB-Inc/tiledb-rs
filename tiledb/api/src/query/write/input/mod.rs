@@ -1,10 +1,11 @@
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
-use crate::array::CellValNum;
+use crate::array::{CellValNum, Schema};
 use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
-    Buffer, CellStructure, QueryBuffers, QueryBuffersMut,
+    Buffer, CellStructure, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
 };
 use crate::Result as TileDBResult;
 
@@ -284,6 +285,12 @@ impl DataProvider for Vec<String> {
             validity,
         })
     }
+}
+
+pub trait RecordProvider<'data> {
+    type Iter: Iterator<Item = TileDBResult<(String, TypedQueryBuffers<'data>)>>;
+
+    fn tiledb_inputs(&'data self, schema: Rc<Schema>) -> Self::Iter;
 }
 
 #[cfg(test)]

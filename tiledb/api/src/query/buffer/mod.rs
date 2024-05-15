@@ -551,6 +551,10 @@ impl<'data> TypedQueryBuffers<'data> {
     pub fn cell_structure(&self) -> &CellStructure<'data> {
         crate::typed_query_buffers_go!(self, _DT, ref qb, &qb.cell_structure)
     }
+
+    pub fn validity(&self) -> Option<&Buffer<'data, u8>> {
+        crate::typed_query_buffers_go!(self, _DT, ref qb, qb.validity.as_ref())
+    }
 }
 
 pub enum RefTypedQueryBuffersMut<'cell, 'data> {
