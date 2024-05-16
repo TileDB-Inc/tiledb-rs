@@ -626,6 +626,8 @@ impl Iterator for WriteSequenceIter {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use tempfile::TempDir;
 
     use super::*;
@@ -633,7 +635,7 @@ mod tests {
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
     };
-    use crate::{Context, Factory};
+    use crate::{typed_field_data_go, Context, Factory};
 
     fn do_write_readback(
         ctx: &Context,

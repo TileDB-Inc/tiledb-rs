@@ -127,7 +127,16 @@ where
 
         // see SC-47322, we need to prevent the extent from getting too big
         // because core does not treat it for memory allocations
-        let extent_limit_limit = T::from_usize(1024 * 1024).unwrap();
+        let extent_limit_limit = {
+            const DIMENSION_EXTENT_LIMIT: usize = 1024 * 1024;
+            match T::from_usize(DIMENSION_EXTENT_LIMIT) {
+                Some(t) => t,
+                None => {
+                    /* the type range is small enough that we need not worry */
+                    upper_limit
+                }
+            }
+        };
         if matches!(
             extent_limit_limit.bits_cmp(&extent_limit),
             std::cmp::Ordering::Less

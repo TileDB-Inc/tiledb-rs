@@ -88,13 +88,7 @@ where
             }
         }
 
-        if self.len() < other.len() {
-            Ordering::Less
-        } else if self.len() == other.len() {
-            Ordering::Equal
-        } else {
-            Ordering::Greater
-        }
+        self.len().cmp(&other.len())
     }
 }
 

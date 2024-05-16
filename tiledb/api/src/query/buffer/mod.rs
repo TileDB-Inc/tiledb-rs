@@ -499,6 +499,12 @@ impl<'data, C> AsMut<QueryBuffers<'data, C>>
 /// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Var(_)`.
 pub struct QueryBuffersCellStructureVar<'data, C>(QueryBuffers<'data, C>);
 
+impl<'data, C> QueryBuffersCellStructureVar<'data, C> {
+    pub fn into_inner(self) -> QueryBuffers<'data, C> {
+        self.0
+    }
+}
+
 impl<'data, C> TryFrom<QueryBuffers<'data, C>>
     for QueryBuffersCellStructureVar<'data, C>
 {

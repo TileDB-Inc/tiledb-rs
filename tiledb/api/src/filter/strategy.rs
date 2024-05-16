@@ -370,7 +370,8 @@ pub fn prop_filter(
         filter_strategies.push(prop_bitwidthreduction().boxed());
     }
 
-    let ok_positive_delta = requirements.pipeline_position.is_none();
+    let ok_positive_delta =
+        ok_bit_reduction && requirements.pipeline_position.is_none();
     if ok_positive_delta {
         // this filter will error on un-sorted input, `pipeline_position.is_none()`
         // is not the same as that, but it is a good enough proxy for now
