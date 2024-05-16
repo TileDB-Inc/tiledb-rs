@@ -361,7 +361,7 @@ pub fn prop_filter(
     let ok_bit_reduction = match requirements.input_datatype {
         None => true,
         Some(dt) => {
-            dt.is_integral_type()
+            !matches!(dt, Datatype::Blob) && dt.is_integral_type()
                 || dt.is_datetime_type()
                 || dt.is_time_type()
                 || dt.is_byte_type()
