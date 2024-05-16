@@ -1,11 +1,13 @@
-use std::cmp::Ordering;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 
 use proptest::prelude::*;
+use proptest::strategy::{NewTree, ValueTree};
+use proptest::test_runner::TestRunner;
+use serde_json::json;
 
 use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
-use crate::datatype::physical::BitsOrd;
 use crate::datatype::LogicalType;
 use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
@@ -13,7 +15,7 @@ use crate::query::read::{
 };
 use crate::query::strategy::{
     Cells, CellsCallback, CellsParameters, CellsStrategySchema,
-    FieldDataParameters,
+    FieldDataParameters, StructuredCells,
 };
 use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
 use crate::range::SingleValueRange;
@@ -21,6 +23,8 @@ use crate::{
     dimension_constraints_go, fn_typed, single_value_range_go,
     Result as TileDBResult,
 };
+
+type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
 #[derive(Debug)]
 pub struct DenseWriteInput {
@@ -92,105 +96,309 @@ pub struct DenseWriteParameters {
     memory_limit: Option<usize>,
 }
 
-fn prop_dense_write(
+pub struct DenseWriteValueTree {
+    layout: CellOrder,
+    field_order: Vec<String>,
+    bounding_subarray: Vec<RangeInclusive<usize>>,
+    subarray: Vec<BoxedValueTree<SingleValueRange>>,
+    cells: StructuredCells,
+    prev_shrink: Option<usize>,
+}
+
+impl DenseWriteValueTree {
+    pub fn new(
+        layout: CellOrder,
+        bounding_subarray: Vec<SingleValueRange>,
+        subarray: Vec<BoxedValueTree<SingleValueRange>>,
+        cells: Cells,
+    ) -> Self {
+        let field_order =
+            cells.fields().keys().cloned().collect::<Vec<String>>();
+
+        let cells = {
+            let dimension_len = bounding_subarray
+                .iter()
+                .map(|r| r.len().unwrap())
+                .collect::<Vec<usize>>();
+            StructuredCells::new(dimension_len, cells)
+        };
+
+        let bounding_subarray = bounding_subarray
+            .into_iter()
+            .map(|range| RangeInclusive::<usize>::try_from(range).unwrap())
+            .collect::<Vec<RangeInclusive<usize>>>();
+
+        DenseWriteValueTree {
+            layout,
+            field_order,
+            bounding_subarray,
+            subarray,
+            cells,
+            prev_shrink: None,
+        }
+    }
+
+    fn subarray_current(&self) -> Vec<SingleValueRange> {
+        self.subarray
+            .iter()
+            .map(|tree| tree.current())
+            .collect::<Vec<SingleValueRange>>()
+    }
+
+    fn cells_for_subarray(
+        &self,
+        subarray: &[SingleValueRange],
+    ) -> StructuredCells {
+        let slices = self
+            .bounding_subarray
+            .iter()
+            .zip(subarray.iter())
+            .map(|(complete, current)| {
+                let current =
+                    RangeInclusive::<usize>::try_from(current.clone()).unwrap();
+
+                assert!(
+                    complete.start() <= current.start(),
+                    "complete = {:?}, current = {:?}",
+                    complete,
+                    current
+                );
+                assert!(
+                    current.end() <= complete.end(),
+                    "complete = {:?}, current = {:?}",
+                    complete,
+                    current
+                );
+
+                let start = current.start() - complete.start();
+                let end = current.end() - current.start() + 1;
+                start..end
+            })
+            .collect::<Vec<std::ops::Range<usize>>>();
+
+        self.cells.slice(slices)
+    }
+}
+
+impl Debug for DenseWriteValueTree {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let json = json!({
+            "layout": self.layout,
+            "field_order": self.field_order,
+            "bounding_subarray": self.bounding_subarray,
+            "subarray": self.subarray_current(),
+            "prev_shrink": self.prev_shrink
+        });
+        write!(f, "{}", json)
+    }
+}
+
+impl ValueTree for DenseWriteValueTree {
+    type Value = DenseWriteInput;
+
+    fn current(&self) -> Self::Value {
+        let subarray = self.subarray_current();
+        let cells = self.cells_for_subarray(&subarray);
+
+        DenseWriteInput {
+            layout: self.layout,
+            data: cells.into_inner(),
+            subarray,
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        // try shrinking each dimension in round-robin order,
+        // beginning with the dimension after whichever we
+        // previously shrunk
+        let start = self.prev_shrink.map(|d| d + 1).unwrap_or(0);
+
+        for i in 0..self.subarray.len() {
+            let idx = (start + i) % self.subarray.len();
+            if self.subarray[idx].simplify() {
+                self.prev_shrink = Some(idx);
+                return true;
+            }
+        }
+
+        self.prev_shrink = None;
+        false
+    }
+
+    fn complicate(&mut self) -> bool {
+        // complicate whichever dimension we previously simplified
+        if let Some(d) = self.prev_shrink {
+            if self.subarray[d].complicate() {
+                // we may be able to complicate again, keep prev_shrink
+                true
+            } else {
+                self.prev_shrink = None;
+                false
+            }
+        } else {
+            false
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct DenseWriteStrategy {
     schema: Rc<SchemaData>,
     layout: CellOrder,
     params: DenseWriteParameters,
-) -> impl Strategy<Value = DenseWriteInput> {
-    /*
-     * For simplicity, we will bound the memory used at each dimension
-     * rather than keeping a moving product of the accumulated memory
-     */
-    let memory_limit: usize = {
-        const MEMORY_LIMIT_DEFAULT: usize = 1 * 1024; // chosen arbitrarily
-        let memory_limit = params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
-        memory_limit / schema.domain.dimension.len()
-    };
+}
 
-    if matches!(layout, CellOrder::Global) {
-        // necessary to align to tile boundaries
-        unimplemented!()
+impl DenseWriteStrategy {
+    pub fn new(
+        schema: Rc<SchemaData>,
+        layout: CellOrder,
+        params: DenseWriteParameters,
+    ) -> Self {
+        DenseWriteStrategy {
+            schema,
+            layout,
+            params,
+        }
     }
+}
 
-    let est_cell_size: usize = schema
-        .fields()
-        .map(|field| {
-            match field.cell_val_num().unwrap_or(CellValNum::single()) {
-                CellValNum::Fixed(nz) => {
-                    /* exact */
-                    nz.get() as usize * field.datatype().size() as usize
-                }
-                CellValNum::Var => {
-                    /* estimate */
-                    let params = <FieldDataParameters as Default>::default();
-                    let est_nvalues = (params.value_min_var_size
-                        + params.value_max_var_size)
-                        / 2;
-                    est_nvalues * field.datatype().size() as usize
-                }
-            }
-        })
-        .sum();
+impl Strategy for DenseWriteStrategy {
+    type Tree = DenseWriteValueTree;
+    type Value = DenseWriteInput;
 
-    let cell_limit: usize = memory_limit / est_cell_size;
-
-    /* determine range for each dimension */
-    let strat_ranges = schema
-        .domain
-        .dimension
-        .iter()
-        .map(|d| {
-            dimension_constraints_go!(
-                d.constraints,
-                DT,
-                ref domain,
-                _,
-                {
-                    let dim_lower = domain[0]; // copy so we don't borrow schema for closure
-                    let dim_range = domain[1] - dim_lower;
-
-                    let lower_cell_bound = 0 as DT;
-                    let upper_cell_bound =
-                        match dim_range.bits_cmp(&(cell_limit as DT)) {
-                            Ordering::Less => dim_range,
-                            _ => cell_limit as DT,
-                        };
-
-                    (lower_cell_bound..=upper_cell_bound)
-                        .prop_flat_map(move |upper| {
-                            ((lower_cell_bound..=upper), Just(upper))
-                        })
-                        .prop_map(move |(lower, upper)| {
-                            SingleValueRange::from(&[
-                                dim_lower + lower,
-                                dim_lower + upper,
-                            ])
-                        })
-                        .boxed()
-                },
-                unimplemented!()
-            )
-        })
-        .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
-
-    strat_ranges.prop_flat_map(move |ranges| {
-        let ncells = ranges.iter().map(|r| r.len().unwrap()).product();
-
-        let params = CellsParameters {
-            schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(&schema))),
-            min_records: ncells,
-            max_records: ncells,
-            ..Default::default()
+    fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        /*
+         * For simplicity, we will bound the memory used at each dimension
+         * rather than keeping a moving product of the accumulated memory
+         */
+        let memory_limit: usize = {
+            const MEMORY_LIMIT_DEFAULT: usize = 1 * 1024; // chosen arbitrarily
+            let memory_limit =
+                self.params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
+            memory_limit / self.schema.domain.dimension.len()
         };
 
-        (Just(ranges), any_with::<Cells>(params)).prop_map(
-            move |(ranges, cells)| DenseWriteInput {
-                layout,
-                data: cells,
-                subarray: ranges,
-            },
-        )
-    })
+        if matches!(self.layout, CellOrder::Global) {
+            // necessary to align to tile boundaries
+            unimplemented!()
+        }
+
+        let est_cell_size: usize = self
+            .schema
+            .fields()
+            .map(|field| {
+                match field.cell_val_num().unwrap_or(CellValNum::single()) {
+                    CellValNum::Fixed(nz) => {
+                        /* exact */
+                        nz.get() as usize * field.datatype().size() as usize
+                    }
+                    CellValNum::Var => {
+                        /* estimate */
+                        let params =
+                            <FieldDataParameters as Default>::default();
+                        let est_nvalues = (params.value_min_var_size
+                            + params.value_max_var_size)
+                            / 2;
+                        est_nvalues * field.datatype().size() as usize
+                    }
+                }
+            })
+            .sum();
+
+        let cell_limit: usize = memory_limit / est_cell_size;
+
+        /* choose maximal subarray for the write, we will shrink within this window */
+        let strat_subarray_bounds = self
+            .schema
+            .domain
+            .dimension
+            .iter()
+            .map(|d| {
+                dimension_constraints_go!(
+                    d.constraints,
+                    DT,
+                    ref domain,
+                    _,
+                    {
+                        (domain[0]..=domain[1], domain[0]..=domain[1])
+                            .prop_map(move |(d1, d2)| {
+                                let limit = cell_limit as DT;
+                                let min = if d1 < d2 { d1 } else { d2 };
+                                let max = if d1 < d2 { d2 } else { d1 };
+                                let max = if min + limit < max {
+                                    min + limit
+                                } else {
+                                    max
+                                };
+                                SingleValueRange::from(&[min, max])
+                            })
+                            .boxed()
+                    },
+                    unimplemented!()
+                )
+            })
+            .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
+
+        let bounding_subarray = strat_subarray_bounds
+            .into_iter()
+            .map(|strat| strat.new_tree(runner).unwrap().current())
+            .collect::<Vec<SingleValueRange>>();
+
+        /* prepare tree for each subarray dimension */
+        let strat_subarray = bounding_subarray
+            .iter()
+            .cloned()
+            .map(|dim| {
+                single_value_range_go!(
+                    dim,
+                    _DT: Integral,
+                    start,
+                    end,
+                    {
+                        (start..=end)
+                            .prop_flat_map(move |lower| {
+                                (Just(lower), lower..=end).prop_map(
+                                    move |(lower, upper)| {
+                                        SingleValueRange::from(&[lower, upper])
+                                    },
+                                )
+                            })
+                            .boxed()
+                    },
+                    unreachable!()
+                )
+            })
+            .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
+
+        let mut subarray: Vec<BoxedValueTree<SingleValueRange>> = vec![];
+        for range in strat_subarray {
+            subarray.push(range.new_tree(runner).unwrap());
+        }
+
+        let cells = {
+            let ncells = bounding_subarray
+                .iter()
+                .map(|range| range.len().unwrap())
+                .product();
+            assert!(ncells > 0);
+            let params = CellsParameters {
+                schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(
+                    &self.schema,
+                ))),
+                min_records: ncells,
+                max_records: ncells,
+                ..Default::default()
+            };
+            any_with::<Cells>(params).new_tree(runner)?.current()
+        };
+
+        Ok(DenseWriteValueTree::new(
+            self.layout,
+            bounding_subarray,
+            subarray,
+            cells,
+        ))
+    }
 }
 
 impl Arbitrary for DenseWriteInput {
@@ -221,7 +429,7 @@ impl Arbitrary for DenseWriteInput {
 
         (strat_schema, strat_layout)
             .prop_flat_map(move |(schema, layout)| {
-                prop_dense_write(schema, layout, args.clone())
+                DenseWriteStrategy::new(schema, layout, args.clone())
             })
             .boxed()
     }
@@ -418,8 +626,6 @@ impl Iterator for WriteSequenceIter {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use tempfile::TempDir;
 
     use super::*;
@@ -427,7 +633,6 @@ mod tests {
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
     };
-    use crate::typed_field_data_go;
     use crate::{Context, Factory};
 
     fn do_write_readback(
@@ -562,14 +767,22 @@ mod tests {
     fn write_once_readback() {
         let ctx = Context::new().expect("Error creating context");
 
-        let strategy = any::<SchemaData>().prop_flat_map(|schema| {
-            let schema = Rc::new(schema);
-            (
-                Just(Rc::clone(&schema)),
-                any_with::<WriteInput>(WriteParameters::default_for(schema))
+        let requirements = crate::array::schema::strategy::Requirements {
+            array_type: Some(ArrayType::Dense),
+            ..Default::default()
+        };
+
+        let strategy = any_with::<SchemaData>(Rc::new(requirements))
+            .prop_flat_map(|schema| {
+                let schema = Rc::new(schema);
+                (
+                    Just(Rc::clone(&schema)),
+                    any_with::<WriteInput>(WriteParameters::default_for(
+                        schema,
+                    ))
                     .prop_map(|w| WriteSequence::from(w)),
-            )
-        });
+                )
+            });
 
         proptest!(|((schema_spec, write_sequence) in strategy)| {
             do_write_readback(&ctx, schema_spec, write_sequence)
@@ -579,7 +792,7 @@ mod tests {
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
     #[ignore]
-    fn write_readback() {
+    fn write_sequence_readback() {
         let ctx = Context::new().expect("Error creating context");
 
         let strategy = any::<SchemaData>().prop_flat_map(|schema| {

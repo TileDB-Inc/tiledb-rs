@@ -816,7 +816,7 @@ pub struct StructuredCells {
 impl StructuredCells {
     pub fn new(dimensions: Vec<usize>, cells: Cells) -> Self {
         let expected_cells: usize = dimensions.iter().cloned().product();
-        assert_eq!(expected_cells, cells.len());
+        assert_eq!(expected_cells, cells.len(), "Dimensions: {:?}", dimensions);
 
         StructuredCells { dimensions, cells }
     }
