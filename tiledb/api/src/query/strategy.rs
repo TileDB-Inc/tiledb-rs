@@ -334,6 +334,22 @@ impl FieldData {
         typed_field_data_go!(self, ref mut data, data.truncate(len))
     }
 
+    pub fn sort(&mut self) {
+        typed_field_data_go!(
+            self,
+            DT,
+            ref mut data,
+            {
+                let cmp = |k1: &DT, k2: &DT| k1.bits_cmp(k2);
+                data.sort_by(cmp)
+            },
+            {
+                let cmp = |k1: &Vec<DT>, k2: &Vec<DT>| k1.bits_cmp(k2);
+                data.sort_by(cmp)
+            }
+        );
+    }
+
     pub fn extend(&mut self, other: Self) {
         typed_field_data_go!(
             self,
@@ -1433,11 +1449,41 @@ mod tests {
     }
 
     fn do_cells_sort(cells: Cells) {
-        let mut cells = cells;
-        cells.sort();
-        assert!(cells.is_sorted());
+        let cells_sorted = cells.sorted();
+        assert!(cells_sorted.is_sorted());
 
-        // TODO: check that the data is still correct
+        assert_eq!(cells.fields().len(), cells_sorted.fields().len());
+
+        if cells.is_sorted() {
+            // running the sort should not have changed anything
+            assert_eq!(cells, cells_sorted);
+        }
+
+        /*
+         * We want to verify that the contents of the records are the
+         * same before and after the sort. We can precisely do that
+         * with a hash join, though it's definitely tricky to turn
+         * the columnar data into rows, or we can approximate it
+         * by sorting and comparing each column, which is not fully
+         * precise but way easier.
+         */
+        for (fname, data) in cells.fields().iter() {
+            let Some(data_sorted) = cells_sorted.fields().get(fname) else {
+                unreachable!()
+            };
+
+            let orig_sorted = {
+                let mut orig = data.clone();
+                orig.sort();
+                orig
+            };
+            let sorted_sorted = {
+                let mut sorted = data_sorted.clone();
+                sorted.sort();
+                sorted
+            };
+            assert_eq!(orig_sorted, sorted_sorted);
+        }
     }
 
     fn do_cells_slice_1d(cells: Cells, slice: Range<usize>) {
