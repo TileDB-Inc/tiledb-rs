@@ -47,19 +47,6 @@ impl Drop for RawContext {
     }
 }
 
-// I tried using this to mark all the types that just return a self.context
-// vs the types that return self.member.context(). It all compiled until I
-// tried implementing CApiInterface trait for it which caused a trait
-// implementation conflict I couldn't figure out. I'm leaving this and all
-// the marker traits commented out just so we have something to search for
-// if I do figure this out eventually.
-//
-// pub trait ContextBoundBase<'ctx> {
-//     fn context(&self) -> &'ctx Context {
-//         self.context
-//     }
-// }
-
 pub trait ContextBound {
     fn context(&self) -> Context;
 }
