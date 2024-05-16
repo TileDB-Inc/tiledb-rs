@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use anyhow::anyhow;
 use proptest::prelude::*;
-use proptest::strategy::{NewTree, Strategy, ValueTree};
+use proptest::strategy::{NewTree, Strategy};
 use proptest::test_runner::{TestRng, TestRunner};
 
 use tiledb::array::attribute::AttributeData;
@@ -13,7 +13,7 @@ use tiledb::Result as TileDBResult;
 
 use crate::attribute;
 use crate::domain;
-use crate::explorer::ValueTreeExplorer;
+use crate::explorer::{ValueTreeExplorer, ValueTreeExplorerAdaptor};
 use crate::filter_list::{self, FilterListContextKind};
 use crate::util;
 
@@ -33,17 +33,31 @@ fn gen_capacity(rng: &mut TestRng) -> Option<u64> {
     }
 }
 
-fn gen_cell_order(rng: &mut TestRng) -> Option<CellOrder> {
+fn gen_cell_order(rng: &mut TestRng, schema: &SchemaData) -> Option<CellOrder> {
     if rng.gen_bool(0.5) {
-        Some(util::choose(
-            rng,
-            &[
-                CellOrder::Unordered,
-                CellOrder::Global,
-                CellOrder::RowMajor,
-                CellOrder::ColumnMajor,
-            ],
-        ))
+        // Hilbert cell order is only valid for sparse arrays.
+        if schema.array_type == ArrayType::Dense {
+            Some(util::choose(
+                rng,
+                &[
+                    CellOrder::Unordered,
+                    CellOrder::Global,
+                    CellOrder::RowMajor,
+                    CellOrder::ColumnMajor,
+                ],
+            ))
+        } else {
+            Some(util::choose(
+                rng,
+                &[
+                    CellOrder::Unordered,
+                    CellOrder::Global,
+                    CellOrder::RowMajor,
+                    CellOrder::ColumnMajor,
+                    CellOrder::Hilbert,
+                ],
+            ))
+        }
     } else {
         None
     }
@@ -120,22 +134,6 @@ impl SchemaValueTree {
     }
 }
 
-impl ValueTree for SchemaValueTree {
-    type Value = SchemaData;
-
-    fn current(&self) -> Self::Value {
-        self.schema.clone()
-    }
-
-    fn simplify(&mut self) -> bool {
-        panic!("ExplorationStrategyAdaptor is broken.")
-    }
-
-    fn complicate(&mut self) -> bool {
-        panic!("ExplorationStrategyAdaptor is broken.")
-    }
-}
-
 impl ValueTreeExplorer for SchemaValueTree {
     type Value = SchemaData;
 
@@ -153,6 +151,7 @@ impl ValueTreeExplorer for SchemaValueTree {
         Option<Box<dyn ValueTreeExplorer<Value = Self::Value>>>,
         TestCaseError,
     > {
+        println!("Exploring: {:?}", self.current);
         // We explore the schema error state in two phases. First, we extend
         // out all dimensions, then attributes.
         match self.phase {
@@ -198,6 +197,7 @@ impl ValueTreeExplorer for SchemaValueTree {
     fn refine(&mut self) -> bool {
         // Ignore for now. We'll skip efficient searching until I can prove
         // this isn't all a terrible idea.
+        println!("Refining: {:?}", self.current);
         false
     }
 }
@@ -212,8 +212,9 @@ impl SchemaStrategy {
 }
 
 impl Strategy for SchemaStrategy {
-    type Tree = SchemaValueTree;
+    type Tree = ValueTreeExplorerAdaptor<SchemaValueTree>;
     type Value = SchemaData;
+
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
         let mut field_names: HashSet<String> = HashSet::new();
         let array_type = gen_array_type(runner.rng());
@@ -234,7 +235,7 @@ impl Strategy for SchemaStrategy {
             )?;
 
         schema.capacity = gen_capacity(runner.rng());
-        schema.cell_order = gen_cell_order(runner.rng());
+        schema.cell_order = gen_cell_order(runner.rng(), &schema);
         schema.tile_order = gen_tile_order(runner.rng());
         schema.allow_duplicates = gen_allow_duplicates(runner.rng(), &schema);
 
@@ -292,6 +293,8 @@ impl Strategy for SchemaStrategy {
             )
         })?;
 
-        Ok(SchemaValueTree::new(schema))
+        let explorer = Box::new(SchemaValueTree::new(schema));
+        let adaptor = ValueTreeExplorerAdaptor::new(explorer);
+        Ok(adaptor)
     }
 }

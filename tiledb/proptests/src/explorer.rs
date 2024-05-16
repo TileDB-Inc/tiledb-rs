@@ -74,13 +74,10 @@
 /// check that all of the things we think are errors are actually errors.
 use std::fmt;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use proptest::strategy::{BoxedStrategy, NewTree, Strategy, ValueTree};
 use proptest::test_runner::{TestCaseError, TestRunner};
 
-pub trait ValueTreeExplorer: fmt::Debug {
+pub trait ValueTreeExplorer {
     type Value: fmt::Debug;
 
     /// Get the root case from the failing example. This should be the simplest
@@ -159,25 +156,18 @@ pub trait ValueTreeExplorer: fmt::Debug {
 //     }
 // }
 
-pub struct ExplorationTreeAdaptor<ValueAdaptor: fmt::Debug> {
-    tree: Box<dyn ValueTree<Value = ValueAdaptor>>,
-    exploration_root: Rc<RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
-    stack: Vec<Box<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
+pub struct ValueTreeExplorerAdaptor<Explorer: ValueTreeExplorer> {
+    explorer: Box<Explorer>,
+    stack: Vec<Box<dyn ValueTreeExplorer<Value = Explorer::Value>>>,
     simplifications: usize,
     complications: usize,
     search_failed: bool,
 }
 
-impl<ValueAdaptor: fmt::Debug> ExplorationTreeAdaptor<ValueAdaptor> {
-    pub fn new(
-        tree: Box<dyn ValueTree<Value = ValueAdaptor>>,
-        exploration_root: Rc<
-            RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>,
-        >,
-    ) -> Self {
+impl<Explorer: ValueTreeExplorer> ValueTreeExplorerAdaptor<Explorer> {
+    pub fn new(explorer: Box<Explorer>) -> Self {
         Self {
-            tree,
-            exploration_root,
+            explorer,
             stack: Vec::new(),
             simplifications: 0,
             complications: 0,
@@ -186,15 +176,16 @@ impl<ValueAdaptor: fmt::Debug> ExplorationTreeAdaptor<ValueAdaptor> {
     }
 }
 
-impl<ValueAdaptor: fmt::Debug> ValueTree
-    for ExplorationTreeAdaptor<ValueAdaptor>
+impl<Explorer: ValueTreeExplorer> ValueTree
+    for ValueTreeExplorerAdaptor<Explorer>
 {
-    type Value = ValueAdaptor;
+    type Value = Explorer::Value;
 
-    fn current(&self) -> ValueAdaptor {
+    fn current(&self) -> Self::Value {
+        println!("Getting current!");
         if self.search_failed {
             if self.stack.is_empty() {
-                return self.exploration_root.borrow().current();
+                return self.current();
             } else {
                 return self.stack.last().unwrap().current();
             }
@@ -202,36 +193,38 @@ impl<ValueAdaptor: fmt::Debug> ValueTree
 
         if self.simplifications > 1 {
             if self.stack.is_empty() {
-                self.exploration_root.borrow().current()
+                self.current()
             } else {
                 self.stack.last().unwrap().current()
             }
         } else {
-            self.exploration_root.borrow().root()
+            self.explorer.root()
         }
     }
 
     fn simplify(&mut self) -> bool {
+        println!("Simplify!");
         if self.search_failed {
             return false;
         }
 
         self.simplifications += 1;
         if self.stack.is_empty() {
-            self.exploration_root.borrow_mut().refine()
+            self.explorer.refine()
         } else {
             self.stack.last_mut().unwrap().refine()
         }
     }
 
     fn complicate(&mut self) -> bool {
+        println!("Complicate!");
         if self.search_failed {
             return false;
         }
 
         self.complications += 1;
         let result = if self.stack.is_empty() {
-            self.exploration_root.borrow_mut().explore()
+            self.explorer.explore()
         } else {
             self.stack.last_mut().unwrap().explore()
         };
@@ -256,34 +249,5 @@ impl<ValueAdaptor: fmt::Debug> ValueTree
         }
 
         true
-    }
-}
-
-#[derive(Debug)]
-pub struct ExplorationStrategyAdaptor<ValueAdaptor: fmt::Debug> {
-    strategy: BoxedStrategy<ValueAdaptor>,
-    explorer: Rc<RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
-}
-
-impl<ValueAdaptor: fmt::Debug> ExplorationStrategyAdaptor<ValueAdaptor> {
-    pub fn new(
-        strategy: BoxedStrategy<ValueAdaptor>,
-        explorer: Rc<RefCell<dyn ValueTreeExplorer<Value = ValueAdaptor>>>,
-    ) -> Self {
-        Self { strategy, explorer }
-    }
-}
-
-impl<ValueAdaptor: fmt::Debug> Strategy
-    for ExplorationStrategyAdaptor<ValueAdaptor>
-{
-    type Tree = ExplorationTreeAdaptor<ValueAdaptor>;
-    type Value = ValueAdaptor;
-
-    fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
-        Ok(ExplorationTreeAdaptor::new(
-            self.strategy.new_tree(runner)?,
-            Rc::clone(&self.explorer),
-        ))
     }
 }

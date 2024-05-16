@@ -429,7 +429,7 @@ fn maybe_webp_filter(ctx: &FilterListContext) -> Option<FilterGenerator> {
     }
 
     if cvn == 3 {
-        return Some(gen_webp_filter_three_channel);
+        return Some(gen_webp_filter_four_channel);
     } else if cvn == 4 {
         return Some(gen_webp_filter_four_channel);
     }
