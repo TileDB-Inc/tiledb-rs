@@ -657,8 +657,8 @@ mod tests {
         let mut accumulated_write: Option<Cells> = None;
 
         for write in write_sequence {
-            /* write data */
-            {
+            /* write data and preserve ranges for sanity check */
+            let write_ranges = {
                 let write = write
                     .attach_write(
                         WriteBuilder::new(array)
@@ -667,8 +667,13 @@ mod tests {
                     .expect("Error building write query")
                     .build();
                 write.submit().expect("Error running write query");
+
+                let write_ranges = write.subarray().unwrap().ranges().unwrap();
+
                 array = write.finalize().expect("Error finalizing write query");
-            }
+
+                write_ranges
+            };
 
             array = Array::open(ctx, array.uri(), Mode::Read).unwrap();
 
@@ -680,6 +685,12 @@ mod tests {
                     .attach_read(ReadBuilder::new(array).unwrap())
                     .unwrap()
                     .build();
+
+                {
+                    let read_ranges =
+                        read.subarray().unwrap().ranges().unwrap();
+                    assert_eq!(write_ranges, read_ranges);
+                }
 
                 let (mut cells, _) = read.execute().unwrap();
 
