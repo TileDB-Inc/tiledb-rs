@@ -171,7 +171,7 @@ impl DenseWriteValueTree {
                 );
 
                 let start = current.start() - complete.start();
-                let end = current.end() - current.start() + 1;
+                let end = current.end() - complete.start() + 1;
                 start..end
             })
             .collect::<Vec<std::ops::Range<usize>>>();
