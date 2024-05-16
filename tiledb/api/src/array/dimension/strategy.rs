@@ -126,24 +126,6 @@ where
             extent_limit
         };
 
-        // Bug SC-47034: Core does not correctly handle ranges on signed
-        // dimensions when the size of the range overflows the signed type's
-        // range. I.e., [-70i8, 121] has a range of 191 which is larger than
-        // the maximum byte value 127i8. Our round trip tests rely on getting
-        // correct values from core. To avoid triggering the bug we force an
-        // extent when overflow would happen.
-        if would_overflow {
-            return (
-                Just([lower_bound, upper_bound]),
-                std::ops::Range::<T> {
-                    start: T::smallest_positive_value(),
-                    end: extent_limit,
-                }
-                .prop_map(|extent| Some(extent)),
-            )
-                .boxed();
-        }
-
         // see SC-47322, we need to prevent the extent from getting too big
         // because core does not treat it for memory allocations
         let extent_limit_limit = {
@@ -166,6 +148,24 @@ where
                     end: extent_limit_limit,
                 }
                 .prop_map(Some),
+            )
+                .boxed();
+        }
+
+        // Bug SC-47034: Core does not correctly handle ranges on signed
+        // dimensions when the size of the range overflows the signed type's
+        // range. I.e., [-70i8, 121] has a range of 191 which is larger than
+        // the maximum byte value 127i8. Our round trip tests rely on getting
+        // correct values from core. To avoid triggering the bug we force an
+        // extent when overflow would happen.
+        if would_overflow {
+            return (
+                Just([lower_bound, upper_bound]),
+                std::ops::Range::<T> {
+                    start: T::smallest_positive_value(),
+                    end: extent_limit,
+                }
+                .prop_map(|extent| Some(extent)),
             )
                 .boxed();
         }
