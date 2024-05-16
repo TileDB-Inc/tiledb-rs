@@ -464,17 +464,6 @@ pub mod tests {
         let arr_dir = tmp_dir.path().join("quickstart_dense");
         {
             let mut array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
-            let res = array.put_metadata(Metadata::new(
-                "key".to_owned(),
-                Datatype::Int32,
-                vec![5],
-            )?);
-            assert!(res.is_err());
-        }
-
-        {
-            let mut array =
                 Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
 
             array.put_metadata(Metadata::new(
@@ -530,6 +519,69 @@ pub mod tests {
                 Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
             let has_aaa = array.has_metadata_key("aaa")?;
             assert_eq!(has_aaa, None);
+        }
+
+        tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_mode_metadata() -> TileDBResult<()> {
+        let tmp_dir =
+            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+
+        let tdb = Context::new()?;
+        let r = create_quickstart_dense(&tmp_dir, &tdb);
+        assert!(r.is_ok());
+
+        let arr_dir = tmp_dir.path().join("quickstart_dense");
+        // Calling put_metadada with the wrong mode.
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let res = array.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?);
+            assert!(res.is_err());
+        }
+
+        // Successful put_metadata call.
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            let res = array.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?);
+            assert!(res.is_ok());
+        }
+
+        // Read metadata mode testing.
+        {
+            let array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+
+            let res = array.metadata(LookupKey::Name("aaa".to_owned()));
+            assert!(res.is_err());
+
+            let res = array.num_metadata();
+            assert!(res.is_err());
+
+            let res = array.metadata(LookupKey::Index(0));
+            assert!(res.is_err());
+
+            let res = array.has_metadata_key("key");
+            assert!(res.is_err());
+        }
+
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let res = array.delete_metadata("key");
+            assert!(res.is_err());
         }
 
         tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
