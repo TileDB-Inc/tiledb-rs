@@ -427,13 +427,17 @@ impl<'ctx> Factory<'ctx> for DimensionData {
                     })?;
                     extent = Some(e);
                 }
-                let c_range = if let Some(range) = range {
-                    range.as_ptr() as *const std::ffi::c_void
+                let tmp_range = range.unwrap_or_default();
+                let c_range = if range.is_some() {
+                    tmp_range.as_ptr() as *const std::ffi::c_void
                 } else {
                     std::ptr::null()
                 };
-                let c_extent = if let Some(extent) = extent {
-                    &extent as *const DT as *const std::ffi::c_void
+                // Extract the possibly Some(value) into a temporary value to
+                // avoid passing a pointer to a dropped item on the stack.
+                let tmp_extent = extent.unwrap_or_default();
+                let c_extent = if extent.is_some() {
+                    &tmp_extent as *const DT as *const std::ffi::c_void
                 } else {
                     std::ptr::null()
                 };
