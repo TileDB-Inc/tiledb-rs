@@ -361,12 +361,14 @@ pub fn prop_filter(
     let ok_bit_reduction = match requirements.input_datatype {
         None => true,
         Some(dt) => {
-            dt.is_integral_type()
+            !matches!(dt, Datatype::Blob) && dt.is_integral_type()
                 || dt.is_datetime_type()
                 || dt.is_time_type()
                 || dt.is_byte_type()
         }
     };
+    let ok_bit_reduction =
+        ok_bit_reduction && requirements.pipeline_position.is_none();
     if ok_bit_reduction {
         filter_strategies.push(prop_bitwidthreduction().boxed());
     }

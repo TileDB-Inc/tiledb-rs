@@ -8,6 +8,7 @@ use crate::array::schema::arrow::{
     AttributeFromArrowResult, FieldToArrowResult,
 };
 use crate::array::{Attribute, AttributeBuilder, CellValNum};
+use crate::context::ContextBound;
 use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::datatype::LogicalType;
 use crate::error::Error;
@@ -46,14 +47,14 @@ impl AttributeMetadata {
     }
 
     /// Updates an AttributeBuilder with the contents of this object
-    pub fn apply<'ctx>(
+    pub fn apply(
         &self,
-        builder: AttributeBuilder<'ctx>,
-    ) -> TileDBResult<AttributeBuilder<'ctx>> {
+        builder: AttributeBuilder,
+    ) -> TileDBResult<AttributeBuilder> {
         /* TODO: fill value */
         let fl = self
             .filters
-            .apply(FilterListBuilder::new(builder.context())?)?
+            .apply(FilterListBuilder::new(&builder.context())?)?
             .build();
         fn_typed!(builder.datatype()?, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
@@ -111,10 +112,10 @@ pub fn to_arrow(attr: &Attribute) -> TileDBResult<FieldToArrowResult> {
 /// Tries to construct a TileDB array Attribute from the Arrow Field.
 /// Details about the Attribute are stored under the key "tiledb"
 /// in the Field's metadata, if it is present.
-pub fn from_arrow<'ctx>(
-    context: &'ctx Context,
+pub fn from_arrow(
+    context: &Context,
     field: &arrow::datatypes::Field,
-) -> TileDBResult<AttributeFromArrowResult<'ctx>> {
+) -> TileDBResult<AttributeFromArrowResult> {
     let construct = |datatype: Datatype, cell_val_num: CellValNum| {
         let attr = if Datatype::Any == datatype && cell_val_num.is_var_sized() {
             /*

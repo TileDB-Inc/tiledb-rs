@@ -16,18 +16,14 @@ pub type FieldToArrowResult = crate::arrow::ArrowConversionResult<
 
 pub type FieldFromArrowResult<F> = crate::arrow::ArrowConversionResult<F, F>;
 
-pub type AttributeFromArrowResult<'ctx> =
-    FieldFromArrowResult<AttributeBuilder<'ctx>>;
-pub type DimensionFromArrowResult<'ctx> =
-    FieldFromArrowResult<DimensionBuilder<'ctx>>;
+pub type AttributeFromArrowResult = FieldFromArrowResult<AttributeBuilder>;
+pub type DimensionFromArrowResult = FieldFromArrowResult<DimensionBuilder>;
 
 pub type SchemaToArrowResult =
     crate::arrow::ArrowConversionResult<ArrowSchema, ArrowSchema>;
 
-pub type SchemaFromArrowResult<'ctx> = crate::arrow::ArrowConversionResult<
-    SchemaBuilder<'ctx>,
-    SchemaBuilder<'ctx>,
->;
+pub type SchemaFromArrowResult =
+    crate::arrow::ArrowConversionResult<SchemaBuilder, SchemaBuilder>;
 
 /// Represents required metadata to convert from an arrow schema
 /// to a TileDB schema.
@@ -67,9 +63,7 @@ impl SchemaMetadata {
     }
 }
 
-pub fn to_arrow<'ctx>(
-    tiledb: &'ctx Schema<'ctx>,
-) -> TileDBResult<SchemaToArrowResult> {
+pub fn to_arrow(tiledb: &Schema) -> TileDBResult<SchemaToArrowResult> {
     let mut builder = arrow::datatypes::SchemaBuilder::with_capacity(
         tiledb.num_attributes()?,
     );
@@ -136,10 +130,10 @@ pub fn to_arrow<'ctx>(
 /// A TileDB schema must have domain and dimension details.
 /// These are expected to be in the schema `metadata` beneath the key `tiledb`.
 /// This metadata is expected to be a JSON object with the following fields:
-pub fn from_arrow<'ctx>(
-    context: &'ctx Context,
+pub fn from_arrow(
+    context: &Context,
     schema: &ArrowSchema,
-) -> TileDBResult<SchemaFromArrowResult<'ctx>> {
+) -> TileDBResult<SchemaFromArrowResult> {
     let metadata = match schema.metadata().get("tiledb") {
         Some(metadata) => serde_json::from_str::<SchemaMetadata>(metadata)
             .map_err(|e| {

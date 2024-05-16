@@ -77,10 +77,10 @@ pub use context::{Context, ContextBound};
 pub use datatype::Datatype;
 pub type Result<T> = std::result::Result<T, error::Error>;
 
-pub trait Factory<'ctx> {
+pub trait Factory {
     type Item;
 
-    fn create(&self, context: &'ctx context::Context) -> Result<Self::Item>;
+    fn create(&self, context: &context::Context) -> Result<Self::Item>;
 }
 
 mod private {
