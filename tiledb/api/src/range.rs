@@ -72,6 +72,20 @@ impl SingleValueRange {
         }
     }
 
+    pub fn is_integral(&self) -> bool {
+        matches!(
+            self,
+            Self::UInt8(_, _)
+                | Self::UInt16(_, _)
+                | Self::UInt32(_, _)
+                | Self::UInt64(_, _)
+                | Self::Int8(_, _)
+                | Self::Int16(_, _)
+                | Self::Int32(_, _)
+                | Self::Int64(_, _)
+        )
+    }
+
     pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
         check_datatype!(self, datatype);
         Ok(())
