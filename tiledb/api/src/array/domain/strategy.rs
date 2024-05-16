@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 
-use crate::array::dimension::strategy::*;
-use crate::array::{ArrayType, DomainData};
+use crate::array::dimension::strategy::Requirements as DimensionRequirements;
+use crate::array::{ArrayType, DimensionData, DomainData};
 use crate::datatype::strategy::*;
 use crate::Datatype;
 
@@ -20,20 +20,45 @@ fn prop_domain_for_array_type(
 ) -> impl Strategy<Value = DomainData> {
     match array_type {
         ArrayType::Dense => {
-            any_with::<Datatype>(DatatypeContext::DenseDimension)
-                .prop_flat_map(|dimension_type| {
+            /*
+             * The number of cells per tile is the product of the extents of all dimensions, we
+             * have to be careful if there are many dimensions.
+             * If we have D dimensions and the desired bound on the number of cells per tile is T, then we want to bound each extent on the Dth root of T
+             */
+            const CELLS_PER_TILE_LIMIT: usize = 1024 * 1024;
+
+            (
+                any_with::<Datatype>(DatatypeContext::DenseDimension),
+                MIN_DIMENSIONS..=MAX_DIMENSIONS,
+            )
+                .prop_flat_map(|(dimension_type, num_dimensions)| {
+                    let params = DimensionRequirements {
+                        datatype: Some(dimension_type),
+                        extent_limit: f64::powf(
+                            CELLS_PER_TILE_LIMIT as f64,
+                            1.0f64 / (num_dimensions as f64),
+                        ) as usize
+                            + 1, // round up, probably won't hurt, might prevent problems
+                        ..Default::default()
+                    };
                     proptest::collection::vec(
-                        prop_dimension_for_datatype(dimension_type),
+                        any_with::<DimensionData>(params),
                         MIN_DIMENSIONS..=MAX_DIMENSIONS,
                     )
                 })
                 .boxed()
         }
-        ArrayType::Sparse => proptest::collection::vec(
-            prop_dimension_for_array_type(array_type),
-            MIN_DIMENSIONS..=MAX_DIMENSIONS,
-        )
-        .boxed(),
+        ArrayType::Sparse => {
+            let params = DimensionRequirements {
+                array_type: Some(ArrayType::Sparse),
+                ..Default::default()
+            };
+            proptest::collection::vec(
+                any_with::<DimensionData>(params),
+                MIN_DIMENSIONS..=MAX_DIMENSIONS,
+            )
+            .boxed()
+        }
     }
     .prop_map(|dimension| DomainData { dimension })
 }

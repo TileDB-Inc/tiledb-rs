@@ -19,6 +19,23 @@ use crate::filter::strategy::{
 };
 use crate::{fn_typed, Datatype};
 
+#[derive(Clone)]
+pub struct Requirements {
+    pub array_type: Option<ArrayType>,
+    pub datatype: Option<Datatype>,
+    pub extent_limit: usize,
+}
+
+impl Default for Requirements {
+    fn default() -> Self {
+        Requirements {
+            array_type: None,
+            datatype: None,
+            extent_limit: 1024 * 16,
+        }
+    }
+}
+
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {
     proptest::string::string_regex("[a-zA-Z0-9_]*")
         .expect("Error creating dimension name strategy")
@@ -27,7 +44,9 @@ pub fn prop_dimension_name() -> impl Strategy<Value = String> {
 /// Construct a strategy to generate valid (domain, extent) pairs.
 /// A valid output satisfies
 /// `lower < lower + extent <= upper < upper + extent <= type_limit`.
-fn prop_range_and_extent<T>() -> impl Strategy<Value = ([T; 2], Option<T>)>
+fn prop_range_and_extent<T>(
+    requirements_extent_limit: usize,
+) -> impl Strategy<Value = ([T; 2], Option<T>)>
 where
     T: Num
         + BitsOrd
@@ -128,8 +147,7 @@ where
         // see SC-47322, we need to prevent the extent from getting too big
         // because core does not treat it for memory allocations
         let extent_limit_limit = {
-            const DIMENSION_EXTENT_LIMIT: usize = 1024 * 1024;
-            match T::from_usize(DIMENSION_EXTENT_LIMIT) {
+            match T::from_usize(requirements_extent_limit) {
                 Some(t) => t,
                 None => {
                     /* the type range is small enough that we need not worry */
@@ -163,8 +181,9 @@ where
     })
 }
 
-pub fn prop_dimension_for_datatype(
+fn prop_dimension_for_datatype(
     datatype: Datatype,
+    params: Requirements,
 ) -> impl Strategy<Value = DimensionData> {
     let cell_val_num = if datatype.is_string_type() {
         CellValNum::Var
@@ -175,7 +194,9 @@ pub fn prop_dimension_for_datatype(
         type DT = <LT as LogicalType>::PhysicalType;
         let name = prop_dimension_name();
         let range_and_extent = if !datatype.is_string_type() {
-            prop_range_and_extent::<DT>().prop_map(Some).boxed()
+            prop_range_and_extent::<DT>(params.extent_limit)
+                .prop_map(Some)
+                .boxed()
         } else {
             Just(None).boxed()
         };
@@ -208,8 +229,9 @@ pub fn prop_dimension_for_datatype(
     })
 }
 
-pub fn prop_dimension_for_array_type(
+fn prop_dimension_for_array_type(
     array_type: ArrayType,
+    params: Requirements,
 ) -> impl Strategy<Value = DimensionData> {
     match array_type {
         ArrayType::Dense => {
@@ -219,12 +241,28 @@ pub fn prop_dimension_for_array_type(
             any_with::<Datatype>(DatatypeContext::SparseDimension)
         }
     }
-    .prop_flat_map(prop_dimension_for_datatype)
+    .prop_flat_map(move |datatype| {
+        prop_dimension_for_datatype(datatype, params.clone())
+    })
 }
 
-pub fn prop_dimension() -> impl Strategy<Value = DimensionData> {
-    prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-        .prop_flat_map(prop_dimension_for_array_type)
+impl Arbitrary for DimensionData {
+    type Parameters = Requirements;
+    type Strategy = BoxedStrategy<DimensionData>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        if let Some(datatype) = params.datatype {
+            prop_dimension_for_datatype(datatype, params).boxed()
+        } else if let Some(array_type) = params.array_type {
+            prop_dimension_for_array_type(array_type, params).boxed()
+        } else {
+            prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
+                .prop_flat_map(move |array_type| {
+                    prop_dimension_for_array_type(array_type, params.clone())
+                })
+                .boxed()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -239,7 +277,7 @@ mod tests {
     fn test_prop_dimension() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(maybe_dimension in prop_dimension())| {
+        proptest!(|(maybe_dimension in any::<DimensionData>())| {
             maybe_dimension.create(&ctx)
                 .expect("Error constructing arbitrary dimension");
         });
@@ -249,7 +287,7 @@ mod tests {
     fn dimension_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(dimension in prop_dimension())| {
+        proptest!(|(dimension in any::<DimensionData>())| {
             assert_eq!(dimension, dimension);
             assert_option_subset!(dimension, dimension);
 
