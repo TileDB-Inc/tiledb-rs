@@ -90,6 +90,15 @@ impl SingleValueRange {
         check_datatype!(self, datatype);
         Ok(())
     }
+
+    /// Merges this range into the `other` list of sorted, non-overlapping ranges and returns the result.
+    /// The result is sorted and consists of non-overlapping `SingleValueRange` elements.
+    pub fn merge(
+        &self,
+        _other: &Vec<SingleValueRange>,
+    ) -> TileDBResult<Vec<SingleValueRange>> {
+        unimplemented!()
+    }
 }
 
 macro_rules! single_value_range_from {
@@ -154,6 +163,160 @@ macro_rules! single_value_range_go {
             }
         }
     };
+    ($expr:expr, $DT:ident : Integral, $start:pat, $end:pat, $then:expr, $else:expr) => {{
+        use $crate::range::SingleValueRange;
+        match $expr {
+            SingleValueRange::UInt8($start, $end) => {
+                type $DT = u8;
+                $then
+            }
+            SingleValueRange::UInt16($start, $end) => {
+                type $DT = u16;
+                $then
+            }
+            SingleValueRange::UInt32($start, $end) => {
+                type $DT = u32;
+                $then
+            }
+            SingleValueRange::UInt64($start, $end) => {
+                type $DT = u64;
+                $then
+            }
+            SingleValueRange::Int8($start, $end) => {
+                type $DT = i8;
+                $then
+            }
+            SingleValueRange::Int16($start, $end) => {
+                type $DT = i16;
+                $then
+            }
+            SingleValueRange::Int32($start, $end) => {
+                type $DT = i32;
+                $then
+            }
+            SingleValueRange::Int64($start, $end) => {
+                type $DT = i64;
+                $then
+            }
+            SingleValueRange::Float32(_, _) => {
+                type $DT = f32;
+                $else
+            }
+            SingleValueRange::Float64(_, _) => {
+                type $DT = f64;
+                $else
+            }
+        }
+    }};
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $then:expr, $else:expr) => {{
+        use $crate::range::SingleValueRange;
+        match ($lexpr, $rexpr) {
+            (
+                SingleValueRange::UInt8($lstart, $lend),
+                SingleValueRange::UInt8($rstart, $rend),
+            ) => {
+                type $DT = u8;
+                $then
+            }
+            (
+                SingleValueRange::UInt16($lstart, $lend),
+                SingleValueRange::UInt16($rstart, $rend),
+            ) => {
+                type $DT = u16;
+                $then
+            }
+            (
+                SingleValueRange::UInt32($lstart, $lend),
+                SingleValueRange::UInt32($rstart, $rend),
+            ) => {
+                type $DT = u32;
+                $then
+            }
+            (
+                SingleValueRange::UInt64($lstart, $lend),
+                SingleValueRange::UInt64($rstart, $rend),
+            ) => {
+                type $DT = u64;
+                $then
+            }
+            (
+                SingleValueRange::Int8($lstart, $lend),
+                SingleValueRange::Int8($rstart, $rend),
+            ) => {
+                type $DT = i8;
+                $then
+            }
+            (
+                SingleValueRange::Int16($lstart, $lend),
+                SingleValueRange::Int16($rstart, $rend),
+            ) => {
+                type $DT = i16;
+                $then
+            }
+            (
+                SingleValueRange::Int32($lstart, $lend),
+                SingleValueRange::Int32($rstart, $rend),
+            ) => {
+                type $DT = i32;
+                $then
+            }
+            (
+                SingleValueRange::Int64($lstart, $lend),
+                SingleValueRange::Int64($rstart, $rend),
+            ) => {
+                type $DT = i64;
+                $then
+            }
+            (
+                SingleValueRange::Float32($lstart, $lend),
+                SingleValueRange::Float32($rstart, $rend),
+            ) => {
+                type $DT = f32;
+                $then
+            }
+            (
+                SingleValueRange::Float64($lstart, $lend),
+                SingleValueRange::Float64($rstart, $rend),
+            ) => {
+                type $DT = f64;
+                $then
+            }
+            _ => $else,
+        }
+    }};
+}
+
+impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<usize> {
+    type Error = ();
+    fn try_from(value: SingleValueRange) -> Result<Self, Self::Error> {
+        match value {
+            SingleValueRange::UInt8(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            SingleValueRange::UInt16(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            SingleValueRange::UInt32(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            SingleValueRange::UInt64(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            SingleValueRange::Int8(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            SingleValueRange::Int16(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            SingleValueRange::Int32(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            SingleValueRange::Int64(start, end) => {
+                Ok(start as usize..=end as usize)
+            }
+            _ => Err(()),
+        }
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
