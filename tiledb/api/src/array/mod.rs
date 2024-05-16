@@ -8,6 +8,9 @@ use util::option::OptionSubset;
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::ModeErrorKind;
+use crate::key::LookupKey;
+use crate::metadata::Metadata;
+use crate::Datatype;
 use crate::Result as TileDBResult;
 
 pub mod attribute;
@@ -257,6 +260,113 @@ impl<'ctx> Array<'ctx> {
 
         Ok(Schema::new(self.context, RawSchema::Owned(c_schema)))
     }
+
+    pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
+        let c_array = *self.raw;
+        let (vec_size, vec_ptr, datatype) = metadata.c_data();
+        let c_key = cstring!(metadata.key);
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_put_metadata(
+                ctx,
+                c_array,
+                c_key.as_ptr(),
+                datatype,
+                vec_size as u32,
+                vec_ptr,
+            )
+        })?;
+        Ok(())
+    }
+
+    pub fn delete_metadata<S>(&mut self, name: S) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_array = *self.raw;
+        let c_name = cstring!(name.as_ref());
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_delete_metadata(ctx, c_array, c_name.as_ptr())
+        })?;
+        Ok(())
+    }
+
+    pub fn num_metadata(&self) -> TileDBResult<u64> {
+        let c_array = *self.raw;
+        let mut num: u64 = out_ptr!();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_get_metadata_num(ctx, c_array, &mut num)
+        })?;
+        Ok(num)
+    }
+
+    pub fn metadata(&self, key: LookupKey) -> TileDBResult<Metadata> {
+        let c_array = *self.raw;
+        let mut vec_size: u32 = out_ptr!();
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
+        let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
+
+        let name: String = match key {
+            LookupKey::Index(index) => {
+                let mut key_ptr: *const std::ffi::c_char = out_ptr!();
+                let mut key_len: u32 = out_ptr!();
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_metadata_from_index(
+                        ctx,
+                        c_array,
+                        index as u64,
+                        &mut key_ptr,
+                        &mut key_len,
+                        &mut c_datatype,
+                        &mut vec_size,
+                        &mut vec_ptr,
+                    )
+                })?;
+                let c_key = unsafe { std::ffi::CStr::from_ptr(key_ptr) };
+                Ok(c_key.to_string_lossy().into_owned()) as TileDBResult<String>
+            }
+            LookupKey::Name(name) => {
+                let c_name = cstring!(name.as_ref() as &str);
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_metadata(
+                        ctx,
+                        c_array,
+                        c_name.as_ptr(),
+                        &mut c_datatype,
+                        &mut vec_size,
+                        &mut vec_ptr,
+                    )
+                })?;
+                Ok(name.to_owned())
+            }
+        }?;
+        let datatype = Datatype::try_from(c_datatype)?;
+        Ok(Metadata::new_raw(name, datatype, vec_ptr, vec_size))
+    }
+
+    pub fn has_metadata_key<S>(&self, name: S) -> TileDBResult<Option<Datatype>>
+    where
+        S: AsRef<str>,
+    {
+        let c_array = *self.raw;
+        let c_name = cstring!(name.as_ref());
+        let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
+        let mut exists: i32 = out_ptr!();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_has_metadata_key(
+                ctx,
+                c_array,
+                c_name.as_ptr(),
+                &mut c_datatype,
+                &mut exists,
+            )
+        })?;
+        if exists == 0 {
+            return Ok(None);
+        }
+
+        let datatype = Datatype::try_from(c_datatype)?;
+        Ok(Some(datatype))
+    }
 }
 
 impl Drop for Array<'_> {
@@ -272,10 +382,13 @@ pub mod strategy;
 
 #[cfg(test)]
 pub mod tests {
+    use crate::error::Error;
     use std::io;
     use tempfile::TempDir;
 
     use crate::array::*;
+    use crate::metadata::Value;
+    use crate::query::QueryType;
     use crate::Datatype;
 
     /// Create the array used in the "quickstart_dense" example
@@ -341,6 +454,142 @@ pub mod tests {
         // Make sure we can remove the array we created.
         tmp_dir.close()?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_array_metadata() -> TileDBResult<()> {
+        let tmp_dir =
+            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+
+        let tdb = Context::new()?;
+        let r = create_quickstart_dense(&tmp_dir, &tdb);
+        assert!(r.is_ok());
+
+        let arr_dir = tmp_dir.path().join("quickstart_dense");
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+
+            array.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?)?;
+            array.put_metadata(Metadata::new(
+                "aaa".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?)?;
+            array.put_metadata(Metadata::new(
+                "bb".to_owned(),
+                Datatype::Float32,
+                vec![1.1f32, 2.2f32],
+            )?)?;
+        }
+
+        {
+            let array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+
+            let metadata_aaa =
+                array.metadata(LookupKey::Name("aaa".to_owned()))?;
+            assert_eq!(metadata_aaa.datatype, Datatype::Int32);
+            assert_eq!(metadata_aaa.value, Value::Int32Value(vec!(5)));
+            assert_eq!(metadata_aaa.key, "aaa");
+
+            let metadata_num = array.num_metadata()?;
+            assert_eq!(metadata_num, 3);
+
+            let metadata_bb = array.metadata(LookupKey::Index(1))?;
+            assert_eq!(metadata_bb.datatype, Datatype::Float32);
+            assert_eq!(metadata_bb.key, "bb");
+            assert_eq!(
+                metadata_bb.value,
+                Value::Float32Value(vec!(1.1f32, 2.2f32))
+            );
+
+            let has_aaa = array.has_metadata_key("aaa")?;
+            assert_eq!(has_aaa, Some(Datatype::Int32));
+        }
+
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            array.delete_metadata("aaa")?;
+        }
+
+        {
+            let array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let has_aaa = array.has_metadata_key("aaa")?;
+            assert_eq!(has_aaa, None);
+        }
+
+        tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_mode_metadata() -> TileDBResult<()> {
+        let tmp_dir =
+            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+
+        let tdb = Context::new()?;
+        let r = create_quickstart_dense(&tmp_dir, &tdb);
+        assert!(r.is_ok());
+
+        let arr_dir = tmp_dir.path().join("quickstart_dense");
+        // Calling put_metadada with the wrong mode.
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let res = array.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?);
+            assert!(res.is_err());
+        }
+
+        // Successful put_metadata call.
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            let res = array.put_metadata(Metadata::new(
+                "key".to_owned(),
+                Datatype::Int32,
+                vec![5],
+            )?);
+            assert!(res.is_ok());
+        }
+
+        // Read metadata mode testing.
+        {
+            let array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+
+            let res = array.metadata(LookupKey::Name("aaa".to_owned()));
+            assert!(res.is_err());
+
+            let res = array.num_metadata();
+            assert!(res.is_err());
+
+            let res = array.metadata(LookupKey::Index(0));
+            assert!(res.is_err());
+
+            let res = array.has_metadata_key("key");
+            assert!(res.is_err());
+        }
+
+        {
+            let mut array =
+                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let res = array.delete_metadata("key");
+            assert!(res.is_err());
+        }
+
+        tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
         Ok(())
     }
 }
