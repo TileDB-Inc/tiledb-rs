@@ -367,6 +367,8 @@ pub fn prop_filter(
                 || dt.is_byte_type()
         }
     };
+    let ok_bit_reduction =
+        ok_bit_reduction && requirements.pipeline_position.is_none();
     if ok_bit_reduction {
         filter_strategies.push(prop_bitwidthreduction().boxed());
     }
