@@ -113,7 +113,32 @@ impl DataProvider for FixedSizeBinaryArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        todo!()
+        let cell_structure = match cell_val_num {
+            CellValNum::Fixed(nz) if nz.get() != self.value_length() as u32 => {
+                todo!() /* error */
+            }
+            CellValNum::Fixed(nz) => CellStructure::Fixed(nz),
+            CellValNum::Var => {
+                let offsets = Buffer::Owned(
+                    std::iter::repeat(self.value_length() as usize)
+                        .take(self.len())
+                        .enumerate()
+                        .map(|(i, len)| (i * len) as u64)
+                        .collect::<Vec<u64>>()
+                        .into_boxed_slice(),
+                );
+                CellStructure::Var(offsets)
+            }
+        };
+
+        let data = Buffer::Borrowed(self.value_data());
+        let validity = validity_buffer(self, is_nullable)?;
+
+        Ok(QueryBuffers {
+            data,
+            cell_structure,
+            validity,
+        })
     }
 }
 
