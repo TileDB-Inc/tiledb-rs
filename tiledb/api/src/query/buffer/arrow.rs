@@ -74,13 +74,6 @@ where
     }
 }
 
-impl<'data> From<&'data OffsetBuffer<i64>> for Buffer<'data, u64> {
-    fn from(value: &'data OffsetBuffer<i64>) -> Self {
-        /* i64 is used but offsets are necessarily non-negative */
-        Buffer::Borrowed(value.inner().inner().typed_data::<u64>())
-    }
-}
-
 impl From<Celled<Buffer<'_, u8>>> for NullBuffer {
     fn from(value: Celled<Buffer<'_, u8>>) -> Self {
         let Celled(ncells, validity) = value;

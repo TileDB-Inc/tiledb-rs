@@ -50,7 +50,7 @@ impl<C> RawReadOutput<'_, C> {
             CellStructure::Var(ref offsets) => json!({
                 "capacity": offsets.len(),
                 "defined": self.ncells + 1,
-                "values": format!("{:?}", &offsets.as_ref()[0.. self.ncells + 1])
+                "values": format!("{:?}", &offsets.as_ref()[0.. std::cmp::min(offsets.len(), self.ncells + 1)])
             }),
         };
 

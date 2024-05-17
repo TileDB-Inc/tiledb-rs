@@ -35,7 +35,9 @@ fn cell_structure<'data>(
             }
             Ok(CellStructure::Fixed(nz))
         }
-        CellValNum::Var => Ok(CellStructure::Var(Buffer::<u64>::from(offsets))),
+        CellValNum::Var => Ok(CellStructure::Var(Buffer::Borrowed(
+            &offsets.inner().inner().typed_data::<u64>()[0..offsets.len() - 1],
+        ))),
     }
 }
 
@@ -586,6 +588,131 @@ impl<'data> Iterator for RecordBatchTileDBInputs<'data> {
                 /* arrow documentation asserts they have the same length */
                 unreachable!()
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    use crate::query::read::output::TypedRawReadOutput;
+    use crate::typed_query_buffers_go;
+
+    fn do_raw_read_arrow_invertible(rr_in: TypedRawReadOutput) {
+        let cell_val_num = rr_in.cell_structure().as_cell_val_num();
+        let is_nullable = rr_in.buffers.validity().is_some();
+
+        if let Some(offsets) = rr_in.cell_structure().offsets_ref() {
+            if offsets.as_ref().len() == 0 {
+                /*
+                 * See `query/read/output/strategy.rs`.
+                 * tiledb core is not exactly compliant with arrow,
+                 * which is to say that an empty offset buffer can
+                 * be `[]` instead of `[0]`. Skip those here
+                 * since we know they will fail as arrow input.
+                 */
+                assert_eq!(0, rr_in.ncells);
+                return;
+            }
+        }
+
+        let rr_borrowed = TypedRawReadOutput {
+            datatype: rr_in.datatype,
+            ncells: rr_in.ncells,
+            buffers: rr_in.buffers.borrow(),
+        };
+
+        let Ok(arrow) = Arc::<dyn ArrowArray>::try_from(rr_borrowed) else {
+            return;
+        };
+
+        /* try inversion */
+        let qb_out = arrow
+            .typed_query_buffers(cell_val_num, is_nullable)
+            .expect("Error inverting arrow conversion");
+
+        match cell_val_num {
+            CellValNum::Fixed(_) => {
+                assert_eq!(
+                    rr_in.cell_structure().fixed(),
+                    qb_out.cell_structure().fixed()
+                );
+                assert_eq!(rr_in.nvalues(), qb_out.values_capacity());
+            }
+            CellValNum::Var => {
+                let cells_in = &rr_in.cell_structure().offsets_ref().unwrap();
+                let cells_out = qb_out.cell_structure().offsets_ref().unwrap();
+
+                /*
+                 * As input to arrow, we should have the "extra offset"
+                 * (this simulates the read query behavior).
+                 * But as output from arrow we do not
+                 * (this simulates the expected input for a write query).
+                 */
+                let actual_overlap =
+                    std::cmp::min(cells_out.len(), cells_in.len());
+                assert_eq!(
+                    cells_in[0..actual_overlap],
+                    cells_out[0..actual_overlap]
+                );
+                assert_eq!(cells_in.len(), cells_out.len() + 1);
+                assert_eq!(rr_in.nvalues(), qb_out.values_capacity());
+            }
+        }
+
+        {
+            let validity_in = rr_in
+                .buffers
+                .validity()
+                .map(|v| &v.as_ref()[0..rr_in.ncells]);
+            assert_eq!(validity_in, qb_out.validity().map(|v| v.as_ref()));
+        }
+
+        typed_query_buffers_go!(
+            &rr_in.buffers,
+            &qb_out,
+            _DT,
+            ref qb_in,
+            ref qb_out,
+            {
+                let data_in = &qb_in.data[0..rr_in.nvalues()];
+                assert_eq!(data_in, qb_out.data.as_ref());
+            }
+        );
+
+        /* for good measure, go back to arrow again and it should be PartialEq */
+        let qb_out_as_input = TypedRawReadOutput {
+            datatype: rr_in.datatype,
+            ncells: arrow.len(),
+            buffers: match qb_out.cell_structure().as_cell_val_num() {
+                CellValNum::Fixed(_) => qb_out,
+                CellValNum::Var => {
+                    /* we must append the extra offset */
+                    typed_query_buffers_go!(qb_out, _DT, qb, {
+                        let mut cells =
+                            qb.cell_structure.unwrap().unwrap().to_vec();
+                        cells.push(rr_in.nvalues() as u64);
+                        QueryBuffers {
+                            data: qb.data,
+                            cell_structure: CellStructure::Var(cells.into()),
+                            validity: qb.validity,
+                        }
+                        .into()
+                    })
+                }
+            },
+        };
+        let arrow_again =
+            Arc::<dyn ArrowArray>::try_from(qb_out_as_input).unwrap();
+        assert_eq!(arrow.as_ref(), arrow_again.as_ref());
+    }
+
+    proptest! {
+        #[test]
+        fn raw_read_arrow_invertible(rr in any::<TypedRawReadOutput>()) {
+            do_raw_read_arrow_invertible(rr)
         }
     }
 }
