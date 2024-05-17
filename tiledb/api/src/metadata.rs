@@ -128,7 +128,7 @@ impl Metadata {
         if !datatype.is_compatible_type::<T>() {
             return Err(crate::error::Error::Datatype(
                 DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<T>(),
+                    user_type: std::any::type_name::<T>().to_owned(),
                     tiledb_type: datatype,
                 },
             ));

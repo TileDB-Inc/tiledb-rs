@@ -1,6 +1,8 @@
+use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use arrow::array::{
     Array as ArrowArray, AsArray, FixedSizeBinaryArray, FixedSizeListArray,
     GenericListArray, LargeBinaryArray, LargeStringArray, PrimitiveArray,
@@ -20,7 +22,7 @@ use crate::query::write::input::{
 };
 use crate::Result as TileDBResult;
 
-fn cell_structure(
+fn cell_structure_var(
     offsets: &OffsetBuffer<i64>,
     cell_val_num: CellValNum,
 ) -> TileDBResult<CellStructure> {
@@ -29,8 +31,15 @@ fn cell_structure(
             let expect_len = nz.get() as i64;
             for window in offsets.windows(2) {
                 if window[1] - window[0] != expect_len {
-                    /* TODO: error */
-                    unimplemented!()
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::UnexpectedCellStructure {
+                            context: Some(
+                                "Arrow array as query input".to_owned(),
+                            ),
+                            expected: cell_val_num,
+                            found: CellValNum::Var,
+                        },
+                    ));
                 }
             }
             Ok(CellStructure::Fixed(nz))
@@ -38,6 +47,37 @@ fn cell_structure(
         CellValNum::Var => Ok(CellStructure::Var(Buffer::Borrowed(
             &offsets.inner().inner().typed_data::<u64>()[0..offsets.len() - 1],
         ))),
+    }
+}
+
+fn cell_structure_fixed(
+    fixed_len: i32,
+    ncells: usize,
+    cell_val_num: CellValNum,
+) -> TileDBResult<CellStructure<'static>> {
+    match cell_val_num {
+        CellValNum::Fixed(nz) if fixed_len as u32 != nz.get() => Err(
+            Error::Datatype(DatatypeErrorKind::UnexpectedCellStructure {
+                context: Some("Arrow array as query input".to_owned()),
+                expected: cell_val_num,
+                found: match NonZeroU32::new(fixed_len as u32) {
+                    Some(nz) => CellValNum::Fixed(nz),
+                    None => CellValNum::Var,
+                },
+            }),
+        ),
+        CellValNum::Fixed(nz) => Ok(CellStructure::Fixed(nz)),
+        CellValNum::Var => {
+            let offsets = Buffer::Owned(
+                std::iter::repeat(fixed_len as usize)
+                    .take(ncells)
+                    .enumerate()
+                    .map(|(i, len)| (i * len) as u64)
+                    .collect::<Vec<u64>>()
+                    .into_boxed_slice(),
+            );
+            Ok(CellStructure::Var(offsets))
+        }
     }
 }
 
@@ -58,8 +98,11 @@ where
         if nulls.null_count() == 0 {
             None
         } else {
-            /* TODO: error out, we have null whcih is unexpected */
-            todo!()
+            return Err(Error::Datatype(
+                DatatypeErrorKind::UnexpectedValidity {
+                    context: Some("Arrow array as query input".to_owned()),
+                },
+            ));
         }
     } else {
         None
@@ -78,9 +121,11 @@ where
     TypedQueryBuffers<'data>:
         From<QueryBuffers<'data, <PrimitiveArray<A> as DataProvider>::Unit>>,
 {
-    if elements.nulls().is_some() {
-        /* TODO: error */
-        todo!()
+    if elements.nulls().is_some() && elements.nulls().unwrap().null_count() > 0
+    {
+        return Err(Error::Datatype(DatatypeErrorKind::UnexpectedValidity {
+            context: Some("Arrow array list element".to_owned()),
+        }));
     }
 
     let data = Buffer::Borrowed(elements.values().as_ref());
@@ -202,7 +247,10 @@ fn apply_to_list_element<'data>(
             validity,
         ),
         ADT::Time64(_) => unreachable!(),
-        _ => todo!(), /* error: unsupported type */
+        _ => Err(Error::InvalidArgument(anyhow!(format!(
+            "Unsupported Arrow list element datatype as query input: {}",
+            element_type
+        )))),
     }
 }
 
@@ -231,7 +279,6 @@ where
                 })
             }
             CellValNum::Fixed(nz) => {
-                /* TODO: also check nulls */
                 if self.values().len() % nz.get() as usize == 0 {
                     return Err(Error::Datatype(
                         DatatypeErrorKind::UnexpectedCellStructure {
@@ -243,8 +290,13 @@ where
                 }
 
                 if self.nulls().map(|n| n.null_count() > 0).unwrap_or(false) {
-                    /* TODO: error out, no way to represent this */
-                    unimplemented!()
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::UnexpectedValidity {
+                            context: Some(
+                                "Arrow array list element".to_owned(),
+                            ),
+                        },
+                    ));
                 }
 
                 Ok(QueryBuffers {
@@ -272,23 +324,11 @@ impl DataProvider for FixedSizeBinaryArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        let cell_structure = match cell_val_num {
-            CellValNum::Fixed(nz) if nz.get() != self.value_length() as u32 => {
-                todo!() /* error */
-            }
-            CellValNum::Fixed(nz) => CellStructure::Fixed(nz),
-            CellValNum::Var => {
-                let offsets = Buffer::Owned(
-                    std::iter::repeat(self.value_length() as usize)
-                        .take(self.len())
-                        .enumerate()
-                        .map(|(i, len)| (i * len) as u64)
-                        .collect::<Vec<u64>>()
-                        .into_boxed_slice(),
-                );
-                CellStructure::Var(offsets)
-            }
-        };
+        let cell_structure = cell_structure_fixed(
+            self.value_length(),
+            self.len(),
+            cell_val_num,
+        )?;
 
         let data = Buffer::Borrowed(self.value_data());
         let validity = validity_buffer(self, is_nullable)?;
@@ -309,7 +349,7 @@ impl DataProvider for LargeBinaryArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        let cell_structure = cell_structure(self.offsets(), cell_val_num)?;
+        let cell_structure = cell_structure_var(self.offsets(), cell_val_num)?;
         let data = Buffer::Borrowed(self.value_data());
         let validity = validity_buffer(self, is_nullable)?;
 
@@ -329,7 +369,7 @@ impl DataProvider for LargeStringArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        let cell_structure = cell_structure(self.offsets(), cell_val_num)?;
+        let cell_structure = cell_structure_var(self.offsets(), cell_val_num)?;
         let data = Buffer::Borrowed(self.value_data());
         let validity = validity_buffer(self, is_nullable)?;
 
@@ -347,23 +387,11 @@ impl TypedDataProvider for FixedSizeListArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<TypedQueryBuffers> {
-        let cell_structure = match cell_val_num {
-            CellValNum::Fixed(nz) if self.value_length() as u32 != nz.get() => {
-                todo!() /* error */
-            }
-            CellValNum::Fixed(nz) => CellStructure::Fixed(nz),
-            CellValNum::Var => {
-                let offsets = Buffer::Owned(
-                    std::iter::repeat(self.value_length() as usize)
-                        .take(self.len())
-                        .enumerate()
-                        .map(|(i, len)| (i * len) as u64)
-                        .collect::<Vec<u64>>()
-                        .into_boxed_slice(),
-                );
-                CellStructure::Var(offsets)
-            }
-        };
+        let cell_structure = cell_structure_fixed(
+            self.value_length(),
+            self.len(),
+            cell_val_num,
+        )?;
 
         let validity = validity_buffer(self, is_nullable)?;
         apply_to_list_element(
@@ -381,7 +409,7 @@ impl TypedDataProvider for GenericListArray<i64> {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<TypedQueryBuffers> {
-        let cell_structure = cell_structure(self.offsets(), cell_val_num)?;
+        let cell_structure = cell_structure_var(self.offsets(), cell_val_num)?;
         let validity = validity_buffer(self, is_nullable)?;
 
         apply_to_list_element(
@@ -404,25 +432,30 @@ impl TypedDataProvider for dyn ArrowArray {
 
         use arrow::datatypes::{DataType as ADT, *};
         match self.data_type() {
-            ADT::Null => unimplemented!(),
-            ADT::Boolean => unimplemented!(),
-            ADT::Float16 => unimplemented!(),
-            ADT::Duration(_) => unimplemented!(), /* possible but bit width is not specified */
-            ADT::Interval(_) => unimplemented!(), /* possible but bit width is not specified */
-            ADT::Binary => unimplemented!(),      /* offset is 32-bit */
-            ADT::Utf8 => unimplemented!(),        /* offset is 32-bit */
-            ADT::BinaryView => unimplemented!(),
-            ADT::Utf8View => unimplemented!(),
-            ADT::List(_) => unimplemented!(), /* 32 bit offsets */
-            ADT::ListView(_) => todo!(),
-            ADT::LargeListView(_) => todo!(),
-            ADT::Struct(_) => todo!(),
-            ADT::Union(_, _) => todo!(),
-            ADT::Dictionary(_, _) => todo!(),
-            ADT::Decimal128(_, _) => todo!(),
-            ADT::Decimal256(_, _) => todo!(),
-            ADT::Map(_, _) => todo!(),
-            ADT::RunEndEncoded(_, _) => todo!(),
+            ADT::Null
+            | ADT::Boolean
+            | ADT::Float16
+            | ADT::Duration(_)
+            | ADT::Interval(_)
+            | ADT::Binary
+            | ADT::Utf8
+            | ADT::BinaryView
+            | ADT::Utf8View
+            | ADT::List(_)
+            | ADT::ListView(_)
+            | ADT::LargeListView(_)
+            | ADT::Struct(_)
+            | ADT::Union(_, _)
+            | ADT::Dictionary(_, _)
+            | ADT::Decimal128(_, _)
+            | ADT::Decimal256(_, _)
+            | ADT::Map(_, _)
+            | ADT::RunEndEncoded(_, _) => {
+                Err(Error::InvalidArgument(anyhow!(format!(
+                    "Unsupported Arrow datatype as query input: {}",
+                    self.data_type()
+                ))))
+            }
             ADT::UInt8 => {
                 self.as_primitive::<UInt8Type>().typed_query_buffers(c, n)
             }
@@ -538,8 +571,12 @@ impl<'data> Iterator for RecordBatchTileDBInputs<'data> {
                 let Some((datatype, cell_val_num)) =
                     crate::datatype::arrow::from_arrow(f.data_type()).ok()
                 else {
-                    /* TODO: error */
-                    unimplemented!()
+                    return Some(Err(Error::InvalidArgument(anyhow!(
+                        format!(
+                            "Unsupported Arrow datatype as query input: {}",
+                            f.data_type()
+                        )
+                    ))));
                 };
 
                 let tiledb_field = match self.schema.field(f.name()) {

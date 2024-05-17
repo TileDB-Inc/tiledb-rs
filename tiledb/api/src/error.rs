@@ -30,7 +30,7 @@ impl Drop for RawError {
 pub enum DatatypeErrorKind {
     InvalidDiscriminant(u64),
     TypeMismatch {
-        user_type: &'static str,
+        user_type: String,
         tiledb_type: Datatype,
     },
     UnexpectedCellStructure {

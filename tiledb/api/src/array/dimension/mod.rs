@@ -294,7 +294,7 @@ impl DimensionConstraints {
                 if !datatype.is_compatible_type::<DT>() {
                     return Err(Error::Datatype(
                         DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>(),
+                            user_type: std::any::type_name::<DT>().to_owned(),
                             tiledb_type: datatype,
                         },
                     ));
