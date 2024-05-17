@@ -20,10 +20,10 @@ use crate::query::write::input::{
 };
 use crate::Result as TileDBResult;
 
-fn cell_structure<'data>(
-    offsets: &'data OffsetBuffer<i64>,
+fn cell_structure(
+    offsets: &OffsetBuffer<i64>,
     cell_val_num: CellValNum,
-) -> TileDBResult<CellStructure<'data>> {
+) -> TileDBResult<CellStructure> {
     match cell_val_num {
         CellValNum::Fixed(nz) => {
             let expect_len = nz.get() as i64;
@@ -54,17 +54,15 @@ where
         } else {
             Some(vec![1u8; array.len()].into())
         }
-    } else {
-        if let Some(nulls) = array.nulls() {
-            if nulls.null_count() == 0 {
-                None
-            } else {
-                /* TODO: error out, we have null whcih is unexpected */
-                todo!()
-            }
-        } else {
+    } else if let Some(nulls) = array.nulls() {
+        if nulls.null_count() == 0 {
             None
+        } else {
+            /* TODO: error out, we have null whcih is unexpected */
+            todo!()
         }
+    } else {
+        None
     };
     Ok(validity)
 }
@@ -605,7 +603,7 @@ mod tests {
         let is_nullable = rr_in.buffers.validity().is_some();
 
         if let Some(offsets) = rr_in.cell_structure().offsets_ref() {
-            if offsets.as_ref().len() == 0 {
+            if offsets.as_ref().is_empty() {
                 /*
                  * See `query/read/output/strategy.rs`.
                  * tiledb core is not exactly compliant with arrow,

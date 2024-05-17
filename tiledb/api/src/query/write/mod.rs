@@ -162,7 +162,7 @@ impl<'data> WriteBuilder<'data> {
             _data_size: data_size,
             _offsets_size: offsets_size,
             _validity_size: validity_size,
-            _input: input.into(),
+            _input: input,
         };
 
         self.inputs.insert(field_name, raw_write_input);
