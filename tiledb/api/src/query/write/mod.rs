@@ -5,7 +5,9 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 use crate::query::buffer::{CellStructure, QueryBuffers, TypedQueryBuffers};
-use crate::query::write::input::{DataProvider, RecordProvider};
+use crate::query::write::input::{
+    DataProvider, RecordProvider, TypedDataProvider,
+};
 use crate::typed_query_buffers_go;
 
 pub mod input;
@@ -168,11 +170,7 @@ impl<'data> WriteBuilder<'data> {
         Ok(self)
     }
 
-    pub fn data_typed<S, T>(
-        self,
-        field: S,
-        data: &'data T,
-    ) -> TileDBResult<Self>
+    pub fn data<S, T>(self, field: S, data: &'data T) -> TileDBResult<Self>
     where
         S: AsRef<str>,
         T: DataProvider,
@@ -184,13 +182,36 @@ impl<'data> WriteBuilder<'data> {
         let input = {
             let schema = self.base().array().schema()?;
             let schema_field = schema.field(field_name)?;
-            data.as_tiledb_input(
+            data.query_buffers(
                 schema_field.cell_val_num()?,
                 schema_field.nullability()?,
             )?
         };
 
         self.buffers(field, input.into())
+    }
+
+    pub fn data_typed<S, T>(
+        self,
+        field: S,
+        data: &'data T,
+    ) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+        T: TypedDataProvider,
+    {
+        let field_name = field.as_ref();
+
+        let input = {
+            let schema = self.base().array().schema()?;
+            let schema_field = schema.field(field_name)?;
+            data.typed_query_buffers(
+                schema_field.cell_val_num()?,
+                schema_field.nullability()?,
+            )?
+        };
+
+        self.buffers(field, input)
     }
 
     pub fn records<R>(self, data: &'data R) -> TileDBResult<Self>

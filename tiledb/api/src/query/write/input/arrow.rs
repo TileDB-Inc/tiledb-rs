@@ -15,7 +15,7 @@ where
 {
     type Unit = <A as ArrowPrimitiveType>::Native;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
