@@ -185,7 +185,30 @@ impl DataProvider for LargeStringArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        todo!()
+        let cell_structure = match cell_val_num {
+            CellValNum::Fixed(nz) => {
+                let expect_len = nz.get() as i64;
+                for window in self.offsets().windows(2) {
+                    if window[1] - window[0] != expect_len {
+                        /* TODO: error */
+                        unimplemented!()
+                    }
+                }
+                CellStructure::Fixed(nz)
+            }
+            CellValNum::Var => {
+                CellStructure::Var(Buffer::<u64>::from(self.offsets()))
+            }
+        };
+
+        let data = Buffer::Borrowed(self.value_data());
+        let validity = validity_buffer(self, is_nullable)?;
+
+        Ok(QueryBuffers {
+            data,
+            cell_structure,
+            validity,
+        })
     }
 }
 
