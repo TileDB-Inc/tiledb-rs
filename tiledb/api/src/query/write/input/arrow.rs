@@ -37,13 +37,7 @@ where
             CellValNum::Fixed(nz) if nz.get() == 1 => {
                 let validity = if let Some(nulls) = self.nulls() {
                     if is_nullable {
-                        Some(
-                            nulls
-                                .iter()
-                                .map(|v| if v { 1 } else { 0 })
-                                .collect::<Vec<u8>>()
-                                .into(),
-                        )
+                        Some(Buffer::<'_, u8>::from(nulls))
                     } else if nulls.null_count() == 0 {
                         None
                     } else {

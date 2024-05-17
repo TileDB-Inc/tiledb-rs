@@ -65,6 +65,22 @@ where
     }
 }
 
+impl<'data, C> From<&'data ScalarBuffer<C>> for Buffer<'data, C>
+where
+    C: ArrowNativeType,
+{
+    fn from(value: &'data ScalarBuffer<C>) -> Self {
+        Buffer::Borrowed(value.inner().typed_data::<C>())
+    }
+}
+
+impl<'data> From<&'data OffsetBuffer<i64>> for Buffer<'data, u64> {
+    fn from(value: &'data OffsetBuffer<i64>) -> Self {
+        /* i64 is used but offsets are necessarily non-negative */
+        Buffer::Borrowed(value.inner().inner().typed_data::<u64>())
+    }
+}
+
 impl From<Celled<Buffer<'_, u8>>> for NullBuffer {
     fn from(value: Celled<Buffer<'_, u8>>) -> Self {
         let Celled(ncells, validity) = value;
@@ -82,6 +98,17 @@ impl From<Celled<Buffer<'_, u8>>> for NullBuffer {
             .into_iter()
             .map(|v| v != 0)
             .collect::<arrow::buffer::NullBuffer>()
+    }
+}
+
+impl From<&NullBuffer> for Buffer<'_, u8> {
+    fn from(value: &NullBuffer) -> Self {
+        value
+            .iter()
+            .map(|b| if b { 1 } else { 0 })
+            .collect::<Vec<u8>>()
+            .into_boxed_slice()
+            .into()
     }
 }
 
