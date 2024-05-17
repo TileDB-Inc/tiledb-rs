@@ -2,10 +2,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use arrow::array::{
-    Array as ArrowArray, FixedSizeBinaryArray, FixedSizeListArray,
+    Array as ArrowArray, AsArray, FixedSizeBinaryArray, FixedSizeListArray,
     GenericListArray, LargeBinaryArray, LargeStringArray, PrimitiveArray,
     RecordBatch,
 };
+use arrow::buffer::OffsetBuffer;
 use arrow::datatypes::{ArrowPrimitiveType, Field};
 
 use crate::array::{CellValNum, Schema};
@@ -18,6 +19,25 @@ use crate::query::write::input::{
     DataProvider, RecordProvider, TypedDataProvider,
 };
 use crate::Result as TileDBResult;
+
+fn cell_structure<'data>(
+    offsets: &'data OffsetBuffer<i64>,
+    cell_val_num: CellValNum,
+) -> TileDBResult<CellStructure<'data>> {
+    match cell_val_num {
+        CellValNum::Fixed(nz) => {
+            let expect_len = nz.get() as i64;
+            for window in offsets.windows(2) {
+                if window[1] - window[0] != expect_len {
+                    /* TODO: error */
+                    unimplemented!()
+                }
+            }
+            Ok(CellStructure::Fixed(nz))
+        }
+        CellValNum::Var => Ok(CellStructure::Var(Buffer::<u64>::from(offsets))),
+    }
+}
 
 fn validity_buffer<A>(
     array: &A,
@@ -45,6 +65,145 @@ where
         }
     };
     Ok(validity)
+}
+
+fn apply_to_list_element_impl<'data, A>(
+    elements: &'data PrimitiveArray<A>,
+    cell_structure: CellStructure<'data>,
+    validity: Option<Buffer<'data, u8>>,
+) -> TileDBResult<TypedQueryBuffers<'data>>
+where
+    A: ArrowPrimitiveType,
+    <A as ArrowPrimitiveType>::Native: PhysicalType,
+    TypedQueryBuffers<'data>:
+        From<QueryBuffers<'data, <PrimitiveArray<A> as DataProvider>::Unit>>,
+{
+    if elements.nulls().is_some() {
+        /* TODO: error */
+        todo!()
+    }
+
+    let data = Buffer::Borrowed(elements.values().as_ref());
+    Ok(QueryBuffers {
+        data,
+        cell_structure,
+        validity,
+    }
+    .into())
+}
+
+fn apply_to_list_element<'data>(
+    element_type: arrow::datatypes::DataType,
+    elements: &'data Arc<dyn ArrowArray>,
+    cell_structure: CellStructure<'data>,
+    validity: Option<Buffer<'data, u8>>,
+) -> TileDBResult<TypedQueryBuffers<'data>> {
+    use arrow::datatypes::{DataType as ADT, *};
+    match element_type {
+        ADT::UInt8 => apply_to_list_element_impl(
+            elements.as_primitive::<UInt8Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::UInt16 => apply_to_list_element_impl(
+            elements.as_primitive::<UInt16Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::UInt32 => apply_to_list_element_impl(
+            elements.as_primitive::<UInt32Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::UInt64 => apply_to_list_element_impl(
+            elements.as_primitive::<UInt64Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Int8 => apply_to_list_element_impl(
+            elements.as_primitive::<Int8Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Int16 => apply_to_list_element_impl(
+            elements.as_primitive::<Int16Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Int32 => apply_to_list_element_impl(
+            elements.as_primitive::<Int32Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Int64 => apply_to_list_element_impl(
+            elements.as_primitive::<Int64Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Float32 => apply_to_list_element_impl(
+            elements.as_primitive::<Float32Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Float64 => apply_to_list_element_impl(
+            elements.as_primitive::<Float64Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Timestamp(TimeUnit::Second, _) => apply_to_list_element_impl(
+            elements.as_primitive::<TimestampSecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Timestamp(TimeUnit::Millisecond, _) => apply_to_list_element_impl(
+            elements.as_primitive::<TimestampMillisecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Timestamp(TimeUnit::Microsecond, _) => apply_to_list_element_impl(
+            elements.as_primitive::<TimestampMicrosecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Timestamp(TimeUnit::Nanosecond, _) => apply_to_list_element_impl(
+            elements.as_primitive::<TimestampNanosecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Date32 => apply_to_list_element_impl(
+            elements.as_primitive::<Date32Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Date64 => apply_to_list_element_impl(
+            elements.as_primitive::<Date64Type>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Time32(TimeUnit::Second) => apply_to_list_element_impl(
+            elements.as_primitive::<Time32SecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Time32(TimeUnit::Millisecond) => apply_to_list_element_impl(
+            elements.as_primitive::<Time32MillisecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Time32(_) => unreachable!(),
+        ADT::Time64(TimeUnit::Microsecond) => apply_to_list_element_impl(
+            elements.as_primitive::<Time64MicrosecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Time64(TimeUnit::Nanosecond) => apply_to_list_element_impl(
+            elements.as_primitive::<Time64NanosecondType>(),
+            cell_structure,
+            validity,
+        ),
+        ADT::Time64(_) => unreachable!(),
+        _ => todo!(), /* error: unsupported type */
+    }
 }
 
 impl<A> DataProvider for PrimitiveArray<A>
@@ -150,22 +309,7 @@ impl DataProvider for LargeBinaryArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        let cell_structure = match cell_val_num {
-            CellValNum::Fixed(nz) => {
-                let expect_len = nz.get() as i64;
-                for window in self.offsets().windows(2) {
-                    if window[1] - window[0] != expect_len {
-                        /* TODO: error */
-                        unimplemented!()
-                    }
-                }
-                CellStructure::Fixed(nz)
-            }
-            CellValNum::Var => {
-                CellStructure::Var(Buffer::<u64>::from(self.offsets()))
-            }
-        };
-
+        let cell_structure = cell_structure(self.offsets(), cell_val_num)?;
         let data = Buffer::Borrowed(self.value_data());
         let validity = validity_buffer(self, is_nullable)?;
 
@@ -185,22 +329,7 @@ impl DataProvider for LargeStringArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        let cell_structure = match cell_val_num {
-            CellValNum::Fixed(nz) => {
-                let expect_len = nz.get() as i64;
-                for window in self.offsets().windows(2) {
-                    if window[1] - window[0] != expect_len {
-                        /* TODO: error */
-                        unimplemented!()
-                    }
-                }
-                CellStructure::Fixed(nz)
-            }
-            CellValNum::Var => {
-                CellStructure::Var(Buffer::<u64>::from(self.offsets()))
-            }
-        };
-
+        let cell_structure = cell_structure(self.offsets(), cell_val_num)?;
         let data = Buffer::Borrowed(self.value_data());
         let validity = validity_buffer(self, is_nullable)?;
 
@@ -218,7 +347,31 @@ impl TypedDataProvider for FixedSizeListArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<TypedQueryBuffers> {
-        todo!()
+        let cell_structure = match cell_val_num {
+            CellValNum::Fixed(nz) if self.value_length() as u32 != nz.get() => {
+                todo!() /* error */
+            }
+            CellValNum::Fixed(nz) => CellStructure::Fixed(nz),
+            CellValNum::Var => {
+                let offsets = Buffer::Owned(
+                    std::iter::repeat(self.value_length() as usize)
+                        .take(self.len())
+                        .enumerate()
+                        .map(|(i, len)| (i * len) as u64)
+                        .collect::<Vec<u64>>()
+                        .into_boxed_slice(),
+                );
+                CellStructure::Var(offsets)
+            }
+        };
+
+        let validity = validity_buffer(self, is_nullable)?;
+        apply_to_list_element(
+            self.value_type(),
+            self.values(),
+            cell_structure,
+            validity,
+        )
     }
 }
 
@@ -228,7 +381,15 @@ impl TypedDataProvider for GenericListArray<i64> {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<TypedQueryBuffers> {
-        todo!()
+        let cell_structure = cell_structure(self.offsets(), cell_val_num)?;
+        let validity = validity_buffer(self, is_nullable)?;
+
+        apply_to_list_element(
+            self.value_type(),
+            self.values(),
+            cell_structure,
+            validity,
+        )
     }
 }
 
@@ -241,7 +402,6 @@ impl TypedDataProvider for dyn ArrowArray {
         let c = cell_val_num;
         let n = is_nullable;
 
-        use arrow::array::AsArray;
         use arrow::datatypes::{DataType as ADT, *};
         match self.data_type() {
             ADT::Null => unimplemented!(),
