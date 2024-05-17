@@ -19,6 +19,34 @@ use crate::query::write::input::{
 };
 use crate::Result as TileDBResult;
 
+fn validity_buffer<A>(
+    array: &A,
+    is_nullable: bool,
+) -> TileDBResult<Option<Buffer<'_, u8>>>
+where
+    A: ArrowArray,
+{
+    let validity = if is_nullable {
+        if let Some(nulls) = array.nulls() {
+            Some(Buffer::<'_, u8>::from(nulls))
+        } else {
+            Some(vec![1u8; array.len()].into())
+        }
+    } else {
+        if let Some(nulls) = array.nulls() {
+            if nulls.null_count() == 0 {
+                None
+            } else {
+                /* TODO: error out, we have null whcih is unexpected */
+                todo!()
+            }
+        } else {
+            None
+        }
+    };
+    Ok(validity)
+}
+
 impl<A> DataProvider for PrimitiveArray<A>
 where
     A: ArrowPrimitiveType,
@@ -35,22 +63,7 @@ where
 
         match cell_val_num {
             CellValNum::Fixed(nz) if nz.get() == 1 => {
-                let validity = if let Some(nulls) = self.nulls() {
-                    if is_nullable {
-                        Some(Buffer::<'_, u8>::from(nulls))
-                    } else if nulls.null_count() == 0 {
-                        None
-                    } else {
-                        /* TODO: error out, we have nulls but they are not expected */
-                        unimplemented!()
-                    }
-                } else {
-                    if is_nullable {
-                        Some(vec![1u8; self.values().len()].into())
-                    } else {
-                        None
-                    }
-                };
+                let validity = validity_buffer(self, is_nullable)?;
 
                 Ok(QueryBuffers {
                     data,
@@ -112,7 +125,30 @@ impl DataProvider for LargeBinaryArray {
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        todo!()
+        let cell_structure = match cell_val_num {
+            CellValNum::Fixed(nz) => {
+                let expect_len = nz.get() as i64;
+                for window in self.offsets().windows(2) {
+                    if window[1] - window[0] != expect_len {
+                        /* TODO: error */
+                        unimplemented!()
+                    }
+                }
+                CellStructure::Fixed(nz)
+            }
+            CellValNum::Var => {
+                CellStructure::Var(Buffer::<u64>::from(self.offsets()))
+            }
+        };
+
+        let data = Buffer::Borrowed(self.value_data());
+        let validity = validity_buffer(self, is_nullable)?;
+
+        Ok(QueryBuffers {
+            data,
+            cell_structure,
+            validity,
+        })
     }
 }
 
