@@ -322,7 +322,8 @@ impl Strategy for DenseWriteStrategy {
                     {
                         (domain[0]..=domain[1], domain[0]..=domain[1])
                             .prop_map(move |(d1, d2)| {
-                                let limit = cell_limit as DT;
+                                let limit =
+                                    DT::try_from(cell_limit).unwrap_or(DT::MAX);
                                 let min = std::cmp::min(d1, d2);
                                 let max = match min.checked_add(limit) {
                                     None => std::cmp::max(d1, d2),
