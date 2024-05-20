@@ -68,14 +68,13 @@ fn cell_structure_fixed(
         ),
         CellValNum::Fixed(nz) => Ok(CellStructure::Fixed(nz)),
         CellValNum::Var => {
-            let offsets = Buffer::Owned(
-                std::iter::repeat(fixed_len as usize)
-                    .take(ncells)
-                    .enumerate()
-                    .map(|(i, len)| (i * len) as u64)
-                    .collect::<Vec<u64>>()
-                    .into_boxed_slice(),
-            );
+            let offsets = Buffer::Owned({
+                let mut offsets = vec![0; ncells];
+                for (i, o) in offsets.iter_mut().enumerate() {
+                    *o = i as u64 * fixed_len as u64;
+                }
+                offsets.into_boxed_slice()
+            });
             Ok(CellStructure::Var(offsets))
         }
     }
