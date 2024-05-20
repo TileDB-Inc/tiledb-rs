@@ -605,8 +605,34 @@ impl AttributeData {
         use crate::query::strategy::FieldValueStrategy;
         use proptest::prelude::*;
 
+        use crate::filter::{CompressionData, CompressionType, FilterData};
+        let has_double_delta = self.filters.iter().any(|f| {
+            matches!(
+                f,
+                FilterData::Compression(CompressionData {
+                    kind: CompressionType::DoubleDelta { .. },
+                    ..
+                })
+            )
+        });
+
         fn_typed!(self.datatype, LT, {
             type DT = <LT as LogicalType>::PhysicalType;
+            if has_double_delta {
+                if std::any::TypeId::of::<DT>() == std::any::TypeId::of::<u64>()
+                {
+                    // see core `DoubleDelta::compute_bitsize`
+                    let min = 0u64;
+                    let max = u64::MAX >> 1;
+                    return FieldValueStrategy::from((min..=max).boxed());
+                } else if std::any::TypeId::of::<DT>()
+                    == std::any::TypeId::of::<i64>()
+                {
+                    let min = i64::MIN >> 2;
+                    let max = i64::MAX >> 2;
+                    return FieldValueStrategy::from((min..=max).boxed());
+                }
+            }
             FieldValueStrategy::from(any::<DT>().boxed())
         })
     }
