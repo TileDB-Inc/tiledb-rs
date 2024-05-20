@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use paste::paste;
 use proptest::bits::{BitSetLike, VarBitSet};
+use proptest::collection::SizeRange;
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
@@ -389,9 +390,49 @@ pub enum FieldStrategyDatatype {
     SchemaField(SchemaField),
 }
 
+pub enum FieldValueStrategy {
+    UInt8(BoxedStrategy<u8>),
+    UInt16(BoxedStrategy<u16>),
+    UInt32(BoxedStrategy<u32>),
+    UInt64(BoxedStrategy<u64>),
+    Int8(BoxedStrategy<i8>),
+    Int16(BoxedStrategy<i16>),
+    Int32(BoxedStrategy<i32>),
+    Int64(BoxedStrategy<i64>),
+    Float32(BoxedStrategy<f32>),
+    Float64(BoxedStrategy<f64>),
+}
+
+macro_rules! field_value_strategy {
+    ($($variant:ident : $T:ty),+) => {
+        $(
+            impl From<BoxedStrategy<$T>> for FieldValueStrategy {
+                fn from(value: BoxedStrategy<$T>) -> Self {
+                    Self::$variant(value)
+                }
+            }
+
+            impl TryFrom<FieldValueStrategy> for BoxedStrategy<$T> {
+                type Error = ();
+                fn try_from(value: FieldValueStrategy) -> Result<Self, Self::Error> {
+                    if let FieldValueStrategy::$variant(b) = value {
+                        Ok(b)
+                    } else {
+                        Err(())
+                    }
+                }
+            }
+        )+
+    }
+}
+
+field_value_strategy!(UInt8 : u8, UInt16 : u16, UInt32 : u32, UInt64 : u64);
+field_value_strategy!(Int8 : i8, Int16 : i16, Int32 : i32, Int64 : i64);
+field_value_strategy!(Float32 : f32, Float64 : f64);
+
 #[derive(Clone, Debug)]
 pub struct FieldDataParameters {
-    pub nrecords: Option<usize>,
+    pub nrecords: Option<SizeRange>,
     pub datatype: Option<FieldStrategyDatatype>,
     pub value_min_var_size: usize,
     pub value_max_var_size: usize,
@@ -422,9 +463,9 @@ impl Arbitrary for FieldData {
             FieldData: From<Vec<DT>> + From<Vec<Vec<DT>>>,
         {
             let nrecords = if let Some(nrecords) = params.nrecords {
-                nrecords..=nrecords
+                nrecords
             } else {
-                0..=1024 /* TODO: configure */
+                (0..=1024).into() /* TODO: configure */
             };
 
             if cell_val_num == 1u32 {
@@ -452,6 +493,7 @@ impl Arbitrary for FieldData {
             Some(FieldStrategyDatatype::SchemaField(
                 SchemaField::Dimension(d),
             )) => {
+                let value_strat = d.value_strategy();
                 let cell_val_num =
                     d.cell_val_num.unwrap_or(CellValNum::single());
 
@@ -461,13 +503,18 @@ impl Arbitrary for FieldData {
                     ref domain,
                     _,
                     {
-                        let value_strat = (domain[0]..=domain[1]).boxed();
-                        body::<DT>(params, value_strat, cell_val_num)
+                        body::<DT>(
+                            params,
+                            value_strat.try_into().unwrap(),
+                            cell_val_num,
+                        )
                     },
                     {
-                        assert_eq!(d.datatype, Datatype::StringAscii);
-                        let value_strat = any::<u8>().boxed();
-                        body::<u8>(params, value_strat, cell_val_num)
+                        body::<u8>(
+                            params,
+                            value_strat.try_into().unwrap(),
+                            cell_val_num,
+                        )
                     }
                 )
             }
@@ -1224,7 +1271,7 @@ impl CellsStrategySchema {
                     .map(|(field, (mask, (datatype, cell_val_num)))| {
                         let field_data = if mask.is_included() {
                             let params = FieldDataParameters {
-                                nrecords: Some(nrecords),
+                                nrecords: Some((nrecords..=nrecords).into()),
                                 datatype: Some(
                                     FieldStrategyDatatype::Datatype(
                                         *datatype,
@@ -1289,7 +1336,7 @@ impl CellsStrategySchema {
                         let field_name = field.name().to_string();
                         let field_data = if mask.is_included() {
                             let params = FieldDataParameters {
-                                nrecords: Some(nrecords),
+                                nrecords: Some(nrecords.into()),
                                 datatype: Some(
                                     FieldStrategyDatatype::SchemaField(field),
                                 ),

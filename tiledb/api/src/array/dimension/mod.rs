@@ -474,6 +474,26 @@ pub struct DimensionData {
     pub filters: Option<FilterListData>,
 }
 
+impl DimensionData {
+    #[cfg(any(test, feature = "proptest-strategies"))]
+    pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
+        use crate::query::strategy::FieldValueStrategy;
+        use proptest::prelude::*;
+
+        dimension_constraints_go!(
+            self.constraints,
+            DT,
+            ref domain,
+            _,
+            FieldValueStrategy::from((domain[0]..=domain[1]).boxed()),
+            {
+                assert_eq!(self.datatype, Datatype::StringAscii);
+                FieldValueStrategy::from(any::<u8>().boxed())
+            }
+        )
+    }
+}
+
 impl Display for DimensionData {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "{}", json!(*self))
