@@ -599,6 +599,19 @@ pub struct AttributeData {
     pub filters: FilterListData,
 }
 
+impl AttributeData {
+    #[cfg(any(test, feature = "proptest-strategies"))]
+    pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
+        use crate::query::strategy::FieldValueStrategy;
+        use proptest::prelude::*;
+
+        fn_typed!(self.datatype, LT, {
+            type DT = <LT as LogicalType>::PhysicalType;
+            FieldValueStrategy::from(any::<DT>().boxed())
+        })
+    }
+}
+
 impl Display for AttributeData {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "{}", json!(*self))

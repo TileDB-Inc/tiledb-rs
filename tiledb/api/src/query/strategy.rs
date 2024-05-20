@@ -521,13 +521,17 @@ impl Arbitrary for FieldData {
             Some(FieldStrategyDatatype::SchemaField(
                 SchemaField::Attribute(a),
             )) => {
+                let value_strat = a.value_strategy();
                 let cell_val_num =
                     a.cell_val_num.unwrap_or(CellValNum::single());
 
                 fn_typed!(a.datatype, LT, {
                     type DT = <LT as LogicalType>::PhysicalType;
-                    let value_strat = any::<DT>().boxed();
-                    body::<DT>(params, value_strat, cell_val_num)
+                    body::<DT>(
+                        params,
+                        value_strat.try_into().unwrap(),
+                        cell_val_num,
+                    )
                 })
             }
             Some(FieldStrategyDatatype::Datatype(datatype, cell_val_num)) => {
