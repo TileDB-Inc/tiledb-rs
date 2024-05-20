@@ -5,6 +5,7 @@ use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
 use crate::array::{ArrayType, CellValNum, DomainData};
+use crate::datatype::strategy::DatatypeContext;
 use crate::dimension_constraints_go;
 use crate::filter::list::FilterListData;
 use crate::filter::*;
@@ -84,20 +85,22 @@ fn prop_compression_delta_strategies(
 ) -> Vec<BoxedStrategy<CompressionType>> {
     if let Some(input_datatype) = input_datatype {
         if input_datatype.is_real_type() {
-            let delta = any::<Datatype>()
-                .prop_filter(
-                    "input_datatype is floating-point, input must not be Any",
-                    move |dt| {
-                        if input_datatype.is_real_type() {
-                            !dt.is_real_type() && *dt != Datatype::Any
-                        } else {
-                            !dt.is_real_type()
-                        }
-                    },
-                )
-                .prop_map(|dt| CompressionType::Delta {
-                    reinterpret_datatype: Some(dt),
-                });
+            let delta = any_with::<Datatype>(
+                DatatypeContext::DeltaFilterReinterpretDatatype,
+            )
+            .prop_filter(
+                "input_datatype is floating-point, input must not be Any",
+                move |dt| {
+                    if input_datatype.is_real_type() {
+                        !dt.is_real_type() && *dt != Datatype::Any
+                    } else {
+                        !dt.is_real_type()
+                    }
+                },
+            )
+            .prop_map(|dt| CompressionType::Delta {
+                reinterpret_datatype: Some(dt),
+            });
 
             let double_delta = any::<Datatype>()
                 .prop_filter(
@@ -119,20 +122,24 @@ fn prop_compression_delta_strategies(
     }
 
     /* any non-float type is allowed */
-    let delta = any::<Datatype>()
-        .prop_filter("reinterpret_datatype cannot be floating-point", |dt| {
-            !dt.is_real_type()
-        })
-        .prop_map(|dt| CompressionType::Delta {
-            reinterpret_datatype: Some(dt),
-        });
-    let double_delta = any::<Datatype>()
-        .prop_filter("reinterpret_datatype cannot be floating-point", |dt| {
-            !dt.is_real_type()
-        })
-        .prop_map(|dt| CompressionType::DoubleDelta {
-            reinterpret_datatype: Some(dt),
-        });
+    let delta =
+        any_with::<Datatype>(DatatypeContext::DeltaFilterReinterpretDatatype)
+            .prop_filter(
+                "reinterpret_datatype cannot be floating-point",
+                |dt| !dt.is_real_type(),
+            )
+            .prop_map(|dt| CompressionType::Delta {
+                reinterpret_datatype: Some(dt),
+            });
+    let double_delta =
+        any_with::<Datatype>(DatatypeContext::DeltaFilterReinterpretDatatype)
+            .prop_filter(
+                "reinterpret_datatype cannot be floating-point",
+                |dt| !dt.is_real_type(),
+            )
+            .prop_map(|dt| CompressionType::DoubleDelta {
+                reinterpret_datatype: Some(dt),
+            });
 
     vec![delta.boxed(), double_delta.boxed()]
 }

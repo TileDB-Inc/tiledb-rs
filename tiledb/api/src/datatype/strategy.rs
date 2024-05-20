@@ -134,12 +134,62 @@ fn prop_datatype_for_sparse_dimension() -> impl Strategy<Value = Datatype> {
     )
 }
 
+const DELTA_FILTER_REINTERPRET_DATATYPES: [Datatype; 37] = [
+    Datatype::Any,
+    Datatype::UInt8,
+    Datatype::UInt16,
+    Datatype::UInt32,
+    Datatype::UInt64,
+    Datatype::Int8,
+    Datatype::Int16,
+    Datatype::Int32,
+    Datatype::Int64,
+    Datatype::Float32,
+    Datatype::Float64,
+    Datatype::Boolean,
+    Datatype::Blob,
+    Datatype::GeometryWkb,
+    Datatype::GeometryWkt,
+    Datatype::DateTimeYear,
+    Datatype::DateTimeMonth,
+    Datatype::DateTimeWeek,
+    Datatype::DateTimeDay,
+    Datatype::DateTimeHour,
+    Datatype::DateTimeMinute,
+    Datatype::DateTimeSecond,
+    Datatype::DateTimeMillisecond,
+    Datatype::DateTimeMicrosecond,
+    Datatype::DateTimeNanosecond,
+    Datatype::DateTimePicosecond,
+    Datatype::DateTimeFemtosecond,
+    Datatype::DateTimeAttosecond,
+    Datatype::TimeHour,
+    Datatype::TimeMinute,
+    Datatype::TimeSecond,
+    Datatype::TimeMillisecond,
+    Datatype::TimeMicrosecond,
+    Datatype::TimeNanosecond,
+    Datatype::TimePicosecond,
+    Datatype::TimeFemtosecond,
+    Datatype::TimeAttosecond,
+];
+
+fn prop_datatype_for_delta_filter() -> impl Strategy<Value = Datatype> {
+    // see core `FilterBuffer::buffers_as`
+    proptest::strategy::Union::new(
+        DELTA_FILTER_REINTERPRET_DATATYPES
+            .iter()
+            .map(|dt| Just(*dt)),
+    )
+}
+
 #[derive(Clone, Debug, Default)]
 pub enum DatatypeContext {
     #[default]
     Any,
     DenseDimension,
     SparseDimension,
+    DeltaFilterReinterpretDatatype,
 }
 
 impl Arbitrary for Datatype {
@@ -154,6 +204,9 @@ impl Arbitrary for Datatype {
             }
             DatatypeContext::SparseDimension => {
                 prop_datatype_for_sparse_dimension().boxed()
+            }
+            DatatypeContext::DeltaFilterReinterpretDatatype => {
+                prop_datatype_for_delta_filter().boxed()
             }
         }
     }
