@@ -25,7 +25,7 @@ fn prop_domain_for_array_type(
              * have to be careful if there are many dimensions.
              * If we have D dimensions and the desired bound on the number of cells per tile is T, then we want to bound each extent on the Dth root of T
              */
-            const CELLS_PER_TILE_LIMIT: usize = 1024 * 1024;
+            const CELLS_PER_TILE_LIMIT: usize = 1024 * 32;
 
             (
                 any_with::<Datatype>(DatatypeContext::DenseDimension),
