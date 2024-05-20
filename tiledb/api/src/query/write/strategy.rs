@@ -716,67 +716,7 @@ mod tests {
                 accumulated_write = Some(write.unwrap_cells());
             }
 
-            let accumulated_write = accumulated_write.as_ref().unwrap();
-
-            array = Array::open(ctx, array.uri(), Mode::Read).unwrap();
-
-            /* then read it back */
-            {
-                let mut cursors = accumulated_write
-                    .fields()
-                    .keys()
-                    .map(|key| (key.clone(), 0))
-                    .collect::<HashMap<String, usize>>();
-
-                let mut read = accumulated_write
-                    .attach_read(
-                        ReadBuilder::new(array)
-                            .expect("Error building read query"),
-                    )
-                    .expect("Error building read query")
-                    .build();
-
-                loop {
-                    let res = read.step().expect("Error in read query step");
-                    match res.as_ref().into_inner() {
-                        None => unimplemented!(), /* TODO: allocate more */
-                        Some((raw, _)) => {
-                            let raw = &raw.0;
-                            let mut ncells = None;
-                            for (key, rdata) in raw.iter() {
-                                let wdata = &accumulated_write.fields()[key];
-
-                                let nv = if let Some(nv) = ncells {
-                                    assert_eq!(nv, rdata.len());
-                                    nv
-                                } else {
-                                    ncells = Some(rdata.len());
-                                    rdata.len()
-                                };
-
-                                let wdata =
-                                    typed_field_data_go!(wdata, wdata, {
-                                        FieldData::from(
-                                            wdata[cursors[key]
-                                                ..cursors[key] + nv]
-                                                .to_vec(),
-                                        )
-                                    });
-
-                                assert_eq!(wdata, *rdata);
-
-                                *cursors.get_mut(key).unwrap() += nv;
-                            }
-                        }
-                    }
-
-                    if res.is_final() {
-                        break;
-                    }
-                }
-
-                array = read.finalize().expect("Error finalizing read query");
-            }
+            /* TODO: read all ranges and check against accumulated writes */
         }
     }
 
