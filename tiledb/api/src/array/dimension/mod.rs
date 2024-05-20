@@ -181,47 +181,72 @@ pub enum DimensionConstraints {
 #[macro_export]
 macro_rules! dimension_constraints_go {
     ($expr:expr, $DT:ident, $range:pat, $extent:pat, $then:expr, $string:expr) => {{
+        dimension_constraints_go!(
+            $expr, $DT, $range, $extent, $then, $then, $string
+        )
+    }};
+    ($expr:expr, $DT:ident, $range:pat, $extent:pat, $integral:expr, $float:expr, $string:expr) => {{
         use $crate::array::dimension::DimensionConstraints;
         match $expr {
+            #[allow(unused_variables)]
             DimensionConstraints::Int8($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i8;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Int16($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i16;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Int32($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i32;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Int64($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i64;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt8($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u8;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt16($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u16;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt32($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u32;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt64($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u64;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Float32($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = f32;
-                $then
+                $float
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Float64($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = f64;
-                $then
+                $float
             }
             DimensionConstraints::StringAscii => $string,
         }

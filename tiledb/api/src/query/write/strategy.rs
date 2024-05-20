@@ -323,17 +323,22 @@ impl Strategy for DenseWriteStrategy {
                         (domain[0]..=domain[1], domain[0]..=domain[1])
                             .prop_map(move |(d1, d2)| {
                                 let limit = cell_limit as DT;
-                                let min = if d1 < d2 { d1 } else { d2 };
-                                let max = if d1 < d2 { d2 } else { d1 };
-                                let max = if min + limit < max {
-                                    min + limit
-                                } else {
-                                    max
+                                let min = std::cmp::min(d1, d2);
+                                let max = match min.checked_add(limit) {
+                                    None => std::cmp::max(d1, d2),
+                                    Some(upper_bound) => std::cmp::min(
+                                        upper_bound,
+                                        std::cmp::max(d1, d2),
+                                    ),
                                 };
                                 SingleValueRange::from(&[min, max])
                             })
                             .boxed()
                     },
+                    unreachable!(
+                        "Unexpected datatype in dense dimension: {}",
+                        d.datatype
+                    ),
                     unimplemented!()
                 )
             })
