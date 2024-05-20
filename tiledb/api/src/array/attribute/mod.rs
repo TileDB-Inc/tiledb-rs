@@ -127,7 +127,7 @@ impl Attribute {
 
         if !self.datatype()?.is_compatible_type::<F::PhysicalType>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>(),
+                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
                 tiledb_type: self.datatype()?,
             }));
         }
@@ -158,7 +158,7 @@ impl Attribute {
     ) -> TileDBResult<(F, bool)> {
         if !self.datatype()?.is_compatible_type::<F::PhysicalType>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>(),
+                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
                 tiledb_type: self.datatype()?,
             }));
         }
@@ -354,7 +354,7 @@ impl Builder {
             .is_compatible_type::<F::PhysicalType>()
         {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>(),
+                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
                 tiledb_type: self.attr.datatype()?,
             }));
         }
@@ -394,7 +394,7 @@ impl Builder {
             .is_compatible_type::<F::PhysicalType>()
         {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>(),
+                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
                 tiledb_type: self.attr.datatype()?,
             }));
         }

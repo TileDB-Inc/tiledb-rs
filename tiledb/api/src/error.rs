@@ -30,13 +30,16 @@ impl Drop for RawError {
 pub enum DatatypeErrorKind {
     InvalidDiscriminant(u64),
     TypeMismatch {
-        user_type: &'static str,
+        user_type: String,
         tiledb_type: Datatype,
     },
     UnexpectedCellStructure {
         context: Option<String>,
         found: CellValNum,
         expected: CellValNum,
+    },
+    UnexpectedValidity {
+        context: Option<String>,
     },
     InvalidDatatype {
         context: Option<String>,
@@ -78,6 +81,13 @@ impl Display for DatatypeErrorKind {
                         "Unexpected cell val num: expected {}, found {}",
                         expected, found
                     )
+                }
+            }
+            DatatypeErrorKind::UnexpectedValidity { context } => {
+                if let Some(context) = context {
+                    write!(f, "Unexpected validity data for {}", context)
+                } else {
+                    write!(f, "Unexpected validity data")
                 }
             }
             DatatypeErrorKind::InvalidDatatype {

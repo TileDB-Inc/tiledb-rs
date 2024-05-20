@@ -297,7 +297,7 @@ where
         let dtype = dim.datatype()?;
         if dtype.is_compatible_type::<T>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<T>(),
+                user_type: std::any::type_name::<T>().to_owned(),
                 tiledb_type: dtype,
             }));
         }

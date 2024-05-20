@@ -548,8 +548,23 @@ pub enum TypedQueryBuffers<'data> {
 }
 
 impl<'data> TypedQueryBuffers<'data> {
+    pub fn values_capacity(&self) -> usize {
+        crate::typed_query_buffers_go!(self, _DT, ref qb, qb.data.len())
+    }
+
     pub fn cell_structure(&self) -> &CellStructure<'data> {
         crate::typed_query_buffers_go!(self, _DT, ref qb, &qb.cell_structure)
+    }
+
+    pub fn validity(&self) -> Option<&Buffer<'data, u8>> {
+        crate::typed_query_buffers_go!(self, _DT, ref qb, qb.validity.as_ref())
+    }
+
+    pub fn borrow<'this>(&'this self) -> TypedQueryBuffers<'data>
+    where
+        'this: 'data,
+    {
+        crate::typed_query_buffers_go!(self, _DT, ref qb, qb.borrow().into())
     }
 }
 
@@ -645,6 +660,82 @@ macro_rules! typed_query_buffers_go {
             }
         }
     };
+    ($left:expr, $right:expr, $DT:ident, $lbind:pat, $rbind:pat, $then:expr) => {{
+        use $crate::query::buffer::TypedQueryBuffers;
+        match ($left, $right) {
+            (
+                TypedQueryBuffers::UInt8($lbind),
+                TypedQueryBuffers::UInt8($rbind),
+            ) => {
+                type $DT = u8;
+                $then
+            }
+            (
+                TypedQueryBuffers::UInt16($lbind),
+                TypedQueryBuffers::UInt16($rbind),
+            ) => {
+                type $DT = u16;
+                $then
+            }
+            (
+                TypedQueryBuffers::UInt32($lbind),
+                TypedQueryBuffers::UInt32($rbind),
+            ) => {
+                type $DT = u32;
+                $then
+            }
+            (
+                TypedQueryBuffers::UInt64($lbind),
+                TypedQueryBuffers::UInt64($rbind),
+            ) => {
+                type $DT = u64;
+                $then
+            }
+            (
+                TypedQueryBuffers::Int8($lbind),
+                TypedQueryBuffers::Int8($rbind),
+            ) => {
+                type $DT = i8;
+                $then
+            }
+            (
+                TypedQueryBuffers::Int16($lbind),
+                TypedQueryBuffers::Int16($rbind),
+            ) => {
+                type $DT = i16;
+                $then
+            }
+            (
+                TypedQueryBuffers::Int32($lbind),
+                TypedQueryBuffers::Int32($rbind),
+            ) => {
+                type $DT = i32;
+                $then
+            }
+            (
+                TypedQueryBuffers::Int64($lbind),
+                TypedQueryBuffers::Int64($rbind),
+            ) => {
+                type $DT = i64;
+                $then
+            }
+            (
+                TypedQueryBuffers::Float32($lbind),
+                TypedQueryBuffers::Float32($rbind),
+            ) => {
+                type $DT = f32;
+                $then
+            }
+            (
+                TypedQueryBuffers::Float64($lbind),
+                TypedQueryBuffers::Float64($rbind),
+            ) => {
+                type $DT = f64;
+                $then
+            }
+            _ => unreachable!(),
+        }
+    }};
 }
 
 macro_rules! ref_typed_query_buffers_go {

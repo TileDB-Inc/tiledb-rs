@@ -349,14 +349,14 @@ impl FragmentInfoInternal {
             type DT = <LT as LogicalType>::PhysicalType;
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>(),
+                    user_type: std::any::type_name::<DT>().to_owned(),
                     tiledb_type: datatype,
                 }));
             }
 
             if end_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>(),
+                    user_type: std::any::type_name::<DT>().to_owned(),
                     tiledb_type: datatype,
                 }));
             }
@@ -468,14 +468,14 @@ impl FragmentInfoInternal {
             type DT = <LT as LogicalType>::PhysicalType;
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>(),
+                    user_type: std::any::type_name::<DT>().to_owned(),
                     tiledb_type: datatype,
                 }));
             }
 
             if end_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>(),
+                    user_type: std::any::type_name::<DT>().to_owned(),
                     tiledb_type: datatype,
                 }));
             }
