@@ -414,4 +414,16 @@ extern "C" {
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
     ) -> i32;
+
+    // This function copies the non-empty domain values from each coordinate
+    // into the user buffer. That's nice in C where you can just tell bytes
+    // what their destiny is, but it's a pain in Rust. Until we discover
+    // a reason not to, we'll just implement this in Rust by iterating
+    // over the dimensions.
+    pub fn tiledb_array_get_non_empty_domain(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        domain: *mut ::std::os::raw::c_void,
+        is_empty: *mut i32,
+    ) -> i32;
 }

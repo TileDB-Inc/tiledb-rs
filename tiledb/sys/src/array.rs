@@ -108,4 +108,62 @@ extern "C" {
         has_key: *mut i32,
     ) -> i32;
 
+    pub fn tiledb_array_get_non_empty_domain(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        domain: *mut ::std::os::raw::c_void,
+        is_empty: *mut i32,
+    ) -> i32;
+
+    pub fn tiledb_array_get_non_empty_domain_from_index(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        idx: u32,
+        domain: *mut ::std::os::raw::c_void,
+        is_empty: *mut i32,
+    ) -> i32;
+
+    pub fn tiledb_array_get_non_empty_domain_from_name(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        name: *const ::std::os::raw::c_char,
+        domain: *mut ::std::os::raw::c_void,
+        is_empty: *mut i32,
+    ) -> i32;
+
+    pub fn tiledb_array_get_non_empty_domain_var_size_from_index(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        idx: u32,
+        start_size: *mut u64,
+        end_size: *mut u64,
+        is_empty: *mut i32,
+    ) -> i32;
+
+    pub fn tiledb_array_get_non_empty_domain_var_size_from_name(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        name: *const ::std::os::raw::c_char,
+        start_size: *mut u64,
+        end_size: *mut u64,
+        is_empty: *mut i32,
+    ) -> i32;
+
+    pub fn tiledb_array_get_non_empty_domain_var_from_index(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        idx: u32,
+        start: *mut ::std::os::raw::c_void,
+        end: *mut ::std::os::raw::c_void,
+        is_empty: *mut i32,
+    ) -> i32;
+
+    pub fn tiledb_array_get_non_empty_domain_var_from_name(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        name: *const ::std::os::raw::c_char,
+        start: *mut ::std::os::raw::c_void,
+        end: *mut ::std::os::raw::c_void,
+        is_empty: *mut i32,
+    ) -> i32;
 }
