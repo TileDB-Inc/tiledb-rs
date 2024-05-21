@@ -416,7 +416,12 @@ impl Arbitrary for DenseWriteInput {
         let strat_schema = match args.schema.take() {
             None => {
                 let schema_req = crate::array::schema::strategy::Requirements {
-                    array_type: Some(ArrayType::Dense),
+                    domain: Rc::new(
+                        crate::array::domain::strategy::Requirements {
+                            array_type: Some(ArrayType::Dense),
+                            num_dimensions: 1..=1,
+                        },
+                    ),
                 };
                 any_with::<SchemaData>(Rc::new(schema_req))
                     .prop_map(Rc::new)
@@ -727,8 +732,10 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         let requirements = crate::array::schema::strategy::Requirements {
-            array_type: Some(ArrayType::Dense),
-            ..Default::default()
+            domain: Rc::new(crate::array::domain::strategy::Requirements {
+                array_type: Some(ArrayType::Dense),
+                num_dimensions: 1..=1,
+            }),
         };
 
         let strategy = any_with::<SchemaData>(Rc::new(requirements))

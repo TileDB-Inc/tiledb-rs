@@ -7,16 +7,30 @@ use crate::array::{ArrayType, DimensionData, DomainData};
 use crate::datatype::strategy::*;
 use crate::Datatype;
 
-const MIN_DIMENSIONS: usize = 1;
-const MAX_DIMENSIONS: usize = 8;
-
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Requirements {
     pub array_type: Option<ArrayType>,
+    pub num_dimensions: std::ops::RangeInclusive<usize>,
+}
+
+impl Requirements {
+    pub const DEFAULT_MIN_DIMENSIONS: usize = 1;
+    pub const DEFAULT_MAX_DIMENSIONS: usize = 8;
+}
+
+impl Default for Requirements {
+    fn default() -> Self {
+        Requirements {
+            array_type: None,
+            num_dimensions: Self::DEFAULT_MIN_DIMENSIONS
+                ..=Self::DEFAULT_MAX_DIMENSIONS,
+        }
+    }
 }
 
 fn prop_domain_for_array_type(
     array_type: ArrayType,
+    params: &Requirements,
 ) -> impl Strategy<Value = DomainData> {
     match array_type {
         ArrayType::Dense => {
@@ -29,33 +43,33 @@ fn prop_domain_for_array_type(
 
             (
                 any_with::<Datatype>(DatatypeContext::DenseDimension),
-                MIN_DIMENSIONS..=MAX_DIMENSIONS,
+                params.num_dimensions.clone(),
             )
-                .prop_flat_map(|(dimension_type, num_dimensions)| {
-                    let params = DimensionRequirements {
+                .prop_flat_map(|(dimension_type, actual_num_dimensions)| {
+                    let dimension_params = DimensionRequirements {
                         datatype: Some(dimension_type),
                         extent_limit: f64::powf(
                             CELLS_PER_TILE_LIMIT as f64,
-                            1.0f64 / (num_dimensions as f64),
+                            1.0f64 / (actual_num_dimensions as f64),
                         ) as usize
                             + 1, // round up, probably won't hurt, might prevent problems
                         ..Default::default()
                     };
                     proptest::collection::vec(
-                        any_with::<DimensionData>(params),
-                        MIN_DIMENSIONS..=MAX_DIMENSIONS,
+                        any_with::<DimensionData>(dimension_params),
+                        actual_num_dimensions,
                     )
                 })
                 .boxed()
         }
         ArrayType::Sparse => {
-            let params = DimensionRequirements {
+            let dimension_params = DimensionRequirements {
                 array_type: Some(ArrayType::Sparse),
                 ..Default::default()
             };
             proptest::collection::vec(
-                any_with::<DimensionData>(params),
-                MIN_DIMENSIONS..=MAX_DIMENSIONS,
+                any_with::<DimensionData>(dimension_params),
+                params.num_dimensions.clone(),
             )
             .boxed()
         }
@@ -67,10 +81,12 @@ fn prop_domain(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = DomainData> {
     if let Some(array_type) = requirements.array_type {
-        prop_domain_for_array_type(array_type).boxed()
+        prop_domain_for_array_type(array_type, requirements.as_ref()).boxed()
     } else {
         prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-            .prop_flat_map(prop_domain_for_array_type)
+            .prop_flat_map(move |a| {
+                prop_domain_for_array_type(a, requirements.as_ref())
+            })
             .boxed()
     }
 }
@@ -140,6 +156,6 @@ mod tests {
         }
         let last = value.current();
         assert_ne!(init, last);
-        assert_eq!(MIN_DIMENSIONS, last.dimension.len());
+        assert_eq!(Requirements::DEFAULT_MIN_DIMENSIONS, last.dimension.len());
     }
 }

@@ -20,7 +20,7 @@ use crate::filter::strategy::{
 
 #[derive(Clone, Default)]
 pub struct Requirements {
-    pub array_type: Option<ArrayType>,
+    pub domain: Rc<DomainRequirements>,
 }
 
 impl Arbitrary for CellValNum {
@@ -190,17 +190,15 @@ fn prop_schema(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = SchemaData> {
     let array_type = requirements
+        .domain
         .array_type
         .map(|at| Just(at).boxed())
         .unwrap_or(any::<ArrayType>().boxed());
 
-    array_type.prop_flat_map(|array_type| {
-        any_with::<DomainData>(Rc::new(DomainRequirements {
-            array_type: Some(array_type),
-        }))
-        .prop_flat_map(move |domain| {
-            prop_schema_for_domain(array_type, Rc::new(domain))
-        })
+    array_type.prop_flat_map(move |array_type| {
+        any_with::<DomainData>(Rc::clone(&requirements.domain)).prop_flat_map(
+            move |domain| prop_schema_for_domain(array_type, Rc::new(domain)),
+        )
     })
 }
 
