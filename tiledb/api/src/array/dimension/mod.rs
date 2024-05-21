@@ -366,18 +366,18 @@ impl DimensionConstraints {
     }
 
     /// Returns the number of cells spanned by this constraint, if applicable
-    pub fn num_cells(&self) -> Option<usize> {
-        match self {
-            Self::Int8([low, high], _) => Some((1 + high - low) as usize),
-            Self::Int16([low, high], _) => Some((1 + high - low) as usize),
-            Self::Int32([low, high], _) => Some((1 + high - low) as usize),
-            Self::Int64([low, high], _) => Some((1 + high - low) as usize),
-            Self::UInt8([low, high], _) => Some((1 + high - low) as usize),
-            Self::UInt16([low, high], _) => Some((1 + high - low) as usize),
-            Self::UInt32([low, high], _) => Some((1 + high - low) as usize),
-            Self::UInt64([low, high], _) => Some((1 + high - low) as usize),
-            _ => None,
-        }
+    pub fn num_cells(&self) -> Option<u128> {
+        let (low, high) = crate::dimension_constraints_go!(
+            self,
+            _DT,
+            [low, high],
+            _,
+            (i128::from(*low), i128::from(*high)),
+            return None,
+            return None
+        );
+
+        Some(1 + (high - low) as u128)
     }
 }
 
@@ -881,7 +881,7 @@ mod tests {
 
         proptest!(|((d, cell_bound, s) in strat)| {
             if let Some(bound) = cell_bound {
-                assert!(s.num_cells().unwrap() <= bound);
+                assert!(s.num_cells().unwrap() <= bound as u128);
             }
             if let Some(num_cells) = d.constraints.num_cells() {
                 assert!(s.num_cells().unwrap() <= num_cells);
@@ -891,49 +891,49 @@ mod tests {
                     let DimensionConstraints::Int8([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 }
                 SingleValueRange::Int16(start, end) => {
                     let DimensionConstraints::Int16([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 }
                 SingleValueRange::Int32(start, end) => {
                     let DimensionConstraints::Int32([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 }
                 SingleValueRange::Int64(start, end) => {
                     let DimensionConstraints::Int64([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 }
                 SingleValueRange::UInt8(start, end) => {
                     let DimensionConstraints::UInt8([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 }
                 SingleValueRange::UInt16(start, end) => {
                     let DimensionConstraints::UInt16([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 }
                 SingleValueRange::UInt32(start, end) => {
                     let DimensionConstraints::UInt32([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 }
                 SingleValueRange::UInt64(start, end) => {
                     let DimensionConstraints::UInt64([lb, ub], _) = d.constraints else { unreachable!() };
                     assert!(lb <= start);
                     assert!(end <= ub);
-                    assert_eq!(Some((end - start + 1) as usize), s.num_cells());
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
                 },
                 s => unreachable!("Unexpected range type for dense dimension: {:?}", s)
             }

@@ -58,18 +58,12 @@ pub enum SingleValueRange {
 
 impl SingleValueRange {
     /// Returns the number of cells spanned by this range if it is an integral range
-    pub fn num_cells(&self) -> Option<usize> {
-        match self {
-            Self::UInt8(lower, upper) => Some((upper - lower + 1) as usize),
-            Self::UInt16(lower, upper) => Some((upper - lower + 1) as usize),
-            Self::UInt32(lower, upper) => Some((upper - lower + 1) as usize),
-            Self::UInt64(lower, upper) => Some((upper - lower + 1) as usize),
-            Self::Int8(lower, upper) => Some((upper - lower + 1) as usize),
-            Self::Int16(lower, upper) => Some((upper - lower + 1) as usize),
-            Self::Int32(lower, upper) => Some((upper - lower + 1) as usize),
-            Self::Int64(lower, upper) => Some((upper - lower + 1) as usize),
-            _ => None,
-        }
+    pub fn num_cells(&self) -> Option<u128> {
+        let (low, high) = crate::single_value_range_go!(self, _DT : Integral, start, end,
+            (i128::from(*start), i128::from(*end)),
+            return None
+        );
+        Some(1 + (high - low) as u128)
     }
 
     pub fn is_integral(&self) -> bool {

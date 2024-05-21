@@ -132,7 +132,10 @@ impl DenseWriteValueTree {
         let cells = {
             let dimension_len = bounding_subarray
                 .iter()
-                .map(|r| r.num_cells().unwrap())
+                .map(|r| {
+                    usize::try_from(r.num_cells().unwrap())
+                        .expect("Too many cells to fit in memory")
+                })
                 .collect::<Vec<usize>>();
             StructuredCells::new(dimension_len, cells)
         };
@@ -379,7 +382,10 @@ impl Strategy for DenseWriteStrategy {
         let cells = {
             let ncells = bounding_subarray
                 .iter()
-                .map(|range| range.num_cells().unwrap())
+                .map(|range| {
+                    usize::try_from(range.num_cells().unwrap())
+                        .expect("Too many cells to fit in memory")
+                })
                 .product();
             assert!(ncells > 0);
             let params = CellsParameters {
