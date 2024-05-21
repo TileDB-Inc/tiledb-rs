@@ -286,36 +286,18 @@ macro_rules! single_value_range_go {
     }};
 }
 
-impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<usize> {
+impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
     type Error = ();
     fn try_from(value: SingleValueRange) -> Result<Self, Self::Error> {
-        match value {
-            SingleValueRange::UInt8(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            SingleValueRange::UInt16(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            SingleValueRange::UInt32(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            SingleValueRange::UInt64(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            SingleValueRange::Int8(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            SingleValueRange::Int16(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            SingleValueRange::Int32(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            SingleValueRange::Int64(start, end) => {
-                Ok(start as usize..=end as usize)
-            }
-            _ => Err(()),
-        }
+        type Target = i128;
+        single_value_range_go!(value, _DT : Integral, start, end,
+            {
+                let start = Target::from(start);
+                let end = Target::from(end);
+                Ok(start..=end)
+            },
+            Err(())
+        )
     }
 }
 

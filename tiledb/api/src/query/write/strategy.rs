@@ -99,7 +99,7 @@ pub struct DenseWriteParameters {
 pub struct DenseWriteValueTree {
     layout: CellOrder,
     field_order: Vec<String>,
-    bounding_subarray: Vec<RangeInclusive<usize>>,
+    bounding_subarray: Vec<RangeInclusive<i128>>,
     subarray: Vec<BoxedValueTree<SingleValueRange>>,
     cells: StructuredCells,
     prev_shrink: Option<usize>,
@@ -125,8 +125,12 @@ impl DenseWriteValueTree {
 
         let bounding_subarray = bounding_subarray
             .into_iter()
-            .map(|range| RangeInclusive::<usize>::try_from(range).unwrap())
-            .collect::<Vec<RangeInclusive<usize>>>();
+            .map(|range| {
+                let r = RangeInclusive::<i128>::try_from(range).unwrap();
+                assert!(r.start() <= r.end());
+                r
+            })
+            .collect::<Vec<RangeInclusive<i128>>>();
 
         DenseWriteValueTree {
             layout,
@@ -155,7 +159,9 @@ impl DenseWriteValueTree {
             .zip(subarray.iter())
             .map(|(complete, current)| {
                 let current =
-                    RangeInclusive::<usize>::try_from(current.clone()).unwrap();
+                    RangeInclusive::<i128>::try_from(current.clone()).unwrap();
+
+                assert!(current.start() <= current.end());
 
                 assert!(
                     complete.start() <= current.start(),
@@ -172,7 +178,11 @@ impl DenseWriteValueTree {
 
                 let start = current.start() - complete.start();
                 let end = current.end() - complete.start() + 1;
-                start..end
+                let ustart = usize::try_from(start)
+                    .expect("Current range is narrower than bounding range");
+                let uend = usize::try_from(end)
+                    .expect("Current range is narrower than bounding range");
+                ustart..uend
             })
             .collect::<Vec<std::ops::Range<usize>>>();
 
@@ -638,8 +648,6 @@ impl Iterator for WriteSequenceIter {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use tempfile::TempDir;
 
     use super::*;
@@ -647,7 +655,7 @@ mod tests {
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
     };
-    use crate::{typed_field_data_go, Context, Factory};
+    use crate::{Context, Factory};
 
     fn do_write_readback(
         ctx: &Context,
