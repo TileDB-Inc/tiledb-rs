@@ -483,6 +483,8 @@ pub struct DimensionData {
 
 impl DimensionData {
     #[cfg(any(test, feature = "proptest-strategies"))]
+    /// Returns a strategy for generating values of this dimension's type
+    /// which fall within the domain of this dimension.
     pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
         use crate::query::strategy::FieldValueStrategy;
         use proptest::prelude::*;
@@ -501,6 +503,8 @@ impl DimensionData {
     }
 
     #[cfg(any(test, feature = "proptest-strategies"))]
+    /// Returns a strategy for generating subarray ranges which fall within
+    /// the domain of this dimension.
     pub fn subarray_strategy(
         &self,
         cell_bound: Option<usize>,

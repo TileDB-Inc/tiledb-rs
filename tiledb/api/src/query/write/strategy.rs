@@ -421,6 +421,7 @@ impl Arbitrary for DenseWriteInput {
                         crate::array::domain::strategy::Requirements {
                             array_type: Some(ArrayType::Dense),
                             num_dimensions: 1..=1,
+                            ..Default::default()
                         },
                     )),
                     num_attributes: 1..=1,
@@ -745,6 +746,7 @@ mod tests {
                 crate::array::domain::strategy::Requirements {
                     array_type: Some(ArrayType::Dense),
                     num_dimensions: 1..=1,
+                    ..Default::default()
                 },
             )),
             num_attributes: 1..=1,

@@ -84,15 +84,6 @@ impl SingleValueRange {
         check_datatype!(self, datatype);
         Ok(())
     }
-
-    /// Merges this range into the `other` list of sorted, non-overlapping ranges and returns the result.
-    /// The result is sorted and consists of non-overlapping `SingleValueRange` elements.
-    pub fn merge(
-        &self,
-        _other: &[SingleValueRange],
-    ) -> TileDBResult<Vec<SingleValueRange>> {
-        unimplemented!()
-    }
 }
 
 macro_rules! single_value_range_from {
