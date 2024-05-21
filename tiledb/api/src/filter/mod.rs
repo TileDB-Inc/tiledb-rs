@@ -133,10 +133,7 @@ pub enum FilterData {
 }
 
 impl FilterData {
-    pub fn construct<'ctx>(
-        &self,
-        context: &'ctx Context,
-    ) -> TileDBResult<Filter<'ctx>> {
+    pub fn construct(&self, context: &Context) -> TileDBResult<Filter> {
         Filter::create(context, self)
     }
 
@@ -226,24 +223,13 @@ impl FilterData {
                 }
                 | CompressionType::DoubleDelta {
                     reinterpret_datatype,
-                } => {
-                    // these filters do not accept floating point
-                    let check_type =
-                        if let Some(Datatype::Any) = reinterpret_datatype {
-                            *input
-                        } else if let Some(reinterpret_datatype) =
-                            reinterpret_datatype
-                        {
-                            reinterpret_datatype
-                        } else {
-                            return None;
-                        };
-                    if check_type.is_real_type() {
-                        None
+                } => reinterpret_datatype.map_or(Some(*input), |dtype| {
+                    if !dtype.is_real_type() {
+                        Some(dtype)
                     } else {
-                        Some(check_type)
+                        None
                     }
-                }
+                }),
                 _ => Some(*input),
             },
             FilterData::ScaleFloat { byte_width, .. } => {
@@ -278,26 +264,26 @@ impl FilterData {
     }
 }
 
-impl<'ctx> TryFrom<&Filter<'ctx>> for FilterData {
+impl TryFrom<&Filter> for FilterData {
     type Error = crate::error::Error;
 
-    fn try_from(filter: &Filter<'ctx>) -> TileDBResult<Self> {
+    fn try_from(filter: &Filter) -> TileDBResult<Self> {
         filter.filter_data()
     }
 }
 
-impl<'ctx> TryFrom<Filter<'ctx>> for FilterData {
+impl TryFrom<Filter> for FilterData {
     type Error = crate::error::Error;
 
-    fn try_from(filter: Filter<'ctx>) -> TileDBResult<Self> {
+    fn try_from(filter: Filter) -> TileDBResult<Self> {
         Self::try_from(&filter)
     }
 }
 
-impl<'ctx> crate::Factory<'ctx> for FilterData {
-    type Item = Filter<'ctx>;
+impl crate::Factory for FilterData {
+    type Item = Filter;
 
-    fn create(&self, context: &'ctx Context) -> TileDBResult<Self::Item> {
+    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         Filter::create(context, self)
     }
 }
@@ -322,26 +308,30 @@ impl Drop for RawFilter {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Filter<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct Filter {
+    context: Context,
     pub(crate) raw: RawFilter,
 }
 
-impl<'ctx> Filter<'ctx> {
+impl ContextBound for Filter {
+    fn context(&self) -> Context {
+        self.context.clone()
+    }
+}
+
+impl Filter {
     pub fn capi(&self) -> *mut ffi::tiledb_filter_t {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawFilter) -> Self {
-        Filter { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawFilter) -> Self {
+        Filter {
+            context: context.clone(),
+            raw,
+        }
     }
 
-    pub fn create<F>(
-        context: &'ctx Context,
-        filter_data: F,
-    ) -> TileDBResult<Self>
+    pub fn create<F>(context: &Context, filter_data: F) -> TileDBResult<Self>
     where
         F: Borrow<FilterData>,
     {
@@ -488,7 +478,10 @@ impl<'ctx> Filter<'ctx> {
             FilterData::Xor => (),
         };
 
-        Ok(Filter { context, raw })
+        Ok(Filter {
+            context: context.clone(),
+            raw,
+        })
     }
 
     pub fn filter_data(&self) -> TileDBResult<FilterData> {
@@ -620,7 +613,7 @@ impl<'ctx> Filter<'ctx> {
     }
 }
 
-impl<'ctx> Debug for Filter<'ctx> {
+impl Debug for Filter {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self.filter_data() {
             Ok(data) => write!(f, "{:?}", data),
@@ -629,8 +622,8 @@ impl<'ctx> Debug for Filter<'ctx> {
     }
 }
 
-impl<'c1, 'c2> PartialEq<Filter<'c2>> for Filter<'c1> {
-    fn eq(&self, other: &Filter<'c2>) -> bool {
+impl PartialEq<Filter> for Filter {
+    fn eq(&self, other: &Filter) -> bool {
         match (self.filter_data(), other.filter_data()) {
             (Ok(mine), Ok(theirs)) => mine == theirs,
             _ => false,

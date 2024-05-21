@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -32,20 +33,29 @@ impl Drop for RawSubarray {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Subarray<'ctx> {
-    #[base(ContextBound)]
-    schema: Schema<'ctx>,
+pub struct Subarray<'query> {
+    schema: Schema,
     raw: RawSubarray,
+    _marker: PhantomData<&'query ()>,
 }
 
-impl<'ctx> Subarray<'ctx> {
+impl<'query> ContextBound for Subarray<'query> {
+    fn context(&self) -> Context {
+        self.schema.context()
+    }
+}
+
+impl<'query> Subarray<'query> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_subarray_t {
         *self.raw
     }
 
-    pub(crate) fn new(schema: Schema<'ctx>, raw: RawSubarray) -> Self {
-        Subarray { schema, raw }
+    pub(crate) fn new(schema: Schema, raw: RawSubarray) -> Self {
+        Subarray {
+            schema,
+            raw,
+            _marker: Default::default(),
+        }
     }
 
     /// Return all dimension ranges set on the query.
@@ -142,16 +152,26 @@ impl<'ctx> Subarray<'ctx> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Builder<Q> {
-    #[base(ContextBound)]
+pub struct Builder<Q>
+where
+    Q: QueryBuilder + Sized,
+{
     query: Q,
     raw: RawSubarray,
 }
 
-impl<'ctx, Q> Builder<Q>
+impl<Q> ContextBound for Builder<Q>
 where
-    Q: QueryBuilder<'ctx> + Sized,
+    Q: QueryBuilder,
+{
+    fn context(&self) -> Context {
+        self.query.base().context()
+    }
+}
+
+impl<Q> Builder<Q>
+where
+    Q: QueryBuilder + Sized,
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
         let context = query.base().context();
@@ -277,7 +297,7 @@ where
         let dtype = dim.datatype()?;
         if dtype.is_compatible_type::<T>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<T>(),
+                user_type: std::any::type_name::<T>().to_owned(),
                 tiledb_type: dtype,
             }));
         }

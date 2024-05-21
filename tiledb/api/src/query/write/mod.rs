@@ -2,10 +2,14 @@ use super::*;
 
 use std::collections::HashMap;
 use std::pin::Pin;
+use std::rc::Rc;
 
 use crate::config::Config;
 use crate::query::buffer::{CellStructure, QueryBuffers, TypedQueryBuffers};
-use crate::query::write::input::DataProvider;
+use crate::query::write::input::{
+    DataProvider, RecordProvider, TypedDataProvider,
+};
+use crate::typed_query_buffers_go;
 
 pub mod input;
 
@@ -18,32 +22,50 @@ struct RawWriteInput<'data> {
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 
-#[derive(ContextBound, Query)]
-pub struct WriteQuery<'ctx, 'data> {
-    #[base(ContextBound, Query)]
-    base: QueryBase<'ctx>,
+pub struct WriteQuery<'data> {
+    base: QueryBase,
 
     /// Hold on to query inputs to ensure they live long enough
     _inputs: InputMap<'data>,
 }
 
-impl<'ctx, 'data> WriteQuery<'ctx, 'data> {
+impl<'data> ContextBound for WriteQuery<'data> {
+    fn context(&self) -> Context {
+        self.base.context()
+    }
+}
+
+impl<'data> Query for WriteQuery<'data> {
+    fn base(&self) -> &QueryBase {
+        self.base.base()
+    }
+
+    fn finalize(self) -> TileDBResult<Array> {
+        self.base.finalize()
+    }
+}
+
+impl<'data> WriteQuery<'data> {
     pub fn submit(&self) -> TileDBResult<()> {
         self.base.do_submit()
     }
 }
 
-#[derive(ContextBound)]
-pub struct WriteBuilder<'ctx, 'data> {
-    #[base(ContextBound)]
-    base: BuilderBase<'ctx>,
+pub struct WriteBuilder<'data> {
+    base: BuilderBase,
     inputs: InputMap<'data>,
 }
 
-impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
-    type Query = WriteQuery<'ctx, 'data>;
+impl<'data> ContextBound for WriteBuilder<'data> {
+    fn context(&self) -> Context {
+        self.base.context()
+    }
+}
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+impl<'data> QueryBuilder for WriteBuilder<'data> {
+    type Query = WriteQuery<'data>;
+
+    fn base(&self) -> &BuilderBase {
         &self.base
     }
 
@@ -55,8 +77,8 @@ impl<'ctx, 'data> QueryBuilder<'ctx> for WriteBuilder<'ctx, 'data> {
     }
 }
 
-impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
-    pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
+impl<'data> WriteBuilder<'data> {
+    pub fn new(array: Array) -> TileDBResult<Self> {
         let base = BuilderBase::new(array, QueryType::Write)?;
 
         {
@@ -81,34 +103,27 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
         })
     }
 
-    pub fn data_typed<S, T>(
+    pub fn buffers<S>(
         mut self,
         field: S,
-        data: &'data T,
+        input: TypedQueryBuffers<'data>,
     ) -> TileDBResult<Self>
     where
         S: AsRef<str>,
-        T: DataProvider,
-        QueryBuffers<'data, <T as DataProvider>::Unit>:
-            Into<TypedQueryBuffers<'data>>,
     {
         let field_name = field.as_ref().to_string();
-
-        let input = {
-            let schema = self.base().array().schema()?;
-            let schema_field = schema.field(field_name.clone())?;
-            data.as_tiledb_input(
-                schema_field.cell_val_num()?,
-                schema_field.nullability()?,
-            )?
-        };
 
         let c_query = **self.base().cquery();
         let c_name = cstring!(field_name.clone());
 
-        let mut data_size = Box::pin(input.data.size() as u64);
+        let (c_bufptr, mut data_size) =
+            typed_query_buffers_go!(input, _DT, ref qb, {
+                let c_bufptr =
+                    qb.data.as_ref().as_ptr() as *mut std::ffi::c_void;
+                let data_size = Box::pin(qb.data.size() as u64);
+                (c_bufptr, data_size)
+            });
 
-        let c_bufptr = input.data.as_ref().as_ptr() as *mut std::ffi::c_void;
         let c_sizeptr = data_size.as_mut().get_mut() as *mut u64;
 
         self.capi_call(|ctx| unsafe {
@@ -122,7 +137,7 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
         })?;
 
         let offsets_size = if let CellStructure::Var(offsets) =
-            input.cell_structure.borrow()
+            input.cell_structure().borrow()
         {
             let mut offsets_size = Box::pin(offsets.size() as u64);
 
@@ -144,11 +159,11 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
         };
 
         let mut validity_size =
-            input.validity.as_ref().map(|b| Box::pin(b.size() as u64));
+            input.validity().map(|b| Box::pin(b.size() as u64));
 
         if let Some(ref mut validity_size) = validity_size.as_mut() {
             let c_validityptr =
-                input.validity.as_ref().unwrap().as_ref().as_ptr() as *mut u8;
+                input.validity().unwrap().as_ref().as_ptr() as *mut u8;
             let c_sizeptr = validity_size.as_mut().get_mut() as *mut u64;
 
             self.capi_call(|ctx| unsafe {
@@ -166,12 +181,71 @@ impl<'ctx, 'data> WriteBuilder<'ctx, 'data> {
             _data_size: data_size,
             _offsets_size: offsets_size,
             _validity_size: validity_size,
-            _input: input.into(),
+            _input: input,
         };
 
         self.inputs.insert(field_name, raw_write_input);
 
         Ok(self)
+    }
+
+    pub fn data<S, T>(self, field: S, data: &'data T) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+        T: DataProvider,
+        QueryBuffers<'data, <T as DataProvider>::Unit>:
+            Into<TypedQueryBuffers<'data>>,
+    {
+        let field_name = field.as_ref();
+
+        let input = {
+            let schema = self.base().array().schema()?;
+            let schema_field = schema.field(field_name)?;
+            data.query_buffers(
+                schema_field.cell_val_num()?,
+                schema_field.nullability()?,
+            )?
+        };
+
+        self.buffers(field, input.into())
+    }
+
+    pub fn data_typed<S, T>(
+        self,
+        field: S,
+        data: &'data T,
+    ) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+        T: TypedDataProvider,
+    {
+        let field_name = field.as_ref();
+
+        let input = {
+            let schema = self.base().array().schema()?;
+            let schema_field = schema.field(field_name)?;
+            data.typed_query_buffers(
+                schema_field.cell_val_num()?,
+                schema_field.nullability()?,
+            )?
+        };
+
+        self.buffers(field, input)
+    }
+
+    pub fn records<R>(self, data: &'data R) -> TileDBResult<Self>
+    where
+        R: RecordProvider<'data>,
+    {
+        let schema = Rc::new(self.base().array().schema()?);
+
+        let mut b = self;
+        for try_input in data.tiledb_inputs(Rc::clone(&schema)) {
+            let (field, input_data) = try_input?;
+            b = b.buffers(field, input_data)?;
+        }
+
+        Ok(b)
     }
 }
 

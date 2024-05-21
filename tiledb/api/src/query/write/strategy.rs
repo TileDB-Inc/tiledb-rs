@@ -48,10 +48,10 @@ pub struct DenseWriteInput {
 }
 
 impl DenseWriteInput {
-    pub fn attach_write<'ctx, 'data>(
+    pub fn attach_write<'data>(
         &'data self,
-        b: WriteBuilder<'ctx, 'data>,
-    ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
+        b: WriteBuilder<'data>,
+    ) -> TileDBResult<WriteBuilder<'data>> {
         let mut subarray = self.data.attach_write(b)?.start_subarray()?;
 
         for i in 0..self.subarray.len() {
@@ -61,12 +61,12 @@ impl DenseWriteInput {
         subarray.finish_subarray()?.layout(self.layout)
     }
 
-    pub fn attach_read<'ctx, 'data, B>(
+    pub fn attach_read<'data, B>(
         &'data self,
         b: B,
     ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
     where
-        B: ReadQueryBuilder<'ctx, 'data>,
+        B: ReadQueryBuilder<'data>,
     {
         let mut subarray = b.start_subarray()?;
 
@@ -525,20 +525,20 @@ impl WriteInput {
         dense.data
     }
 
-    pub fn attach_write<'ctx, 'data>(
+    pub fn attach_write<'data>(
         &'data self,
-        b: WriteBuilder<'ctx, 'data>,
-    ) -> TileDBResult<WriteBuilder<'ctx, 'data>> {
+        b: WriteBuilder<'data>,
+    ) -> TileDBResult<WriteBuilder<'data>> {
         let Self::Dense(ref d) = self;
         d.attach_write(b)
     }
 
-    pub fn attach_read<'ctx, 'data, B>(
+    pub fn attach_read<'data, B>(
         &'data self,
         b: B,
     ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
     where
-        B: ReadQueryBuilder<'ctx, 'data>,
+        B: ReadQueryBuilder<'data>,
     {
         let Self::Dense(ref d) = self;
         d.attach_read(b)

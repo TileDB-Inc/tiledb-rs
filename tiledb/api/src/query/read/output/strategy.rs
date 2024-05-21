@@ -221,11 +221,11 @@ where
                             .into_iter()
                             .take(ncells + 1)
                             .collect::<Vec<u64>>();
-                        if let Some(first) = offsets.first_mut() {
-                            *first = 0u64;
-                        }
                         if let Some(last) = offsets.last_mut() {
                             *last = nvalues as u64;
+                        }
+                        if let Some(first) = offsets.first_mut() {
+                            *first = 0u64;
                         }
                         offsets.sort();
 

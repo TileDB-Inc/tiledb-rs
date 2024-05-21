@@ -9,7 +9,7 @@ use crate::array::schema::arrow::{
     DimensionFromArrowResult, FieldToArrowResult,
 };
 use crate::array::{Dimension, DimensionBuilder};
-use crate::context::Context as TileDBContext;
+use crate::context::{Context as TileDBContext, ContextBound};
 use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::datatype::LogicalType;
 use crate::filter::arrow::FilterMetadata;
@@ -79,13 +79,13 @@ pub fn to_arrow(dim: &Dimension) -> TileDBResult<FieldToArrowResult> {
     }
 }
 
-pub fn from_arrow<'ctx>(
-    context: &'ctx TileDBContext,
+pub fn from_arrow(
+    context: &TileDBContext,
     field: &arrow::datatypes::Field,
-) -> TileDBResult<DimensionFromArrowResult<'ctx>> {
+) -> TileDBResult<DimensionFromArrowResult> {
     let construct = |datatype,
                      cell_val_num|
-     -> TileDBResult<DimensionBuilder<'ctx>> {
+     -> TileDBResult<DimensionBuilder> {
         let metadata = match field.metadata().get("tiledb") {
             Some(metadata) => serde_json::from_str::<DimensionMetadata>(
                 metadata,
@@ -149,7 +149,7 @@ pub fn from_arrow<'ctx>(
 
         let fl = metadata
             .filters
-            .apply(FilterListBuilder::new(dim.context())?)?
+            .apply(FilterListBuilder::new(&dim.context())?)?
             .build();
 
         dim.cell_val_num(cell_val_num)?.filters(fl)

@@ -7,21 +7,43 @@ pub trait ReadResult: Sized {
 }
 
 /// Query result handler which constructs an object from query results.
-#[derive(ContextBound, Query)]
 pub struct TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound, Query)]
     pub(crate) base:
         CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>,
 }
 
-impl<'ctx, 'data, T, Q> ReadQuery<'ctx> for TypedReadQuery<'data, T, Q>
+impl<'data, T, Q> ContextBound for TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
-    Q: ReadQuery<'ctx>,
+    CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>: ContextBound,
+{
+    fn context(&self) -> Context {
+        self.base.context()
+    }
+}
+
+impl<'data, T, Q> Query for TypedReadQuery<'data, T, Q>
+where
+    T: ReadResult,
+    CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>: Query,
+{
+    fn base(&self) -> &QueryBase {
+        self.base.base()
+    }
+
+    fn finalize(self) -> TileDBResult<Array> {
+        self.base.finalize()
+    }
+}
+
+impl<'data, T, Q> ReadQuery for TypedReadQuery<'data, T, Q>
+where
+    T: ReadResult,
+    Q: ReadQuery,
 {
     type Intermediate = Q::Intermediate;
     type Final = (T, Q::Final);
@@ -41,25 +63,33 @@ where
     }
 }
 
-#[derive(ContextBound)]
 pub struct TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
 {
     pub(crate) _marker: std::marker::PhantomData<T>,
-    #[base(ContextBound)]
     pub(crate) base:
         CallbackReadBuilder<'data, <T as ReadResult>::Constructor, B>,
 }
 
-impl<'ctx, 'data, T, B> QueryBuilder<'ctx> for TypedReadBuilder<'data, T, B>
+impl<'data, T, B> ContextBound for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
-    B: QueryBuilder<'ctx>,
+    CallbackReadBuilder<'data, <T as ReadResult>::Constructor, B>: ContextBound,
+{
+    fn context(&self) -> Context {
+        self.base.context()
+    }
+}
+
+impl<'data, T, B> QueryBuilder for TypedReadBuilder<'data, T, B>
+where
+    T: ReadResult,
+    B: QueryBuilder,
 {
     type Query = TypedReadQuery<'data, T, B::Query>;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
@@ -71,11 +101,10 @@ where
     }
 }
 
-impl<'ctx, 'data, T, B> ReadQueryBuilder<'ctx, 'data>
-    for TypedReadBuilder<'data, T, B>
+impl<'data, T, B> ReadQueryBuilder<'data> for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
-    B: ReadQueryBuilder<'ctx, 'data>,
+    B: ReadQueryBuilder<'data>,
 {
 }
 

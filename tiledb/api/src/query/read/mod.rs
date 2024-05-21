@@ -182,7 +182,7 @@ impl<'data, C> From<&'data RefCell<QueryBuffersMut<'data, C>>>
 }
 
 /// Trait for runnable read queries.
-pub trait ReadQuery<'ctx>: Query<'ctx> {
+pub trait ReadQuery: Query {
     type Intermediate;
     type Final;
 
@@ -261,7 +261,7 @@ macro_rules! fn_register_callback {
 /// Trait for constructing a read query.
 /// Provides methods for flexibly adapting requested attributes into raw results,
 /// callbacks, or strongly-typed objects.
-pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
+pub trait ReadQueryBuilder<'data>: QueryBuilder {
     /// Register a raw memory location to read query results into.
     fn register_raw<S, C>(
         self,
@@ -374,14 +374,18 @@ pub trait ReadQueryBuilder<'ctx, 'data>: QueryBuilder<'ctx> {
     }
 }
 
-#[derive(ContextBound)]
-pub struct ReadBuilder<'ctx> {
-    #[base(ContextBound)]
-    base: BuilderBase<'ctx>,
+pub struct ReadBuilder {
+    base: BuilderBase,
 }
 
-impl<'ctx> ReadBuilder<'ctx> {
-    pub fn new(array: Array<'ctx>) -> TileDBResult<Self> {
+impl ContextBound for ReadBuilder {
+    fn context(&self) -> Context {
+        self.base.context()
+    }
+}
+
+impl ReadBuilder {
+    pub fn new(array: Array) -> TileDBResult<Self> {
         let base = BuilderBase::new(array, QueryType::Read)?;
 
         /* configure the query to always use arrow-like output */
@@ -406,10 +410,10 @@ impl<'ctx> ReadBuilder<'ctx> {
     }
 }
 
-impl<'ctx> QueryBuilder<'ctx> for ReadBuilder<'ctx> {
-    type Query = QueryBase<'ctx>;
+impl QueryBuilder for ReadBuilder {
+    type Query = QueryBase;
 
-    fn base(&self) -> &BuilderBase<'ctx> {
+    fn base(&self) -> &BuilderBase {
         &self.base
     }
 
@@ -418,4 +422,4 @@ impl<'ctx> QueryBuilder<'ctx> for ReadBuilder<'ctx> {
     }
 }
 
-impl<'ctx, 'data> ReadQueryBuilder<'ctx, 'data> for ReadBuilder<'ctx> {}
+impl<'data> ReadQueryBuilder<'data> for ReadBuilder {}

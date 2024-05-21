@@ -22,20 +22,17 @@ impl FilterMetadata {
     }
 
     /// Updates a FilterListBuilder with the contents of this object
-    pub fn apply<'ctx>(
+    pub fn apply(
         &self,
-        mut filters: FilterListBuilder<'ctx>,
-    ) -> TileDBResult<FilterListBuilder<'ctx>> {
+        mut filters: FilterListBuilder,
+    ) -> TileDBResult<FilterListBuilder> {
         for filter in self.filters.iter() {
             filters = filters.add_filter_data(filter.clone())?;
         }
         Ok(filters)
     }
 
-    pub fn create<'ctx>(
-        &self,
-        context: &'ctx TileDBContext,
-    ) -> TileDBResult<FilterList<'ctx>> {
+    pub fn create(&self, context: &TileDBContext) -> TileDBResult<FilterList> {
         Ok(self.apply(FilterListBuilder::new(context)?)?.build())
     }
 }

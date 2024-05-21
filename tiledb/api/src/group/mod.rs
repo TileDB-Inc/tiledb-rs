@@ -42,23 +42,30 @@ impl Drop for RawGroup {
     }
 }
 
-#[derive(ContextBound)]
-pub struct Group<'ctx> {
-    #[context]
-    context: &'ctx Context,
+pub struct Group {
+    context: Context,
     raw: RawGroup,
 }
 
-impl<'ctx> Group<'ctx> {
+impl ContextBound for Group {
+    fn context(&self) -> Context {
+        self.context.clone()
+    }
+}
+
+impl Group {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_group_t {
         *self.raw
     }
 
-    pub(crate) fn new(context: &'ctx Context, raw: RawGroup) -> Self {
-        Group { context, raw }
+    pub(crate) fn new(context: &Context, raw: RawGroup) -> Self {
+        Group {
+            context: context.clone(),
+            raw,
+        }
     }
 
-    pub fn create<S>(context: &'ctx Context, name: S) -> TileDBResult<()>
+    pub fn create<S>(context: &Context, name: S) -> TileDBResult<()>
     where
         S: AsRef<str>,
     {
@@ -69,7 +76,7 @@ impl<'ctx> Group<'ctx> {
     }
 
     pub fn open<S>(
-        context: &'ctx Context,
+        context: &Context,
         uri: S,
         query_type: QueryType,
         config: Option<&Config>,
@@ -463,7 +470,7 @@ impl<'ctx> Group<'ctx> {
     }
 }
 
-impl Drop for Group<'_> {
+impl Drop for Group {
     fn drop(&mut self) {
         let c_group = self.capi();
         let mut c_open: i32 = out_ptr!();
@@ -734,7 +741,7 @@ mod tests {
         let mut cfg = Config::new()?;
         cfg.set("foo", "bar")?;
 
-        let group_read: Group<'_> =
+        let group_read =
             Group::open(&tdb, group_uri, QueryType::Read, Some(&cfg))?;
         let cfg_copy = group_read.config()?;
         assert!(cfg.eq(&cfg_copy));

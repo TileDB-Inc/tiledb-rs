@@ -18,7 +18,7 @@ macro_rules! check_datatype_inner {
     ($ty:ty, $dtype:expr) => {
         if !$dtype.is_compatible_type::<$ty>() {
             return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<$ty>(),
+                user_type: std::any::type_name::<$ty>().to_owned(),
                 tiledb_type: $dtype,
             }));
         }

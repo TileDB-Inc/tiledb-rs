@@ -1,21 +1,53 @@
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
-use crate::array::CellValNum;
+use crate::array::{CellValNum, Schema};
 use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::query::buffer::{
-    Buffer, CellStructure, QueryBuffers, QueryBuffersMut,
+    Buffer, CellStructure, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
 };
 use crate::Result as TileDBResult;
+
+#[cfg(feature = "arrow")]
+pub mod arrow;
 
 pub trait DataProvider {
     type Unit: PhysicalType;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>>;
+}
+
+pub trait TypedDataProvider {
+    fn typed_query_buffers(
+        &self,
+        cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> TileDBResult<TypedQueryBuffers>;
+}
+
+impl<T> TypedDataProvider for T
+where
+    T: DataProvider,
+    for<'data> TypedQueryBuffers<'data>:
+        From<QueryBuffers<'data, <T as DataProvider>::Unit>>,
+{
+    fn typed_query_buffers(
+        &self,
+        cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> TileDBResult<TypedQueryBuffers> {
+        let qb = <T as DataProvider>::query_buffers(
+            self,
+            cell_val_num,
+            is_nullable,
+        )?;
+        Ok(qb.into())
+    }
 }
 
 impl<'data, C> DataProvider for QueryBuffers<'data, C>
@@ -24,7 +56,7 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         _cell_val_num: CellValNum,
         _is_nullable: bool,
@@ -48,7 +80,7 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         _cell_val_num: CellValNum,
         _is_nullable: bool,
@@ -72,12 +104,12 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
     ) -> TileDBResult<QueryBuffers<Self::Unit>> {
-        self.as_slice().as_tiledb_input(cell_val_num, is_nullable)
+        self.as_slice().query_buffers(cell_val_num, is_nullable)
     }
 }
 
@@ -87,7 +119,7 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         _cell_val_num: CellValNum,
         is_nullable: bool,
@@ -112,7 +144,7 @@ where
 {
     type Unit = C;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
@@ -171,7 +203,7 @@ where
 impl DataProvider for Vec<&str> {
     type Unit = u8;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
@@ -229,7 +261,7 @@ impl DataProvider for Vec<&str> {
 impl DataProvider for Vec<String> {
     type Unit = u8;
 
-    fn as_tiledb_input(
+    fn query_buffers(
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
@@ -283,6 +315,12 @@ impl DataProvider for Vec<String> {
     }
 }
 
+pub trait RecordProvider<'data> {
+    type Iter: Iterator<Item = TileDBResult<(String, TypedQueryBuffers<'data>)>>;
+
+    fn tiledb_inputs(&'data self, schema: Rc<Schema>) -> Self::Iter;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,7 +333,7 @@ mod tests {
     proptest! {
         #[test]
         fn input_provider_u64(u64vec in vec(any::<u64>(), MIN_RECORDS..=MAX_RECORDS)) {
-            let input = u64vec.as_tiledb_input(CellValNum::try_from(1).unwrap(), false).unwrap();
+            let input = u64vec.query_buffers(CellValNum::try_from(1).unwrap(), false).unwrap();
             let (u64in, offsets) = (input.data.as_ref(), input.cell_structure.offsets_ref());
             assert!(offsets.is_none());
 
@@ -317,7 +355,7 @@ mod tests {
                 (MIN_RECORDS..=MAX_RECORDS).into()
             )
         ) {
-            let input = stringvec.as_tiledb_input(CellValNum::Var, false).unwrap();
+            let input = stringvec.query_buffers(CellValNum::Var, false).unwrap();
             let (bytes, structure) = (input.data.as_ref(), input.cell_structure);
             assert!(structure.is_var());
             let mut offsets = structure.unwrap().unwrap().to_vec();
