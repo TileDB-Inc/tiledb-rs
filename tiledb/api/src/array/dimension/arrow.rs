@@ -220,7 +220,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_to_arrow(tdb_in in crate::array::dimension::strategy::prop_dimension()) {
+        fn test_to_arrow(tdb_in in any::<DimensionData>()) {
             do_to_arrow(tdb_in);
         }
     }
