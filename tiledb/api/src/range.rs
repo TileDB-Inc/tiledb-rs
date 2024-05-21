@@ -95,7 +95,7 @@ impl SingleValueRange {
     /// The result is sorted and consists of non-overlapping `SingleValueRange` elements.
     pub fn merge(
         &self,
-        _other: &Vec<SingleValueRange>,
+        _other: &[SingleValueRange],
     ) -> TileDBResult<Vec<SingleValueRange>> {
         unimplemented!()
     }

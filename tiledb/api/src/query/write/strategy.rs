@@ -279,7 +279,7 @@ impl Strategy for DenseWriteStrategy {
          * rather than keeping a moving product of the accumulated memory
          */
         let memory_limit: usize = {
-            const MEMORY_LIMIT_DEFAULT: usize = 1 * 1024; // chosen arbitrarily
+            const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
             let memory_limit =
                 self.params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
             memory_limit / self.schema.domain.dimension.len()

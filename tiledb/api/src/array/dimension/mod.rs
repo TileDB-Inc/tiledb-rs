@@ -365,8 +365,8 @@ impl DimensionConstraints {
         )
     }
 
-    /// Returns the number of elements spanned by this constraint, if applicable
-    pub fn len(&self) -> Option<usize> {
+    /// Returns the number of cells spanned by this constraint, if applicable
+    pub fn num_cells(&self) -> Option<usize> {
         match self {
             Self::Int8([low, high], _) => Some((1 + high - low) as usize),
             Self::Int16([low, high], _) => Some((1 + high - low) as usize),
@@ -882,6 +882,9 @@ mod tests {
         proptest!(|((d, cell_bound, s) in strat)| {
             if let Some(bound) = cell_bound {
                 assert!(s.num_cells().unwrap() <= bound);
+            }
+            if let Some(num_cells) = d.constraints.num_cells() {
+                assert!(s.num_cells().unwrap() <= num_cells);
             }
             match s {
                 SingleValueRange::Int8(start, end) => {

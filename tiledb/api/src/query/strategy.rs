@@ -759,16 +759,14 @@ impl Cells {
         assert_eq!(other.fields.len(), 0);
     }
 
-    fn index_comparator<'a>(
-        &'a self,
-    ) -> impl Fn(&usize, &usize) -> Ordering + 'a {
+    fn index_comparator(&self) -> impl Fn(&usize, &usize) -> Ordering + '_ {
         let key_order = {
             let mut keys = self.fields.keys().collect::<Vec<&String>>();
             keys.sort_unstable();
             keys
         };
 
-        let index_comparator = move |l: &usize, r: &usize| -> Ordering {
+        move |l: &usize, r: &usize| -> Ordering {
             for key in key_order.iter() {
                 typed_field_data_go!(self.fields[*key], ref data, {
                     match BitsOrd::bits_cmp(&data[*l], &data[*r]) {
@@ -779,9 +777,7 @@ impl Cells {
                 })
             }
             Ordering::Equal
-        };
-
-        index_comparator
+        }
     }
 
     /// Returns whether the cells are sorted.
@@ -817,10 +813,7 @@ impl Cells {
                     vec![Default::default(); data.len()],
                 );
                 for i in 0..unsorted.len() {
-                    data[i] = std::mem::replace(
-                        &mut unsorted[idx[i]],
-                        Default::default(),
-                    );
+                    data[i] = std::mem::take(&mut unsorted[idx[i]]);
                 }
             });
         }
@@ -1036,7 +1029,7 @@ impl CellsValueTree {
     ) -> Self {
         let nrecords = field_data
             .values()
-            .filter_map(|&(_, ref f)| f.as_ref())
+            .filter_map(|(_, f)| f.as_ref())
             .take(1)
             .next()
             .unwrap()
@@ -1226,7 +1219,7 @@ impl ValueTree for CellsValueTree {
             .field_data
             .iter()
             .filter(|(_, &(mask, _))| mask.is_included())
-            .map(|(name, &(_, ref data))| {
+            .map(|(name, (_, data))| {
                 (name.clone(), data.as_ref().unwrap().filter(&record_mask))
             })
             .collect::<HashMap<String, FieldData>>();
