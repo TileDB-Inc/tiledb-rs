@@ -19,10 +19,7 @@ use crate::query::strategy::{
 };
 use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
 use crate::range::SingleValueRange;
-use crate::{
-    dimension_constraints_go, fn_typed, single_value_range_go,
-    Result as TileDBResult,
-};
+use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
 
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
@@ -118,7 +115,7 @@ impl DenseWriteValueTree {
         let cells = {
             let dimension_len = bounding_subarray
                 .iter()
-                .map(|r| r.len().unwrap())
+                .map(|r| r.num_cells().unwrap())
                 .collect::<Vec<usize>>();
             StructuredCells::new(dimension_len, cells)
         };
@@ -323,36 +320,7 @@ impl Strategy for DenseWriteStrategy {
             .domain
             .dimension
             .iter()
-            .map(|d| {
-                dimension_constraints_go!(
-                    d.constraints,
-                    DT,
-                    ref domain,
-                    _,
-                    {
-                        (domain[0]..=domain[1], domain[0]..=domain[1])
-                            .prop_map(move |(d1, d2)| {
-                                let limit =
-                                    DT::try_from(cell_limit).unwrap_or(DT::MAX);
-                                let min = std::cmp::min(d1, d2);
-                                let max = match min.checked_add(limit) {
-                                    None => std::cmp::max(d1, d2),
-                                    Some(upper_bound) => std::cmp::min(
-                                        upper_bound,
-                                        std::cmp::max(d1, d2),
-                                    ),
-                                };
-                                SingleValueRange::from(&[min, max])
-                            })
-                            .boxed()
-                    },
-                    unreachable!(
-                        "Unexpected datatype in dense dimension: {}",
-                        d.datatype
-                    ),
-                    unimplemented!()
-                )
-            })
+            .map(|d| d.subarray_strategy(Some(cell_limit)).unwrap())
             .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
 
         let bounding_subarray = strat_subarray_bounds
@@ -394,7 +362,7 @@ impl Strategy for DenseWriteStrategy {
         let cells = {
             let ncells = bounding_subarray
                 .iter()
-                .map(|range| range.len().unwrap())
+                .map(|range| range.num_cells().unwrap())
                 .product();
             assert!(ncells > 0);
             let params = CellsParameters {
@@ -758,7 +726,7 @@ mod tests {
                     any_with::<WriteInput>(WriteParameters::default_for(
                         schema,
                     ))
-                    .prop_map(|w| WriteSequence::from(w)),
+                    .prop_map(WriteSequence::from),
                 )
             });
 

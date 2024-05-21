@@ -58,7 +58,7 @@ pub enum SingleValueRange {
 
 impl SingleValueRange {
     /// Returns the number of cells spanned by this range if it is an integral range
-    pub fn len(&self) -> Option<usize> {
+    pub fn num_cells(&self) -> Option<usize> {
         match self {
             Self::UInt8(lower, upper) => Some((upper - lower + 1) as usize),
             Self::UInt16(lower, upper) => Some((upper - lower + 1) as usize),
