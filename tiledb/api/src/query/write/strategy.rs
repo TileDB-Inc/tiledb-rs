@@ -9,6 +9,7 @@ use serde_json::json;
 
 use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
 use crate::datatype::LogicalType;
+use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
     TypedReadHandle,
@@ -22,6 +23,22 @@ use crate::range::SingleValueRange;
 use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
 
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
+
+// now that we're actually writing data we will hit the fun bugs.
+// there are several in the filter pipeline, so we must heavily
+// restrict what is allowed until the bugs are fixed.
+fn query_write_filter_requirements() -> FilterRequirements {
+    FilterRequirements {
+        allow_bit_reduction: false,  // SC-47560
+        allow_positive_delta: false, // nothing yet to ensure sort order
+        allow_scale_float: false,
+        allow_xor: false,               // SC-47328
+        allow_compression_rle: false, // probably can be enabled but nontrivial
+        allow_compression_dict: false, // probably can be enabled but nontrivial
+        allow_compression_delta: false, // SC-47328
+        ..Default::default()
+    }
+}
 
 #[derive(Debug)]
 pub struct DenseWriteInput {
@@ -401,6 +418,15 @@ impl Arbitrary for DenseWriteInput {
                         },
                     )),
                     num_attributes: 1..=1,
+                    attribute_filters: Some(Rc::new(
+                        query_write_filter_requirements(),
+                    )),
+                    offsets_filters: Some(Rc::new(
+                        query_write_filter_requirements(),
+                    )),
+                    validity_filters: Some(Rc::new(
+                        query_write_filter_requirements(),
+                    )),
                 };
                 any_with::<SchemaData>(Rc::new(schema_req))
                     .prop_map(Rc::new)
@@ -716,6 +742,9 @@ mod tests {
                 },
             )),
             num_attributes: 1..=1,
+            attribute_filters: Some(Rc::new(query_write_filter_requirements())),
+            offsets_filters: Some(Rc::new(query_write_filter_requirements())),
+            validity_filters: Some(Rc::new(query_write_filter_requirements())),
         };
 
         let strategy = any_with::<SchemaData>(Rc::new(requirements))

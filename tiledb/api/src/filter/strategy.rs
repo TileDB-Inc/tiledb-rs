@@ -46,11 +46,18 @@ impl StrategyContext {
 }
 
 /// Defines requirements for what a generated filter must be able to accept
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Requirements {
     pub input_datatype: Option<Datatype>,
     pub context: Option<StrategyContext>,
     pub pipeline_position: Option<usize>,
+    pub allow_bit_reduction: bool,
+    pub allow_positive_delta: bool,
+    pub allow_scale_float: bool,
+    pub allow_xor: bool,
+    pub allow_compression_rle: bool,
+    pub allow_compression_dict: bool,
+    pub allow_compression_delta: bool,
 }
 
 impl Requirements {
@@ -64,6 +71,41 @@ impl Requirements {
     // pipeline.
     pub fn begins_pipeline(&self) -> bool {
         matches!(self.pipeline_position, None | Some(0))
+    }
+
+    pub fn is_rle_viable(&self) -> bool {
+        if !self.allow_compression_rle {
+            false
+        } else if self.pipeline_position.unwrap_or(0) == 0 {
+            true
+        } else if let Some(dts) = self
+            .context
+            .as_ref()
+            .and_then(|c| c.pipeline_input_datatypes())
+        {
+            !dts.into_iter().any(|(dt, cvn)| {
+                cvn == Some(CellValNum::Var) && dt.is_string_type()
+            })
+        } else {
+            true
+        }
+    }
+}
+
+impl Default for Requirements {
+    fn default() -> Self {
+        Requirements {
+            input_datatype: None,
+            context: None,
+            pipeline_position: None,
+            allow_bit_reduction: true,
+            allow_positive_delta: true,
+            allow_scale_float: true,
+            allow_xor: true,
+            allow_compression_rle: true,
+            allow_compression_dict: true,
+            allow_compression_delta: true,
+        }
     }
 }
 
@@ -158,54 +200,34 @@ fn prop_compression(
         CompressionType::Zstd,
     ];
 
-    let try_rle = if matches!(requirements.pipeline_position, Some(p) if p > 0)
-    {
-        if let Some(dts) = requirements
-            .context
-            .as_ref()
-            .and_then(|c| c.pipeline_input_datatypes())
-        {
-            let mut try_rle = true;
-            for (dt, cvn) in dts {
-                if let Some(CellValNum::Var) = cvn {
-                    if dt.is_string_type() {
-                        try_rle = false;
-                        break;
-                    }
-                }
+    let try_rle =
+        requirements.allow_compression_rle && requirements.is_rle_viable();
+    let try_dict =
+        requirements.allow_compression_dict && requirements.is_rle_viable();
+
+    let try_delta = requirements.allow_compression_delta
+        && if requirements.begins_pipeline() {
+            if let Some(StrategyContext::SchemaCoordinates(ref domain)) =
+                requirements.context
+            {
+                /*
+                 * See tiledb/array_schema/array_schema.cc for the rules.
+                 * DoubleDelta compressor is disallowed in the schema coordinates filter
+                 * if there is a floating-point dimension
+                 */
+                !domain.dimension.iter().any(|d| {
+                    d.datatype.is_real_type()
+                        && d.filters
+                            .as_ref()
+                            .map(|fl| fl.is_empty())
+                            .unwrap_or(true)
+                })
+            } else {
+                true
             }
-            try_rle
         } else {
-            true
-        }
-    } else {
-        true
-    };
-
-    let try_dict = try_rle;
-
-    let try_delta = if requirements.begins_pipeline() {
-        if let Some(StrategyContext::SchemaCoordinates(ref domain)) =
-            requirements.context
-        {
-            /*
-             * See tiledb/array_schema/array_schema.cc for the rules.
-             * DoubleDelta compressor is disallowed in the schema coordinates filter
-             * if there is a floating-point dimension
-             */
-            !domain.dimension.iter().any(|d| {
-                d.datatype.is_real_type()
-                    && d.filters
-                        .as_ref()
-                        .map(|fl| fl.is_empty())
-                        .unwrap_or(true)
-            })
-        } else {
-            true
-        }
-    } else {
-        false
-    };
+            false
+        };
 
     let strat_kind = {
         let mut strats = compression_types
@@ -364,34 +386,45 @@ pub fn prop_filter(
         Just(FilterData::Checksum(ChecksumType::Sha256)).boxed(),
     ];
 
-    let ok_bit_reduction = match requirements.input_datatype {
-        None => true,
-        Some(dt) => {
-            dt.is_integral_type()
-                || dt.is_datetime_type()
-                || dt.is_time_type()
-                || dt.is_byte_type()
-        }
-    };
+    let ok_bit_reduction = requirements.allow_bit_reduction
+        && match requirements.input_datatype {
+            None => true,
+            Some(dt) => {
+                dt.is_integral_type()
+                    || dt.is_datetime_type()
+                    || dt.is_time_type()
+                    || dt.is_byte_type()
+            }
+        };
     if ok_bit_reduction {
         filter_strategies.push(prop_bitwidthreduction().boxed());
     }
 
-    let ok_positive_delta =
-        ok_bit_reduction && requirements.pipeline_position.is_none();
+    let ok_positive_delta = requirements.allow_positive_delta
+        && match requirements.input_datatype {
+            None => true,
+            Some(dt) => {
+                dt.is_integral_type()
+                    || dt.is_datetime_type()
+                    || dt.is_time_type()
+                    || dt.is_byte_type()
+            }
+        };
     if ok_positive_delta {
-        // this filter will error on un-sorted input, `pipeline_position.is_none()`
-        // is not the same as that, but it is a good enough proxy for now
         filter_strategies.push(prop_positivedelta().boxed());
     }
 
     filter_strategies.push(prop_compression(Rc::clone(&requirements)).boxed());
 
-    let ok_scale_float = match requirements.input_datatype {
-        None => true,
-        Some(dt) => [std::mem::size_of::<f32>(), std::mem::size_of::<f64>()]
-            .contains(&(dt.size() as usize)),
-    };
+    let ok_scale_float = requirements.allow_scale_float
+        && requirements.begins_pipeline()
+        && match requirements.input_datatype {
+            None => true,
+            Some(dt) => {
+                [std::mem::size_of::<f32>(), std::mem::size_of::<f64>()]
+                    .contains(&(dt.size() as usize))
+            }
+        };
     if ok_scale_float {
         filter_strategies.push(prop_scalefloat().boxed());
     }
@@ -400,16 +433,13 @@ pub fn prop_filter(
         filter_strategies.push(webp.boxed());
     }
 
-    let ok_xor = if requirements.begins_pipeline() {
-        match requirements.input_datatype {
+    let ok_xor = requirements.allow_xor
+        && match requirements.input_datatype {
             Some(input_datatype) => {
                 [1, 2, 4, 8].contains(&(input_datatype.size() as usize))
             }
             None => true,
-        }
-    } else {
-        false
-    };
+        };
     if ok_xor {
         filter_strategies.push(Just(FilterData::Xor).boxed());
     }
@@ -502,6 +532,7 @@ impl Strategy for FilterPipelineStrategy {
                     input_datatype,
                     context: self.requirements.context.clone(),
                     pipeline_position: Some(i),
+                    ..self.requirements.as_ref().clone()
                 };
 
                 let f = prop_filter(Rc::new(req)).new_tree(runner)?.current();

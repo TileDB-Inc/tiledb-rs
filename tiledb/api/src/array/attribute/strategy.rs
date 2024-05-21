@@ -7,6 +7,7 @@ use crate::array::{
 };
 use crate::datatype::LogicalType;
 use crate::filter::list::FilterListData;
+use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::{fn_typed, Datatype};
 
 #[derive(Clone)]
@@ -21,6 +22,7 @@ pub struct Requirements {
     pub datatype: Option<Datatype>,
     pub nullability: Option<bool>,
     pub context: Option<StrategyContext>,
+    pub filters: Option<Rc<FilterRequirements>>,
 }
 
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
@@ -52,9 +54,7 @@ fn prop_filters(
     cell_val_num: CellValNum,
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterListData> {
-    use crate::filter::strategy::{
-        Requirements as FilterRequirements, StrategyContext as FilterContext,
-    };
+    use crate::filter::strategy::StrategyContext as FilterContext;
 
     let pipeline_requirements = FilterRequirements {
         context: Some(
@@ -72,7 +72,11 @@ fn prop_filters(
             },
         ),
         input_datatype: Some(datatype),
-        ..Default::default()
+        ..requirements
+            .filters
+            .as_ref()
+            .map(|rc| rc.as_ref().clone())
+            .unwrap_or_default()
     };
 
     any_with::<FilterListData>(Rc::new(pipeline_requirements))

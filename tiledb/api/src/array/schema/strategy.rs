@@ -22,6 +22,9 @@ use crate::filter::strategy::{
 pub struct Requirements {
     pub domain: Option<Rc<DomainRequirements>>,
     pub num_attributes: std::ops::RangeInclusive<usize>,
+    pub attribute_filters: Option<Rc<FilterRequirements>>,
+    pub offsets_filters: Option<Rc<FilterRequirements>>,
+    pub validity_filters: Option<Rc<FilterRequirements>>,
 }
 
 impl Requirements {
@@ -35,6 +38,9 @@ impl Default for Requirements {
             domain: None,
             num_attributes: Self::DEFAULT_MIN_ATTRIBUTES
                 ..=Self::DEFAULT_MAX_ATTRIBUTES,
+            attribute_filters: None,
+            offsets_filters: None,
+            validity_filters: None,
         }
     }
 }
@@ -119,8 +125,25 @@ fn prop_schema_for_domain(
 
     let attr_requirements = AttributeRequirements {
         context: Some(AttributeContext::Schema(array_type, Rc::clone(&domain))),
+        filters: params.attribute_filters.clone(),
         ..Default::default()
     };
+
+    let offsets_filters_requirements = params
+        .offsets_filters
+        .clone()
+        .unwrap_or(Rc::new(FilterRequirements {
+            ..Default::default()
+        }));
+
+    let validity_filters_requirements = params
+        .validity_filters
+        .clone()
+        .unwrap_or(Rc::new(FilterRequirements {
+            allow_scale_float: false,
+            allow_positive_delta: false,
+            ..Default::default()
+        }));
 
     (
         capacity,
@@ -132,8 +155,8 @@ fn prop_schema_for_domain(
             params.num_attributes.clone()
         ),
         prop_coordinate_filters(&domain),
-        any::<FilterListData>(),
-        any::<FilterListData>()
+        any_with::<FilterListData>(offsets_filters_requirements),
+        any_with::<FilterListData>(validity_filters_requirements)
     )
         .prop_map(
             move |(
