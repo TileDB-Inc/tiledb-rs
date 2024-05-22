@@ -25,11 +25,15 @@ pub struct Requirements {
     pub attribute_filters: Option<Rc<FilterRequirements>>,
     pub offsets_filters: Option<Rc<FilterRequirements>>,
     pub validity_filters: Option<Rc<FilterRequirements>>,
+    pub sparse_tile_capacity: std::ops::RangeInclusive<u64>,
 }
 
 impl Requirements {
     pub const DEFAULT_MIN_ATTRIBUTES: usize = 1;
     pub const DEFAULT_MAX_ATTRIBUTES: usize = 32;
+
+    pub const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
+    pub const DEFAULT_MAX_SPARSE_TILE_CAPACITY: u64 = 1024 * 1024;
 }
 
 impl Default for Requirements {
@@ -41,6 +45,8 @@ impl Default for Requirements {
             attribute_filters: None,
             offsets_filters: None,
             validity_filters: None,
+            sparse_tile_capacity: Self::DEFAULT_MIN_SPARSE_TILE_CAPACITY
+                ..=Self::DEFAULT_MAX_SPARSE_TILE_CAPACITY,
         }
     }
 }
@@ -119,8 +125,11 @@ fn prop_schema_for_domain(
     };
 
     let capacity = match array_type {
-        ArrayType::Dense => 0..=u64::MAX,
-        ArrayType::Sparse => 1..=u64::MAX,
+        ArrayType::Dense => any::<u64>().boxed(), // unused?
+        ArrayType::Sparse => {
+            /* this is the tile capacity for sparse writes, memory usage scales with it */
+            params.sparse_tile_capacity.clone().boxed()
+        }
     };
 
     let attr_requirements = AttributeRequirements {

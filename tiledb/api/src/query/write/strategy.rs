@@ -413,6 +413,7 @@ impl Arbitrary for DenseWriteInput {
                     validity_filters: Some(Rc::new(
                         query_write_filter_requirements(),
                     )),
+                    ..Default::default()
                 };
                 any_with::<SchemaData>(Rc::new(schema_req))
                     .prop_map(Rc::new)
@@ -944,6 +945,7 @@ mod tests {
             attribute_filters: Some(Rc::new(query_write_filter_requirements())),
             offsets_filters: Some(Rc::new(query_write_filter_requirements())),
             validity_filters: Some(Rc::new(query_write_filter_requirements())),
+            ..Default::default()
         };
 
         let strategy = any_with::<SchemaData>(Rc::new(requirements))
