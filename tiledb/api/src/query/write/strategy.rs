@@ -11,14 +11,14 @@ use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
 use crate::datatype::LogicalType;
 use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::query::read::{
-    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
-    TypedReadHandle,
+    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, MapAdapter,
+    RawReadHandle, TypedReadHandle,
 };
 use crate::query::strategy::{
-    Cells, CellsCallback, CellsParameters, CellsStrategySchema,
-    FieldDataParameters, StructuredCells,
+    Cells, CellsConstructor, CellsParameters, CellsStrategySchema,
+    FieldDataParameters, RawResultCallback, StructuredCells,
 };
-use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
+use crate::query::{QueryBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder};
 use crate::range::{Range, SingleValueRange};
 use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
 
@@ -64,7 +64,13 @@ impl DenseWriteInput {
     pub fn attach_read<'data, B>(
         &'data self,
         b: B,
-    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
+    ) -> TileDBResult<
+        CallbackVarArgReadBuilder<
+            'data,
+            MapAdapter<CellsConstructor, RawResultCallback>,
+            B,
+        >,
+    >
     where
         B: ReadQueryBuilder<'data>,
     {
@@ -76,30 +82,7 @@ impl DenseWriteInput {
 
         let b: B = subarray.finish_subarray()?.layout(self.layout)?;
 
-        // copied from `Cells::attach_read`, yuck
-        let field_order =
-            self.data.fields().keys().cloned().collect::<Vec<_>>();
-        let handles = {
-            let schema = b.base().array().schema().unwrap();
-
-            field_order
-                .iter()
-                .map(|name| {
-                    let field = schema.field(name.clone()).unwrap();
-                    fn_typed!(field.datatype().unwrap(), LT, {
-                        type DT = <LT as LogicalType>::PhysicalType;
-                        let managed: ManagedBuffer<DT> = ManagedBuffer::new(
-                            field.query_scratch_allocator().unwrap(),
-                        );
-                        let metadata = FieldMetadata::try_from(&field).unwrap();
-                        let rr = RawReadHandle::managed(metadata, managed);
-                        TypedReadHandle::from(rr)
-                    })
-                })
-                .collect::<Vec<TypedReadHandle>>()
-        };
-
-        b.register_callback_var(handles, CellsCallback::new(field_order))
+        Ok(self.data.attach_read(b)?.map(CellsConstructor::new()))
     }
 }
 
@@ -547,7 +530,13 @@ impl WriteInput {
     pub fn attach_read<'data, B>(
         &'data self,
         b: B,
-    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
+    ) -> TileDBResult<
+        CallbackVarArgReadBuilder<
+            'data,
+            MapAdapter<CellsConstructor, RawResultCallback>,
+            B,
+        >,
+    >
     where
         B: ReadQueryBuilder<'data>,
     {

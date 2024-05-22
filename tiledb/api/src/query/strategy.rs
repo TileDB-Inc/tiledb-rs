@@ -21,8 +21,8 @@ use crate::query::read::output::{
     TypedRawReadOutput, VarDataIterator,
 };
 use crate::query::read::{
-    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
-    ReadCallbackVarArg, ReadQueryBuilder, TypedReadHandle,
+    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, Map,
+    RawReadHandle, ReadCallbackVarArg, ReadQueryBuilder, TypedReadHandle,
 };
 use crate::query::WriteBuilder;
 use crate::{
@@ -612,44 +612,35 @@ impl ReadCallbackVarArg for RawResultCallback {
 
 /// Query callback which accumulates results from each step into `Cells`
 /// and returns the `Cells` as the final result.
-pub struct CellsCallback {
-    raw_result_callback: RawResultCallback,
+pub struct CellsConstructor {
     cells: Option<Cells>,
 }
 
-impl CellsCallback {
-    pub fn new(field_order: Vec<String>) -> Self {
-        CellsCallback {
-            raw_result_callback: RawResultCallback { field_order },
-            cells: None,
-        }
+impl CellsConstructor {
+    pub fn new() -> Self {
+        CellsConstructor { cells: None }
     }
 }
 
-impl ReadCallbackVarArg for CellsCallback {
+impl Map<RawReadQueryResult, RawReadQueryResult> for CellsConstructor {
     type Intermediate = ();
     type Final = Cells;
-    type Error = std::convert::Infallible;
 
-    fn intermediate_result(
+    fn map_intermediate(
         &mut self,
-        args: Vec<TypedRawReadOutput>,
-    ) -> Result<Self::Intermediate, Self::Error> {
-        let batch =
-            Cells::new(self.raw_result_callback.intermediate_result(args)?.0);
+        batch: RawReadQueryResult,
+    ) -> Self::Intermediate {
+        let batch = Cells::new(batch.0);
         if let Some(cells) = self.cells.as_mut() {
             cells.extend(batch);
         } else {
             self.cells = Some(batch)
         }
-        Ok(())
     }
 
-    fn final_result(
-        mut self,
-        args: Vec<TypedRawReadOutput>,
-    ) -> Result<Self::Final, Self::Error> {
-        self.intermediate_result(args).map(|_| self.cells.unwrap())
+    fn map_final(mut self, batch: RawReadQueryResult) -> Self::Final {
+        self.map_intermediate(batch);
+        self.cells.unwrap()
     }
 }
 
