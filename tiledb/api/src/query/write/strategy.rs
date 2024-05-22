@@ -25,13 +25,35 @@ type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 // restrict what is allowed until the bugs are fixed.
 fn query_write_filter_requirements() -> FilterRequirements {
     FilterRequirements {
-        allow_bit_reduction: false,  // SC-47560
-        allow_positive_delta: false, // nothing yet to ensure sort order
-        allow_scale_float: false,
+        allow_bit_reduction: false,     // SC-47560
+        allow_positive_delta: false,    // nothing yet to ensure sort order
+        allow_scale_float: false,       // not invertible due to precision loss
         allow_xor: false,               // SC-47328
         allow_compression_rle: false, // probably can be enabled but nontrivial
         allow_compression_dict: false, // probably can be enabled but nontrivial
         allow_compression_delta: false, // SC-47328
+        ..Default::default()
+    }
+}
+
+fn query_write_schema_requirements(
+    array_type: Option<ArrayType>,
+) -> crate::array::schema::strategy::Requirements {
+    crate::array::schema::strategy::Requirements {
+        domain: Some(Rc::new(crate::array::domain::strategy::Requirements {
+            array_type,
+            num_dimensions: 1..=1,
+            dimension: Some(crate::array::dimension::strategy::Requirements {
+                filters: Some(Rc::new(query_write_filter_requirements())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })),
+        num_attributes: 1..=1,
+        attribute_filters: Some(Rc::new(query_write_filter_requirements())),
+        coordinates_filters: Some(Rc::new(query_write_filter_requirements())),
+        offsets_filters: Some(Rc::new(query_write_filter_requirements())),
+        validity_filters: Some(Rc::new(query_write_filter_requirements())),
         ..Default::default()
     }
 }
@@ -395,26 +417,8 @@ impl Arbitrary for DenseWriteInput {
         let mut args = args;
         let strat_schema = match args.schema.take() {
             None => {
-                let schema_req = crate::array::schema::strategy::Requirements {
-                    domain: Some(Rc::new(
-                        crate::array::domain::strategy::Requirements {
-                            array_type: Some(ArrayType::Dense),
-                            num_dimensions: 1..=1,
-                            ..Default::default()
-                        },
-                    )),
-                    num_attributes: 1..=1,
-                    attribute_filters: Some(Rc::new(
-                        query_write_filter_requirements(),
-                    )),
-                    offsets_filters: Some(Rc::new(
-                        query_write_filter_requirements(),
-                    )),
-                    validity_filters: Some(Rc::new(
-                        query_write_filter_requirements(),
-                    )),
-                    ..Default::default()
-                };
+                let schema_req =
+                    query_write_schema_requirements(Some(ArrayType::Dense));
                 any_with::<SchemaData>(Rc::new(schema_req))
                     .prop_map(Rc::new)
                     .boxed()
@@ -876,7 +880,7 @@ mod tests {
                 {
                     let write_sorted = write.cells().sorted();
                     cells.sort();
-                    assert_eq!(cells, write_sorted);
+                    assert_eq!(write_sorted, cells);
                 }
 
                 array = read.finalize().unwrap();
@@ -934,21 +938,9 @@ mod tests {
     fn write_once_readback() {
         let ctx = Context::new().expect("Error creating context");
 
-        let requirements = crate::array::schema::strategy::Requirements {
-            domain: Some(Rc::new(
-                crate::array::domain::strategy::Requirements {
-                    num_dimensions: 1..=1,
-                    ..Default::default()
-                },
-            )),
-            num_attributes: 1..=1,
-            attribute_filters: Some(Rc::new(query_write_filter_requirements())),
-            offsets_filters: Some(Rc::new(query_write_filter_requirements())),
-            validity_filters: Some(Rc::new(query_write_filter_requirements())),
-            ..Default::default()
-        };
+        let schema_req = query_write_schema_requirements(None);
 
-        let strategy = any_with::<SchemaData>(Rc::new(requirements))
+        let strategy = any_with::<SchemaData>(Rc::new(schema_req))
             .prop_flat_map(|schema| {
                 let schema = Rc::new(schema);
                 (

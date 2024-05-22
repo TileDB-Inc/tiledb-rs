@@ -12,6 +12,7 @@ pub struct Requirements {
     pub array_type: Option<ArrayType>,
     pub num_dimensions: std::ops::RangeInclusive<usize>,
     pub cells_per_tile_limit: usize,
+    pub dimension: Option<DimensionRequirements>,
 }
 
 impl Requirements {
@@ -28,6 +29,7 @@ impl Default for Requirements {
             num_dimensions: Self::DEFAULT_MIN_DIMENSIONS
                 ..=Self::DEFAULT_MAX_DIMENSIONS,
             cells_per_tile_limit: Self::DEFAULT_CELLS_PER_TILE_LIMIT,
+            dimension: None,
         }
     }
 }
@@ -36,6 +38,8 @@ fn prop_domain_for_array_type(
     array_type: ArrayType,
     params: &Requirements,
 ) -> impl Strategy<Value = DomainData> {
+    let dimension_params = params.dimension.clone().unwrap_or_default();
+
     match array_type {
         ArrayType::Dense => {
             let cells_per_tile_limit = params.cells_per_tile_limit;
@@ -63,7 +67,7 @@ fn prop_domain_for_array_type(
                                 ) as usize
                                     + 1 // round up, probably won't hurt, might prevent problems
                             },
-                            ..Default::default()
+                            ..dimension_params.clone()
                         };
                         proptest::collection::vec(
                             any_with::<DimensionData>(dimension_params),
@@ -76,7 +80,7 @@ fn prop_domain_for_array_type(
         ArrayType::Sparse => {
             let dimension_params = DimensionRequirements {
                 array_type: Some(ArrayType::Sparse),
-                ..Default::default()
+                ..dimension_params
             };
             proptest::collection::vec(
                 any_with::<DimensionData>(dimension_params),
