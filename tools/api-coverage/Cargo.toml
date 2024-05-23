@@ -8,6 +8,7 @@ version.workspace = true
 anyhow = { version = "1.0.81" }
 bindgen = { version = "0.69.4" }
 clap = { version = "4.5.4", features = ["derive"] }
+pkg-config = { workspace = true }
 prettyplease = { version = "0.2.17" }
 proc-macro2 = { version = "1.0.79" }
 quote = { version = "1.0.35" }

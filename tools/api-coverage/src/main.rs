@@ -112,11 +112,18 @@ impl Processor {
             if generated.is_none() {
                 panic!("Ignored constant was not generated: {}", key);
             }
-            let generated = generated.unwrap();
-            if generated != val {
-                println!("Generated: {}", util::unparse_constant(generated));
-                println!("Ignored:   {}", util::unparse_constant(val));
-                panic!("Invalid ignore for constant: {}", key);
+            // Ignore the TILEDB_VERESION_* constants so that we're not
+            // constantly (heh) updating them.
+            if !key.starts_with("TILEDB_VERSION_") {
+                let generated = generated.unwrap();
+                if generated != val {
+                    println!(
+                        "Generated: {}",
+                        util::unparse_constant(generated)
+                    );
+                    println!("Ignored:   {}", util::unparse_constant(val));
+                    panic!("Invalid ignore for constant: {}", key);
+                }
             }
             self.generated_defs
                 .constants
