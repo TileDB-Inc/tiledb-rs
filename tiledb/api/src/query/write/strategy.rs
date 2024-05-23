@@ -648,6 +648,14 @@ impl WriteInput {
             Self::Sparse(ref s) => s.attach_read(b),
         }
     }
+
+    pub fn ranges(&self) -> Option<&[SingleValueRange]> {
+        if let Self::Dense(ref d) = self {
+            Some(&d.subarray)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -841,18 +849,33 @@ mod tests {
         for write in write_sequence {
             /* write data and preserve ranges for sanity check */
             let write_ranges = {
-                let write = write
+                let write_query = write
                     .attach_write(
                         WriteBuilder::new(array)
                             .expect("Error building write query"),
                     )
                     .expect("Error building write query")
                     .build();
-                write.submit().expect("Error running write query");
+                write_query.submit().expect("Error running write query");
 
-                let write_ranges = write.subarray().unwrap().ranges().unwrap();
+                let write_ranges = if let Some(ranges) = write.ranges() {
+                    let generic_ranges = ranges
+                        .into_iter()
+                        .cloned()
+                        .map(|svr| vec![crate::range::Range::Single(svr)])
+                        .collect::<Vec<Vec<crate::range::Range>>>();
+                    assert_eq!(
+                        generic_ranges,
+                        write_query.subarray().unwrap().ranges().unwrap()
+                    );
+                    Some(generic_ranges)
+                } else {
+                    None
+                };
 
-                array = write.finalize().expect("Error finalizing write query");
+                array = write_query
+                    .finalize()
+                    .expect("Error finalizing write query");
 
                 write_ranges
             };
@@ -868,7 +891,7 @@ mod tests {
                     .unwrap()
                     .build();
 
-                {
+                if let Some(write_ranges) = write_ranges {
                     let read_ranges =
                         read.subarray().unwrap().ranges().unwrap();
                     assert_eq!(write_ranges, read_ranges);
