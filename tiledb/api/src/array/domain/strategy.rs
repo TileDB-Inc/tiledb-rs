@@ -41,9 +41,11 @@ fn prop_domain_for_array_type(
             let cells_per_tile_limit = params.cells_per_tile_limit;
 
             /*
-             * The number of cells per tile is the product of the extents of all dimensions, we
-             * have to be careful if there are many dimensions.
-             * If we have D dimensions and the desired bound on the number of cells per tile is T, then we want to bound each extent on the Dth root of T
+             * The number of cells per tile is the product of the extents of all
+             * dimensions, we have to be careful if there are many dimensions.
+             * If we have D dimensions and the desired bound on the number of
+             * cells per tile is T, then we want to bound each extent on
+             * the Dth root of T
              */
             (
                 any_with::<Datatype>(DatatypeContext::DenseDimension),

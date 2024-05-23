@@ -124,8 +124,29 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
     }
 }
 
+/// Applies a generic expression to the interior of a `FieldData` value.
+///
+/// The first form of this macro applies the same expression to all variants.
+/// The second form enables applying a different expression to the forms
+/// with an interior `Vec<DT>` versus `Vec<Vec<DT>>`.
+///
+/// # Examples
+/// ```
+/// use tiledb::query::strategy::FieldData;
+/// use tiledb::typed_field_data_go;
+///
+/// fn dedup_cells(cells: &mut FieldData) {
+///     typed_field_data_go!(cells, ref mut cells_interior, cells_interior.dedup())
+/// }
+/// let mut cells = FieldData::UInt64(vec![1, 2, 2, 3, 2]);
+/// dedup_cells(&mut cells);
+/// assert_eq!(cells, FieldData::UInt64(vec![1, 2, 3, 2]));
+/// ```
 #[macro_export]
 macro_rules! typed_field_data_go {
+    ($field:expr, $data:pat, $then:expr) => {
+        typed_field_data_go!($field, _DT, $data, $then, $then)
+    };
     ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {{
         use $crate::query::strategy::FieldData;
         match $field {
@@ -211,9 +232,12 @@ macro_rules! typed_field_data_go {
             }
         }
     }};
-    ($field:expr, $data:pat, $then:expr) => {
-        typed_field_data_go!($field, _DT, $data, $then, $then)
-    };
+}
+
+/// Applies a generic expression to the interiors of two `FieldData` values with matching variants,
+/// i.e. with the same physical data type. Typical usage is for comparing the insides of the two
+/// `FieldData` values.
+macro_rules! typed_field_data_cmp {
     ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
         use $crate::query::strategy::FieldData;
         match ($lexpr, $rexpr) {
@@ -352,7 +376,7 @@ impl FieldData {
     }
 
     pub fn extend(&mut self, other: Self) {
-        typed_field_data_go!(
+        typed_field_data_cmp!(
             self,
             other,
             _DT,
@@ -372,7 +396,7 @@ impl FieldData {
 
 impl BitsEq for FieldData {
     fn bits_eq(&self, other: &Self) -> bool {
-        typed_field_data_go!(
+        typed_field_data_cmp!(
             self,
             other,
             _DT,
@@ -715,7 +739,7 @@ impl Cells {
                 }
                 Entry::Occupied(mut o) => {
                     let prev_write_data = o.get_mut();
-                    typed_field_data_go!(
+                    typed_field_data_cmp!(
                         prev_write_data,
                         data,
                         _DT,
@@ -1199,14 +1223,7 @@ impl ValueTree for CellsValueTree {
                     record_mask
                 }
             }
-            /*
-            Some(ShrinkSearchStep::Empty) => {
-                VarBitSet::new_bitset(self.nrecords)
-            }
-            */
-            Some(ShrinkSearchStep::Recur)
-            | Some(ShrinkSearchStep::Done)
-            /*| Some(ShrinkSearchStep::EmptyPassed)*/ => {
+            Some(ShrinkSearchStep::Recur) | Some(ShrinkSearchStep::Done) => {
                 let mut record_mask = VarBitSet::new_bitset(self.nrecords);
                 for r in self.records_included.iter() {
                     record_mask.set(*r);
@@ -1571,7 +1588,7 @@ mod tests {
 
             assert_eq!(s1.len() * s2.len(), sliced.len());
 
-            typed_field_data_go!(
+            typed_field_data_cmp!(
                 value,
                 sliced,
                 _DT,
@@ -1622,7 +1639,7 @@ mod tests {
 
             assert_eq!(s1.len() * s2.len() * s3.len(), sliced.len());
 
-            typed_field_data_go!(
+            typed_field_data_cmp!(
                 value,
                 sliced,
                 _DT,
