@@ -30,7 +30,6 @@ pub type SchemaFromArrowResult =
 #[derive(Deserialize, Serialize)]
 pub struct SchemaMetadata {
     array_type: ArrayType,
-    version: i64,
     capacity: u64,
     allows_duplicates: bool,
     cell_order: CellOrder,
@@ -48,7 +47,6 @@ impl SchemaMetadata {
     pub fn new(schema: &Schema) -> TileDBResult<Self> {
         Ok(SchemaMetadata {
             array_type: schema.array_type()?,
-            version: schema.version()?,
             capacity: schema.capacity()?,
             allows_duplicates: schema.allows_duplicates()?,
             cell_order: schema.cell_order()?,

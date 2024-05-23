@@ -390,18 +390,14 @@ impl Schema {
         Ok(Schema::new(context, RawSchema::Owned(c_schema)))
     }
 
-    pub fn version(&self) -> TileDBResult<i64> {
+    pub fn version(&self) -> TileDBResult<u32> {
         let c_schema = self.capi();
-        let mut c_version: std::os::raw::c_int = out_ptr!();
+        let mut c_version: u32 = out_ptr!();
         self.capi_call(|ctx| unsafe {
-            ffi::tiledb_array_schema_get_allows_dups(
-                ctx,
-                c_schema,
-                &mut c_version,
-            )
+            ffi::tiledb_array_schema_get_version(ctx, c_schema, &mut c_version)
         })?;
 
-        Ok(c_version as i64)
+        Ok(c_version)
     }
 
     pub fn array_type(&self) -> TileDBResult<ArrayType> {
@@ -1013,7 +1009,12 @@ mod tests {
         .unwrap();
 
         let s: Schema = b.build().unwrap();
-        assert_eq!(0, s.version().unwrap());
+
+        let schema_version = s.version().unwrap();
+
+        // it's a little awkward to use a constant here but this does
+        // not appear to be tied to the library version
+        assert_eq!(schema_version, 21);
     }
 
     #[test]
