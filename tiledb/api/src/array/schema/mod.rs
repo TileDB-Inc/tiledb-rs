@@ -180,6 +180,14 @@ pub enum Field {
 }
 
 impl Field {
+    pub fn is_attribute(&self) -> bool {
+        matches!(self, Self::Attribute(_))
+    }
+
+    pub fn is_dimension(&self) -> bool {
+        matches!(self, Self::Dimension(_))
+    }
+
     pub fn name(&self) -> TileDBResult<String> {
         match self {
             Field::Dimension(ref d) => d.name(),
@@ -234,6 +242,14 @@ pub enum FieldData {
 }
 
 impl FieldData {
+    pub fn is_attribute(&self) -> bool {
+        matches!(self, Self::Attribute(_))
+    }
+
+    pub fn is_dimension(&self) -> bool {
+        matches!(self, Self::Dimension(_))
+    }
+
     pub fn name(&self) -> &str {
         match self {
             Self::Dimension(d) => &d.name,
