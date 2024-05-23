@@ -456,6 +456,11 @@ impl Schema {
         TileOrder::try_from(c_tile_order)
     }
 
+    /// Returns whether duplicate coordinates are permitted.
+    ///
+    /// - For a dense array schema, this is always `false`.
+    /// - For a sparse array schema, if set to `true`, then any number
+    /// of cells may be written with the same coordinates.
     pub fn allows_duplicates(&self) -> TileDBResult<bool> {
         let c_schema = self.capi();
         let mut c_allows_duplicates: std::os::raw::c_int = out_ptr!();
@@ -726,6 +731,14 @@ impl Builder {
         Ok(self)
     }
 
+    /// Sets whether the array schema allows duplicate coordinate values to
+    /// be written.
+    ///
+    /// - For a dense array schema, duplicate coordinate values are not permitted and this function
+    /// returns `Err`.
+    /// - For sparse array values, any setting is permitted.
+    ///
+    /// Returns `self` if there is not an error.
     pub fn allow_duplicates(self, allow: bool) -> TileDBResult<Self> {
         let c_schema = self.schema.capi();
         let c_allow = if allow { 1 } else { 0 };
@@ -1581,5 +1594,74 @@ mod tests {
                 .unwrap();
             assert_ne!(base, cmp);
         }
+    }
+
+    /// Test what the default values filled in for `None` with schema data are.
+    /// Mostly because if we write code which does need the default, we're expecting
+    /// to match core and need to be notified if something changes or we did something
+    /// wrong.
+    #[test]
+    fn test_defaults() {
+        use crate::array::dimension::DimensionConstraints;
+
+        let ctx = Context::new().unwrap();
+
+        let dense_spec = SchemaData {
+            array_type: ArrayType::Dense,
+            domain: DomainData {
+                dimension: vec![DimensionData {
+                    name: "d".to_string(),
+                    datatype: Datatype::Int32,
+                    constraints: DimensionConstraints::Int32([0, 100], None),
+                    cell_val_num: None,
+                    filters: None,
+                }],
+            },
+            attributes: vec![AttributeData {
+                name: "a".to_string(),
+                datatype: Datatype::Int32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let dense_schema = dense_spec
+            .create(&ctx)
+            .expect("Error creating schema from mostly-default settings");
+
+        assert_eq!(ArrayType::Dense, dense_schema.array_type().unwrap());
+        assert_eq!(10000, dense_schema.capacity().unwrap());
+        assert_eq!(CellOrder::RowMajor, dense_schema.cell_order().unwrap());
+        assert_eq!(TileOrder::RowMajor, dense_schema.tile_order().unwrap());
+        assert_eq!(false, dense_schema.allows_duplicates().unwrap());
+
+        let sparse_spec = SchemaData {
+            array_type: ArrayType::Sparse,
+            domain: DomainData {
+                dimension: vec![DimensionData {
+                    name: "d".to_string(),
+                    datatype: Datatype::Int32,
+                    constraints: DimensionConstraints::Int32([0, 100], None),
+                    cell_val_num: None,
+                    filters: None,
+                }],
+            },
+            attributes: vec![AttributeData {
+                name: "a".to_string(),
+                datatype: Datatype::Int32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let sparse_schema = sparse_spec
+            .create(&ctx)
+            .expect("Error creating schema from mostly-default settings");
+
+        assert_eq!(ArrayType::Sparse, sparse_schema.array_type().unwrap());
+        assert_eq!(10000, sparse_schema.capacity().unwrap());
+        assert_eq!(CellOrder::RowMajor, sparse_schema.cell_order().unwrap());
+        assert_eq!(TileOrder::RowMajor, sparse_schema.tile_order().unwrap());
+        assert_eq!(false, sparse_schema.allows_duplicates().unwrap());
     }
 }
