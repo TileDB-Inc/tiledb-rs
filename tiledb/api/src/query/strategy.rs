@@ -14,7 +14,7 @@ use proptest::test_runner::TestRunner;
 
 use crate::array::schema::FieldData as SchemaField;
 use crate::array::{ArrayType, CellValNum, SchemaData};
-use crate::datatype::physical::{BitsEq, BitsOrd};
+use crate::datatype::physical::{BitsEq, BitsOrd, IntegralType};
 use crate::datatype::LogicalType;
 use crate::query::read::output::{
     CellStructureSingleIterator, FixedDataIterator, RawReadOutput,
@@ -147,88 +147,91 @@ macro_rules! typed_field_data_go {
     ($field:expr, $data:pat, $then:expr) => {
         typed_field_data_go!($field, _DT, $data, $then, $then)
     };
-    ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {{
+    ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {
+        typed_field_data_go!($field, $DT, $data, $fixed, $var, $fixed, $var)
+    };
+    ($field:expr, $DT:ident, $data:pat, $integral_fixed:expr, $integral_var:expr, $float_fixed:expr, $float_var:expr) => {{
         use $crate::query::strategy::FieldData;
         match $field {
             FieldData::UInt8($data) => {
                 type $DT = u8;
-                $fixed
+                $integral_fixed
             }
             FieldData::UInt16($data) => {
                 type $DT = u16;
-                $fixed
+                $integral_fixed
             }
             FieldData::UInt32($data) => {
                 type $DT = u32;
-                $fixed
+                $integral_fixed
             }
             FieldData::UInt64($data) => {
                 type $DT = u64;
-                $fixed
+                $integral_fixed
             }
             FieldData::Int8($data) => {
                 type $DT = i8;
-                $fixed
+                $integral_fixed
             }
             FieldData::Int16($data) => {
                 type $DT = i16;
-                $fixed
+                $integral_fixed
             }
             FieldData::Int32($data) => {
                 type $DT = i32;
-                $fixed
+                $integral_fixed
             }
             FieldData::Int64($data) => {
                 type $DT = i64;
-                $fixed
+                $integral_fixed
             }
             FieldData::Float32($data) => {
                 type $DT = f32;
-                $fixed
+                $float_fixed
             }
             FieldData::Float64($data) => {
                 type $DT = f64;
-                $fixed
+                $float_fixed
             }
             FieldData::VecUInt8($data) => {
                 type $DT = u8;
-                $var
+                $integral_var
             }
             FieldData::VecUInt16($data) => {
                 type $DT = u16;
-                $var
+                $integral_var
             }
             FieldData::VecUInt32($data) => {
                 type $DT = u32;
-                $var
+                $integral_var
             }
             FieldData::VecUInt64($data) => {
                 type $DT = u64;
-                $var
+                $integral_var
             }
             FieldData::VecInt8($data) => {
                 type $DT = i8;
-                $var
+                $integral_var
             }
             FieldData::VecInt16($data) => {
                 type $DT = i16;
-                $var
+                $integral_var
             }
             FieldData::VecInt32($data) => {
                 type $DT = i32;
-                $var
+                $integral_var
             }
             FieldData::VecInt64($data) => {
                 type $DT = i64;
-                $var
+                $integral_var
             }
             FieldData::VecFloat32($data) => {
                 type $DT = f32;
-                $var
+                $float_var
             }
             FieldData::VecFloat64($data) => {
                 type $DT = f64;
-                $var
+                $float_var
             }
         }
     }};
@@ -456,20 +459,149 @@ field_value_strategy!(Float32 : f32, Float64 : f64);
 
 #[derive(Clone, Debug)]
 pub struct FieldDataParameters {
-    pub nrecords: Option<SizeRange>,
+    pub nrecords: SizeRange,
     pub datatype: Option<FieldStrategyDatatype>,
     pub value_min_var_size: usize,
     pub value_max_var_size: usize,
+    pub unique: bool,
+}
+
+impl FieldDataParameters {
+    pub fn require_unique_cells(&self) -> bool {
+        self.unique
+            || matches!(
+                self.datatype,
+                Some(FieldStrategyDatatype::SchemaField(
+                    SchemaField::Dimension(_)
+                ))
+            )
+    }
 }
 
 impl Default for FieldDataParameters {
     fn default() -> Self {
         FieldDataParameters {
-            nrecords: None,
+            nrecords: (0..=1024).into(),
             datatype: None,
             value_min_var_size: 0,
             value_max_var_size: 8, /* TODO */
+            unique: false,
         }
+    }
+}
+
+trait ArbitraryFieldData: Sized {
+    fn arbitrary(
+        params: FieldDataParameters,
+        cell_val_num: CellValNum,
+        value_strat: BoxedStrategy<Self>,
+    ) -> BoxedStrategy<FieldData>;
+}
+
+impl<DT> ArbitraryFieldData for DT
+where
+    DT: IntegralType,
+    FieldData: From<Vec<DT>> + From<Vec<Vec<DT>>>,
+{
+    fn arbitrary(
+        params: FieldDataParameters,
+        cell_val_num: CellValNum,
+        value_strat: BoxedStrategy<Self>,
+    ) -> BoxedStrategy<FieldData> {
+        if cell_val_num == 1u32 {
+            if params.require_unique_cells() {
+                proptest::collection::btree_set(value_strat, params.nrecords)
+                    .prop_flat_map(|cell_set| {
+                        Just(cell_set.into_iter().collect::<Vec<_>>())
+                            .prop_shuffle()
+                            .prop_map(FieldData::from)
+                    })
+                    .boxed()
+            } else {
+                proptest::collection::vec(value_strat, params.nrecords)
+                    .prop_map(FieldData::from)
+                    .boxed()
+            }
+        } else {
+            let (min, max) = if cell_val_num.is_var_sized() {
+                (params.value_min_var_size, params.value_max_var_size)
+            } else {
+                let fixed_bound = Into::<u32>::into(cell_val_num) as usize;
+                (fixed_bound, fixed_bound)
+            };
+
+            let cell_strat = proptest::collection::vec(value_strat, min..=max);
+
+            if params.require_unique_cells() {
+                proptest::collection::btree_set(cell_strat, params.nrecords)
+                    .prop_flat_map(|cell_set| {
+                        Just(cell_set.into_iter().collect::<Vec<_>>())
+                            .prop_shuffle()
+                            .prop_map(FieldData::from)
+                    })
+                    .boxed()
+            } else {
+                proptest::collection::vec(cell_strat, params.nrecords)
+                    .prop_map(FieldData::from)
+                    .boxed()
+            }
+        }
+    }
+}
+
+impl ArbitraryFieldData for f32 {
+    fn arbitrary(
+        params: FieldDataParameters,
+        cell_val_num: CellValNum,
+        value_strat: BoxedStrategy<Self>,
+    ) -> BoxedStrategy<FieldData> {
+        let value_strat = value_strat.prop_map(|float| float.to_bits()).boxed();
+
+        fn transform(v: Vec<u32>) -> Vec<f32> {
+            v.into_iter().map(f32::from_bits).collect::<Vec<f32>>()
+        }
+
+        <u32 as ArbitraryFieldData>::arbitrary(
+            params,
+            cell_val_num,
+            value_strat,
+        )
+        .prop_map(|field_data| match field_data {
+            FieldData::UInt32(values) => FieldData::Float32(transform(values)),
+            FieldData::VecUInt32(values) => FieldData::VecFloat32(
+                values.into_iter().map(transform).collect::<Vec<Vec<f32>>>(),
+            ),
+            _ => unreachable!(),
+        })
+        .boxed()
+    }
+}
+
+impl ArbitraryFieldData for f64 {
+    fn arbitrary(
+        params: FieldDataParameters,
+        cell_val_num: CellValNum,
+        value_strat: BoxedStrategy<Self>,
+    ) -> BoxedStrategy<FieldData> {
+        let value_strat = value_strat.prop_map(|float| float.to_bits()).boxed();
+
+        fn transform(v: Vec<u64>) -> Vec<f64> {
+            v.into_iter().map(f64::from_bits).collect::<Vec<f64>>()
+        }
+
+        <u64 as ArbitraryFieldData>::arbitrary(
+            params,
+            cell_val_num,
+            value_strat,
+        )
+        .prop_map(|field_data| match field_data {
+            FieldData::UInt64(values) => FieldData::Float64(transform(values)),
+            FieldData::VecUInt64(values) => FieldData::VecFloat64(
+                values.into_iter().map(transform).collect::<Vec<Vec<f64>>>(),
+            ),
+            _ => unreachable!(),
+        })
+        .boxed()
     }
 }
 
@@ -478,41 +610,6 @@ impl Arbitrary for FieldData {
     type Parameters = FieldDataParameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        fn body<DT: Debug + 'static>(
-            params: FieldDataParameters,
-            value_strat: BoxedStrategy<DT>,
-            cell_val_num: CellValNum,
-        ) -> BoxedStrategy<FieldData>
-        where
-            FieldData: From<Vec<DT>> + From<Vec<Vec<DT>>>,
-        {
-            let nrecords = if let Some(nrecords) = params.nrecords {
-                nrecords
-            } else {
-                (0..=1024).into() /* TODO: configure */
-            };
-
-            if cell_val_num == 1u32 {
-                proptest::collection::vec(value_strat, nrecords)
-                    .prop_map(FieldData::from)
-                    .boxed()
-            } else {
-                let (min, max) = if cell_val_num.is_var_sized() {
-                    (params.value_min_var_size, params.value_max_var_size)
-                } else {
-                    let fixed_bound = Into::<u32>::into(cell_val_num) as usize;
-                    (fixed_bound, fixed_bound)
-                };
-
-                let cell_strat =
-                    proptest::collection::vec(value_strat, min..=max);
-
-                proptest::collection::vec(cell_strat, nrecords)
-                    .prop_map(FieldData::from)
-                    .boxed()
-            }
-        }
-
         match params.datatype.clone() {
             Some(FieldStrategyDatatype::SchemaField(
                 SchemaField::Dimension(d),
@@ -521,23 +618,41 @@ impl Arbitrary for FieldData {
                 let cell_val_num =
                     d.cell_val_num.unwrap_or(CellValNum::single());
 
+                /* if unique values are required then the request may not be satisfiable */
+                if params.require_unique_cells()
+                    && !matches!(d.cell_val_num, Some(CellValNum::Var))
+                {
+                    let CellValNum::Fixed(nz) =
+                        d.cell_val_num.unwrap_or(CellValNum::single())
+                    else {
+                        unreachable!()
+                    };
+
+                    if let Some(num_cells) = d.constraints.num_cells() {
+                        let num_cell_values = num_cells * nz.get() as u128;
+                        if num_cell_values < params.nrecords.start() as u128 {
+                            panic!("Uniqueness is not satisfiable for strategy parameters: nrecords = {:?}, num_cells = {:?}, dimension = {:?}", params.nrecords, num_cells, d);
+                        }
+                    }
+                }
+
                 dimension_constraints_go!(
                     d.constraints,
                     DT,
                     ref domain,
                     _,
                     {
-                        body::<DT>(
+                        <DT as ArbitraryFieldData>::arbitrary(
                             params,
-                            value_strat.try_into().unwrap(),
                             cell_val_num,
+                            value_strat.try_into().unwrap(),
                         )
                     },
                     {
-                        body::<u8>(
+                        <u8 as ArbitraryFieldData>::arbitrary(
                             params,
-                            value_strat.try_into().unwrap(),
                             cell_val_num,
+                            value_strat.try_into().unwrap(),
                         )
                     }
                 )
@@ -551,10 +666,10 @@ impl Arbitrary for FieldData {
 
                 fn_typed!(a.datatype, LT, {
                     type DT = <LT as LogicalType>::PhysicalType;
-                    body::<DT>(
+                    <DT as ArbitraryFieldData>::arbitrary(
                         params,
-                        value_strat.try_into().unwrap(),
                         cell_val_num,
+                        value_strat.try_into().unwrap(),
                     )
                 })
             }
@@ -562,7 +677,11 @@ impl Arbitrary for FieldData {
                 fn_typed!(datatype, LT, {
                     type DT = <LT as LogicalType>::PhysicalType;
                     let value_strat = any::<DT>().boxed();
-                    body::<DT>(params, value_strat, cell_val_num)
+                    <DT as ArbitraryFieldData>::arbitrary(
+                        params,
+                        cell_val_num,
+                        value_strat,
+                    )
                 })
             }
             None => (any::<Datatype>(), any::<CellValNum>())
@@ -570,7 +689,11 @@ impl Arbitrary for FieldData {
                     fn_typed!(datatype, LT, {
                         type DT = <LT as LogicalType>::PhysicalType;
                         let value_strat = any::<DT>().boxed();
-                        body::<DT>(params.clone(), value_strat, cell_val_num)
+                        <DT as ArbitraryFieldData>::arbitrary(
+                            params.clone(),
+                            cell_val_num,
+                            value_strat,
+                        )
                     })
                 })
                 .boxed(),
@@ -1276,7 +1399,7 @@ impl CellsStrategySchema {
                     .map(|(field, (mask, (datatype, cell_val_num)))| {
                         let field_data = if mask.is_included() {
                             let params = FieldDataParameters {
-                                nrecords: Some((nrecords..=nrecords).into()),
+                                nrecords: (nrecords..=nrecords).into(),
                                 datatype: Some(
                                     FieldStrategyDatatype::Datatype(
                                         *datatype,
@@ -1341,7 +1464,7 @@ impl CellsStrategySchema {
                         let field_name = field.name().to_string();
                         let field_data = if mask.is_included() {
                             let params = FieldDataParameters {
-                                nrecords: Some(nrecords.into()),
+                                nrecords: nrecords.into(),
                                 datatype: Some(
                                     FieldStrategyDatatype::SchemaField(field),
                                 ),
@@ -1450,6 +1573,63 @@ impl Arbitrary for Cells {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
+
+    fn do_field_data_unique(data: FieldData) {
+        typed_field_data_go!(
+            data,
+            _DT,
+            values,
+            {
+                let num_cells = values.len();
+                let num_unique_cells =
+                    values.clone().into_iter().collect::<HashSet<_>>().len();
+                assert_eq!(
+                    num_cells, num_unique_cells,
+                    "values = {:?}",
+                    values
+                );
+            },
+            {
+                let num_cells = values.len();
+                let num_unique_cells =
+                    values.clone().into_iter().collect::<HashSet<_>>().len();
+                assert_eq!(
+                    num_cells, num_unique_cells,
+                    "values = {:?}",
+                    values
+                );
+            },
+            {
+                let values =
+                    values.into_iter().map(|f| f.to_bits()).collect::<Vec<_>>();
+                let num_cells = values.len();
+                let num_unique_cells =
+                    values.clone().into_iter().collect::<HashSet<_>>().len();
+                assert_eq!(
+                    num_cells, num_unique_cells,
+                    "values.to_bits = {:?}",
+                    values
+                );
+            },
+            {
+                let values = values
+                    .into_iter()
+                    .map(|v| {
+                        v.into_iter().map(|f| f.to_bits()).collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<Vec<_>>>();
+                let num_cells = values.len();
+                let num_unique_cells =
+                    values.clone().into_iter().collect::<HashSet<_>>().len();
+                assert_eq!(
+                    num_cells, num_unique_cells,
+                    "values.to_bits = {:?}",
+                    values
+                );
+            }
+        )
+    }
 
     fn do_field_data_extend(dst: FieldData, src: FieldData) {
         let orig_dst = dst.clone();
@@ -1682,6 +1862,12 @@ mod tests {
     }
 
     proptest! {
+        #[test]
+        fn field_data_unique(data in any_with::<FieldData>(FieldDataParameters { unique: true, ..Default::default() }))
+        {
+            do_field_data_unique(data)
+        }
+
         #[test]
         fn field_data_extend((dst, src) in (any::<Datatype>(), any::<CellValNum>()).prop_flat_map(|(dt, cvn)| {
             let params = FieldDataParameters {
