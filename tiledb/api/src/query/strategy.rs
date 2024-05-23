@@ -469,12 +469,6 @@ pub struct FieldDataParameters {
 impl FieldDataParameters {
     pub fn require_unique_cells(&self) -> bool {
         self.unique
-            || matches!(
-                self.datatype,
-                Some(FieldStrategyDatatype::SchemaField(
-                    SchemaField::Dimension(_)
-                ))
-            )
     }
 }
 
@@ -1378,6 +1372,13 @@ pub enum CellsStrategySchema {
 }
 
 impl CellsStrategySchema {
+    pub fn array_schema(&self) -> Option<&SchemaData> {
+        match self {
+            Self::WriteSchema(s) | Self::ReadSchema(s) => Some(s.as_ref()),
+            _ => None,
+        }
+    }
+
     fn new_field_tree(
         &self,
         runner: &mut TestRunner,
@@ -1461,6 +1462,8 @@ impl CellsStrategySchema {
                 field_mask
                     .into_iter()
                     .map(|(field, mask)| {
+                        let require_unique_values = field.is_dimension()
+                            && !schema.allow_duplicates.unwrap_or(false);
                         let field_name = field.name().to_string();
                         let field_data = if mask.is_included() {
                             let params = FieldDataParameters {
@@ -1468,6 +1471,7 @@ impl CellsStrategySchema {
                                 datatype: Some(
                                     FieldStrategyDatatype::SchemaField(field),
                                 ),
+                                unique: require_unique_values,
                                 ..field_data_parameters_base.clone()
                             };
                             Some(
@@ -1529,6 +1533,26 @@ impl CellsStrategy {
     pub fn new(schema: CellsStrategySchema, params: CellsParameters) -> Self {
         CellsStrategy { schema, params }
     }
+
+    /// Returns an upper bound on the number of cells which can possibly be produced
+    fn nrecords_limit(&self) -> Option<usize> {
+        if let Some(schema) = self.schema.array_schema() {
+            if !schema.allow_duplicates.unwrap_or(true) {
+                let dim_spans: Vec<Option<u128>> = schema
+                    .domain
+                    .dimension
+                    .iter()
+                    .map(|d| d.constraints.num_cells())
+                    .collect::<_>();
+                if !dim_spans.iter().any(|n| n.is_none()) {
+                    let total_cells: u128 =
+                        dim_spans.into_iter().map(Option::unwrap).product();
+                    return usize::try_from(total_cells).ok();
+                }
+            }
+        }
+        None
+    }
 }
 
 impl Strategy for CellsStrategy {
@@ -1537,9 +1561,18 @@ impl Strategy for CellsStrategy {
 
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
         /* Choose the maximum number of records */
-        let nrecords = (self.params.min_records..=self.params.max_records)
-            .new_tree(runner)?
-            .current();
+        let strat_nrecords = if let Some(limit) = self.nrecords_limit() {
+            if limit < self.params.min_records {
+                todo!()
+            } else {
+                let max_records = std::cmp::min(self.params.max_records, limit);
+                self.params.min_records..=max_records
+            }
+        } else {
+            self.params.min_records..=self.params.max_records
+        };
+
+        let nrecords = strat_nrecords.new_tree(runner)?.current();
 
         /* generate an initial set of fields to write */
         let field_tree = self.schema.new_field_tree(runner, nrecords);
