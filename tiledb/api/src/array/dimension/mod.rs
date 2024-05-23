@@ -481,8 +481,8 @@ pub struct DimensionData {
     pub filters: Option<FilterListData>,
 }
 
+#[cfg(any(test, feature = "proptest-strategies"))]
 impl DimensionData {
-    #[cfg(any(test, feature = "proptest-strategies"))]
     /// Returns a strategy for generating values of this dimension's type
     /// which fall within the domain of this dimension.
     pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
@@ -502,7 +502,6 @@ impl DimensionData {
         )
     }
 
-    #[cfg(any(test, feature = "proptest-strategies"))]
     /// Returns a strategy for generating subarray ranges which fall within
     /// the domain of this dimension.
     pub fn subarray_strategy(

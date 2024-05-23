@@ -606,8 +606,8 @@ pub struct AttributeData {
     pub filters: FilterListData,
 }
 
+#[cfg(any(test, feature = "proptest-strategies"))]
 impl AttributeData {
-    #[cfg(any(test, feature = "proptest-strategies"))]
     /// Returns a strategy for generating values of this attribute's type.
     pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
         use crate::query::strategy::FieldValueStrategy;
