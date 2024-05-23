@@ -1481,9 +1481,7 @@ mod tests {
         // coords filters
         {
             let cmp = start_schema(base.array_type().unwrap())
-                .coordinate_filters(
-                    &FilterListBuilder::new(&c).unwrap().build(),
-                )
+                .coordinate_filters(FilterListBuilder::new(&c).unwrap().build())
                 .unwrap()
                 .build()
                 .unwrap();
@@ -1493,7 +1491,7 @@ mod tests {
         // offsets filters
         {
             let cmp = start_schema(base.array_type().unwrap())
-                .offsets_filters(&FilterListBuilder::new(&c).unwrap().build())
+                .offsets_filters(FilterListBuilder::new(&c).unwrap().build())
                 .unwrap()
                 .build()
                 .unwrap();
@@ -1503,7 +1501,7 @@ mod tests {
         // nullity filters
         {
             let cmp = start_schema(base.array_type().unwrap())
-                .nullity_filters(&FilterListBuilder::new(&c).unwrap().build())
+                .nullity_filters(FilterListBuilder::new(&c).unwrap().build())
                 .unwrap()
                 .build()
                 .unwrap();
