@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 
+use crate::config::Config;
 use crate::query::buffer::{CellStructure, QueryBuffers, TypedQueryBuffers};
 use crate::query::write::input::{
     DataProvider, RecordProvider, TypedDataProvider,
@@ -78,8 +79,26 @@ impl<'data> QueryBuilder for WriteBuilder<'data> {
 
 impl<'data> WriteBuilder<'data> {
     pub fn new(array: Array) -> TileDBResult<Self> {
+        let base = BuilderBase::new(array, QueryType::Write)?;
+
+        {
+            let mut config = Config::new()?;
+            config.set("sm.var_offsets.bitsize", "64")?;
+            config.set("sm.var_offsets.mode", "elements")?;
+
+            /*
+             * TODO: make sure that users can't override this somehow,
+             * else we will be very very sad
+             */
+            let c_query = **base.cquery();
+
+            base.capi_call(|c_context| unsafe {
+                ffi::tiledb_query_set_config(c_context, c_query, config.capi())
+            })?;
+        }
+
         Ok(WriteBuilder {
-            base: BuilderBase::new(array, QueryType::Write)?,
+            base,
             inputs: HashMap::new(),
         })
     }

@@ -18,9 +18,31 @@ use crate::filter::strategy::{
     Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Requirements {
-    array_type: Option<ArrayType>,
+    pub domain: Option<Rc<DomainRequirements>>,
+    pub num_attributes: std::ops::RangeInclusive<usize>,
+    pub attribute_filters: Option<Rc<FilterRequirements>>,
+    pub offsets_filters: Option<Rc<FilterRequirements>>,
+    pub validity_filters: Option<Rc<FilterRequirements>>,
+}
+
+impl Requirements {
+    pub const DEFAULT_MIN_ATTRIBUTES: usize = 1;
+    pub const DEFAULT_MAX_ATTRIBUTES: usize = 32;
+}
+
+impl Default for Requirements {
+    fn default() -> Self {
+        Requirements {
+            domain: None,
+            num_attributes: Self::DEFAULT_MIN_ATTRIBUTES
+                ..=Self::DEFAULT_MAX_ATTRIBUTES,
+            attribute_filters: None,
+            offsets_filters: None,
+            validity_filters: None,
+        }
+    }
 }
 
 impl Arbitrary for CellValNum {
@@ -89,10 +111,8 @@ pub fn prop_coordinate_filters(
 fn prop_schema_for_domain(
     array_type: ArrayType,
     domain: Rc<DomainData>,
+    params: Rc<Requirements>,
 ) -> impl Strategy<Value = SchemaData> {
-    const MIN_ATTRS: usize = 1;
-    const MAX_ATTRS: usize = 32;
-
     let allow_duplicates = match array_type {
         ArrayType::Dense => Just(false).boxed(),
         ArrayType::Sparse => any::<bool>().boxed(),
@@ -105,8 +125,25 @@ fn prop_schema_for_domain(
 
     let attr_requirements = AttributeRequirements {
         context: Some(AttributeContext::Schema(array_type, Rc::clone(&domain))),
+        filters: params.attribute_filters.clone(),
         ..Default::default()
     };
+
+    let offsets_filters_requirements = params
+        .offsets_filters
+        .clone()
+        .unwrap_or(Rc::new(FilterRequirements {
+            ..Default::default()
+        }));
+
+    let validity_filters_requirements = params
+        .validity_filters
+        .clone()
+        .unwrap_or(Rc::new(FilterRequirements {
+            allow_scale_float: false,
+            allow_positive_delta: false,
+            ..Default::default()
+        }));
 
     (
         capacity,
@@ -115,11 +152,11 @@ fn prop_schema_for_domain(
         allow_duplicates,
         proptest::collection::vec(
             prop_attribute(Rc::new(attr_requirements)),
-            MIN_ATTRS..=MAX_ATTRS,
+            params.num_attributes.clone()
         ),
         prop_coordinate_filters(&domain),
-        any::<FilterListData>(),
-        any::<FilterListData>()
+        any_with::<FilterListData>(offsets_filters_requirements),
+        any_with::<FilterListData>(validity_filters_requirements)
     )
         .prop_map(
             move |(
@@ -189,19 +226,42 @@ fn prop_schema_for_domain(
 fn prop_schema(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = SchemaData> {
-    let array_type = requirements
-        .array_type
-        .map(|at| Just(at).boxed())
-        .unwrap_or(any::<ArrayType>().boxed());
+    let domain_requirements = requirements.domain.clone().unwrap_or_default();
 
-    array_type.prop_flat_map(|array_type| {
-        any_with::<DomainData>(Rc::new(DomainRequirements {
-            array_type: Some(array_type),
-        }))
-        .prop_flat_map(move |domain| {
-            prop_schema_for_domain(array_type, Rc::new(domain))
-        })
-    })
+    if let Some(array_type) = domain_requirements.array_type {
+        any_with::<DomainData>(Rc::clone(&domain_requirements))
+            .prop_flat_map(move |domain| {
+                prop_schema_for_domain(
+                    array_type,
+                    Rc::new(domain),
+                    requirements.clone(),
+                )
+            })
+            .boxed()
+    } else {
+        any::<ArrayType>()
+            .prop_flat_map(move |array_type| {
+                let domain_requirements = Rc::new(DomainRequirements {
+                    array_type: Some(array_type),
+                    ..domain_requirements.as_ref().clone()
+                });
+                let schema_requirements = Rc::clone(&requirements);
+                (
+                    Just(array_type),
+                    any_with::<DomainData>(domain_requirements),
+                )
+                    .prop_flat_map(
+                        move |(array_type, domain)| {
+                            prop_schema_for_domain(
+                                array_type,
+                                Rc::new(domain),
+                                Rc::clone(&schema_requirements),
+                            )
+                        },
+                    )
+            })
+            .boxed()
+    }
 }
 
 impl Arbitrary for SchemaData {

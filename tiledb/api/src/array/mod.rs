@@ -30,7 +30,9 @@ pub use domain::{Builder as DomainBuilder, Domain, DomainData};
 pub use enumeration::{
     Builder as EnumerationBuilder, Enumeration, EnumerationData,
 };
-pub use fragment_info::{Builder as FragmentInfoBuilder, FragmentInfo};
+pub use fragment_info::{
+    Builder as FragmentInfoBuilder, FragmentInfo, FragmentInfoList,
+};
 pub use schema::{
     ArrayType, Builder as SchemaBuilder, CellValNum, Field, Schema, SchemaData,
 };
@@ -263,6 +265,10 @@ impl Array {
         })?;
 
         Ok(Schema::new(&self.context, RawSchema::Owned(c_schema)))
+    }
+
+    pub fn fragment_info(&self) -> TileDBResult<FragmentInfoList> {
+        FragmentInfoBuilder::new(&self.context, self.uri())?.build()
     }
 
     pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {

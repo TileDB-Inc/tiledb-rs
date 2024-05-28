@@ -1,381 +1,84 @@
-use std::cmp::Ordering;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::ops::RangeInclusive;
 use std::rc::Rc;
 
-use paste::paste;
-use proptest::bits::{BitSetLike, VarBitSet};
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
+use serde_json::json;
 
-use super::*;
-use crate::array::{ArrayType, CellValNum, SchemaData};
+use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
 use crate::datatype::LogicalType;
-use crate::query::read::output::{
-    CellStructureSingleIterator, FixedDataIterator, RawReadOutput,
-    TypedRawReadOutput, VarDataIterator,
-};
+use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::query::read::{
     CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
-    ReadCallbackVarArg, TypedReadHandle,
+    TypedReadHandle,
 };
-use crate::{fn_typed, typed_query_buffers_go};
+use crate::query::strategy::{
+    Cells, CellsCallback, CellsParameters, CellsStrategySchema,
+    FieldDataParameters, StructuredCells,
+};
+use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
+use crate::range::{Range, SingleValueRange};
+use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
 
-/// Represents the write query input for a single field.
-/// For each variant, the outer Vec is the collection of records, and the interior is value in the
-/// cell for the record. Fields with cell val num of 1 are flat, and other cell values use the
-/// inner Vec. For fixed-size attributes, the inner Vecs shall all have the same length; for
-/// var-sized attributes that is obviously not required.
-#[derive(Clone, Debug, PartialEq)]
-pub enum FieldData {
-    UInt8(Vec<u8>),
-    UInt16(Vec<u16>),
-    UInt32(Vec<u32>),
-    UInt64(Vec<u64>),
-    Int8(Vec<i8>),
-    Int16(Vec<i16>),
-    Int32(Vec<i32>),
-    Int64(Vec<i64>),
-    Float32(Vec<f32>),
-    Float64(Vec<f64>),
-    VecUInt8(Vec<Vec<u8>>),
-    VecUInt16(Vec<Vec<u16>>),
-    VecUInt32(Vec<Vec<u32>>),
-    VecUInt64(Vec<Vec<u64>>),
-    VecInt8(Vec<Vec<i8>>),
-    VecInt16(Vec<Vec<i16>>),
-    VecInt32(Vec<Vec<i32>>),
-    VecInt64(Vec<Vec<i64>>),
-    VecFloat32(Vec<Vec<f32>>),
-    VecFloat64(Vec<Vec<f64>>),
-}
+type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
-macro_rules! typed_field_data {
-    ($($V:ident : $U:ty),+) => {
-        $(
-            impl From<Vec<$U>> for FieldData {
-                fn from(value: Vec<$U>) -> Self {
-                    FieldData::$V(value)
-                }
-            }
-
-            impl From<Vec<Vec<$U>>> for FieldData {
-                fn from(value: Vec<Vec<$U>>) -> Self {
-                    paste! {
-                        FieldData::[< Vec $V >](value)
-                    }
-                }
-            }
-        )+
-    };
-}
-
-typed_field_data!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
-typed_field_data!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
-typed_field_data!(Float32: f32, Float64: f64);
-
-impl From<Vec<String>> for FieldData {
-    fn from(value: Vec<String>) -> Self {
-        FieldData::from(
-            value
-                .into_iter()
-                .map(|s| s.into_bytes())
-                .collect::<Vec<Vec<u8>>>(),
-        )
+// now that we're actually writing data we will hit the fun bugs.
+// there are several in the filter pipeline, so we must heavily
+// restrict what is allowed until the bugs are fixed.
+fn query_write_filter_requirements() -> FilterRequirements {
+    FilterRequirements {
+        allow_bit_reduction: false,  // SC-47560
+        allow_positive_delta: false, // nothing yet to ensure sort order
+        allow_scale_float: false,
+        allow_xor: false,               // SC-47328
+        allow_compression_rle: false, // probably can be enabled but nontrivial
+        allow_compression_dict: false, // probably can be enabled but nontrivial
+        allow_compression_delta: false, // SC-47328
+        ..Default::default()
     }
 }
 
-impl From<&TypedRawReadOutput<'_>> for FieldData {
-    fn from(value: &TypedRawReadOutput) -> Self {
-        typed_query_buffers_go!(value.buffers, DT, ref handle, {
-            let rr = RawReadOutput {
-                ncells: value.ncells,
-                input: handle.borrow(),
-            };
-            match rr.input.cell_structure.as_cell_val_num() {
-                CellValNum::Fixed(nz) if nz.get() == 1 => Self::from(
-                    CellStructureSingleIterator::try_from(rr)
-                        .unwrap()
-                        .collect::<Vec<DT>>(),
-                ),
-                CellValNum::Fixed(_) => Self::from(
-                    FixedDataIterator::try_from(rr)
-                        .unwrap()
-                        .map(|slice| slice.to_vec())
-                        .collect::<Vec<Vec<DT>>>(),
-                ),
-                CellValNum::Var => Self::from(
-                    VarDataIterator::try_from(rr)
-                        .unwrap()
-                        .map(|s| s.to_vec())
-                        .collect::<Vec<Vec<DT>>>(),
-                ),
-            }
-        })
-    }
+#[derive(Debug)]
+pub struct DenseWriteInput {
+    pub layout: CellOrder,
+    pub data: Cells,
+    pub subarray: Vec<SingleValueRange>,
 }
 
-#[macro_export]
-macro_rules! typed_field_data_go {
-    ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {{
-        use $crate::query::write::strategy::FieldData;
-        match $field {
-            FieldData::UInt8($data) => {
-                type $DT = u8;
-                $fixed
-            }
-            FieldData::UInt16($data) => {
-                type $DT = u16;
-                $fixed
-            }
-            FieldData::UInt32($data) => {
-                type $DT = u32;
-                $fixed
-            }
-            FieldData::UInt64($data) => {
-                type $DT = u64;
-                $fixed
-            }
-            FieldData::Int8($data) => {
-                type $DT = i8;
-                $fixed
-            }
-            FieldData::Int16($data) => {
-                type $DT = i16;
-                $fixed
-            }
-            FieldData::Int32($data) => {
-                type $DT = i32;
-                $fixed
-            }
-            FieldData::Int64($data) => {
-                type $DT = i64;
-                $fixed
-            }
-            FieldData::Float32($data) => {
-                type $DT = f32;
-                $fixed
-            }
-            FieldData::Float64($data) => {
-                type $DT = f64;
-                $fixed
-            }
-            FieldData::VecUInt8($data) => {
-                type $DT = u8;
-                $var
-            }
-            FieldData::VecUInt16($data) => {
-                type $DT = u16;
-                $var
-            }
-            FieldData::VecUInt32($data) => {
-                type $DT = u32;
-                $var
-            }
-            FieldData::VecUInt64($data) => {
-                type $DT = u64;
-                $var
-            }
-            FieldData::VecInt8($data) => {
-                type $DT = i8;
-                $var
-            }
-            FieldData::VecInt16($data) => {
-                type $DT = i16;
-                $var
-            }
-            FieldData::VecInt32($data) => {
-                type $DT = i32;
-                $var
-            }
-            FieldData::VecInt64($data) => {
-                type $DT = i64;
-                $var
-            }
-            FieldData::VecFloat32($data) => {
-                type $DT = f32;
-                $var
-            }
-            FieldData::VecFloat64($data) => {
-                type $DT = f64;
-                $var
-            }
-        }
-    }};
-    ($field:expr, $data:pat, $then:expr) => {
-        typed_field_data_go!($field, _DT, $data, $then, $then)
-    };
-    ($lexpr:expr, $rexpr:expr, $DT:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
-        use $crate::query::write::strategy::FieldData;
-        match ($lexpr, $rexpr) {
-            (FieldData::UInt8($lpat), FieldData::UInt8($rpat)) => {
-                type $DT = u8;
-                $same_type
-            }
-            (FieldData::UInt16($lpat), FieldData::UInt16($rpat)) => {
-                type $DT = u16;
-                $same_type
-            }
-            (FieldData::UInt32($lpat), FieldData::UInt32($rpat)) => {
-                type $DT = u32;
-                $same_type
-            }
-            (FieldData::UInt64($lpat), FieldData::UInt64($rpat)) => {
-                type $DT = u64;
-                $same_type
-            }
-            (FieldData::Int8($lpat), FieldData::Int8($rpat)) => {
-                type $DT = i8;
-                $same_type
-            }
-            (FieldData::Int16($lpat), FieldData::Int16($rpat)) => {
-                type $DT = i16;
-                $same_type
-            }
-            (FieldData::Int32($lpat), FieldData::Int32($rpat)) => {
-                type $DT = i32;
-                $same_type
-            }
-            (FieldData::Int64($lpat), FieldData::Int64($rpat)) => {
-                type $DT = i64;
-                $same_type
-            }
-            (FieldData::Float32($lpat), FieldData::Float32($rpat)) => {
-                type $DT = f32;
-                $same_type
-            }
-            (FieldData::Float64($lpat), FieldData::Float64($rpat)) => {
-                type $DT = f64;
-                $same_type
-            }
-            (FieldData::VecUInt8($lpat), FieldData::VecUInt8($rpat)) => {
-                type $DT = u8;
-                $same_type
-            }
-            (FieldData::VecUInt16($lpat), FieldData::VecUInt16($rpat)) => {
-                type $DT = u16;
-                $same_type
-            }
-            (FieldData::VecUInt32($lpat), FieldData::VecUInt32($rpat)) => {
-                type $DT = u32;
-                $same_type
-            }
-            (FieldData::VecUInt64($lpat), FieldData::VecUInt64($rpat)) => {
-                type $DT = u64;
-                $same_type
-            }
-            (FieldData::VecInt8($lpat), FieldData::VecInt8($rpat)) => {
-                type $DT = i8;
-                $same_type
-            }
-            (FieldData::VecInt16($lpat), FieldData::VecInt16($rpat)) => {
-                type $DT = i16;
-                $same_type
-            }
-            (FieldData::VecInt32($lpat), FieldData::VecInt32($rpat)) => {
-                type $DT = i32;
-                $same_type
-            }
-            (FieldData::VecInt64($lpat), FieldData::VecInt64($rpat)) => {
-                type $DT = i64;
-                $same_type
-            }
-            (FieldData::VecFloat32($lpat), FieldData::VecFloat32($rpat)) => {
-                type $DT = f32;
-                $same_type
-            }
-            (FieldData::VecFloat64($lpat), FieldData::VecFloat64($rpat)) => {
-                type $DT = f64;
-                $same_type
-            }
-            _ => $else,
-        }
-    }};
-}
-
-impl FieldData {
-    pub fn is_empty(&self) -> bool {
-        typed_field_data_go!(self, v, v.is_empty())
-    }
-
-    pub fn len(&self) -> usize {
-        typed_field_data_go!(self, v, v.len())
-    }
-
-    pub fn filter(&self, set: &VarBitSet) -> FieldData {
-        typed_field_data_go!(self, ref values, {
-            FieldData::from(
-                values
-                    .clone()
-                    .into_iter()
-                    .enumerate()
-                    .filter(|&(i, _)| set.test(i))
-                    .map(|(_, e)| e)
-                    .collect::<Vec<_>>(),
-            )
-        })
-    }
-}
-
-pub struct RawReadQueryResult(pub HashMap<String, FieldData>);
-
-pub struct RawResultCallback {
-    field_order: Vec<String>,
-}
-
-impl ReadCallbackVarArg for RawResultCallback {
-    type Intermediate = RawReadQueryResult;
-    type Final = RawReadQueryResult;
-    type Error = std::convert::Infallible;
-
-    fn intermediate_result(
-        &mut self,
-        args: Vec<TypedRawReadOutput>,
-    ) -> Result<Self::Intermediate, Self::Error> {
-        Ok(RawReadQueryResult(
-            self.field_order
-                .iter()
-                .zip(args.iter())
-                .map(|(f, a)| (f.clone(), FieldData::from(a)))
-                .collect::<HashMap<String, FieldData>>(),
-        ))
-    }
-
-    fn final_result(
-        mut self,
-        args: Vec<TypedRawReadOutput>,
-    ) -> Result<Self::Intermediate, Self::Error> {
-        self.intermediate_result(args)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct WriteQueryData {
-    pub fields: HashMap<String, FieldData>,
-}
-
-impl WriteQueryData {
+impl DenseWriteInput {
     pub fn attach_write<'data>(
         &'data self,
         b: WriteBuilder<'data>,
     ) -> TileDBResult<WriteBuilder<'data>> {
-        let mut b = b;
-        for f in self.fields.iter() {
-            b = typed_field_data_go!(f.1, data, b.data_typed(f.0, data))?;
+        let mut subarray = self.data.attach_write(b)?.start_subarray()?;
+
+        for i in 0..self.subarray.len() {
+            subarray = subarray.add_range(i, self.subarray[i].clone())?;
         }
-        Ok(b)
+
+        subarray.finish_subarray()?.layout(self.layout)
     }
 
-    pub fn attach_read<'ctx, 'data, B>(
-        &self,
+    pub fn attach_read<'data, B>(
+        &'data self,
         b: B,
-    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, RawResultCallback, B>>
+    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
     where
         B: ReadQueryBuilder<'data>,
     {
-        let field_order = self.fields.keys().cloned().collect::<Vec<_>>();
+        let mut subarray = b.start_subarray()?;
+
+        for i in 0..self.subarray.len() {
+            subarray = subarray.add_range(i, self.subarray[i].clone())?;
+        }
+
+        let b: B = subarray.finish_subarray()?.layout(self.layout)?;
+
+        // copied from `Cells::attach_read`, yuck
+        let field_order =
+            self.data.fields().keys().cloned().collect::<Vec<_>>();
         let handles = {
             let schema = b.base().array().schema().unwrap();
 
@@ -396,456 +99,393 @@ impl WriteQueryData {
                 .collect::<Vec<TypedReadHandle>>()
         };
 
-        b.register_callback_var(handles, RawResultCallback { field_order })
-    }
-
-    pub fn accumulate(&mut self, next_write: Self) {
-        for (field, data) in next_write.fields.into_iter() {
-            match self.fields.entry(field) {
-                Entry::Vacant(v) => {
-                    v.insert(data);
-                }
-                Entry::Occupied(mut o) => {
-                    let prev_write_data = o.get_mut();
-                    typed_field_data_go!(
-                        prev_write_data,
-                        data,
-                        _DT,
-                        ref mut mine,
-                        theirs,
-                        {
-                            if mine.len() <= theirs.len() {
-                                *mine = theirs;
-                            } else {
-                                mine[0..theirs.len()]
-                                    .clone_from_slice(theirs.as_slice());
-                            }
-                        },
-                        unreachable!()
-                    );
-                }
-            }
-        }
+        b.register_callback_var(handles, CellsCallback::new(field_order))
     }
 }
 
-/// Mask for whether a field should be included in a write query.
-// As of this writing, core does not support default values being filled in,
-// so this construct is not terribly useful. But someday that may change
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum WriteFieldMask {
-    /// This field must appear in the write set
-    Include,
-    /// This field appears in the write set but simplification may change that
-    _TentativelyInclude,
-    /// This field may appear in the write set again after complication
-    _TentativelyExclude,
-    /// This field may not appear in the write set again
-    Exclude,
+#[derive(Clone, Debug, Default)]
+pub struct DenseWriteParameters {
+    schema: Option<Rc<SchemaData>>,
+    layout: Option<CellOrder>,
+    memory_limit: Option<usize>,
 }
 
-impl WriteFieldMask {
-    pub fn is_included(&self) -> bool {
-        matches!(
-            self,
-            WriteFieldMask::Include | WriteFieldMask::_TentativelyInclude
-        )
-    }
+pub struct DenseWriteValueTree {
+    layout: CellOrder,
+    field_order: Vec<String>,
+    bounding_subarray: Vec<RangeInclusive<i128>>,
+    subarray: Vec<BoxedValueTree<SingleValueRange>>,
+    cells: StructuredCells,
+    prev_shrink: Option<usize>,
 }
 
-/// Tracks the last step taken for the write shrinking.
-enum ShrinkSearchStep {
-    /// Remove a range of records
-    Explore(usize),
-    Recur,
-    Done,
-}
-
-const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
-
-/// Value tree to shrink a write query input.
-/// For a failing test which writes N records, there are 2^N possible
-/// candidate subsets and we want to find the smallest one which fails the test
-/// in the shortest number of iterations.
-/// That would be ideal but really finding any input that's small enough
-/// to be human readable sounds good enough. We divide the record space
-/// into WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES chunks and identify which
-/// of those chunks are necessary for the failure.
-/// Recur until all of the chunks are necessary for failure, or there
-/// is only one record.
-///
-/// TODO: for var sized attributes, follow up by shrinking the values.
-struct WriteQueryDataValueTree {
-    schema: Rc<SchemaData>,
-    field_mask: Vec<WriteFieldMask>,
-    field_data: HashMap<String, Option<FieldData>>,
-    nrecords: usize,
-    records_included: Vec<usize>,
-    explore_results: [Option<bool>; WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES],
-    search: Option<ShrinkSearchStep>,
-}
-
-impl WriteQueryDataValueTree {
+impl DenseWriteValueTree {
     pub fn new(
-        schema: Rc<SchemaData>,
-        field_mask: Vec<WriteFieldMask>,
-        field_data: HashMap<String, Option<FieldData>>,
+        layout: CellOrder,
+        bounding_subarray: Vec<SingleValueRange>,
+        subarray: Vec<BoxedValueTree<SingleValueRange>>,
+        cells: Cells,
     ) -> Self {
-        let nrecords = field_data
-            .values()
-            .filter_map(|f| f.as_ref())
-            .take(1)
-            .next()
-            .unwrap()
-            .len();
-        let records_included = (0..nrecords).collect::<Vec<usize>>();
+        let field_order =
+            cells.fields().keys().cloned().collect::<Vec<String>>();
 
-        WriteQueryDataValueTree {
-            schema,
-            field_mask,
-            field_data,
-            nrecords,
-            records_included,
-            explore_results: [None; WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES],
-            search: None,
-        }
-    }
-
-    fn explore_step(&mut self, failed: bool) -> bool {
-        match self.search {
-            None => {
-                if failed && self.nrecords > 0 {
-                    /* failed on the whole input, begin the search */
-                    self.search = Some(ShrinkSearchStep::Explore(0));
-                    true
-                } else {
-                    /* passed on the whole input, nothing to do */
-                    false
-                }
-            }
-            Some(ShrinkSearchStep::Explore(c)) => {
-                let nchunks = std::cmp::min(
-                    self.records_included.len(),
-                    WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES,
-                );
-
-                self.explore_results[c] = Some(failed);
-
-                match (c + 1).cmp(&nchunks) {
-                    Ordering::Less => {
-                        self.search = Some(ShrinkSearchStep::Explore(c + 1));
-                        true
-                    }
-                    Ordering::Equal => {
-                        /* finished exploring at this level, either recur or finish */
-                        let approx_chunk_len =
-                            self.records_included.len() / nchunks;
-                        let mut new_records_included = vec![];
-                        for i in 0..nchunks {
-                            let chunk_min = i * approx_chunk_len;
-                            let chunk_max = if i + 1 == nchunks {
-                                self.records_included.len()
-                            } else {
-                                (i + 1) * approx_chunk_len
-                            };
-
-                            if !self.explore_results[i].take().unwrap() {
-                                /* the test passed when chunk `i` was not included; keep it */
-                                new_records_included.extend_from_slice(
-                                    &self.records_included
-                                        [chunk_min..chunk_max],
-                                );
-                            }
-                        }
-
-                        if new_records_included == self.records_included {
-                            /* everything was needed to pass */
-                            self.search = Some(ShrinkSearchStep::Done);
-                        } else {
-                            self.records_included = new_records_included;
-                            self.search = Some(ShrinkSearchStep::Recur);
-                        }
-                        /* run another round on the updated input */
-                        true
-                    }
-                    Ordering::Greater => unreachable!(),
-                }
-            }
-            Some(ShrinkSearchStep::Recur) => {
-                /* we must have failed unless the test itself is non-deterministic */
-                assert!(failed);
-
-                self.search = Some(ShrinkSearchStep::Explore(0));
-                true
-            }
-            Some(ShrinkSearchStep::Done) => false,
-        }
-    }
-}
-
-impl ValueTree for WriteQueryDataValueTree {
-    type Value = WriteQueryData;
-
-    fn current(&self) -> Self::Value {
-        let record_mask = match self.search {
-            None => VarBitSet::saturated(self.nrecords),
-            Some(ShrinkSearchStep::Explore(c)) => {
-                let nchunks = self
-                    .records_included
-                    .len()
-                    .clamp(1, WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES);
-
-                let approx_chunk_len = self.records_included.len() / nchunks;
-
-                if approx_chunk_len == 0 {
-                    /* no records are included, we have shrunk down to empty */
-                    VarBitSet::new_bitset(self.nrecords)
-                } else {
-                    let mut record_mask = VarBitSet::new_bitset(self.nrecords);
-
-                    let exclude_min = c * approx_chunk_len;
-                    let exclude_max = if c + 1 == nchunks {
-                        self.records_included.len()
-                    } else {
-                        (c + 1) * approx_chunk_len
-                    };
-
-                    for r in self.records_included[0..exclude_min]
-                        .iter()
-                        .chain(self.records_included[exclude_max..].iter())
-                    {
-                        record_mask.set(*r)
-                    }
-
-                    record_mask
-                }
-            }
-            Some(ShrinkSearchStep::Recur) | Some(ShrinkSearchStep::Done) => {
-                let mut record_mask = VarBitSet::new_bitset(self.nrecords);
-                for r in self.records_included.iter() {
-                    record_mask.set(*r);
-                }
-                record_mask
-            }
+        let cells = {
+            let dimension_len = bounding_subarray
+                .iter()
+                .map(|r| {
+                    usize::try_from(r.num_cells().unwrap())
+                        .expect("Too many cells to fit in memory")
+                })
+                .collect::<Vec<usize>>();
+            StructuredCells::new(dimension_len, cells)
         };
 
-        let fields = self
-            .field_mask
-            .iter()
-            .enumerate()
-            .filter(|(_, f)| f.is_included())
-            .map(|(i, _)| {
-                let f = self.schema.field(i);
-                (
-                    f.name().to_owned(),
-                    self.field_data[f.name()]
-                        .as_ref()
-                        .unwrap()
-                        .filter(&record_mask),
-                )
+        let bounding_subarray = bounding_subarray
+            .into_iter()
+            .map(|range| {
+                let r = RangeInclusive::<i128>::try_from(range).unwrap();
+                assert!(r.start() <= r.end());
+                r
             })
-            .collect::<Vec<(String, FieldData)>>();
+            .collect::<Vec<RangeInclusive<i128>>>();
 
-        WriteQueryData {
-            fields: fields.into_iter().collect(),
+        DenseWriteValueTree {
+            layout,
+            field_order,
+            bounding_subarray,
+            subarray,
+            cells,
+            prev_shrink: None,
+        }
+    }
+
+    fn subarray_current(&self) -> Vec<SingleValueRange> {
+        self.subarray
+            .iter()
+            .map(|tree| tree.current())
+            .collect::<Vec<SingleValueRange>>()
+    }
+
+    fn cells_for_subarray(
+        &self,
+        subarray: &[SingleValueRange],
+    ) -> StructuredCells {
+        let slices = self
+            .bounding_subarray
+            .iter()
+            .zip(subarray.iter())
+            .map(|(complete, current)| {
+                let current =
+                    RangeInclusive::<i128>::try_from(current.clone()).unwrap();
+
+                assert!(current.start() <= current.end());
+
+                assert!(
+                    complete.start() <= current.start(),
+                    "complete = {:?}, current = {:?}",
+                    complete,
+                    current
+                );
+                assert!(
+                    current.end() <= complete.end(),
+                    "complete = {:?}, current = {:?}",
+                    complete,
+                    current
+                );
+
+                let start = current.start() - complete.start();
+                let end = current.end() - complete.start() + 1;
+                let ustart = usize::try_from(start)
+                    .expect("Current range is narrower than bounding range");
+                let uend = usize::try_from(end)
+                    .expect("Current range is narrower than bounding range");
+                ustart..uend
+            })
+            .collect::<Vec<std::ops::Range<usize>>>();
+
+        self.cells.slice(slices)
+    }
+}
+
+impl Debug for DenseWriteValueTree {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let json = json!({
+            "layout": self.layout,
+            "field_order": self.field_order,
+            "bounding_subarray": self.bounding_subarray,
+            "subarray": self.subarray_current(),
+            "prev_shrink": self.prev_shrink
+        });
+        write!(f, "{}", json)
+    }
+}
+
+impl ValueTree for DenseWriteValueTree {
+    type Value = DenseWriteInput;
+
+    fn current(&self) -> Self::Value {
+        let subarray = self.subarray_current();
+        let cells = self.cells_for_subarray(&subarray);
+
+        DenseWriteInput {
+            layout: self.layout,
+            data: cells.into_inner(),
+            subarray,
         }
     }
 
     fn simplify(&mut self) -> bool {
-        self.explore_step(true)
+        // try shrinking each dimension in round-robin order,
+        // beginning with the dimension after whichever we
+        // previously shrunk
+        let start = self.prev_shrink.map(|d| d + 1).unwrap_or(0);
+
+        for i in 0..self.subarray.len() {
+            let idx = (start + i) % self.subarray.len();
+            if self.subarray[idx].simplify() {
+                self.prev_shrink = Some(idx);
+                return true;
+            }
+        }
+
+        self.prev_shrink = None;
+        false
     }
 
     fn complicate(&mut self) -> bool {
-        self.explore_step(false)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct WriteQueryDataParameters {
-    pub schema: Option<Rc<SchemaData>>,
-    pub min_records: usize,
-    pub max_records: usize,
-    pub value_min_var_size: usize,
-    pub value_max_var_size: usize,
-}
-
-impl Default for WriteQueryDataParameters {
-    fn default() -> Self {
-        const WRITE_QUERY_MIN_RECORDS: usize = 0;
-        const WRITE_QUERY_MAX_RECORDS: usize = 1024 * 1024;
-
-        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
-        const WRITE_QUERY_MAX_VAR_SIZE: usize = 1024 * 128;
-
-        WriteQueryDataParameters {
-            schema: None,
-            min_records: WRITE_QUERY_MIN_RECORDS,
-            max_records: WRITE_QUERY_MAX_RECORDS,
-            value_min_var_size: WRITE_QUERY_MIN_VAR_SIZE,
-            value_max_var_size: WRITE_QUERY_MAX_VAR_SIZE,
+        // complicate whichever dimension we previously simplified
+        if let Some(d) = self.prev_shrink {
+            if self.subarray[d].complicate() {
+                // we may be able to complicate again, keep prev_shrink
+                true
+            } else {
+                self.prev_shrink = None;
+                false
+            }
+        } else {
+            false
         }
     }
 }
 
 #[derive(Debug)]
-struct WriteQueryDataStrategy {
+pub struct DenseWriteStrategy {
     schema: Rc<SchemaData>,
-    params: WriteQueryDataParameters,
+    layout: CellOrder,
+    params: DenseWriteParameters,
 }
 
-impl WriteQueryDataStrategy {
+impl DenseWriteStrategy {
     pub fn new(
-        schema: &Rc<SchemaData>,
-        params: WriteQueryDataParameters,
+        schema: Rc<SchemaData>,
+        layout: CellOrder,
+        params: DenseWriteParameters,
     ) -> Self {
-        WriteQueryDataStrategy {
-            schema: Rc::clone(schema),
+        DenseWriteStrategy {
+            schema,
+            layout,
             params,
         }
     }
 }
 
-impl Strategy for WriteQueryDataStrategy {
-    type Tree = WriteQueryDataValueTree;
-    type Value = WriteQueryData;
+impl Strategy for DenseWriteStrategy {
+    type Tree = DenseWriteValueTree;
+    type Value = DenseWriteInput;
 
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
-        /* Choose the maximum number of records */
-        let nrecords = (self.params.min_records..=self.params.max_records)
-            .new_tree(runner)?
-            .current();
-
-        /* generate an initial set of fields to write */
-        let field_mask = {
-            let ndimensions = self.schema.domain.dimension.len();
-            let nattributes = self.schema.attributes.len();
-
-            let dimensions_mask = match self.schema.array_type {
-                ArrayType::Dense => {
-                    /* dense array coordinates are handled by a subarray */
-                    vec![WriteFieldMask::Exclude; ndimensions]
-                }
-                ArrayType::Sparse => {
-                    /* sparse array must write coordinates */
-                    vec![WriteFieldMask::Include; ndimensions]
-                }
-            };
-
-            /* as of this writing, write queries must write to all attributes */
-            let attributes_mask =
-                std::iter::repeat(WriteFieldMask::Include).take(nattributes);
-
-            dimensions_mask
-                .into_iter()
-                .chain(attributes_mask)
-                .collect::<Vec<_>>()
+        /*
+         * For simplicity, we will bound the memory used at each dimension
+         * rather than keeping a moving product of the accumulated memory
+         */
+        let memory_limit: usize = {
+            const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
+            let memory_limit =
+                self.params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
+            memory_limit / self.schema.domain.dimension.len()
         };
 
-        let field_data = field_mask
-            .iter()
-            .enumerate()
-            .map(|(i, f)| {
-                let field = self.schema.field(i);
-                let field_data = if f.is_included() {
-                    let datatype = field.datatype();
-                    let cell_val_num = field
-                        .cell_val_num()
-                        .unwrap_or(CellValNum::try_from(1).unwrap());
+        if matches!(self.layout, CellOrder::Global) {
+            // necessary to align to tile boundaries
+            unimplemented!()
+        }
 
-                    if cell_val_num == 1u32 {
-                        Some(fn_typed!(datatype, LT, {
-                            type DT = <LT as LogicalType>::PhysicalType;
-                            let data = proptest::collection::vec(
-                                any::<DT>(),
-                                nrecords..=nrecords,
-                            )
-                            .new_tree(runner)
-                            .expect("Error generating query data")
-                            .current();
-
-                            FieldData::from(data)
-                        }))
-                    } else {
-                        let (min, max) = if cell_val_num.is_var_sized() {
-                            (
-                                self.params.value_min_var_size,
-                                self.params.value_max_var_size,
-                            )
-                        } else {
-                            let fixed_bound =
-                                Into::<u32>::into(cell_val_num) as usize;
-                            (fixed_bound, fixed_bound)
-                        };
-                        Some(fn_typed!(datatype, LT, {
-                            type DT = <LT as LogicalType>::PhysicalType;
-                            let data = proptest::collection::vec(
-                                proptest::collection::vec(
-                                    any::<DT>(),
-                                    min..=max,
-                                ),
-                                nrecords..=nrecords,
-                            )
-                            .new_tree(runner)
-                            .expect("Error generating query data")
-                            .current();
-
-                            FieldData::from(data)
-                        }))
+        let est_cell_size: usize = self
+            .schema
+            .fields()
+            .map(|field| {
+                match field.cell_val_num().unwrap_or(CellValNum::single()) {
+                    CellValNum::Fixed(nz) => {
+                        /* exact */
+                        nz.get() as usize * field.datatype().size() as usize
                     }
-                } else {
-                    None
-                };
-                (field.name().to_owned(), field_data)
+                    CellValNum::Var => {
+                        /* estimate */
+                        let params =
+                            <FieldDataParameters as Default>::default();
+                        let est_nvalues = (params.value_min_var_size
+                            + params.value_max_var_size)
+                            / 2;
+                        est_nvalues * field.datatype().size() as usize
+                    }
+                }
             })
-            .collect::<HashMap<String, Option<FieldData>>>();
+            .sum();
 
-        Ok(WriteQueryDataValueTree::new(
-            Rc::clone(&self.schema),
-            field_mask,
-            field_data,
+        let cell_limit: usize = memory_limit / est_cell_size;
+
+        /* choose maximal subarray for the write, we will shrink within this window */
+        let strat_subarray_bounds = self
+            .schema
+            .domain
+            .dimension
+            .iter()
+            .map(|d| d.subarray_strategy(Some(cell_limit)).unwrap())
+            .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
+
+        let bounding_subarray = strat_subarray_bounds
+            .into_iter()
+            .map(|strat| strat.new_tree(runner).unwrap().current())
+            .collect::<Vec<SingleValueRange>>();
+
+        /* prepare tree for each subarray dimension */
+        let strat_subarray = bounding_subarray
+            .iter()
+            .cloned()
+            .map(|dim| {
+                single_value_range_go!(
+                    dim,
+                    _DT: Integral,
+                    start,
+                    end,
+                    {
+                        (start..=end)
+                            .prop_flat_map(move |lower| {
+                                (Just(lower), lower..=end).prop_map(
+                                    move |(lower, upper)| {
+                                        SingleValueRange::from(&[lower, upper])
+                                    },
+                                )
+                            })
+                            .boxed()
+                    },
+                    unreachable!()
+                )
+            })
+            .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
+
+        let mut subarray: Vec<BoxedValueTree<SingleValueRange>> = vec![];
+        for range in strat_subarray {
+            subarray.push(range.new_tree(runner).unwrap());
+        }
+
+        let cells = {
+            let ncells = bounding_subarray
+                .iter()
+                .map(|range| {
+                    usize::try_from(range.num_cells().unwrap())
+                        .expect("Too many cells to fit in memory")
+                })
+                .product();
+            assert!(ncells > 0);
+            let params = CellsParameters {
+                schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(
+                    &self.schema,
+                ))),
+                min_records: ncells,
+                max_records: ncells,
+                ..Default::default()
+            };
+            any_with::<Cells>(params).new_tree(runner)?.current()
+        };
+
+        Ok(DenseWriteValueTree::new(
+            self.layout,
+            bounding_subarray,
+            subarray,
+            cells,
         ))
     }
 }
 
-impl Arbitrary for WriteQueryData {
-    type Parameters = WriteQueryDataParameters;
-    type Strategy = BoxedStrategy<WriteQueryData>;
+impl Arbitrary for DenseWriteInput {
+    type Parameters = DenseWriteParameters;
+    type Strategy = BoxedStrategy<DenseWriteInput>;
 
-    fn arbitrary_with(mut args: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = args.schema.take() {
-            WriteQueryDataStrategy::new(&schema, args).boxed()
+    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
+        let mut args = args;
+        let strat_schema = match args.schema.take() {
+            None => {
+                let schema_req = crate::array::schema::strategy::Requirements {
+                    domain: Some(Rc::new(
+                        crate::array::domain::strategy::Requirements {
+                            array_type: Some(ArrayType::Dense),
+                            num_dimensions: 1..=1,
+                            ..Default::default()
+                        },
+                    )),
+                    num_attributes: 1..=1,
+                    attribute_filters: Some(Rc::new(
+                        query_write_filter_requirements(),
+                    )),
+                    offsets_filters: Some(Rc::new(
+                        query_write_filter_requirements(),
+                    )),
+                    validity_filters: Some(Rc::new(
+                        query_write_filter_requirements(),
+                    )),
+                };
+                any_with::<SchemaData>(Rc::new(schema_req))
+                    .prop_map(Rc::new)
+                    .boxed()
+            }
+            Some(schema) => Just(schema).boxed(),
+        };
+        let strat_layout = match args.layout.take() {
+            None => prop_oneof![
+                Just(CellOrder::RowMajor),
+                Just(CellOrder::ColumnMajor),
+                /* TODO: CellOrder::Global is possible but has more constraints */
+            ].boxed(),
+            Some(layout) => Just(layout).boxed()
+        };
+
+        (strat_schema, strat_layout)
+            .prop_flat_map(move |(schema, layout)| {
+                DenseWriteStrategy::new(schema, layout, args.clone())
+            })
+            .boxed()
+    }
+}
+
+pub struct SparseWriteInput {
+    pub data: Cells,
+}
+
+#[derive(Debug)]
+pub struct DenseWriteSequence {
+    writes: Vec<DenseWriteInput>,
+}
+
+impl Arbitrary for DenseWriteSequence {
+    type Parameters = DenseWriteParameters;
+    type Strategy = BoxedStrategy<DenseWriteSequence>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        if let Some(schema) = params.schema.as_ref() {
+            prop_write_sequence(Rc::clone(schema), params).boxed()
         } else {
             any::<SchemaData>()
                 .prop_flat_map(move |schema| {
-                    WriteQueryDataStrategy::new(&Rc::new(schema), args.clone())
+                    prop_write_sequence(Rc::new(schema), params.clone())
                 })
                 .boxed()
         }
     }
 }
 
-#[derive(Debug)]
-pub struct WriteSequence {
-    writes: Vec<WriteQueryData>,
-}
-
-impl Arbitrary for WriteSequence {
-    type Parameters = Option<Rc<SchemaData>>;
-    type Strategy = BoxedStrategy<WriteSequence>;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = args {
-            prop_write_sequence(&schema).boxed()
-        } else {
-            any::<SchemaData>()
-                .prop_flat_map(|schema| prop_write_sequence(&Rc::new(schema)))
-                .boxed()
-        }
-    }
-}
-
-impl IntoIterator for WriteSequence {
-    type Item = WriteQueryData;
+impl IntoIterator for DenseWriteSequence {
+    type Item = DenseWriteInput;
     type IntoIter = <Vec<Self::Item> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -854,26 +494,179 @@ impl IntoIterator for WriteSequence {
 }
 
 pub fn prop_write_sequence(
-    schema: &Rc<SchemaData>,
-) -> impl Strategy<Value = WriteSequence> {
+    schema: Rc<SchemaData>,
+    params: DenseWriteParameters,
+) -> impl Strategy<Value = DenseWriteSequence> {
+    let params = DenseWriteParameters {
+        schema: Some(schema),
+        ..params
+    };
+
     const MAX_WRITES: usize = 8;
     proptest::collection::vec(
-        any_with::<WriteQueryData>(WriteQueryDataParameters {
-            schema: Some(Rc::clone(schema)),
-            ..Default::default()
-        }),
+        any_with::<DenseWriteInput>(params),
         0..MAX_WRITES,
     )
-    .prop_map(|writes| WriteSequence { writes })
+    .prop_map(|writes| DenseWriteSequence { writes })
+}
+
+#[derive(Debug)]
+pub enum WriteInput {
+    Dense(DenseWriteInput),
+}
+
+impl WriteInput {
+    pub fn cells(&self) -> &Cells {
+        let Self::Dense(ref dense) = self;
+        &dense.data
+    }
+
+    pub fn domain(&self) -> Vec<Range> {
+        let Self::Dense(ref dense) = self;
+        dense
+            .subarray
+            .clone()
+            .into_iter()
+            .map(Range::from)
+            .collect::<Vec<Range>>()
+    }
+
+    pub fn unwrap_cells(self) -> Cells {
+        let Self::Dense(dense) = self;
+        dense.data
+    }
+
+    pub fn attach_write<'data>(
+        &'data self,
+        b: WriteBuilder<'data>,
+    ) -> TileDBResult<WriteBuilder<'data>> {
+        let Self::Dense(ref d) = self;
+        d.attach_write(b)
+    }
+
+    pub fn attach_read<'data, B>(
+        &'data self,
+        b: B,
+    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
+    where
+        B: ReadQueryBuilder<'data>,
+    {
+        let Self::Dense(ref d) = self;
+        d.attach_read(b)
+    }
+}
+
+#[derive(Debug)]
+pub enum WriteParameters {
+    Dense(DenseWriteParameters),
+}
+
+impl WriteParameters {
+    pub fn default_for(schema: Rc<SchemaData>) -> Self {
+        match schema.array_type {
+            ArrayType::Dense => Self::Dense(DenseWriteParameters {
+                schema: Some(schema),
+                ..Default::default()
+            }),
+            ArrayType::Sparse => unimplemented!(),
+        }
+    }
+}
+
+impl Default for WriteParameters {
+    fn default() -> Self {
+        Self::Dense(DenseWriteParameters::default())
+    }
+}
+
+impl Arbitrary for WriteInput {
+    type Parameters = WriteParameters;
+    type Strategy = BoxedStrategy<WriteInput>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let WriteParameters::Dense(d) = params;
+        any_with::<DenseWriteInput>(d)
+            .prop_map(WriteInput::Dense)
+            .boxed()
+    }
+}
+
+#[derive(Debug)]
+pub enum WriteSequence {
+    Dense(DenseWriteSequence),
+}
+
+impl From<WriteInput> for WriteSequence {
+    fn from(value: WriteInput) -> Self {
+        let WriteInput::Dense(dense) = value;
+        Self::Dense(DenseWriteSequence {
+            writes: vec![dense],
+        })
+    }
+}
+
+impl IntoIterator for WriteSequence {
+    type Item = WriteInput;
+    type IntoIter = WriteSequenceIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let Self::Dense(dense) = self;
+        WriteSequenceIter::Dense(dense.into_iter())
+    }
+}
+
+impl Arbitrary for WriteSequence {
+    type Parameters = Option<Rc<SchemaData>>;
+    type Strategy = BoxedStrategy<WriteSequence>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
+            ArrayType::Dense => {
+                let params = DenseWriteParameters {
+                    schema: Some(schema),
+                    ..Default::default()
+                };
+
+                any_with::<DenseWriteSequence>(params)
+                    .prop_map(WriteSequence::Dense)
+                    .boxed()
+            }
+            ArrayType::Sparse => unimplemented!(),
+        };
+
+        if let Some(schema) = params {
+            strat_schema(schema)
+        } else {
+            any::<SchemaData>()
+                .prop_flat_map(move |schema| strat_schema(Rc::new(schema)))
+                .boxed()
+        }
+    }
+}
+
+pub enum WriteSequenceIter {
+    Dense(<DenseWriteSequence as IntoIterator>::IntoIter),
+}
+
+impl Iterator for WriteSequenceIter {
+    type Item = WriteInput;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let Self::Dense(ref mut dense) = self;
+        dense.next().map(WriteInput::Dense)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
 
-    use crate::array::Mode;
-    use crate::Factory;
+    use super::*;
+    use crate::array::{Array, Mode};
+    use crate::query::{
+        Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
+    };
+    use crate::{Context, Factory};
 
     fn do_write_readback(
         ctx: &Context,
@@ -892,11 +685,12 @@ mod tests {
         let mut array =
             Array::open(ctx, &uri, Mode::Write).expect("Error opening array");
 
-        let mut accumulated_write: Option<WriteQueryData> = None;
+        let mut accumulated_domain: Option<Vec<Range>> = None;
+        let mut accumulated_write: Option<Cells> = None;
 
         for write in write_sequence {
-            /* write data */
-            {
+            /* write data and preserve ranges for sanity check */
+            let write_ranges = {
                 let write = write
                     .attach_write(
                         WriteBuilder::new(array)
@@ -905,82 +699,130 @@ mod tests {
                     .expect("Error building write query")
                     .build();
                 write.submit().expect("Error running write query");
+
+                let write_ranges = write.subarray().unwrap().ranges().unwrap();
+
                 array = write.finalize().expect("Error finalizing write query");
+
+                write_ranges
+            };
+
+            array = Array::open(ctx, array.uri(), Mode::Read).unwrap();
+
+            /* NB: results are not read back in a defined order, so we must sort and compare */
+
+            /* first, read back what we just wrote */
+            {
+                let mut read = write
+                    .attach_read(ReadBuilder::new(array).unwrap())
+                    .unwrap()
+                    .build();
+
+                {
+                    let read_ranges =
+                        read.subarray().unwrap().ranges().unwrap();
+                    assert_eq!(write_ranges, read_ranges);
+                }
+
+                let (mut cells, _) = read.execute().unwrap();
+
+                /* `cells` should match the write */
+                {
+                    let write_sorted = write.cells().sorted();
+                    cells.sort();
+                    assert_eq!(cells, write_sorted);
+                }
+
+                array = read.finalize().unwrap();
+            }
+
+            /* the most recent fragment info should match what we just wrote */
+            {
+                let write_domain = write.domain();
+
+                let fi = array.fragment_info().unwrap();
+                let this_fragment =
+                    fi.get_fragment(fi.num_fragments().unwrap() - 1).unwrap();
+                let nonempty_domain = this_fragment
+                    .non_empty_domain()
+                    .unwrap()
+                    .into_iter()
+                    .map(|typed| typed.range)
+                    .collect::<Vec<_>>();
+
+                assert_eq!(write_domain, nonempty_domain);
+            }
+
+            /* then check array non-empty domain */
+            if accumulated_domain.as_mut().is_some() {
+                /* TODO: range extension, when we update test for a write sequence */
+                unimplemented!()
+            } else {
+                accumulated_domain = Some(write.domain());
+            }
+
+            if let Some(acc) = accumulated_domain.as_ref() {
+                let nonempty = array
+                    .nonempty_domain()
+                    .unwrap()
+                    .unwrap()
+                    .into_iter()
+                    .map(|typed| typed.range)
+                    .collect::<Vec<_>>();
+                assert_eq!(*acc, nonempty);
             }
 
             /* update accumulated expected array data */
             if let Some(acc) = accumulated_write.as_mut() {
-                acc.accumulate(write)
+                acc.copy_from(write.unwrap_cells())
             } else {
-                accumulated_write = Some(write);
+                accumulated_write = Some(write.unwrap_cells());
             }
 
-            let accumulated_write = accumulated_write.as_ref().unwrap();
-
-            /* then read it back */
-            {
-                let mut cursors = accumulated_write
-                    .fields
-                    .keys()
-                    .map(|key| (key.clone(), 0))
-                    .collect::<HashMap<String, usize>>();
-
-                let mut read = accumulated_write
-                    .attach_read(
-                        ReadBuilder::new(array)
-                            .expect("Error building read query"),
-                    )
-                    .expect("Error building read query")
-                    .build();
-
-                loop {
-                    let res = read.step().expect("Error in read query step");
-                    match res.as_ref().into_inner() {
-                        None => unimplemented!(), /* TODO: allocate more */
-                        Some((raw, _)) => {
-                            let raw = &raw.0;
-                            let mut ncells = None;
-                            for (key, rdata) in raw.iter() {
-                                let wdata = &accumulated_write.fields[key];
-
-                                let nv = if let Some(nv) = ncells {
-                                    assert_eq!(nv, rdata.len());
-                                    nv
-                                } else {
-                                    ncells = Some(rdata.len());
-                                    rdata.len()
-                                };
-
-                                let wdata =
-                                    typed_field_data_go!(wdata, wdata, {
-                                        FieldData::from(
-                                            wdata[cursors[key]
-                                                ..cursors[key] + nv]
-                                                .to_vec(),
-                                        )
-                                    });
-
-                                assert_eq!(wdata, *rdata);
-
-                                *cursors.get_mut(key).unwrap() += nv;
-                            }
-                        }
-                    }
-
-                    if res.is_final() {
-                        break;
-                    }
-                }
-
-                array = read.finalize().expect("Error finalizing read query");
-            }
+            /* TODO: read all ranges and check against accumulated writes */
         }
+    }
+
+    /// Test that a single write can be read back correctly
+    #[test]
+    fn write_once_readback() {
+        let ctx = Context::new().expect("Error creating context");
+
+        let requirements = crate::array::schema::strategy::Requirements {
+            domain: Some(Rc::new(
+                crate::array::domain::strategy::Requirements {
+                    array_type: Some(ArrayType::Dense),
+                    num_dimensions: 1..=1,
+                    ..Default::default()
+                },
+            )),
+            num_attributes: 1..=1,
+            attribute_filters: Some(Rc::new(query_write_filter_requirements())),
+            offsets_filters: Some(Rc::new(query_write_filter_requirements())),
+            validity_filters: Some(Rc::new(query_write_filter_requirements())),
+        };
+
+        let strategy = any_with::<SchemaData>(Rc::new(requirements))
+            .prop_flat_map(|schema| {
+                let schema = Rc::new(schema);
+                (
+                    Just(Rc::clone(&schema)),
+                    any_with::<WriteInput>(WriteParameters::default_for(
+                        schema,
+                    ))
+                    .prop_map(WriteSequence::from),
+                )
+            });
+
+        proptest!(|((schema_spec, write_sequence) in strategy)| {
+            do_write_readback(&ctx, schema_spec, write_sequence)
+        })
     }
 
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
     #[ignore]
-    fn write_readback() {
+    fn write_sequence_readback() {
         let ctx = Context::new().expect("Error creating context");
 
         let strategy = any::<SchemaData>().prop_flat_map(|schema| {

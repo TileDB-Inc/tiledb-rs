@@ -187,51 +187,77 @@ pub enum DimensionConstraints {
 
 #[macro_export]
 macro_rules! dimension_constraints_go {
-    ($expr:expr, $DT:ident, $range:pat, $extent:pat, $then:expr, $string:expr) => {
+    ($expr:expr, $DT:ident, $range:pat, $extent:pat, $then:expr, $string:expr) => {{
+        dimension_constraints_go!(
+            $expr, $DT, $range, $extent, $then, $then, $string
+        )
+    }};
+    ($expr:expr, $DT:ident, $range:pat, $extent:pat, $integral:expr, $float:expr, $string:expr) => {{
+        use $crate::array::dimension::DimensionConstraints;
         match $expr {
+            #[allow(unused_variables)]
             DimensionConstraints::Int8($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i8;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Int16($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i16;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Int32($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i32;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Int64($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = i64;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt8($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u8;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt16($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u16;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt32($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u32;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::UInt64($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = u64;
-                $then
+                $integral
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Float32($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = f32;
-                $then
+                $float
             }
+            #[allow(unused_variables)]
             DimensionConstraints::Float64($range, $extent) => {
+                #[allow(dead_code)]
                 type $DT = f64;
-                $then
+                $float
             }
             DimensionConstraints::StringAscii => $string,
         }
-    };
+    }};
 }
 
 macro_rules! dimension_constraints_impl {
@@ -345,6 +371,21 @@ impl DimensionConstraints {
             std::ptr::null()
         )
     }
+
+    /// Returns the number of cells spanned by this constraint, if applicable
+    pub fn num_cells(&self) -> Option<u128> {
+        let (low, high) = crate::dimension_constraints_go!(
+            self,
+            _DT,
+            [low, high],
+            _,
+            (i128::from(*low), i128::from(*high)),
+            return None,
+            return None
+        );
+
+        Some(1 + (high - low) as u128)
+    }
 }
 
 pub struct Builder {
@@ -438,6 +479,68 @@ pub struct DimensionData {
     /// then filters will be inherited from the schema's `coordinate_filters`
     /// field when the array is constructed.
     pub filters: Option<FilterListData>,
+}
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+impl DimensionData {
+    /// Returns a strategy for generating values of this dimension's type
+    /// which fall within the domain of this dimension.
+    pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
+        use crate::query::strategy::FieldValueStrategy;
+        use proptest::prelude::*;
+
+        dimension_constraints_go!(
+            self.constraints,
+            DT,
+            ref domain,
+            _,
+            FieldValueStrategy::from((domain[0]..=domain[1]).boxed()),
+            {
+                assert_eq!(self.datatype, Datatype::StringAscii);
+                FieldValueStrategy::from(any::<u8>().boxed())
+            }
+        )
+    }
+
+    /// Returns a strategy for generating subarray ranges which fall within
+    /// the domain of this dimension.
+    pub fn subarray_strategy(
+        &self,
+        cell_bound: Option<usize>,
+    ) -> Option<proptest::strategy::BoxedStrategy<crate::range::SingleValueRange>>
+    {
+        use crate::range::SingleValueRange;
+        use proptest::prelude::Just;
+        use proptest::strategy::Strategy;
+
+        dimension_constraints_go!(
+            self.constraints,
+            DT,
+            ref domain,
+            _,
+            {
+                let cell_bound = cell_bound
+                    .map(|bound| DT::try_from(bound).unwrap_or(DT::MAX))
+                    .unwrap_or(DT::MAX);
+
+                let domain_lower = domain[0];
+                let domain_upper = domain[1];
+                let strat =
+                    (domain_lower..=domain_upper).prop_flat_map(move |lb| {
+                        let ub = std::cmp::min(
+                            domain_upper,
+                            lb.checked_add(cell_bound).unwrap_or(DT::MAX),
+                        );
+                        (Just(lb), lb..=ub).prop_map(|(min, max)| {
+                            SingleValueRange::from(&[min, max])
+                        })
+                    });
+                Some(strat.boxed())
+            },
+            None,
+            None
+        )
+    }
 }
 
 impl Display for DimensionData {
@@ -760,5 +863,90 @@ mod tests {
             assert_eq!(cmp, cmp);
             assert_ne!(base, cmp);
         }
+    }
+
+    #[test]
+    fn subarray_strategy_dense() {
+        use super::strategy::Requirements;
+        use crate::array::ArrayType;
+        use crate::range::SingleValueRange;
+        use proptest::prelude::*;
+        use proptest::strategy::Strategy;
+        use std::rc::Rc;
+
+        let req = Requirements {
+            array_type: Some(ArrayType::Dense),
+            ..Default::default()
+        };
+        let strat = (
+            any_with::<DimensionData>(req),
+            prop_oneof![Just(None), any::<usize>().prop_map(Some)],
+        )
+            .prop_flat_map(|(d, cell_bound)| {
+                let subarray_strat = d
+                    .subarray_strategy(cell_bound)
+                    .expect("Dense dimension must have a subarray strategy");
+                (Just(Rc::new(d)), Just(cell_bound), subarray_strat)
+            });
+
+        proptest!(|((d, cell_bound, s) in strat)| {
+            if let Some(bound) = cell_bound {
+                assert!(s.num_cells().unwrap() <= bound as u128);
+            }
+            if let Some(num_cells) = d.constraints.num_cells() {
+                assert!(s.num_cells().unwrap() <= num_cells);
+            }
+            match s {
+                SingleValueRange::Int8(start, end) => {
+                    let DimensionConstraints::Int8([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                }
+                SingleValueRange::Int16(start, end) => {
+                    let DimensionConstraints::Int16([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                }
+                SingleValueRange::Int32(start, end) => {
+                    let DimensionConstraints::Int32([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                }
+                SingleValueRange::Int64(start, end) => {
+                    let DimensionConstraints::Int64([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                }
+                SingleValueRange::UInt8(start, end) => {
+                    let DimensionConstraints::UInt8([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                }
+                SingleValueRange::UInt16(start, end) => {
+                    let DimensionConstraints::UInt16([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                }
+                SingleValueRange::UInt32(start, end) => {
+                    let DimensionConstraints::UInt32([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                }
+                SingleValueRange::UInt64(start, end) => {
+                    let DimensionConstraints::UInt64([lb, ub], _) = d.constraints else { unreachable!() };
+                    assert!(lb <= start);
+                    assert!(end <= ub);
+                    assert_eq!(Some((end - start + 1) as u128), s.num_cells());
+                },
+                s => unreachable!("Unexpected range type for dense dimension: {:?}", s)
+            }
+        });
     }
 }

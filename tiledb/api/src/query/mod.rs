@@ -10,6 +10,9 @@ pub mod read;
 pub mod subarray;
 pub mod write;
 
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
+
 pub use self::conditions::QueryConditionExpr;
 pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,

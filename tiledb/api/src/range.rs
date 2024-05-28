@@ -57,6 +57,29 @@ pub enum SingleValueRange {
 }
 
 impl SingleValueRange {
+    /// Returns the number of cells spanned by this range if it is an integral range
+    pub fn num_cells(&self) -> Option<u128> {
+        let (low, high) = crate::single_value_range_go!(self, _DT : Integral, start, end,
+            (i128::from(*start), i128::from(*end)),
+            return None
+        );
+        Some(1 + (high - low) as u128)
+    }
+
+    pub fn is_integral(&self) -> bool {
+        matches!(
+            self,
+            Self::UInt8(_, _)
+                | Self::UInt16(_, _)
+                | Self::UInt32(_, _)
+                | Self::UInt64(_, _)
+                | Self::Int8(_, _)
+                | Self::Int16(_, _)
+                | Self::Int32(_, _)
+                | Self::Int64(_, _)
+        )
+    }
+
     pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
         check_datatype!(self, datatype);
         Ok(())
@@ -125,6 +148,142 @@ macro_rules! single_value_range_go {
             }
         }
     };
+    ($expr:expr, $DT:ident : Integral, $start:pat, $end:pat, $then:expr, $else:expr) => {{
+        use $crate::range::SingleValueRange;
+        match $expr {
+            SingleValueRange::UInt8($start, $end) => {
+                type $DT = u8;
+                $then
+            }
+            SingleValueRange::UInt16($start, $end) => {
+                type $DT = u16;
+                $then
+            }
+            SingleValueRange::UInt32($start, $end) => {
+                type $DT = u32;
+                $then
+            }
+            SingleValueRange::UInt64($start, $end) => {
+                type $DT = u64;
+                $then
+            }
+            SingleValueRange::Int8($start, $end) => {
+                type $DT = i8;
+                $then
+            }
+            SingleValueRange::Int16($start, $end) => {
+                type $DT = i16;
+                $then
+            }
+            SingleValueRange::Int32($start, $end) => {
+                type $DT = i32;
+                $then
+            }
+            SingleValueRange::Int64($start, $end) => {
+                type $DT = i64;
+                $then
+            }
+            SingleValueRange::Float32(_, _) => {
+                type $DT = f32;
+                $else
+            }
+            SingleValueRange::Float64(_, _) => {
+                type $DT = f64;
+                $else
+            }
+        }
+    }};
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $then:expr, $else:expr) => {{
+        use $crate::range::SingleValueRange;
+        match ($lexpr, $rexpr) {
+            (
+                SingleValueRange::UInt8($lstart, $lend),
+                SingleValueRange::UInt8($rstart, $rend),
+            ) => {
+                type $DT = u8;
+                $then
+            }
+            (
+                SingleValueRange::UInt16($lstart, $lend),
+                SingleValueRange::UInt16($rstart, $rend),
+            ) => {
+                type $DT = u16;
+                $then
+            }
+            (
+                SingleValueRange::UInt32($lstart, $lend),
+                SingleValueRange::UInt32($rstart, $rend),
+            ) => {
+                type $DT = u32;
+                $then
+            }
+            (
+                SingleValueRange::UInt64($lstart, $lend),
+                SingleValueRange::UInt64($rstart, $rend),
+            ) => {
+                type $DT = u64;
+                $then
+            }
+            (
+                SingleValueRange::Int8($lstart, $lend),
+                SingleValueRange::Int8($rstart, $rend),
+            ) => {
+                type $DT = i8;
+                $then
+            }
+            (
+                SingleValueRange::Int16($lstart, $lend),
+                SingleValueRange::Int16($rstart, $rend),
+            ) => {
+                type $DT = i16;
+                $then
+            }
+            (
+                SingleValueRange::Int32($lstart, $lend),
+                SingleValueRange::Int32($rstart, $rend),
+            ) => {
+                type $DT = i32;
+                $then
+            }
+            (
+                SingleValueRange::Int64($lstart, $lend),
+                SingleValueRange::Int64($rstart, $rend),
+            ) => {
+                type $DT = i64;
+                $then
+            }
+            (
+                SingleValueRange::Float32($lstart, $lend),
+                SingleValueRange::Float32($rstart, $rend),
+            ) => {
+                type $DT = f32;
+                $then
+            }
+            (
+                SingleValueRange::Float64($lstart, $lend),
+                SingleValueRange::Float64($rstart, $rend),
+            ) => {
+                type $DT = f64;
+                $then
+            }
+            _ => $else,
+        }
+    }};
+}
+
+impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
+    type Error = ();
+    fn try_from(value: SingleValueRange) -> Result<Self, Self::Error> {
+        type Target = i128;
+        single_value_range_go!(value, _DT : Integral, start, end,
+            {
+                let start = Target::from(start);
+                let end = Target::from(end);
+                Ok(start..=end)
+            },
+            Err(())
+        )
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize, PartialEq)]

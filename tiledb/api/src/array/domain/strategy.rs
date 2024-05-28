@@ -2,38 +2,88 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 
-use crate::array::dimension::strategy::*;
-use crate::array::{ArrayType, DomainData};
+use crate::array::dimension::strategy::Requirements as DimensionRequirements;
+use crate::array::{ArrayType, DimensionData, DomainData};
 use crate::datatype::strategy::*;
 use crate::Datatype;
 
-const MIN_DIMENSIONS: usize = 1;
-const MAX_DIMENSIONS: usize = 8;
-
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Requirements {
     pub array_type: Option<ArrayType>,
+    pub num_dimensions: std::ops::RangeInclusive<usize>,
+    pub cells_per_tile_limit: usize,
+}
+
+impl Requirements {
+    pub const DEFAULT_MIN_DIMENSIONS: usize = 1;
+    pub const DEFAULT_MAX_DIMENSIONS: usize = 8;
+
+    pub const DEFAULT_CELLS_PER_TILE_LIMIT: usize = 1024 * 32;
+}
+
+impl Default for Requirements {
+    fn default() -> Self {
+        Requirements {
+            array_type: None,
+            num_dimensions: Self::DEFAULT_MIN_DIMENSIONS
+                ..=Self::DEFAULT_MAX_DIMENSIONS,
+            cells_per_tile_limit: Self::DEFAULT_CELLS_PER_TILE_LIMIT,
+        }
+    }
 }
 
 fn prop_domain_for_array_type(
     array_type: ArrayType,
+    params: &Requirements,
 ) -> impl Strategy<Value = DomainData> {
     match array_type {
         ArrayType::Dense => {
-            any_with::<Datatype>(DatatypeContext::DenseDimension)
-                .prop_flat_map(|dimension_type| {
-                    proptest::collection::vec(
-                        prop_dimension_for_datatype(dimension_type),
-                        MIN_DIMENSIONS..=MAX_DIMENSIONS,
-                    )
-                })
+            let cells_per_tile_limit = params.cells_per_tile_limit;
+
+            /*
+             * The number of cells per tile is the product of the extents of all
+             * dimensions, we have to be careful if there are many dimensions.
+             * If we have D dimensions and the desired bound on the number of
+             * cells per tile is T, then we want to bound each extent on
+             * the Dth root of T
+             */
+            (
+                any_with::<Datatype>(DatatypeContext::DenseDimension),
+                params.num_dimensions.clone(),
+            )
+                .prop_flat_map(
+                    move |(dimension_type, actual_num_dimensions)| {
+                        let dimension_params = DimensionRequirements {
+                            datatype: Some(dimension_type),
+                            extent_limit: {
+                                // Dth root of T is the same as T^(1/D)
+                                f64::powf(
+                                    cells_per_tile_limit as f64,
+                                    1.0f64 / (actual_num_dimensions as f64),
+                                ) as usize
+                                    + 1 // round up, probably won't hurt, might prevent problems
+                            },
+                            ..Default::default()
+                        };
+                        proptest::collection::vec(
+                            any_with::<DimensionData>(dimension_params),
+                            actual_num_dimensions,
+                        )
+                    },
+                )
                 .boxed()
         }
-        ArrayType::Sparse => proptest::collection::vec(
-            prop_dimension_for_array_type(array_type),
-            MIN_DIMENSIONS..=MAX_DIMENSIONS,
-        )
-        .boxed(),
+        ArrayType::Sparse => {
+            let dimension_params = DimensionRequirements {
+                array_type: Some(ArrayType::Sparse),
+                ..Default::default()
+            };
+            proptest::collection::vec(
+                any_with::<DimensionData>(dimension_params),
+                params.num_dimensions.clone(),
+            )
+            .boxed()
+        }
     }
     .prop_map(|dimension| DomainData { dimension })
 }
@@ -42,10 +92,12 @@ fn prop_domain(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = DomainData> {
     if let Some(array_type) = requirements.array_type {
-        prop_domain_for_array_type(array_type).boxed()
+        prop_domain_for_array_type(array_type, requirements.as_ref()).boxed()
     } else {
         prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
-            .prop_flat_map(prop_domain_for_array_type)
+            .prop_flat_map(move |a| {
+                prop_domain_for_array_type(a, requirements.as_ref())
+            })
             .boxed()
     }
 }
@@ -115,6 +167,6 @@ mod tests {
         }
         let last = value.current();
         assert_ne!(init, last);
-        assert_eq!(MIN_DIMENSIONS, last.dimension.len());
+        assert_eq!(Requirements::DEFAULT_MIN_DIMENSIONS, last.dimension.len());
     }
 }
