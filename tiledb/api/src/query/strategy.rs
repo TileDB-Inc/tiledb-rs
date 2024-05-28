@@ -338,6 +338,10 @@ impl FieldData {
         typed_field_data_go!(self, v, v.len())
     }
 
+    pub fn is_cell_single(&self) -> bool {
+        typed_field_data_go!(self, _DT, _, true, false)
+    }
+
     pub fn slice(&self, start: usize, len: usize) -> FieldData {
         typed_field_data_go!(self, ref values, {
             FieldData::from(values[start..start + len].to_vec().clone())

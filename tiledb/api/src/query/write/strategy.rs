@@ -8,6 +8,7 @@ use proptest::test_runner::TestRunner;
 use serde_json::json;
 
 use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
+use crate::datatype::physical::BitsOrd;
 use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::query::read::{CallbackVarArgReadBuilder, MapAdapter};
 use crate::query::strategy::{
@@ -16,7 +17,9 @@ use crate::query::strategy::{
 };
 use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
 use crate::range::{Range, SingleValueRange};
-use crate::{single_value_range_go, Result as TileDBResult};
+use crate::{
+    single_value_range_go, typed_field_data_go, Result as TileDBResult,
+};
 
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
@@ -446,10 +449,51 @@ pub type SparseWriteParameters = DenseWriteParameters; // TODO: determine if thi
 
 #[derive(Debug)]
 pub struct SparseWriteInput {
+    pub dimensions: Vec<(String, CellValNum)>,
     pub data: Cells,
 }
 
 impl SparseWriteInput {
+    pub fn domain(&self) -> Option<Vec<Range>> {
+        self.dimensions
+            .iter()
+            .map(|(dim, cell_val_num)| {
+                let dim_cells = self.data.fields().get(dim).unwrap();
+                Some(typed_field_data_go!(
+                    dim_cells,
+                    _DT,
+                    ref dim_cells,
+                    {
+                        let min =
+                            *dim_cells.iter().min_by(|l, r| l.bits_cmp(r))?;
+                        let max =
+                            *dim_cells.iter().max_by(|l, r| l.bits_cmp(r))?;
+                        Range::from(&[min, max])
+                    },
+                    {
+                        let min = dim_cells
+                            .iter()
+                            .min_by(|l, r| l.bits_cmp(r))?
+                            .clone()
+                            .into_boxed_slice();
+                        let max = dim_cells
+                            .iter()
+                            .max_by(|l, r| l.bits_cmp(r))?
+                            .clone()
+                            .into_boxed_slice();
+                        match cell_val_num {
+                            CellValNum::Fixed(_) => {
+                                Range::try_from((*cell_val_num, min, max))
+                                    .unwrap()
+                            }
+                            CellValNum::Var => Range::from((min, max)),
+                        }
+                    }
+                ))
+            })
+            .collect::<Option<Vec<Range>>>()
+    }
+
     pub fn attach_write<'data>(
         &'data self,
         b: WriteBuilder<'data>,
@@ -479,20 +523,56 @@ impl Arbitrary for SparseWriteInput {
     type Strategy = BoxedStrategy<SparseWriteInput>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let cells_params = if let Some(schema) = params.schema.as_ref() {
-            CellsParameters {
+        if let Some(schema) = params.schema.as_ref() {
+            let schema = Rc::clone(schema);
+            let cells_params = CellsParameters {
                 schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(
-                    schema,
+                    &schema,
                 ))),
                 ..Default::default()
-            }
+            };
+            any_with::<Cells>(cells_params)
+                .prop_map(move |data| {
+                    let dimensions = schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| {
+                            (
+                                d.name.clone(),
+                                d.cell_val_num.unwrap_or(CellValNum::single()),
+                            )
+                        })
+                        .collect::<Vec<(String, CellValNum)>>();
+                    SparseWriteInput { dimensions, data }
+                })
+                .boxed()
         } else {
-            Default::default()
-        };
-
-        any_with::<Cells>(cells_params)
-            .prop_map(|data| SparseWriteInput { data })
-            .boxed()
+            any::<Cells>()
+                .prop_flat_map(|data| {
+                    (0..data.fields().len(), Just(data)).prop_map(
+                        |(ndim, data)| SparseWriteInput {
+                            dimensions: data
+                                .fields()
+                                .iter()
+                                .take(ndim)
+                                .map(|(fname, fdata)| {
+                                    (
+                                        fname.clone(),
+                                        if fdata.is_cell_single() {
+                                            CellValNum::single()
+                                        } else {
+                                            CellValNum::Var
+                                        },
+                                    )
+                                })
+                                .collect::<Vec<(String, CellValNum)>>(),
+                            data,
+                        },
+                    )
+                })
+                .boxed()
+        }
     }
 }
 
@@ -603,14 +683,18 @@ impl WriteInput {
         }
     }
 
-    pub fn domain(&self) -> Vec<Range> {
-        let Self::Dense(ref dense) = self;
-        dense
-            .subarray
-            .clone()
-            .into_iter()
-            .map(Range::from)
-            .collect::<Vec<Range>>()
+    pub fn domain(&self) -> Option<Vec<Range>> {
+        match self {
+            Self::Dense(ref dense) => Some(
+                dense
+                    .subarray
+                    .clone()
+                    .into_iter()
+                    .map(Range::from)
+                    .collect::<Vec<Range>>(),
+            ),
+            Self::Sparse(ref sparse) => sparse.domain(),
+        }
     }
 
     pub fn unwrap_cells(self) -> Cells {
@@ -910,9 +994,7 @@ mod tests {
             }
 
             /* the most recent fragment info should match what we just wrote */
-            {
-                let write_domain = write.domain();
-
+            if let Some(write_domain) = write.domain() {
                 let fi = array.fragment_info().unwrap();
                 let this_fragment =
                     fi.get_fragment(fi.num_fragments().unwrap() - 1).unwrap();
@@ -924,6 +1006,9 @@ mod tests {
                     .collect::<Vec<_>>();
 
                 assert_eq!(write_domain, nonempty_domain);
+            } else {
+                // most recent fragment should be empty,
+                // what does that look like if no data was written?
             }
 
             /* then check array non-empty domain */
@@ -931,7 +1016,7 @@ mod tests {
                 /* TODO: range extension, when we update test for a write sequence */
                 unimplemented!()
             } else {
-                accumulated_domain = Some(write.domain());
+                accumulated_domain = write.domain();
             }
 
             if let Some(acc) = accumulated_domain.as_ref() {
