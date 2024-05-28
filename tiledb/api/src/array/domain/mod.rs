@@ -278,6 +278,20 @@ pub struct DomainData {
     pub dimension: Vec<DimensionData>,
 }
 
+impl DomainData {
+    /// Returns the total number of cells spanned by all dimensions,
+    /// or `None` if:
+    /// - any dimension is not constrained into a domain; or
+    /// - the total number of cells exceeds `usize::MAX`.
+    pub fn num_cells(&self) -> Option<usize> {
+        let mut total = 1u128;
+        for d in self.dimension.iter() {
+            total = total.checked_mul(d.constraints.num_cells()?)?;
+        }
+        usize::try_from(total).ok()
+    }
+}
+
 impl Display for DomainData {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "{}", json!(*self))

@@ -1542,17 +1542,24 @@ impl CellsStrategy {
     fn nrecords_limit(&self) -> Option<usize> {
         if let Some(schema) = self.schema.array_schema() {
             if !schema.allow_duplicates.unwrap_or(true) {
-                let dim_spans: Vec<Option<u128>> = schema
-                    .domain
-                    .dimension
-                    .iter()
-                    .map(|d| d.constraints.num_cells())
-                    .collect::<_>();
-                if !dim_spans.iter().any(|n| n.is_none()) {
-                    let total_cells: u128 =
-                        dim_spans.into_iter().map(Option::unwrap).product();
-                    return usize::try_from(total_cells).ok();
-                }
+                /*
+                 * TODO: this is a much larger constraint than it needs to
+                 * be, we want all the rows to be unique but right now
+                 * too much of the strategy reasons about columns, so it's
+                 * going to be a big effort to restrict this down
+                 * to `DomainData::num_cells` instead
+                 */
+                return usize::try_from(
+                    schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| d.constraints.num_cells())
+                        .filter(|n| n.is_some())
+                        .map(|n| n.unwrap())
+                        .min()?,
+                )
+                .ok();
             }
         }
         None
