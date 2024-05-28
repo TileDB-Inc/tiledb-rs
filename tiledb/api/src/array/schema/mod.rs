@@ -1634,7 +1634,7 @@ mod tests {
         assert_eq!(10000, dense_schema.capacity().unwrap());
         assert_eq!(CellOrder::RowMajor, dense_schema.cell_order().unwrap());
         assert_eq!(TileOrder::RowMajor, dense_schema.tile_order().unwrap());
-        assert_eq!(false, dense_schema.allows_duplicates().unwrap());
+        assert!(!dense_schema.allows_duplicates().unwrap());
 
         let sparse_spec = SchemaData {
             array_type: ArrayType::Sparse,
@@ -1663,6 +1663,6 @@ mod tests {
         assert_eq!(10000, sparse_schema.capacity().unwrap());
         assert_eq!(CellOrder::RowMajor, sparse_schema.cell_order().unwrap());
         assert_eq!(TileOrder::RowMajor, sparse_schema.tile_order().unwrap());
-        assert_eq!(false, sparse_schema.allows_duplicates().unwrap());
+        assert!(!sparse_schema.allows_duplicates().unwrap());
     }
 }

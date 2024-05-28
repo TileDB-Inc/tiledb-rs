@@ -733,6 +733,7 @@ impl ReadCallbackVarArg for RawResultCallback {
 
 /// Query callback which accumulates results from each step into `Cells`
 /// and returns the `Cells` as the final result.
+#[derive(Default)]
 pub struct CellsConstructor {
     cells: Option<Cells>,
 }

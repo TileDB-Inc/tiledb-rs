@@ -443,16 +443,14 @@ impl<I, F> Iterator for ReadQueryIterator<I, F> {
     type Item = TileDBResult<ReadStepOutput<I, F>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(q) = self.query.as_mut() {
-            Some(q.step().map(|r| {
-                if r.is_final() {
-                    self.query = None;
+        self.query.take().map(|mut q| {
+            q.step().map(|r| {
+                if !r.is_final() {
+                    self.query = Some(q);
                 }
                 r
-            }))
-        } else {
-            None
-        }
+            })
+        })
     }
 }
 

@@ -944,7 +944,7 @@ mod tests {
 
                 let write_ranges = if let Some(ranges) = write.ranges() {
                     let generic_ranges = ranges
-                        .into_iter()
+                        .iter()
                         .cloned()
                         .map(|svr| vec![crate::range::Range::Single(svr)])
                         .collect::<Vec<Vec<crate::range::Range>>>();
