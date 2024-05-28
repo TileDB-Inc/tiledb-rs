@@ -1558,9 +1558,7 @@ impl CellsStrategy {
                         .domain
                         .dimension
                         .iter()
-                        .map(|d| d.constraints.num_cells())
-                        .filter(|n| n.is_some())
-                        .map(|n| n.unwrap())
+                        .filter_map(|d| d.constraints.num_cells())
                         .min()?,
                 )
                 .ok();
