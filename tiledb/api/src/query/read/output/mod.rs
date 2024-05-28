@@ -658,6 +658,32 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
     }
 }
 
+/// A set of `QueryBuffers` which can be correctly used by `FixedDataIterator`.
+/// The `QueryBuffers` which is known to have `cell_structure: CellStructure::Fixed(nz)`
+/// for some `1 < nz < u32::MAX`, and also must not own any of the underlying buffers.
+pub struct QueryBuffersFixedDataIterable<'data, C>(QueryBuffers<'data, C>);
+
+impl<'data, C> QueryBuffersFixedDataIterable<'data, C> {
+    pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
+        QueryBuffersCellStructureFixed::accept(value)
+            && !matches!(value.data, Buffer::Owned(_))
+    }
+}
+
+pub struct QueryBuffersVarDataIterable<'data, C>(QueryBuffers<'data, C>);
+
+impl<'data, C> QueryBuffersVarDataIterable<'data, C> {
+    fn accept(value: &QueryBuffers<'data, C>) -> bool {
+        QueryBuffersCellStructureVar::accept(value)
+            && !matches!(value.data, Buffer::Owned(_))
+    }
+}
+
+query_buffers_proof_impls!(
+    QueryBuffersFixedDataIterable,
+    QueryBuffersVarDataIterable
+);
+
 pub struct FixedDataIterator<'data, C> {
     ncells: usize,
     index: usize,
@@ -667,7 +693,7 @@ pub struct FixedDataIterator<'data, C> {
 impl<'data, C> FixedDataIterator<'data, C> {
     pub fn new(
         ncells: usize,
-        input: QueryBuffersCellStructureFixed<'data, C>,
+        input: QueryBuffersFixedDataIterable<'data, C>,
     ) -> Self {
         FixedDataIterator {
             ncells,
@@ -680,16 +706,22 @@ impl<'data, C> FixedDataIterator<'data, C> {
         ncells: usize,
         input: QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
-        match QueryBuffersCellStructureFixed::try_from(input) {
+        match QueryBuffersFixedDataIterable::try_from(input) {
             Ok(qb) => Ok(Self::new(ncells, qb)),
-            Err(qb) => {
-                Err(Error::Datatype(
-                    DatatypeErrorKind::UnexpectedCellStructure {
-                        context: None,
-                        expected: CellValNum::single(), /* TODO: this is not really accurate, any Fixed */
-                        found: qb.cell_structure.as_cell_val_num(),
-                    },
-                ))
+            Err(input) => {
+                if matches!(input.data, Buffer::Owned(_)) {
+                    Err(Error::InvalidArgument(anyhow!(
+                            "FixedDataIterator cannot take ownership of data inside QueryBuffers")))
+                } else {
+                    assert!(!QueryBuffersCellStructureFixed::accept(&input));
+                    Err(Error::Datatype(
+                        DatatypeErrorKind::UnexpectedCellStructure {
+                            context: None,
+                            expected: CellValNum::single(), /* TODO: this is not really accurate, any Fixed */
+                            found: input.cell_structure.as_cell_val_num(),
+                        },
+                    ))
+                }
             }
         }
     }
@@ -742,7 +774,7 @@ pub struct VarDataIterator<'data, C> {
 impl<'data, C> VarDataIterator<'data, C> {
     pub fn new(
         ncells: usize,
-        location: QueryBuffersCellStructureVar<'data, C>,
+        location: QueryBuffersVarDataIterable<'data, C>,
     ) -> Self {
         VarDataIterator {
             ncells,
@@ -755,15 +787,23 @@ impl<'data, C> VarDataIterator<'data, C> {
         ncells: usize,
         location: QueryBuffers<'data, C>,
     ) -> TileDBResult<Self> {
-        match QueryBuffersCellStructureVar::try_from(location) {
+        match QueryBuffersVarDataIterable::try_from(location) {
             Ok(qb) => Ok(Self::new(ncells, qb)),
-            Err(qb) => Err(Error::Datatype(
-                DatatypeErrorKind::UnexpectedCellStructure {
-                    context: None,
-                    expected: CellValNum::Var,
-                    found: qb.cell_structure.as_cell_val_num(),
-                },
-            )),
+            Err(input) => {
+                if matches!(input.data, Buffer::Owned(_)) {
+                    Err(Error::InvalidArgument(anyhow!(
+                                "VarDataIterator cannot take ownership of data inside QueryBuffers")))
+                } else {
+                    assert!(!QueryBuffersCellStructureVar::accept(&input));
+                    Err(Error::Datatype(
+                        DatatypeErrorKind::UnexpectedCellStructure {
+                            context: None,
+                            expected: CellValNum::Var,
+                            found: input.cell_structure.as_cell_val_num(),
+                        },
+                    ))
+                }
+            }
         }
     }
 }
@@ -792,13 +832,16 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
         let data_buffer: &'data [C] = unsafe {
             /*
              * If `self.location.data` is `Buffer::Owned`, then the underlying
-             * data will be dropped when `self` is.
-             * TODO: this actually is unsafe and `test_var_data_iterator_lifetime`
-             * demonstrates that.
+             * data will be dropped when `self` is. The 'data item could live
+             * longer, but would have been dropped. This is undefined behavior.
              *
              * If `self.location.data` is `Buffer::Borrowed`, then the underlying
              * data will be dropped when 'data expires, are returned items
-             * are guaranteed to live at least that long.  Hence this is safe.
+             * are guaranteed to live in the 'data lifetime. This is safe.
+             *
+             * The constructor requires `QueryBuffersVarDataIterable` which
+             * requires `Buffer::Borrowed` for each buffer.
+             * We will never see `Buffer::Owned` here, hence this is safe.
              */
             &*(self.location.data.as_ref() as *const [C]) as &'data [C]
         };
@@ -934,67 +977,49 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn test_fixed_data_iterator_lifetime() {
         let data = vec![0u8, 1, 2, 3, 4, 5, 6, 7];
 
         let mut databuf = Buffer::Borrowed(&data);
 
-        let item = {
-            let _ = std::mem::replace(
-                &mut databuf,
-                Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
-            );
+        let _ = std::mem::replace(
+            &mut databuf,
+            Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
+        );
 
-            FixedDataIterator::try_new(
-                2,
-                QueryBuffers {
-                    data: databuf,
-                    cell_structure: CellStructure::from(
-                        NonZeroU32::new(4).unwrap(),
-                    ),
-                    validity: None,
-                },
-            )
-            .unwrap()
-            .next()
-        }
-        .unwrap();
-
-        // this is a use after free which passes if you're lucky. valgrind catches it
-        // SC-46534
-        assert_eq!(item, vec![0, 1, 2, 3].as_slice());
+        let try_new = FixedDataIterator::try_new(
+            2,
+            QueryBuffers {
+                data: databuf,
+                cell_structure: CellStructure::from(
+                    NonZeroU32::new(4).unwrap(),
+                ),
+                validity: None,
+            },
+        );
+        assert!(matches!(try_new, Err(Error::InvalidArgument(_))));
     }
 
     #[test]
-    #[ignore]
     fn test_var_data_iterator_lifetime() {
         let data = vec![0u8; 16]; // not important
         let offsets = vec![0u64, 4, 8, 12, data.len() as u64];
 
         let mut databuf = Buffer::Borrowed(&data);
 
-        let item = {
-            let _ = std::mem::replace(
-                &mut databuf,
-                Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
-            );
+        let _ = std::mem::replace(
+            &mut databuf,
+            Buffer::Owned(vec![1u8; 16].into_boxed_slice()),
+        );
 
-            VarDataIterator::try_new(
-                offsets.len(),
-                QueryBuffers {
-                    data: databuf,
-                    cell_structure: CellStructure::Var(offsets.into()),
-                    validity: None,
-                },
-            )
-            .unwrap()
-            .next()
-        }
-        .unwrap();
-
-        // this is a use after free which passes if you're lucky. valgrind catches it
-        // SC-46534
-        assert_eq!(item, vec![1u8; 4]);
+        let try_new = VarDataIterator::try_new(
+            offsets.len(),
+            QueryBuffers {
+                data: databuf,
+                cell_structure: CellStructure::Var(offsets.into()),
+                validity: None,
+            },
+        );
+        assert!(matches!(try_new, Err(Error::InvalidArgument(_))));
     }
 }

@@ -457,12 +457,13 @@ macro_rules! query_buffers_proof_impls {
         )+
     }
 }
+pub(crate) use query_buffers_proof_impls;
 
 /// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Fixed(1)`.
 pub struct QueryBuffersCellStructureSingle<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> QueryBuffersCellStructureSingle<'data, C> {
-    fn accept(value: &QueryBuffers<'data, C>) -> bool {
+    pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
         value.cell_structure.is_single()
     }
 }
@@ -472,7 +473,7 @@ impl<'data, C> QueryBuffersCellStructureSingle<'data, C> {
 pub struct QueryBuffersCellStructureFixed<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> QueryBuffersCellStructureFixed<'data, C> {
-    fn accept(value: &QueryBuffers<'data, C>) -> bool {
+    pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
         matches!(&value.cell_structure, CellStructure::Fixed(ref nz) if nz.get() != 1)
     }
 }
@@ -481,7 +482,7 @@ impl<'data, C> QueryBuffersCellStructureFixed<'data, C> {
 pub struct QueryBuffersCellStructureVar<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> QueryBuffersCellStructureVar<'data, C> {
-    fn accept(value: &QueryBuffers<'data, C>) -> bool {
+    pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
         value.cell_structure.is_var()
     }
 }
