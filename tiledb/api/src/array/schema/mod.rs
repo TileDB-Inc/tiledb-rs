@@ -959,15 +959,13 @@ pub mod strategy;
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-    use tempfile::TempDir;
-
     use super::*;
     use crate::array::tests::create_quickstart_dense;
     use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
     use crate::filter::{
         CompressionData, CompressionType, FilterData, FilterListBuilder,
     };
+    use crate::test_util::{self, TestArrayUri};
 
     fn sample_attribute(c: &Context) -> Attribute {
         AttributeBuilder::new(c, "a1", Datatype::Int32)
@@ -1119,15 +1117,16 @@ mod tests {
     }
 
     #[test]
-    fn test_load() -> io::Result<()> {
-        let tmp_dir = TempDir::new()?;
+    fn test_load() -> TileDBResult<()> {
+        let test_uri = test_util::get_uri_generator()?;
 
         let c: Context = Context::new().unwrap();
 
-        let r = create_quickstart_dense(&tmp_dir, &c);
+        let r = create_quickstart_dense(&test_uri, &c);
         assert!(r.is_ok());
+        let uri = r.ok().unwrap();
 
-        let schema = Schema::load(&c, r.unwrap())
+        let schema = Schema::load(&c, uri)
             .expect("Could not open quickstart_dense schema");
 
         let domain = schema.domain().expect("Error reading domain");
@@ -1149,9 +1148,7 @@ mod tests {
         assert_eq!(cols_domain[1], 4);
 
         // Make sure we can remove the array we created.
-        tmp_dir.close()?;
-
-        Ok(())
+        test_uri.close()
     }
 
     #[test]

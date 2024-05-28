@@ -744,18 +744,17 @@ impl Builder {
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use tempfile::TempDir;
-
     use crate::array::*;
     use crate::config::Config;
     use crate::query::{QueryBuilder, WriteBuilder};
+    use crate::test_util::{self, TestArrayUri};
     use crate::Datatype;
 
     #[test]
     fn test_set_config() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
 
         let config = Config::new()?;
         let frag_infos =
@@ -769,8 +768,8 @@ pub mod tests {
     #[test]
     fn test_get_config() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.config().is_ok());
@@ -781,8 +780,8 @@ pub mod tests {
     #[test]
     fn test_load_infos() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build_without_loading();
 
         assert!(frag_infos.load().is_ok());
@@ -793,8 +792,8 @@ pub mod tests {
     #[test]
     fn test_unconsolidated_metadata_num() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.unconsolidated_metadata_num().is_ok());
@@ -805,8 +804,8 @@ pub mod tests {
     #[test]
     fn test_num_to_vacuum() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.num_to_vacuum().is_ok());
@@ -817,8 +816,8 @@ pub mod tests {
     #[test]
     fn test_total_cell_count() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         let cell_count = frag_infos.total_cell_count()?;
@@ -830,8 +829,8 @@ pub mod tests {
     #[test]
     fn test_num_fragments() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         let num_frags = frag_infos.num_fragments()?;
@@ -843,8 +842,8 @@ pub mod tests {
     #[test]
     fn test_get_fragment() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.get_fragment(0).is_ok());
@@ -855,8 +854,8 @@ pub mod tests {
     #[test]
     fn test_get_fragment_failure() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         assert!(frag_infos.get_fragment(3).is_err());
@@ -867,8 +866,8 @@ pub mod tests {
     #[test]
     fn test_iter_fragments() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let array_uri = create_dense_array(&ctx, &test_uri)?;
         let frag_infos = Builder::new(&ctx, array_uri)?.build()?;
 
         let mut num_frags = 0;
@@ -884,9 +883,9 @@ pub mod tests {
     #[test]
     fn test_fragment_info_apis() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        let dense_array_uri = create_dense_array(&ctx, &tmp_dir).unwrap();
-        let sparse_array_uri = create_sparse_array(&ctx, &tmp_dir).unwrap();
+        let test_uri = test_util::get_uri_generator()?;
+        let dense_array_uri = create_dense_array(&ctx, &test_uri)?;
+        let sparse_array_uri = create_sparse_array(&ctx, &test_uri)?;
 
         check_fragment_info_apis(&ctx, &dense_array_uri, FragmentType::Dense)?;
         check_fragment_info_apis(
@@ -928,10 +927,9 @@ pub mod tests {
     /// Create a simple dense test array with a couple fragments to inspect.
     pub fn create_dense_array(
         ctx: &Context,
-        dir: &TempDir,
+        test_uri: &dyn TestArrayUri,
     ) -> TileDBResult<String> {
-        let array_dir = dir.path().join("fragment_info_test_dense");
-        let array_uri = String::from(array_dir.to_str().unwrap());
+        let array_uri = test_uri.with_path("fragment_info_test_dense")?;
 
         let domain = {
             let rows = DimensionBuilder::new(
@@ -972,10 +970,9 @@ pub mod tests {
     /// Create a simple sparse test array with a couple fragments to inspect.
     pub fn create_sparse_array(
         ctx: &Context,
-        dir: &TempDir,
+        test_uri: &dyn TestArrayUri,
     ) -> TileDBResult<String> {
-        let array_dir = dir.path().join("fragment_info_test_sparse");
-        let array_uri = String::from(array_dir.to_str().unwrap());
+        let array_uri = test_uri.with_path("fragment_info_test_sparse")?;
 
         let domain = {
             let rows = DimensionBuilder::new(

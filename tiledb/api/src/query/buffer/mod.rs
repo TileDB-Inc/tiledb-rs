@@ -418,41 +418,53 @@ impl<'data, T> QueryBuffersMut<'data, T> {
     }
 }
 
+/// Generates a set of `impl`s for a "query buffer proof", which we
+/// use to mean a type which wraps a `QueryBuffers` if the wrapped buffers
+/// satisfies some property. Code which accesses the wrapped buffers may
+/// safely assume the property is satisfied, which is useful for things
+/// like `unwrap` and `unsafe`.
+///
+/// Usage of this macro for a type requires a method `fn accept` which
+/// returns whether a `QueryBuffers` satisfies the property desired by the type.
+macro_rules! query_buffers_proof_impls {
+    ($($Q:ident),+) => {
+        $(
+            impl<'data, C> $Q<'data, C> {
+                pub fn into_inner(self) -> QueryBuffers<'data, C> {
+                    self.0
+                }
+            }
+
+            impl<'data, C> AsRef<QueryBuffers<'data, C>> for $Q<'data, C>
+            {
+                fn as_ref(&self) -> &QueryBuffers<'data, C> {
+                    &self.0
+                }
+            }
+
+            impl<'data, C> TryFrom<QueryBuffers<'data, C>> for $Q<'data, C>
+            {
+                type Error = QueryBuffers<'data, C>;
+
+                fn try_from(value: QueryBuffers<'data, C>) -> Result<Self, Self::Error> {
+                    if Self::accept(&value) {
+                        Ok(Self(value))
+                    } else {
+                        Err(value)
+                    }
+                }
+            }
+        )+
+    }
+}
+pub(crate) use query_buffers_proof_impls;
+
 /// A set of `QueryBuffers` which is known to have `cell_structure: CellStructure::Fixed(1)`.
 pub struct QueryBuffersCellStructureSingle<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> QueryBuffersCellStructureSingle<'data, C> {
-    pub fn into_inner(self) -> QueryBuffers<'data, C> {
-        self.0
-    }
-}
-
-impl<'data, C> TryFrom<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureSingle<'data, C>
-{
-    type Error = QueryBuffers<'data, C>;
-    fn try_from(value: QueryBuffers<'data, C>) -> Result<Self, Self::Error> {
-        if value.cell_structure.is_single() {
-            Ok(Self(value))
-        } else {
-            Err(value)
-        }
-    }
-}
-
-impl<'data, C> AsRef<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureSingle<'data, C>
-{
-    fn as_ref(&self) -> &QueryBuffers<'data, C> {
-        &self.0
-    }
-}
-
-impl<'data, C> AsMut<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureSingle<'data, C>
-{
-    fn as_mut(&mut self) -> &mut QueryBuffers<'data, C> {
-        &mut self.0
+    pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
+        value.cell_structure.is_single()
     }
 }
 
@@ -461,38 +473,8 @@ impl<'data, C> AsMut<QueryBuffers<'data, C>>
 pub struct QueryBuffersCellStructureFixed<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> QueryBuffersCellStructureFixed<'data, C> {
-    pub fn into_inner(self) -> QueryBuffers<'data, C> {
-        self.0
-    }
-}
-
-impl<'data, C> TryFrom<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureFixed<'data, C>
-{
-    type Error = QueryBuffers<'data, C>;
-    fn try_from(value: QueryBuffers<'data, C>) -> Result<Self, Self::Error> {
-        if matches!(&value.cell_structure, CellStructure::Fixed(ref nz) if nz.get() != 1)
-        {
-            Ok(Self(value))
-        } else {
-            Err(value)
-        }
-    }
-}
-
-impl<'data, C> AsRef<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureFixed<'data, C>
-{
-    fn as_ref(&self) -> &QueryBuffers<'data, C> {
-        &self.0
-    }
-}
-
-impl<'data, C> AsMut<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureFixed<'data, C>
-{
-    fn as_mut(&mut self) -> &mut QueryBuffers<'data, C> {
-        &mut self.0
+    pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
+        matches!(&value.cell_structure, CellStructure::Fixed(ref nz) if nz.get() != 1)
     }
 }
 
@@ -500,39 +482,16 @@ impl<'data, C> AsMut<QueryBuffers<'data, C>>
 pub struct QueryBuffersCellStructureVar<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> QueryBuffersCellStructureVar<'data, C> {
-    pub fn into_inner(self) -> QueryBuffers<'data, C> {
-        self.0
+    pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
+        value.cell_structure.is_var()
     }
 }
 
-impl<'data, C> TryFrom<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureVar<'data, C>
-{
-    type Error = QueryBuffers<'data, C>;
-    fn try_from(value: QueryBuffers<'data, C>) -> Result<Self, Self::Error> {
-        if value.cell_structure.is_var() {
-            Ok(Self(value))
-        } else {
-            Err(value)
-        }
-    }
-}
-
-impl<'data, C> AsRef<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureVar<'data, C>
-{
-    fn as_ref(&self) -> &QueryBuffers<'data, C> {
-        &self.0
-    }
-}
-
-impl<'data, C> AsMut<QueryBuffers<'data, C>>
-    for QueryBuffersCellStructureVar<'data, C>
-{
-    fn as_mut(&mut self) -> &mut QueryBuffers<'data, C> {
-        &mut self.0
-    }
-}
+query_buffers_proof_impls!(
+    QueryBuffersCellStructureSingle,
+    QueryBuffersCellStructureFixed,
+    QueryBuffersCellStructureVar
+);
 
 pub enum TypedQueryBuffers<'data> {
     UInt8(QueryBuffers<'data, u8>),
