@@ -154,6 +154,10 @@ impl Domain {
             name
         )))
     }
+
+    pub fn dimensions(&self) -> TileDBResult<Dimensions> {
+        Dimensions::new(self)
+    }
 }
 
 impl Debug for Domain {
@@ -187,6 +191,35 @@ impl PartialEq<Domain> for Domain {
         }
 
         true
+    }
+}
+
+pub struct Dimensions<'a> {
+    domain: &'a Domain,
+    cursor: usize,
+    bound: usize,
+}
+
+impl<'a> Dimensions<'a> {
+    pub fn new(domain: &'a Domain) -> TileDBResult<Self> {
+        Ok(Dimensions {
+            domain,
+            cursor: 0,
+            bound: domain.ndim()?,
+        })
+    }
+}
+
+impl<'a> Iterator for Dimensions<'a> {
+    type Item = TileDBResult<Dimension>;
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.bound {
+            None
+        } else {
+            let item = self.domain.dimension(self.bound);
+            self.cursor += 1;
+            Some(item)
+        }
     }
 }
 

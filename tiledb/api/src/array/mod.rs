@@ -1,17 +1,21 @@
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::num::NonZeroU32;
 use std::ops::Deref;
 
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use util::option::OptionSubset;
 
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::error::ModeErrorKind;
+use crate::datatype::{LogicalType, PhysicalType};
+use crate::error::{DatatypeErrorKind, Error, ModeErrorKind};
 use crate::key::LookupKey;
 use crate::metadata::Metadata;
-use crate::Datatype;
+use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
 use crate::Result as TileDBResult;
+use crate::{fn_typed, Datatype};
 
 pub mod attribute;
 pub mod dimension;
@@ -67,7 +71,7 @@ impl TryFrom<ffi::tiledb_query_type_t> for Mode {
                 Mode::ModifyExclusive
             }
             _ => {
-                return Err(crate::error::Error::ModeType(
+                return Err(Error::ModeType(
                     ModeErrorKind::InvalidDiscriminant(value as u64),
                 ))
             }
@@ -367,6 +371,298 @@ impl Array {
         let datatype = Datatype::try_from(c_datatype)?;
         Ok(Some(datatype))
     }
+
+    // Implements `dimension_nonempty_domain` for dimensions with CellValNum::Fixed
+    fn dimension_nonempty_domain_impl_fixed<DT>(
+        &self,
+        dimension_key: LookupKey,
+        cell_val_num: NonZeroU32,
+    ) -> TileDBResult<Option<Range>>
+    where
+        DT: PhysicalType,
+        SingleValueRange: for<'a> From<&'a [DT; 2]>,
+    {
+        let num_values = cell_val_num.get() as usize;
+        let mut domain = vec![DT::default(); 2 * num_values].into_boxed_slice();
+
+        let c_array = *self.raw;
+        let c_domain = domain.as_mut_ptr() as *mut std::ffi::c_void;
+        let mut c_is_empty = out_ptr!();
+
+        match dimension_key {
+            LookupKey::Index(idx) => {
+                let c_idx: u32 = idx.try_into().map_err(
+                    |e: <usize as TryInto<u32>>::Error| {
+                        Error::InvalidArgument(anyhow!(e))
+                    },
+                )?;
+
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_non_empty_domain_from_index(
+                        ctx,
+                        c_array,
+                        c_idx,
+                        c_domain,
+                        &mut c_is_empty,
+                    )
+                })
+            }
+            LookupKey::Name(name) => {
+                let c_name = cstring!(name);
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_non_empty_domain_from_name(
+                        ctx,
+                        c_array,
+                        c_name.as_ptr(),
+                        c_domain,
+                        &mut c_is_empty,
+                    )
+                })
+            }
+        }?;
+
+        // dimension either has cell val num var or 1 right now,
+        // but this is written to be easy to upgrade if that ever changes
+        assert_eq!(
+            num_values, 1,
+            "Unexpected cell val num for dimension: {:?}",
+            cell_val_num
+        );
+
+        if c_is_empty == 1 {
+            Ok(None)
+        } else if num_values == 1 {
+            Ok(Some(Range::Single(SingleValueRange::from(&[
+                domain[0], domain[1],
+            ]))))
+        } else {
+            unreachable!()
+        }
+    }
+
+    // Implements `dimension_nonempty_domain` for dimensions with CellValNum::Var
+    fn dimension_nonempty_domain_impl_var<DT>(
+        &self,
+        dimension_key: LookupKey,
+        datatype: Datatype,
+    ) -> TileDBResult<Option<VarValueRange>>
+    where
+        DT: PhysicalType,
+        VarValueRange: From<(Box<[DT]>, Box<[DT]>)>,
+    {
+        let c_array = *self.raw;
+        let mut c_is_empty: i32 = out_ptr!();
+
+        match dimension_key {
+            LookupKey::Index(idx) => {
+                let c_idx: u32 = idx.try_into().map_err(
+                    |e: <usize as TryInto<u32>>::Error| {
+                        Error::InvalidArgument(anyhow!(e))
+                    },
+                )?;
+
+                let mut start_size: u64 = out_ptr!();
+                let mut end_size: u64 = out_ptr!();
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_non_empty_domain_var_size_from_index(
+                        ctx,
+                        c_array,
+                        c_idx,
+                        &mut start_size,
+                        &mut end_size,
+                        &mut c_is_empty,
+                    )
+                })?;
+
+                if c_is_empty == 1 {
+                    return Ok(None);
+                }
+
+                if start_size % std::mem::size_of::<DT>() as u64 != 0 {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::TypeMismatch {
+                            user_type: std::any::type_name::<DT>().to_owned(),
+                            tiledb_type: datatype,
+                        },
+                    ));
+                }
+
+                if end_size % std::mem::size_of::<DT>() as u64 != 0 {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::TypeMismatch {
+                            user_type: std::any::type_name::<DT>().to_owned(),
+                            tiledb_type: datatype,
+                        },
+                    ));
+                }
+
+                let start_nelems =
+                    start_size / std::mem::size_of::<DT>() as u64;
+                let end_nelems = end_size / std::mem::size_of::<DT>() as u64;
+
+                let mut start = vec![DT::default(); start_nelems as usize]
+                    .into_boxed_slice();
+                let mut end =
+                    vec![DT::default(); end_nelems as usize].into_boxed_slice();
+
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_non_empty_domain_var_from_index(
+                        ctx,
+                        c_array,
+                        c_idx,
+                        start.as_mut_ptr() as *mut std::ffi::c_void,
+                        end.as_mut_ptr() as *mut std::ffi::c_void,
+                        &mut c_is_empty,
+                    )
+                })?;
+
+                if c_is_empty == 1 {
+                    unreachable!("Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
+                            dimension_key, start_size, end_size)
+                } else {
+                    Ok(Some(VarValueRange::from((start, end))))
+                }
+            }
+            LookupKey::Name(name) => {
+                let c_name = cstring!(name);
+
+                let mut start_size: u64 = out_ptr!();
+                let mut end_size: u64 = out_ptr!();
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_non_empty_domain_var_size_from_name(
+                        ctx,
+                        c_array,
+                        c_name.as_ptr(),
+                        &mut start_size,
+                        &mut end_size,
+                        &mut c_is_empty,
+                    )
+                })?;
+
+                if c_is_empty == 1 {
+                    return Ok(None);
+                }
+
+                if start_size % std::mem::size_of::<DT>() as u64 != 0 {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::TypeMismatch {
+                            user_type: std::any::type_name::<DT>().to_owned(),
+                            tiledb_type: datatype,
+                        },
+                    ));
+                }
+
+                if end_size % std::mem::size_of::<DT>() as u64 != 0 {
+                    return Err(Error::Datatype(
+                        DatatypeErrorKind::TypeMismatch {
+                            user_type: std::any::type_name::<DT>().to_owned(),
+                            tiledb_type: datatype,
+                        },
+                    ));
+                }
+
+                let start_nelems =
+                    start_size / std::mem::size_of::<DT>() as u64;
+                let end_nelems = end_size / std::mem::size_of::<DT>() as u64;
+
+                let mut start = vec![DT::default(); start_nelems as usize]
+                    .into_boxed_slice();
+                let mut end =
+                    vec![DT::default(); end_nelems as usize].into_boxed_slice();
+
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_get_non_empty_domain_var_from_name(
+                        ctx,
+                        c_array,
+                        c_name.as_ptr(),
+                        start.as_mut_ptr() as *mut std::ffi::c_void,
+                        end.as_mut_ptr() as *mut std::ffi::c_void,
+                        &mut c_is_empty,
+                    )
+                })?;
+
+                if c_is_empty == 1 {
+                    unreachable!("Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
+                            c_name, start_size, end_size)
+                } else {
+                    Ok(Some(VarValueRange::from((start, end))))
+                }
+            }
+        }
+    }
+
+    fn dimension_nonempty_domain_impl(
+        &self,
+        dimension_key: LookupKey,
+        datatype: Datatype,
+        cell_val_num: CellValNum,
+    ) -> TileDBResult<Option<TypedRange>> {
+        match cell_val_num {
+            CellValNum::Fixed(nz) => {
+                fn_typed!(datatype, LT, {
+                    type DT = <LT as LogicalType>::PhysicalType;
+                    Ok(self
+                        .dimension_nonempty_domain_impl_fixed::<DT>(
+                            dimension_key,
+                            nz,
+                        )?
+                        .map(|range| TypedRange { datatype, range }))
+                })
+            }
+            CellValNum::Var => {
+                fn_typed!(datatype, LT, {
+                    type DT = <LT as LogicalType>::PhysicalType;
+                    let var_range = self
+                        .dimension_nonempty_domain_impl_var::<DT>(
+                            dimension_key,
+                            datatype,
+                        )?;
+                    Ok(var_range.map(|var_range| TypedRange {
+                        datatype,
+                        range: Range::Var(var_range),
+                    }))
+                })
+            }
+        }
+    }
+
+    /// Returns the non-empty domain of a dimension from this array, if any.
+    ///
+    /// The domain of a dimension is the range of allowed coordinate values.
+    /// It is an aspect of the array schema and is determined when the array is created.
+    /// The *non-empty* domain of a dimension is the minimum and maximum
+    /// coordinate values which have been populated.
+    ///
+    /// This is the union of the non-empty domains of all array fragments.
+    pub fn dimension_nonempty_domain(
+        &self,
+        dimension_key: impl Into<LookupKey>,
+    ) -> TileDBResult<Option<TypedRange>> {
+        let key = dimension_key.into();
+        let (datatype, cell_val_num) = {
+            let dim = self.schema()?.domain()?.dimension(key.clone())?;
+            (dim.datatype()?, dim.cell_val_num()?)
+        };
+        self.dimension_nonempty_domain_impl(key, datatype, cell_val_num)
+    }
+
+    /// Returns the non-empty domain of all dimensions from this array, if any.
+    ///
+    /// The domain of an array is the range of allowed coordinate values
+    /// for each dimension. It is an aspect of the array schema and is
+    /// determined when the array is created.
+    /// The *non-empty* domain of an array is the minimum and maximum
+    /// coordinate values of each dimension which have been populated.
+    ///
+    /// This is the union of all the non-empty domains of all array fragments.
+    pub fn nonempty_domain(&self) -> TileDBResult<Option<Vec<TypedRange>>> {
+        // note to devs: calling `tiledb_array_get_non_empty_domain`
+        // looks like a huge pain, if this is ever a performance bottleneck
+        // then maybe we can look into it
+        (0..self.schema()?.domain()?.ndim()?)
+            .map(|d| self.dimension_nonempty_domain(d))
+            .collect::<TileDBResult<Option<Vec<TypedRange>>>>()
+    }
 }
 
 impl Drop for Array {
@@ -382,7 +678,6 @@ pub mod strategy;
 
 #[cfg(test)]
 pub mod tests {
-    use crate::error::Error;
     use std::io;
     use tempfile::TempDir;
 

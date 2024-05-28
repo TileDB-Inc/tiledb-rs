@@ -5,8 +5,8 @@
 // This is a list of constants that we are ignoring.
 
 // We use the tiledb_version function instead.
-pub const TILEDB_VERSION_MAJOR: u32 = 2;
-pub const TILEDB_VERSION_MINOR: u32 = 21;
+pub const TILEDB_VERSION_MAJOR: u32 = 0;
+pub const TILEDB_VERSION_MINOR: u32 = 0;
 pub const TILEDB_VERSION_PATCH: u32 = 0;
 
 // This is a list of functions that we are currently planning on not wrapping.
@@ -413,5 +413,17 @@ extern "C" {
         range_idx: u64,
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
+    ) -> i32;
+
+    // This function copies the non-empty domain values from each coordinate
+    // into the user buffer. That's nice in C where you can just tell bytes
+    // what their destiny is, but it's a pain in Rust. Until we discover
+    // a reason not to, we'll just implement this in Rust by iterating
+    // over the dimensions.
+    pub fn tiledb_array_get_non_empty_domain(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        domain: *mut ::std::os::raw::c_void,
+        is_empty: *mut i32,
     ) -> i32;
 }

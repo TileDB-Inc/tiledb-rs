@@ -61,14 +61,23 @@ fn generate_bindings(generated: &String, wrapper: &String) -> Result<()> {
         return Err(anyhow!("Missing wrapper file: {}", wrapper));
     }
 
-    let bindings = bindgen::Builder::default()
+    let tiledb_lib = pkg_config::Config::new()
+        .cargo_metadata(false)
+        .env_metadata(false)
+        .arg("--variable=includedir")
+        .probe("tiledb")?;
+
+    let mut bindings = bindgen::Builder::default()
         .header(wrapper)
         .allowlist_function("^tiledb_.*")
         .allowlist_type("^tiledb_.*")
-        .allowlist_var("^TILEDB_.*")
-        .clang_arg("-I/opt/tiledb/include")
-        .generate()
-        .expect("Error generating bindings!");
+        .allowlist_var("^TILEDB_.*");
+
+    for path in tiledb_lib.include_paths.iter() {
+        bindings = bindings.clang_arg(format!("-I{}", path.to_string_lossy()));
+    }
+
+    let bindings = bindings.generate().expect("Error generating bindings!");
 
     bindings
         .write_to_file(genpath)

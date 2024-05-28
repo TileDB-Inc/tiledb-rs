@@ -125,60 +125,54 @@ fn prop_bitwidthreduction() -> impl Strategy<Value = FilterData> {
 fn prop_compression_delta_strategies(
     input_datatype: Option<Datatype>,
 ) -> Vec<BoxedStrategy<CompressionType>> {
-    if let Some(input_datatype) = input_datatype {
-        if input_datatype.is_real_type() {
-            let delta = any_with::<Datatype>(
-                DatatypeContext::DeltaFilterReinterpretDatatype,
-            )
-            .prop_filter(
-                "input_datatype is floating-point, input must not be Any",
-                move |dt| {
-                    if input_datatype.is_real_type() {
-                        !dt.is_real_type() && *dt != Datatype::Any
-                    } else {
-                        !dt.is_real_type()
-                    }
-                },
-            )
-            .prop_map(|dt| CompressionType::Delta {
-                reinterpret_datatype: Some(dt),
-            });
+    fn validate_type(
+        in_dtype: &Option<Datatype>,
+        reinterpret_dtype: &Datatype,
+    ) -> bool {
+        if let Some(in_dtype) = in_dtype {
+            // If we're reinterpreting away from a floating point input,
+            // the reinterpreted type must not be Any.
+            if in_dtype.is_real_type() && *reinterpret_dtype == Datatype::Any {
+                return false;
+            }
 
-            let double_delta = any::<Datatype>()
-                .prop_filter(
-                    "input_datatype is floating-point, input must not be Any",
-                    move |dt| {
-                        if input_datatype.is_real_type() {
-                            !dt.is_real_type() && *dt != Datatype::Any
-                        } else {
-                            !dt.is_real_type()
-                        }
-                    },
-                )
-                .prop_map(|dt| CompressionType::DoubleDelta {
-                    reinterpret_datatype: Some(dt),
-                });
+            // The reinterpreted type can never be real
+            if reinterpret_dtype.is_real_type() {
+                return false;
+            }
 
-            return vec![delta.boxed(), double_delta.boxed()];
+            // The delta filter requires that after reinterpreting the
+            // datatype that the resulting buffer size is a evenly divisible
+            // by the new type. The easiest way for us to guarantee that
+            // is to only allow for reinterpreting to types that have a
+            // smaller width that evenly divide the larger input type size.
+            if in_dtype.size() % reinterpret_dtype.size() != 0 {
+                return false;
+            }
+        } else {
+            // The reinterpret datatype can never be a real type.
+            if reinterpret_dtype.is_real_type() {
+                return false;
+            }
         }
+
+        true
     }
 
     /* any non-float type is allowed */
     let delta =
         any_with::<Datatype>(DatatypeContext::DeltaFilterReinterpretDatatype)
-            .prop_filter(
-                "reinterpret_datatype cannot be floating-point",
-                |dt| !dt.is_real_type(),
-            )
+            .prop_filter("Invalid reinterpret_datatype", move |dt| {
+                validate_type(&input_datatype, dt)
+            })
             .prop_map(|dt| CompressionType::Delta {
                 reinterpret_datatype: Some(dt),
             });
     let double_delta =
         any_with::<Datatype>(DatatypeContext::DeltaFilterReinterpretDatatype)
-            .prop_filter(
-                "reinterpret_datatype cannot be floating-point",
-                |dt| !dt.is_real_type(),
-            )
+            .prop_filter("Invalid reinterpret_datatype", move |dt| {
+                validate_type(&input_datatype, dt)
+            })
             .prop_map(|dt| CompressionType::DoubleDelta {
                 reinterpret_datatype: Some(dt),
             });
