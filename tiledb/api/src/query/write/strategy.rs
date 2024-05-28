@@ -19,7 +19,7 @@ use crate::query::strategy::{
     FieldDataParameters, StructuredCells,
 };
 use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
-use crate::range::SingleValueRange;
+use crate::range::{Range, SingleValueRange};
 use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
 
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
@@ -521,6 +521,16 @@ impl WriteInput {
         &dense.data
     }
 
+    pub fn domain(&self) -> Vec<Range> {
+        let Self::Dense(ref dense) = self;
+        dense
+            .subarray
+            .clone()
+            .into_iter()
+            .map(Range::from)
+            .collect::<Vec<Range>>()
+    }
+
     pub fn unwrap_cells(self) -> Cells {
         let Self::Dense(dense) = self;
         dense.data
@@ -675,6 +685,7 @@ mod tests {
         let mut array =
             Array::open(ctx, &uri, Mode::Write).expect("Error opening array");
 
+        let mut accumulated_domain: Option<Vec<Range>> = None;
         let mut accumulated_write: Option<Cells> = None;
 
         for write in write_sequence {
@@ -723,6 +734,42 @@ mod tests {
                 }
 
                 array = read.finalize().unwrap();
+            }
+
+            /* the most recent fragment info should match what we just wrote */
+            {
+                let write_domain = write.domain();
+
+                let fi = array.fragment_info().unwrap();
+                let this_fragment =
+                    fi.get_fragment(fi.num_fragments().unwrap() - 1).unwrap();
+                let nonempty_domain = this_fragment
+                    .non_empty_domain()
+                    .unwrap()
+                    .into_iter()
+                    .map(|typed| typed.range)
+                    .collect::<Vec<_>>();
+
+                assert_eq!(write_domain, nonempty_domain);
+            }
+
+            /* then check array non-empty domain */
+            if accumulated_domain.as_mut().is_some() {
+                /* TODO: range extension, when we update test for a write sequence */
+                unimplemented!()
+            } else {
+                accumulated_domain = Some(write.domain());
+            }
+
+            if let Some(acc) = accumulated_domain.as_ref() {
+                let nonempty = array
+                    .nonempty_domain()
+                    .unwrap()
+                    .unwrap()
+                    .into_iter()
+                    .map(|typed| typed.range)
+                    .collect::<Vec<_>>();
+                assert_eq!(*acc, nonempty);
             }
 
             /* update accumulated expected array data */
