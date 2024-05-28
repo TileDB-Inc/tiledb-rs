@@ -129,6 +129,9 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
 /// The first form of this macro applies the same expression to all variants.
 /// The second form enables applying a different expression to the forms
 /// with an interior `Vec<DT>` versus `Vec<Vec<DT>>`.
+/// The third form enables applying a different expression to the forms
+/// with an interior `Vec<DT>` versus `Vec<FT>` versus `Vec<Vec<DT>>` versus `Vec<Vec<FT>>`,
+/// where `DT` is an integral type and `FT` is a floating-point type.
 ///
 /// # Examples
 /// ```
