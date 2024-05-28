@@ -339,32 +339,31 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
-
     use crate::array::*;
     use crate::query::{Query, QueryBuilder, ReadBuilder};
+    use crate::test_util::{self, TestArrayUri};
     use crate::Datatype;
 
     #[test]
     fn test_dense_ranges() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        test_ranges(&ctx, ArrayType::Dense, &tmp_dir)
+        let test_uri = test_util::get_uri_generator()?;
+        test_ranges(&ctx, ArrayType::Dense, &test_uri)
     }
 
     #[test]
     fn test_sparse_ranges() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let tmp_dir = TempDir::new().unwrap();
-        test_ranges(&ctx, ArrayType::Sparse, &tmp_dir)
+        let test_uri = test_util::get_uri_generator()?;
+        test_ranges(&ctx, ArrayType::Sparse, &test_uri)
     }
 
     fn test_ranges(
         ctx: &Context,
         atype: ArrayType,
-        dir: &TempDir,
+        test_uri: &dyn TestArrayUri,
     ) -> TileDBResult<()> {
-        let array_uri = create_array(ctx, atype, dir)?;
+        let array_uri = create_array(ctx, atype, test_uri)?;
         let array = Array::open(ctx, array_uri, Mode::Read)?;
         let query = ReadBuilder::new(array)?
             .start_subarray()?
@@ -397,15 +396,13 @@ mod tests {
     fn create_array(
         ctx: &Context,
         atype: ArrayType,
-        dir: &TempDir,
+        test_uri: &dyn TestArrayUri,
     ) -> TileDBResult<String> {
-        let name = if atype == ArrayType::Dense {
-            "range_test_dense"
+        let array_uri = if atype == ArrayType::Dense {
+            test_uri.with_path("range_test_dense")?
         } else {
-            "range_test_sparse"
+            test_uri.with_path("range_test_sparse")?
         };
-        let array_dir = dir.path().join(name);
-        let array_uri = String::from(array_dir.to_str().unwrap());
 
         let domain = {
             let rows = DimensionBuilder::new(

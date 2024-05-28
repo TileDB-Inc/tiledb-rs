@@ -659,23 +659,21 @@ impl Iterator for WriteSequenceIter {
 
 #[cfg(test)]
 mod tests {
-    use tempfile::TempDir;
-
     use super::*;
     use crate::array::{Array, Mode};
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
     };
+    use crate::test_util::{self, TestArrayUri};
     use crate::{Context, Factory};
 
     fn do_write_readback(
         ctx: &Context,
         schema_spec: Rc<SchemaData>,
         write_sequence: WriteSequence,
-    ) {
-        let tempdir = TempDir::new().expect("Error creating temp dir");
-        let uri = String::from("file:///")
-            + tempdir.path().join("array").to_str().unwrap();
+    ) -> TileDBResult<()> {
+        let test_uri = test_util::get_uri_generator()?;
+        let uri = test_uri.with_path("array")?;
 
         let schema_in = schema_spec
             .create(ctx)
@@ -781,11 +779,13 @@ mod tests {
 
             /* TODO: read all ranges and check against accumulated writes */
         }
+
+        Ok(())
     }
 
     /// Test that a single write can be read back correctly
     #[test]
-    fn write_once_readback() {
+    fn write_once_readback() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context");
 
         let requirements = crate::array::schema::strategy::Requirements {
@@ -815,14 +815,16 @@ mod tests {
             });
 
         proptest!(|((schema_spec, write_sequence) in strategy)| {
-            do_write_readback(&ctx, schema_spec, write_sequence)
-        })
+            do_write_readback(&ctx, schema_spec, write_sequence)?;
+        });
+
+        Ok(())
     }
 
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
     #[ignore]
-    fn write_sequence_readback() {
+    fn write_sequence_readback() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context");
 
         let strategy = any::<SchemaData>().prop_flat_map(|schema| {
@@ -834,7 +836,9 @@ mod tests {
         });
 
         proptest!(|((schema_spec, write_sequence) in strategy)| {
-            do_write_readback(&ctx, schema_spec, write_sequence)
-        })
+            do_write_readback(&ctx, schema_spec, write_sequence)?;
+        });
+
+        Ok(())
     }
 }

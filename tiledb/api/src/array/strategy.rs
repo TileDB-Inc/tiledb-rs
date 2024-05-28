@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tempfile::TempDir;
     use util::assert_option_subset;
     use util::option::OptionSubset;
 
     use crate::array::schema::SchemaData;
     use crate::array::{Array, Schema};
     use crate::context::Context;
+    use crate::test_util::{self, TestArrayUri};
     use crate::Factory;
 
     #[test]
@@ -18,8 +18,8 @@ mod tests {
             let schema_in = schema_spec.create(&ctx)
                 .expect("Error constructing arbitrary schema");
 
-            let tempdir = TempDir::new().expect("Error creating temp dir");
-            let uri = String::from("file:///") + tempdir.path().join("array").to_str().unwrap();
+            let test_uri = test_util::get_uri_generator()?;
+            let uri = test_uri.with_path("array")?;
 
             Array::create(&ctx, &uri, schema_in)
                 .expect("Error creating array");

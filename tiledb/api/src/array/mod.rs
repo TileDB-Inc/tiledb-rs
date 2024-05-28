@@ -684,20 +684,17 @@ pub mod strategy;
 
 #[cfg(test)]
 pub mod tests {
-    use std::io;
-    use tempfile::TempDir;
-
     use crate::array::*;
     use crate::metadata::Value;
     use crate::query::QueryType;
+    use crate::test_util::{self, TestArrayUri};
     use crate::Datatype;
 
     /// Create the array used in the "quickstart_dense" example
     pub fn create_quickstart_dense(
-        dir: &TempDir,
+        test_uri: &dyn TestArrayUri,
         context: &Context,
     ) -> TileDBResult<String> {
-        let arr_dir = dir.path().join("quickstart_dense");
         let d: Domain = {
             let rows: Dimension = DimensionBuilder::new(
                 context,
@@ -736,41 +733,37 @@ pub mod tests {
             .build()
             .unwrap();
 
-        // domain not set
-        // TODO
-        Array::create(context, arr_dir.to_str().unwrap(), s)?;
-
-        Ok(String::from(arr_dir.to_str().unwrap()))
+        let uri = test_uri.with_path("quickstart_dense")?;
+        Array::create(context, &uri, s)?;
+        Ok(uri)
     }
 
     #[test]
-    fn test_array_create() -> io::Result<()> {
-        let tmp_dir = TempDir::new()?;
+    fn test_array_create() -> TileDBResult<()> {
+        let test_uri = test_util::get_uri_generator()?;
 
         let c: Context = Context::new().unwrap();
 
-        let r = create_quickstart_dense(&tmp_dir, &c);
+        let r = create_quickstart_dense(&test_uri, &c);
         assert!(r.is_ok());
 
         // Make sure we can remove the array we created.
-        tmp_dir.close()?;
+        test_uri.close()?;
 
         Ok(())
     }
 
     #[test]
     fn test_array_metadata() -> TileDBResult<()> {
-        let tmp_dir =
-            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri = test_util::get_uri_generator()?;
 
         let tdb = Context::new()?;
-        let r = create_quickstart_dense(&tmp_dir, &tdb);
+        let r = create_quickstart_dense(&test_uri, &tdb);
         assert!(r.is_ok());
+        let uri = r.ok().unwrap();
 
-        let arr_dir = tmp_dir.path().join("quickstart_dense");
         {
-            let mut array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            let mut array = Array::open(&tdb, &uri, QueryType::Write)?;
 
             array.put_metadata(Metadata::new(
                 "key".to_owned(),
@@ -790,8 +783,7 @@ pub mod tests {
         }
 
         {
-            let array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let array = Array::open(&tdb, &uri, QueryType::Read)?;
 
             let metadata_aaa =
                 array.metadata(LookupKey::Name("aaa".to_owned()))?;
@@ -815,36 +807,31 @@ pub mod tests {
         }
 
         {
-            let mut array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            let mut array = Array::open(&tdb, &uri, QueryType::Write)?;
             array.delete_metadata("aaa")?;
         }
 
         {
-            let array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let array = Array::open(&tdb, &uri, QueryType::Read)?;
             let has_aaa = array.has_metadata_key("aaa")?;
             assert_eq!(has_aaa, None);
         }
 
-        tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
-        Ok(())
+        test_uri.close()
     }
 
     #[test]
     fn test_mode_metadata() -> TileDBResult<()> {
-        let tmp_dir =
-            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri = test_util::get_uri_generator()?;
 
         let tdb = Context::new()?;
-        let r = create_quickstart_dense(&tmp_dir, &tdb);
+        let r = create_quickstart_dense(&test_uri, &tdb);
         assert!(r.is_ok());
+        let uri = r.ok().unwrap();
 
-        let arr_dir = tmp_dir.path().join("quickstart_dense");
         // Calling put_metadada with the wrong mode.
         {
-            let mut array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let mut array = Array::open(&tdb, &uri, QueryType::Read)?;
             let res = array.put_metadata(Metadata::new(
                 "key".to_owned(),
                 Datatype::Int32,
@@ -855,8 +842,7 @@ pub mod tests {
 
         // Successful put_metadata call.
         {
-            let mut array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            let mut array = Array::open(&tdb, &uri, QueryType::Write)?;
             let res = array.put_metadata(Metadata::new(
                 "key".to_owned(),
                 Datatype::Int32,
@@ -867,8 +853,7 @@ pub mod tests {
 
         // Read metadata mode testing.
         {
-            let array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Write)?;
+            let array = Array::open(&tdb, &uri, QueryType::Write)?;
 
             let res = array.metadata(LookupKey::Name("aaa".to_owned()));
             assert!(res.is_err());
@@ -884,13 +869,11 @@ pub mod tests {
         }
 
         {
-            let mut array =
-                Array::open(&tdb, arr_dir.to_str().unwrap(), QueryType::Read)?;
+            let mut array = Array::open(&tdb, &uri, QueryType::Read)?;
             let res = array.delete_metadata("key");
             assert!(res.is_err());
         }
 
-        tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
-        Ok(())
+        test_uri.close()
     }
 }
