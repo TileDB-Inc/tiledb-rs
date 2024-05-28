@@ -23,13 +23,18 @@ pub struct Requirements {
     pub domain: Option<Rc<DomainRequirements>>,
     pub num_attributes: std::ops::RangeInclusive<usize>,
     pub attribute_filters: Option<Rc<FilterRequirements>>,
+    pub coordinates_filters: Option<Rc<FilterRequirements>>,
     pub offsets_filters: Option<Rc<FilterRequirements>>,
     pub validity_filters: Option<Rc<FilterRequirements>>,
+    pub sparse_tile_capacity: std::ops::RangeInclusive<u64>,
 }
 
 impl Requirements {
     pub const DEFAULT_MIN_ATTRIBUTES: usize = 1;
     pub const DEFAULT_MAX_ATTRIBUTES: usize = 32;
+
+    pub const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
+    pub const DEFAULT_MAX_SPARSE_TILE_CAPACITY: u64 = 1024 * 1024;
 }
 
 impl Default for Requirements {
@@ -39,8 +44,11 @@ impl Default for Requirements {
             num_attributes: Self::DEFAULT_MIN_ATTRIBUTES
                 ..=Self::DEFAULT_MAX_ATTRIBUTES,
             attribute_filters: None,
+            coordinates_filters: None,
             offsets_filters: None,
             validity_filters: None,
+            sparse_tile_capacity: Self::DEFAULT_MIN_SPARSE_TILE_CAPACITY
+                ..=Self::DEFAULT_MAX_SPARSE_TILE_CAPACITY,
         }
     }
 }
@@ -98,12 +106,17 @@ impl Arbitrary for CellOrder {
 
 pub fn prop_coordinate_filters(
     domain: &DomainData,
+    params: &Requirements,
 ) -> impl Strategy<Value = FilterListData> {
     let req = FilterRequirements {
         context: Some(FilterContext::SchemaCoordinates(Rc::new(
             domain.clone(),
         ))),
-        ..Default::default()
+        ..params
+            .coordinates_filters
+            .as_ref()
+            .map(|rc| rc.as_ref().clone())
+            .unwrap_or_default()
     };
     any_with::<FilterListData>(Rc::new(req))
 }
@@ -119,8 +132,11 @@ fn prop_schema_for_domain(
     };
 
     let capacity = match array_type {
-        ArrayType::Dense => 0..=u64::MAX,
-        ArrayType::Sparse => 1..=u64::MAX,
+        ArrayType::Dense => any::<u64>().boxed(), // unused?
+        ArrayType::Sparse => {
+            /* this is the tile capacity for sparse writes, memory usage scales with it */
+            params.sparse_tile_capacity.clone().boxed()
+        }
     };
 
     let attr_requirements = AttributeRequirements {
@@ -154,7 +170,7 @@ fn prop_schema_for_domain(
             prop_attribute(Rc::new(attr_requirements)),
             params.num_attributes.clone()
         ),
-        prop_coordinate_filters(&domain),
+        prop_coordinate_filters(&domain, params.as_ref()),
         any_with::<FilterListData>(offsets_filters_requirements),
         any_with::<FilterListData>(validity_filters_requirements)
     )

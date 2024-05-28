@@ -201,6 +201,17 @@ pub trait ReadQuery: Query {
             }
         })
     }
+
+    /// Convert this query into an iterator which yields an item
+    /// for each step of the query.
+    fn into_iter(self) -> ReadQueryIterator<Self::Intermediate, Self::Final>
+    where
+        Self: Sized + 'static,
+    {
+        ReadQueryIterator {
+            query: Some(Box::new(self)),
+        }
+    }
 }
 
 macro_rules! fn_register_callback {
@@ -423,3 +434,24 @@ impl QueryBuilder for ReadBuilder {
 }
 
 impl<'data> ReadQueryBuilder<'data> for ReadBuilder {}
+
+pub struct ReadQueryIterator<I, F> {
+    query: Option<Box<dyn ReadQuery<Intermediate = I, Final = F>>>,
+}
+
+impl<I, F> Iterator for ReadQueryIterator<I, F> {
+    type Item = TileDBResult<ReadStepOutput<I, F>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.query.take().map(|mut q| {
+            q.step().map(|r| {
+                if !r.is_final() {
+                    self.query = Some(q);
+                }
+                r
+            })
+        })
+    }
+}
+
+impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}

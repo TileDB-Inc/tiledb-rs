@@ -8,19 +8,18 @@ use proptest::test_runner::TestRunner;
 use serde_json::json;
 
 use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
-use crate::datatype::LogicalType;
+use crate::datatype::physical::BitsOrd;
 use crate::filter::strategy::Requirements as FilterRequirements;
-use crate::query::read::{
-    CallbackVarArgReadBuilder, FieldMetadata, ManagedBuffer, RawReadHandle,
-    TypedReadHandle,
-};
+use crate::query::read::{CallbackVarArgReadBuilder, MapAdapter};
 use crate::query::strategy::{
-    Cells, CellsCallback, CellsParameters, CellsStrategySchema,
-    FieldDataParameters, StructuredCells,
+    Cells, CellsConstructor, CellsParameters, CellsStrategySchema,
+    FieldDataParameters, RawResultCallback, StructuredCells,
 };
 use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
 use crate::range::{Range, SingleValueRange};
-use crate::{fn_typed, single_value_range_go, Result as TileDBResult};
+use crate::{
+    single_value_range_go, typed_field_data_go, Result as TileDBResult,
+};
 
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
@@ -29,13 +28,35 @@ type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 // restrict what is allowed until the bugs are fixed.
 fn query_write_filter_requirements() -> FilterRequirements {
     FilterRequirements {
-        allow_bit_reduction: false,  // SC-47560
-        allow_positive_delta: false, // nothing yet to ensure sort order
-        allow_scale_float: false,
+        allow_bit_reduction: false,     // SC-47560
+        allow_positive_delta: false,    // nothing yet to ensure sort order
+        allow_scale_float: false,       // not invertible due to precision loss
         allow_xor: false,               // SC-47328
         allow_compression_rle: false, // probably can be enabled but nontrivial
         allow_compression_dict: false, // probably can be enabled but nontrivial
         allow_compression_delta: false, // SC-47328
+        ..Default::default()
+    }
+}
+
+fn query_write_schema_requirements(
+    array_type: Option<ArrayType>,
+) -> crate::array::schema::strategy::Requirements {
+    crate::array::schema::strategy::Requirements {
+        domain: Some(Rc::new(crate::array::domain::strategy::Requirements {
+            array_type,
+            num_dimensions: 1..=1,
+            dimension: Some(crate::array::dimension::strategy::Requirements {
+                filters: Some(Rc::new(query_write_filter_requirements())),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })),
+        num_attributes: 1..=1,
+        attribute_filters: Some(Rc::new(query_write_filter_requirements())),
+        coordinates_filters: Some(Rc::new(query_write_filter_requirements())),
+        offsets_filters: Some(Rc::new(query_write_filter_requirements())),
+        validity_filters: Some(Rc::new(query_write_filter_requirements())),
         ..Default::default()
     }
 }
@@ -64,7 +85,13 @@ impl DenseWriteInput {
     pub fn attach_read<'data, B>(
         &'data self,
         b: B,
-    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
+    ) -> TileDBResult<
+        CallbackVarArgReadBuilder<
+            'data,
+            MapAdapter<CellsConstructor, RawResultCallback>,
+            B,
+        >,
+    >
     where
         B: ReadQueryBuilder<'data>,
     {
@@ -76,30 +103,7 @@ impl DenseWriteInput {
 
         let b: B = subarray.finish_subarray()?.layout(self.layout)?;
 
-        // copied from `Cells::attach_read`, yuck
-        let field_order =
-            self.data.fields().keys().cloned().collect::<Vec<_>>();
-        let handles = {
-            let schema = b.base().array().schema().unwrap();
-
-            field_order
-                .iter()
-                .map(|name| {
-                    let field = schema.field(name.clone()).unwrap();
-                    fn_typed!(field.datatype().unwrap(), LT, {
-                        type DT = <LT as LogicalType>::PhysicalType;
-                        let managed: ManagedBuffer<DT> = ManagedBuffer::new(
-                            field.query_scratch_allocator().unwrap(),
-                        );
-                        let metadata = FieldMetadata::try_from(&field).unwrap();
-                        let rr = RawReadHandle::managed(metadata, managed);
-                        TypedReadHandle::from(rr)
-                    })
-                })
-                .collect::<Vec<TypedReadHandle>>()
-        };
-
-        b.register_callback_var(handles, CellsCallback::new(field_order))
+        Ok(self.data.attach_read(b)?.map(CellsConstructor::new()))
     }
 }
 
@@ -416,25 +420,8 @@ impl Arbitrary for DenseWriteInput {
         let mut args = args;
         let strat_schema = match args.schema.take() {
             None => {
-                let schema_req = crate::array::schema::strategy::Requirements {
-                    domain: Some(Rc::new(
-                        crate::array::domain::strategy::Requirements {
-                            array_type: Some(ArrayType::Dense),
-                            num_dimensions: 1..=1,
-                            ..Default::default()
-                        },
-                    )),
-                    num_attributes: 1..=1,
-                    attribute_filters: Some(Rc::new(
-                        query_write_filter_requirements(),
-                    )),
-                    offsets_filters: Some(Rc::new(
-                        query_write_filter_requirements(),
-                    )),
-                    validity_filters: Some(Rc::new(
-                        query_write_filter_requirements(),
-                    )),
-                };
+                let schema_req =
+                    query_write_schema_requirements(Some(ArrayType::Dense));
                 any_with::<SchemaData>(Rc::new(schema_req))
                     .prop_map(Rc::new)
                     .boxed()
@@ -458,8 +445,135 @@ impl Arbitrary for DenseWriteInput {
     }
 }
 
+pub type SparseWriteParameters = DenseWriteParameters; // TODO: determine if this should be different
+
+#[derive(Debug)]
 pub struct SparseWriteInput {
+    pub dimensions: Vec<(String, CellValNum)>,
     pub data: Cells,
+}
+
+impl SparseWriteInput {
+    pub fn domain(&self) -> Option<Vec<Range>> {
+        self.dimensions
+            .iter()
+            .map(|(dim, cell_val_num)| {
+                let dim_cells = self.data.fields().get(dim).unwrap();
+                Some(typed_field_data_go!(
+                    dim_cells,
+                    _DT,
+                    ref dim_cells,
+                    {
+                        let min =
+                            *dim_cells.iter().min_by(|l, r| l.bits_cmp(r))?;
+                        let max =
+                            *dim_cells.iter().max_by(|l, r| l.bits_cmp(r))?;
+                        Range::from(&[min, max])
+                    },
+                    {
+                        let min = dim_cells
+                            .iter()
+                            .min_by(|l, r| l.bits_cmp(r))?
+                            .clone()
+                            .into_boxed_slice();
+                        let max = dim_cells
+                            .iter()
+                            .max_by(|l, r| l.bits_cmp(r))?
+                            .clone()
+                            .into_boxed_slice();
+                        match cell_val_num {
+                            CellValNum::Fixed(_) => {
+                                Range::try_from((*cell_val_num, min, max))
+                                    .unwrap()
+                            }
+                            CellValNum::Var => Range::from((min, max)),
+                        }
+                    }
+                ))
+            })
+            .collect::<Option<Vec<Range>>>()
+    }
+
+    pub fn attach_write<'data>(
+        &'data self,
+        b: WriteBuilder<'data>,
+    ) -> TileDBResult<WriteBuilder<'data>> {
+        self.data.attach_write(b)
+    }
+
+    pub fn attach_read<'data, B>(
+        &'data self,
+        b: B,
+    ) -> TileDBResult<
+        CallbackVarArgReadBuilder<
+            'data,
+            MapAdapter<CellsConstructor, RawResultCallback>,
+            B,
+        >,
+    >
+    where
+        B: ReadQueryBuilder<'data>,
+    {
+        Ok(self.data.attach_read(b)?.map(CellsConstructor::new()))
+    }
+}
+
+impl Arbitrary for SparseWriteInput {
+    type Parameters = SparseWriteParameters;
+    type Strategy = BoxedStrategy<SparseWriteInput>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        if let Some(schema) = params.schema.as_ref() {
+            let schema = Rc::clone(schema);
+            let cells_params = CellsParameters {
+                schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(
+                    &schema,
+                ))),
+                ..Default::default()
+            };
+            any_with::<Cells>(cells_params)
+                .prop_map(move |data| {
+                    let dimensions = schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| {
+                            (
+                                d.name.clone(),
+                                d.cell_val_num.unwrap_or(CellValNum::single()),
+                            )
+                        })
+                        .collect::<Vec<(String, CellValNum)>>();
+                    SparseWriteInput { dimensions, data }
+                })
+                .boxed()
+        } else {
+            any::<Cells>()
+                .prop_flat_map(|data| {
+                    (0..data.fields().len(), Just(data)).prop_map(
+                        |(ndim, data)| SparseWriteInput {
+                            dimensions: data
+                                .fields()
+                                .iter()
+                                .take(ndim)
+                                .map(|(fname, fdata)| {
+                                    (
+                                        fname.clone(),
+                                        if fdata.is_cell_single() {
+                                            CellValNum::single()
+                                        } else {
+                                            CellValNum::Var
+                                        },
+                                    )
+                                })
+                                .collect::<Vec<(String, CellValNum)>>(),
+                            data,
+                        },
+                    )
+                })
+                .boxed()
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -468,12 +582,28 @@ pub struct DenseWriteSequence {
 }
 
 impl Arbitrary for DenseWriteSequence {
-    type Parameters = DenseWriteParameters;
+    type Parameters = DenseWriteSequenceParameters;
     type Strategy = BoxedStrategy<DenseWriteSequence>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        if let Some(schema) = params.schema.as_ref() {
-            prop_write_sequence(Rc::clone(schema), params).boxed()
+        fn prop_write_sequence(
+            schema: Rc<SchemaData>,
+            seq_params: DenseWriteSequenceParameters,
+        ) -> BoxedStrategy<DenseWriteSequence> {
+            let write_params = DenseWriteParameters {
+                schema: Some(schema),
+                ..seq_params.write.as_ref().clone()
+            };
+            proptest::collection::vec(
+                any_with::<DenseWriteInput>(write_params),
+                seq_params.min_writes..=seq_params.max_writes,
+            )
+            .prop_map(|writes| DenseWriteSequence { writes })
+            .boxed()
+        }
+
+        if let Some(schema) = params.write.schema.as_ref() {
+            prop_write_sequence(Rc::clone(schema), params)
         } else {
             any::<SchemaData>()
                 .prop_flat_map(move |schema| {
@@ -493,72 +623,129 @@ impl IntoIterator for DenseWriteSequence {
     }
 }
 
-pub fn prop_write_sequence(
-    schema: Rc<SchemaData>,
-    params: DenseWriteParameters,
-) -> impl Strategy<Value = DenseWriteSequence> {
-    let params = DenseWriteParameters {
-        schema: Some(schema),
-        ..params
-    };
+#[derive(Debug)]
+pub struct SparseWriteSequence {
+    writes: Vec<SparseWriteInput>,
+}
 
-    const MAX_WRITES: usize = 8;
-    proptest::collection::vec(
-        any_with::<DenseWriteInput>(params),
-        0..MAX_WRITES,
-    )
-    .prop_map(|writes| DenseWriteSequence { writes })
+impl Arbitrary for SparseWriteSequence {
+    type Parameters = SparseWriteSequenceParameters;
+    type Strategy = BoxedStrategy<SparseWriteSequence>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        pub fn prop_write_sequence(
+            schema: Rc<SchemaData>,
+            seq_params: SparseWriteSequenceParameters,
+        ) -> impl Strategy<Value = SparseWriteSequence> {
+            let write_params = SparseWriteParameters {
+                schema: Some(schema),
+                ..seq_params.write.as_ref().clone()
+            };
+            proptest::collection::vec(
+                any_with::<SparseWriteInput>(write_params),
+                seq_params.min_writes..=seq_params.max_writes,
+            )
+            .prop_map(|writes| SparseWriteSequence { writes })
+        }
+
+        if let Some(schema) = params.write.schema.as_ref() {
+            prop_write_sequence(Rc::clone(schema), params).boxed()
+        } else {
+            any::<SchemaData>()
+                .prop_flat_map(move |schema| {
+                    prop_write_sequence(Rc::new(schema), params.clone())
+                })
+                .boxed()
+        }
+    }
+}
+
+impl IntoIterator for SparseWriteSequence {
+    type Item = SparseWriteInput;
+    type IntoIter = <Vec<Self::Item> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.writes.into_iter()
+    }
 }
 
 #[derive(Debug)]
 pub enum WriteInput {
     Dense(DenseWriteInput),
+    Sparse(SparseWriteInput),
 }
 
 impl WriteInput {
     pub fn cells(&self) -> &Cells {
-        let Self::Dense(ref dense) = self;
-        &dense.data
+        match self {
+            Self::Dense(ref dense) => &dense.data,
+            Self::Sparse(ref sparse) => &sparse.data,
+        }
     }
 
-    pub fn domain(&self) -> Vec<Range> {
-        let Self::Dense(ref dense) = self;
-        dense
-            .subarray
-            .clone()
-            .into_iter()
-            .map(Range::from)
-            .collect::<Vec<Range>>()
+    pub fn domain(&self) -> Option<Vec<Range>> {
+        match self {
+            Self::Dense(ref dense) => Some(
+                dense
+                    .subarray
+                    .clone()
+                    .into_iter()
+                    .map(Range::from)
+                    .collect::<Vec<Range>>(),
+            ),
+            Self::Sparse(ref sparse) => sparse.domain(),
+        }
     }
 
     pub fn unwrap_cells(self) -> Cells {
-        let Self::Dense(dense) = self;
-        dense.data
+        match self {
+            Self::Dense(dense) => dense.data,
+            Self::Sparse(sparse) => sparse.data,
+        }
     }
 
     pub fn attach_write<'data>(
         &'data self,
         b: WriteBuilder<'data>,
     ) -> TileDBResult<WriteBuilder<'data>> {
-        let Self::Dense(ref d) = self;
-        d.attach_write(b)
+        match self {
+            Self::Dense(ref d) => d.attach_write(b),
+            Self::Sparse(ref s) => s.attach_write(b),
+        }
     }
 
     pub fn attach_read<'data, B>(
         &'data self,
         b: B,
-    ) -> TileDBResult<CallbackVarArgReadBuilder<'data, CellsCallback, B>>
+    ) -> TileDBResult<
+        CallbackVarArgReadBuilder<
+            'data,
+            MapAdapter<CellsConstructor, RawResultCallback>,
+            B,
+        >,
+    >
     where
         B: ReadQueryBuilder<'data>,
     {
-        let Self::Dense(ref d) = self;
-        d.attach_read(b)
+        match self {
+            Self::Dense(ref d) => d.attach_read(b),
+            Self::Sparse(ref s) => s.attach_read(b),
+        }
+    }
+
+    pub fn ranges(&self) -> Option<&[SingleValueRange]> {
+        if let Self::Dense(ref d) = self {
+            Some(&d.subarray)
+        } else {
+            None
+        }
     }
 }
 
 #[derive(Debug)]
 pub enum WriteParameters {
     Dense(DenseWriteParameters),
+    Sparse(SparseWriteParameters),
 }
 
 impl WriteParameters {
@@ -568,7 +755,10 @@ impl WriteParameters {
                 schema: Some(schema),
                 ..Default::default()
             }),
-            ArrayType::Sparse => unimplemented!(),
+            ArrayType::Sparse => Self::Sparse(SparseWriteParameters {
+                schema: Some(schema),
+                ..Default::default()
+            }),
         }
     }
 }
@@ -584,24 +774,63 @@ impl Arbitrary for WriteInput {
     type Strategy = BoxedStrategy<WriteInput>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let WriteParameters::Dense(d) = params;
-        any_with::<DenseWriteInput>(d)
-            .prop_map(WriteInput::Dense)
-            .boxed()
+        match params {
+            WriteParameters::Dense(d) => any_with::<DenseWriteInput>(d)
+                .prop_map(WriteInput::Dense)
+                .boxed(),
+            WriteParameters::Sparse(s) => any_with::<SparseWriteInput>(s)
+                .prop_map(WriteInput::Sparse)
+                .boxed(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct WriteSequenceParameters<W> {
+    pub write: Rc<W>,
+    pub min_writes: usize,
+    pub max_writes: usize,
+}
+
+pub type DenseWriteSequenceParameters =
+    WriteSequenceParameters<DenseWriteParameters>;
+pub type SparseWriteSequenceParameters =
+    WriteSequenceParameters<SparseWriteParameters>;
+
+impl<W> WriteSequenceParameters<W> {
+    pub const DEFAULT_MIN_WRITES: usize = 1;
+    pub const DEFAULT_MAX_WRITES: usize = 8;
+}
+
+impl<W> Default for WriteSequenceParameters<W>
+where
+    W: Default,
+{
+    fn default() -> Self {
+        WriteSequenceParameters {
+            write: Rc::new(Default::default()),
+            min_writes: Self::DEFAULT_MIN_WRITES,
+            max_writes: Self::DEFAULT_MAX_WRITES,
+        }
     }
 }
 
 #[derive(Debug)]
 pub enum WriteSequence {
     Dense(DenseWriteSequence),
+    Sparse(SparseWriteSequence),
 }
 
 impl From<WriteInput> for WriteSequence {
     fn from(value: WriteInput) -> Self {
-        let WriteInput::Dense(dense) = value;
-        Self::Dense(DenseWriteSequence {
-            writes: vec![dense],
-        })
+        match value {
+            WriteInput::Dense(dense) => Self::Dense(DenseWriteSequence {
+                writes: vec![dense],
+            }),
+            WriteInput::Sparse(sparse) => Self::Sparse(SparseWriteSequence {
+                writes: vec![sparse],
+            }),
+        }
     }
 }
 
@@ -610,8 +839,12 @@ impl IntoIterator for WriteSequence {
     type IntoIter = WriteSequenceIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        let Self::Dense(dense) = self;
-        WriteSequenceIter::Dense(dense.into_iter())
+        match self {
+            Self::Dense(dense) => WriteSequenceIter::Dense(dense.into_iter()),
+            Self::Sparse(sparse) => {
+                WriteSequenceIter::Sparse(sparse.into_iter())
+            }
+        }
     }
 }
 
@@ -622,12 +855,16 @@ impl Arbitrary for WriteSequence {
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
             ArrayType::Dense => {
-                let params = DenseWriteParameters {
+                let write_params = DenseWriteParameters {
                     schema: Some(schema),
                     ..Default::default()
                 };
+                let seq_params = DenseWriteSequenceParameters {
+                    write: Rc::new(write_params),
+                    ..Default::default()
+                };
 
-                any_with::<DenseWriteSequence>(params)
+                any_with::<DenseWriteSequence>(seq_params)
                     .prop_map(WriteSequence::Dense)
                     .boxed()
             }
@@ -646,14 +883,19 @@ impl Arbitrary for WriteSequence {
 
 pub enum WriteSequenceIter {
     Dense(<DenseWriteSequence as IntoIterator>::IntoIter),
+    Sparse(<SparseWriteSequence as IntoIterator>::IntoIter),
 }
 
 impl Iterator for WriteSequenceIter {
     type Item = WriteInput;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Self::Dense(ref mut dense) = self;
-        dense.next().map(WriteInput::Dense)
+        match self {
+            Self::Dense(ref mut dense) => dense.next().map(WriteInput::Dense),
+            Self::Sparse(ref mut sparse) => {
+                sparse.next().map(WriteInput::Sparse)
+            }
+        }
     }
 }
 
@@ -689,18 +931,33 @@ mod tests {
         for write in write_sequence {
             /* write data and preserve ranges for sanity check */
             let write_ranges = {
-                let write = write
+                let write_query = write
                     .attach_write(
                         WriteBuilder::new(array)
                             .expect("Error building write query"),
                     )
                     .expect("Error building write query")
                     .build();
-                write.submit().expect("Error running write query");
+                write_query.submit().expect("Error running write query");
 
-                let write_ranges = write.subarray().unwrap().ranges().unwrap();
+                let write_ranges = if let Some(ranges) = write.ranges() {
+                    let generic_ranges = ranges
+                        .iter()
+                        .cloned()
+                        .map(|svr| vec![crate::range::Range::Single(svr)])
+                        .collect::<Vec<Vec<crate::range::Range>>>();
+                    assert_eq!(
+                        generic_ranges,
+                        write_query.subarray().unwrap().ranges().unwrap()
+                    );
+                    Some(generic_ranges)
+                } else {
+                    None
+                };
 
-                array = write.finalize().expect("Error finalizing write query");
+                array = write_query
+                    .finalize()
+                    .expect("Error finalizing write query");
 
                 write_ranges
             };
@@ -716,7 +973,7 @@ mod tests {
                     .unwrap()
                     .build();
 
-                {
+                if let Some(write_ranges) = write_ranges {
                     let read_ranges =
                         read.subarray().unwrap().ranges().unwrap();
                     assert_eq!(write_ranges, read_ranges);
@@ -728,16 +985,14 @@ mod tests {
                 {
                     let write_sorted = write.cells().sorted();
                     cells.sort();
-                    assert_eq!(cells, write_sorted);
+                    assert_eq!(write_sorted, cells);
                 }
 
                 array = read.finalize().unwrap();
             }
 
             /* the most recent fragment info should match what we just wrote */
-            {
-                let write_domain = write.domain();
-
+            if let Some(write_domain) = write.domain() {
                 let fi = array.fragment_info().unwrap();
                 let this_fragment =
                     fi.get_fragment(fi.num_fragments().unwrap() - 1).unwrap();
@@ -749,6 +1004,9 @@ mod tests {
                     .collect::<Vec<_>>();
 
                 assert_eq!(write_domain, nonempty_domain);
+            } else {
+                // most recent fragment should be empty,
+                // what does that look like if no data was written?
             }
 
             /* then check array non-empty domain */
@@ -756,7 +1014,7 @@ mod tests {
                 /* TODO: range extension, when we update test for a write sequence */
                 unimplemented!()
             } else {
-                accumulated_domain = Some(write.domain());
+                accumulated_domain = write.domain();
             }
 
             if let Some(acc) = accumulated_domain.as_ref() {
@@ -788,21 +1046,9 @@ mod tests {
     fn write_once_readback() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context");
 
-        let requirements = crate::array::schema::strategy::Requirements {
-            domain: Some(Rc::new(
-                crate::array::domain::strategy::Requirements {
-                    array_type: Some(ArrayType::Dense),
-                    num_dimensions: 1..=1,
-                    ..Default::default()
-                },
-            )),
-            num_attributes: 1..=1,
-            attribute_filters: Some(Rc::new(query_write_filter_requirements())),
-            offsets_filters: Some(Rc::new(query_write_filter_requirements())),
-            validity_filters: Some(Rc::new(query_write_filter_requirements())),
-        };
+        let schema_req = query_write_schema_requirements(None);
 
-        let strategy = any_with::<SchemaData>(Rc::new(requirements))
+        let strategy = any_with::<SchemaData>(Rc::new(schema_req))
             .prop_flat_map(|schema| {
                 let schema = Rc::new(schema);
                 (

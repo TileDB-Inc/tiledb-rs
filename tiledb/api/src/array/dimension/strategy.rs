@@ -24,6 +24,7 @@ pub struct Requirements {
     pub array_type: Option<ArrayType>,
     pub datatype: Option<Datatype>,
     pub extent_limit: usize,
+    pub filters: Option<Rc<FilterRequirements>>,
 }
 
 impl Default for Requirements {
@@ -32,12 +33,14 @@ impl Default for Requirements {
             array_type: None,
             datatype: None,
             extent_limit: 1024 * 16,
+            filters: None,
         }
     }
 }
 
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {
-    proptest::string::string_regex("[a-zA-Z0-9_]*")
+    // SC-48077: bug with "" for dimension name, prevent for now
+    proptest::string::string_regex("[a-zA-Z0-9_]+")
         .expect("Error creating dimension name strategy")
 }
 
@@ -200,11 +203,16 @@ fn prop_dimension_for_datatype(
         } else {
             Just(None).boxed()
         };
-        let filters = any_with::<FilterListData>(Rc::new(FilterRequirements {
+        let filter_req = FilterRequirements {
             input_datatype: Some(datatype),
             context: Some(FilterContext::Dimension(datatype, cell_val_num)),
-            ..Default::default()
-        }));
+            ..params
+                .filters
+                .as_ref()
+                .map(|rc| rc.as_ref().clone())
+                .unwrap_or_default()
+        };
+        let filters = any_with::<FilterListData>(Rc::new(filter_req));
         (name, range_and_extent, filters)
             .prop_map(move |(name, values, filters)| {
                 let constraints = match values {

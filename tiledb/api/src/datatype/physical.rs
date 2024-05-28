@@ -124,7 +124,9 @@ pub trait PhysicalType:
 {
 }
 
-macro_rules! native_type_eq {
+pub trait IntegralType: Eq + Ord + PhysicalType {}
+
+macro_rules! integral_type_impls {
     ($($T:ty: $datatype:expr),+) => {
         sealed!($($T),+);
 
@@ -142,12 +144,14 @@ macro_rules! native_type_eq {
             }
 
             impl PhysicalType for $T {}
+
+            impl IntegralType for $T {}
         )+
     }
 }
 
-native_type_eq!(u8: Datatype::UInt8, u16: Datatype::UInt16, u32: Datatype::UInt32, u64: Datatype::UInt64);
-native_type_eq!(i8: Datatype::Int8, i16: Datatype::Int16, i32: Datatype::Int32, i64: Datatype::Int64);
+integral_type_impls!(u8: Datatype::UInt8, u16: Datatype::UInt16, u32: Datatype::UInt32, u64: Datatype::UInt64);
+integral_type_impls!(i8: Datatype::Int8, i16: Datatype::Int16, i32: Datatype::Int32, i64: Datatype::Int64);
 
 impl crate::private::Sealed for f32 {}
 impl crate::private::Sealed for f64 {}

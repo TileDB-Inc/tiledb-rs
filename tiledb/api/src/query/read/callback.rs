@@ -210,6 +210,218 @@ fn_mut_adapter_tuple!(ReadCallback2Arg, A1: Unit1, A2: Unit2);
 fn_mut_adapter_tuple!(ReadCallback3Arg, A1: Unit1, A2: Unit2, A3: Unit3);
 fn_mut_adapter_tuple!(ReadCallback4Arg, A1: Unit1, A2: Unit2, A3: Unit3, A4: Unit4);
 
+pub struct MapIntermediate<S, F> {
+    callback: S,
+    transform: F,
+}
+
+impl<S, F, O> ReadCallbackVarArg for MapIntermediate<S, F>
+where
+    S: ReadCallbackVarArg,
+    F: FnMut(<S as ReadCallbackVarArg>::Intermediate) -> O,
+{
+    type Intermediate = O;
+    type Final = <S as ReadCallbackVarArg>::Final;
+    type Error = <S as ReadCallbackVarArg>::Error;
+
+    fn intermediate_result(
+        &mut self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Intermediate, Self::Error> {
+        Ok((self.transform)(self.callback.intermediate_result(args)?))
+    }
+
+    fn final_result(
+        self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Final, Self::Error> {
+        self.callback.final_result(args)
+    }
+}
+
+pub struct MapFinal<S, F> {
+    callback: S,
+    transform: F,
+}
+
+impl<S, F, O> ReadCallbackVarArg for MapFinal<S, F>
+where
+    S: ReadCallbackVarArg,
+    F: FnMut(<S as ReadCallbackVarArg>::Final) -> O,
+{
+    type Intermediate = <S as ReadCallbackVarArg>::Intermediate;
+    type Final = O;
+    type Error = <S as ReadCallbackVarArg>::Error;
+
+    fn intermediate_result(
+        &mut self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Intermediate, Self::Error> {
+        self.callback.intermediate_result(args)
+    }
+
+    fn final_result(
+        mut self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Final, Self::Error> {
+        Ok((self.transform)(self.callback.final_result(args)?))
+    }
+}
+
+pub trait Map<I, F>: Sized {
+    type Intermediate;
+    type Final;
+
+    fn map_intermediate(&mut self, input: I) -> Self::Intermediate;
+    fn map_final(self, input: F) -> Self::Final;
+}
+
+pub struct MapAdapter<M, S> {
+    transform: M,
+    callback: S,
+}
+
+impl<M, S> MapAdapter<M, S> {
+    fn new(transform: M, callback: S) -> Self {
+        MapAdapter {
+            transform,
+            callback,
+        }
+    }
+}
+
+impl<M, S> ReadCallbackVarArg for MapAdapter<M, S>
+where
+    S: ReadCallbackVarArg,
+    M: Map<S::Intermediate, S::Final>,
+{
+    type Intermediate = M::Intermediate;
+    type Final = M::Final;
+    type Error = S::Error;
+
+    fn intermediate_result(
+        &mut self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Intermediate, Self::Error> {
+        Ok(self
+            .transform
+            .map_intermediate(self.callback.intermediate_result(args)?))
+    }
+
+    fn final_result(
+        self,
+        args: Vec<TypedRawReadOutput>,
+    ) -> Result<Self::Final, Self::Error> {
+        Ok(self.transform.map_final(self.callback.final_result(args)?))
+    }
+}
+
+macro_rules! map_impls {
+    ($callback:ident, $($A:ident: $U:ident),+) => {
+        impl<S, F, O> $callback for MapIntermediate<S, F> where S: $callback, F: FnMut(<S as $callback>::Intermediate) -> O {
+            $(
+                type $U = <S as $callback>::$U;
+            )+
+            type Intermediate = O;
+            type Final = <S as $callback>::Final;
+            type Error = <S as $callback>::Error;
+
+            paste! {
+                fn intermediate_result(
+                    &mut self,
+                    $(
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
+                ) -> Result<Self::Intermediate, Self::Error>
+                {
+                    Ok((self.transform)(self.callback.intermediate_result($([< $A:snake >]),+)?))
+                }
+
+                fn final_result(
+                    self,
+                    $(
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
+                ) -> Result<Self::Final, Self::Error>
+                {
+                    self.callback.final_result($([< $A:snake >]),+)
+                }
+            }
+        }
+
+        impl<S, F, O> $callback for MapFinal<S, F> where S: $callback, F: FnMut(<S as $callback>::Final) -> O {
+            $(
+                type $U = <S as $callback>::$U;
+            )+
+            type Intermediate = <S as $callback>::Intermediate;
+            type Final = O;
+            type Error = <S as $callback>::Error;
+
+            paste! {
+                fn intermediate_result(
+                    &mut self,
+                    $(
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
+                ) -> Result<Self::Intermediate, Self::Error>
+                {
+                    self.callback.intermediate_result($([< $A:snake >]),+)
+                }
+
+                fn final_result(
+                    mut self,
+                    $(
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
+                ) -> Result<Self::Final, Self::Error>
+                {
+                    Ok((self.transform)(self.callback.final_result($([< $A:snake >]),+)?))
+                }
+            }
+        }
+
+        impl<M, S> $callback for MapAdapter<M, S>
+        where S: $callback,
+              M: Map<S::Intermediate, S::Final>
+        {
+            $(
+                type $U = <S as $callback>::$U;
+            )+
+            type Intermediate = M::Intermediate;
+            type Final = M::Final;
+            type Error = S::Error;
+
+            paste! {
+                fn intermediate_result(
+                    &mut self,
+                    $(
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
+                ) -> Result<Self::Intermediate, Self::Error>
+                {
+                    Ok(self.transform.map_intermediate(self.callback.intermediate_result($([< $A:snake >]),+)?))
+                }
+
+                fn final_result(
+                    self,
+                    $(
+                        [< $A:snake >]: RawReadOutput<Self::$U>
+                    ),+
+                ) -> Result<Self::Final, Self::Error>
+                {
+                    Ok(self.transform.map_final(self.callback.final_result($([< $A:snake >]),+)?))
+                }
+            }
+
+        }
+    };
+}
+
+map_impls!(ReadCallback, A1: Unit);
+map_impls!(ReadCallback2Arg, A1: Unit1, A2: Unit2);
+map_impls!(ReadCallback3Arg, A1: Unit1, A2: Unit2, A3: Unit3);
+map_impls!(ReadCallback4Arg, A1: Unit1, A2: Unit2, A3: Unit3, A4: Unit4);
+
 mod impls {
     use super::*;
     use crate::query::read::output::VarDataIterator;
@@ -389,6 +601,48 @@ macro_rules! query_read_callback {
                 ),+
             }
 
+            impl<'data, T, Q> $query<'data, T, Q> where T: $callback {
+                pub fn map_intermediate<F, O>(self, transform: F) -> $query<'data, MapIntermediate<T, F>, Q>
+                where F: FnMut(T::Intermediate) -> O {
+                    $query {
+                        callback: self.callback.map(|callback| MapIntermediate {
+                            callback,
+                            transform
+                        }),
+                        base: self.base,
+                        $(
+                            [< arg_ $U:snake >]: self.[< arg_ $U:snake >]
+                        ),+
+                    }
+                }
+
+                pub fn map_final<F, O>(self, transform: F) -> $query<'data, MapFinal<T, F>, Q>
+                where F: FnMut(T::Final) -> O {
+                    $query {
+                        callback: self.callback.map(|callback| MapFinal {
+                            callback,
+                            transform
+                        }),
+                        base: self.base,
+                        $(
+                            [< arg_ $U:snake >]: self.[< arg_ $U:snake >]
+                        ),+
+                    }
+                }
+
+                pub fn map<M>(self, transform: M) -> $query<'data, MapAdapter<M, T>, Q>
+                where M: Map<T::Intermediate, T::Final>
+                {
+                    $query {
+                        callback: self.callback.map(|callback| MapAdapter::new(transform, callback)),
+                        base: self.base,
+                        $(
+                            [< arg_ $U:snake >]: self.[< arg_ $U:snake >]
+                        ),+
+                    }
+                }
+            }
+
             impl<'data, T, Q> ContextBound for $query<'data, T, Q>
             where
                 T: $callback,
@@ -536,6 +790,52 @@ macro_rules! query_read_callback {
                 ),+
             }
 
+            impl<'data, T, B> $Builder<'data, T, B> where T: $callback {
+                pub fn map_intermediate<F, O>(
+                    self, transform: F
+                ) -> $Builder<'data, MapIntermediate<T, F>, B>
+                where F: FnMut(T::Intermediate) -> O {
+                    $Builder {
+                        callback: MapIntermediate {
+                            callback: self.callback,
+                            transform
+                        },
+                        base: self.base,
+                        $(
+                            [< arg_ $U:snake >]: self.[< arg_ $U:snake >]
+                        ),+
+                    }
+                }
+
+                pub fn map_final<F, O>(
+                    self, transform: F
+                ) -> $Builder<'data, MapFinal<T, F>, B>
+                where F: FnMut(T::Final) -> O {
+                    $Builder {
+                        callback: MapFinal {
+                            callback: self.callback,
+                            transform
+                        },
+                        base: self.base,
+                        $(
+                            [< arg_ $U:snake >]: self.[< arg_ $U:snake >]
+                        ),+
+                    }
+                }
+
+                pub fn map<M>(self, transform: M) -> $Builder<'data, MapAdapter<M, T>, B>
+                where M: Map<T::Intermediate, T::Final>
+                {
+                    $Builder {
+                        callback: MapAdapter::new(transform, self.callback),
+                        base: self.base,
+                        $(
+                            [< arg_ $U:snake >]: self.[< arg_ $U:snake >]
+                        ),+
+                    }
+                }
+            }
+
             impl<'data, T, B> QueryBuilder for $Builder <'data, T, B>
             where T: $callback,
                   B: QueryBuilder,
@@ -604,6 +904,59 @@ query_read_callback!(
 pub struct CallbackVarArgReadQuery<'data, T, Q> {
     pub(crate) callback: Option<T>,
     pub(crate) base: VarRawReadQuery<'data, Q>,
+}
+
+impl<'data, T, Q> CallbackVarArgReadQuery<'data, T, Q>
+where
+    T: ReadCallbackVarArg,
+{
+    pub fn map_intermediate<F, O>(
+        self,
+        transform: F,
+    ) -> CallbackVarArgReadQuery<'data, MapIntermediate<T, F>, Q>
+    where
+        F: FnMut(T::Intermediate) -> O,
+    {
+        CallbackVarArgReadQuery {
+            callback: self.callback.map(|callback| MapIntermediate {
+                callback,
+                transform,
+            }),
+            base: self.base,
+        }
+    }
+
+    pub fn map_final<F, O>(
+        self,
+        transform: F,
+    ) -> CallbackVarArgReadQuery<'data, MapFinal<T, F>, Q>
+    where
+        F: FnMut(T::Final) -> O,
+    {
+        CallbackVarArgReadQuery {
+            callback: self.callback.map(|callback| MapFinal {
+                callback,
+                transform,
+            }),
+            base: self.base,
+        }
+    }
+
+    pub fn map<M>(
+        self,
+        transform: M,
+    ) -> CallbackVarArgReadQuery<'data, MapAdapter<M, T>, Q>
+    where
+        M: Map<T::Intermediate, T::Final>,
+    {
+        CallbackVarArgReadQuery {
+            callback: self.callback.map(|callback| MapAdapter {
+                callback,
+                transform,
+            }),
+            base: self.base,
+        }
+    }
 }
 
 impl<'data, T, Q> ContextBound for CallbackVarArgReadQuery<'data, T, Q>
@@ -723,6 +1076,59 @@ where
 pub struct CallbackVarArgReadBuilder<'data, T, B> {
     pub(crate) callback: T,
     pub(crate) base: VarRawReadBuilder<'data, B>,
+}
+
+impl<'data, T, B> CallbackVarArgReadBuilder<'data, T, B>
+where
+    T: ReadCallbackVarArg,
+{
+    pub fn map_intermediate<F, O>(
+        self,
+        transform: F,
+    ) -> CallbackVarArgReadBuilder<'data, MapIntermediate<T, F>, B>
+    where
+        F: FnMut(T::Intermediate) -> O,
+    {
+        CallbackVarArgReadBuilder {
+            callback: MapIntermediate {
+                callback: self.callback,
+                transform,
+            },
+            base: self.base,
+        }
+    }
+
+    pub fn map_final<F, O>(
+        self,
+        transform: F,
+    ) -> CallbackVarArgReadBuilder<'data, MapFinal<T, F>, B>
+    where
+        F: FnMut(T::Final) -> O,
+    {
+        CallbackVarArgReadBuilder {
+            callback: MapFinal {
+                callback: self.callback,
+                transform,
+            },
+            base: self.base,
+        }
+    }
+
+    pub fn map<M>(
+        self,
+        transform: M,
+    ) -> CallbackVarArgReadBuilder<'data, MapAdapter<M, T>, B>
+    where
+        M: Map<T::Intermediate, T::Final>,
+    {
+        CallbackVarArgReadBuilder {
+            callback: MapAdapter {
+                callback: self.callback,
+                transform,
+            },
+            base: self.base,
+        }
+    }
 }
 
 impl<'data, T, B> ContextBound for CallbackVarArgReadBuilder<'data, T, B>
