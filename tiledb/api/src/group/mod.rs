@@ -492,12 +492,12 @@ impl Drop for Group {
 
 #[cfg(test)]
 mod tests {
+    use crate::test_util::{self, TestArrayUri};
     use crate::{
         array::{Array, ArrayType},
         config::Config,
         context::Context,
         datatype::Datatype,
-        error::Error,
         group::{Group, QueryType},
         key::LookupKey,
         metadata::{self, Metadata},
@@ -510,19 +510,17 @@ mod tests {
         context::ObjectType,
         Result as TileDBResult,
     };
-    use tempfile::TempDir;
+
     #[test]
     fn test_group_metadata() -> TileDBResult<()> {
-        let tmp_dir =
-            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri = test_util::get_uri_generator()?;
 
         let tdb = Context::new()?;
-        let group1_path = tmp_dir.path().join("group1");
-        let group1_uri = group1_path.to_str().unwrap();
-        Group::create(&tdb, group1_uri)?;
+        let group1_uri = test_uri.with_path("group1")?;
+        Group::create(&tdb, &group1_uri)?;
         {
             let mut group1_err =
-                Group::open(&tdb, group1_uri, QueryType::Read, None)?;
+                Group::open(&tdb, &group1_uri, QueryType::Read, None)?;
             let res = group1_err.put_metadata(Metadata::new(
                 "key".to_owned(),
                 Datatype::Int32,
@@ -533,7 +531,7 @@ mod tests {
 
         {
             let mut group1_write =
-                Group::open(&tdb, group1_uri, QueryType::Write, None)?;
+                Group::open(&tdb, &group1_uri, QueryType::Write, None)?;
 
             group1_write.put_metadata(Metadata::new(
                 "key".to_owned(),
@@ -554,7 +552,7 @@ mod tests {
 
         {
             let group1_read =
-                Group::open(&tdb, group1_uri, QueryType::Read, None)?;
+                Group::open(&tdb, &group1_uri, QueryType::Read, None)?;
             let metadata_aaa =
                 group1_read.metadata(LookupKey::Name("aaa".to_owned()))?;
             assert_eq!(metadata_aaa.datatype, Datatype::Int32);
@@ -581,24 +579,23 @@ mod tests {
 
         {
             let mut group1_write =
-                Group::open(&tdb, group1_uri, QueryType::Write, None)?;
+                Group::open(&tdb, &group1_uri, QueryType::Write, None)?;
             group1_write.delete_metadata("aaa")?;
         }
 
         {
             let group1_read =
-                Group::open(&tdb, group1_uri, QueryType::Read, None)?;
+                Group::open(&tdb, &group1_uri, QueryType::Read, None)?;
             let has_aaa = group1_read.has_metadata_key("aaa")?;
             assert_eq!(has_aaa, None);
         }
 
         // Cleanup
         let group1_write =
-            Group::open(&tdb, group1_uri, QueryType::ModifyExclusive, None)?;
+            Group::open(&tdb, &group1_uri, QueryType::ModifyExclusive, None)?;
         group1_write.delete_group(group1_uri, true)?;
 
-        tmp_dir.close().map_err(|e| Error::Other(e.to_string()))?;
-        Ok(())
+        test_uri.close()
     }
 
     fn create_array<S>(array_uri: S, array_type: ArrayType) -> TileDBResult<()>
@@ -648,22 +645,17 @@ mod tests {
 
     #[test]
     fn test_group_functionality() -> TileDBResult<()> {
-        let tmp_dir =
-            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri = test_util::get_uri_generator()?;
 
         let tdb = Context::new()?;
-        let group_path = tmp_dir.path().join("group2");
-        let group_uri = group_path.to_str().unwrap();
-        Group::create(&tdb, group_uri)?;
+        let group_uri = test_uri.with_path("group2")?;
+        Group::create(&tdb, &group_uri)?;
 
         {
             let group_read =
-                Group::open(&tdb, group_uri, QueryType::Read, None)?;
+                Group::open(&tdb, &group_uri, QueryType::Read, None)?;
             let group_uri_copy = group_read.uri()?;
-            assert_eq!(
-                group_uri_copy,
-                "file://".to_owned() + group_path.to_str().unwrap()
-            );
+            assert_eq!(group_uri_copy, group_uri);
             let group_type = group_read.query_type()?;
             assert_eq!(group_type, QueryType::Read);
 
@@ -677,7 +669,7 @@ mod tests {
 
         {
             let mut group_write =
-                Group::open(&tdb, group_uri, QueryType::Write, None)?;
+                Group::open(&tdb, &group_uri, QueryType::Write, None)?;
             group_write.add_member("aa", true, Some("aa".to_owned()))?;
             group_write.add_member("bb", true, Some("bb".to_owned()))?;
             group_write.add_member("cc", true, Some("cc".to_owned()))?;
@@ -685,7 +677,7 @@ mod tests {
 
         {
             let group_read =
-                Group::open(&tdb, group_uri, QueryType::Read, None)?;
+                Group::open(&tdb, &group_uri, QueryType::Read, None)?;
             let opt_string = group_read.dump(true)?;
             let expected_str =
                 "group2 GROUP\n|-- aa ARRAY\n|-- bb ARRAY\n|-- cc ARRAY\n";
@@ -694,19 +686,19 @@ mod tests {
 
         {
             let mut group_write =
-                Group::open(&tdb, group_uri, QueryType::Write, None)?;
+                Group::open(&tdb, &group_uri, QueryType::Write, None)?;
             group_write.delete_member("bb")?;
         }
 
         {
             let group_read =
-                Group::open(&tdb, group_uri, QueryType::Read, None)?;
+                Group::open(&tdb, &group_uri, QueryType::Read, None)?;
             let opt_string = group_read.dump(true)?;
             let expected_str = "group2 GROUP\n|-- aa ARRAY\n|-- cc ARRAY\n";
             assert_eq!(opt_string, expected_str.to_string());
 
             let group_read =
-                Group::open(&tdb, group_uri, QueryType::Read, None)?;
+                Group::open(&tdb, &group_uri, QueryType::Read, None)?;
             let count = group_read.num_members()?;
             assert_eq!(count, 2);
 
@@ -714,12 +706,12 @@ mod tests {
                 group_read.member(LookupKey::Name("aa".to_owned()))?;
             assert_eq!(member_aa.name, "aa".to_owned());
             assert_eq!(member_aa.group_type, ObjectType::Array);
-            assert_eq!("file://".to_owned() + group_uri + "/aa", member_aa.uri);
+            assert_eq!(group_uri.clone() + "/aa", member_aa.uri);
 
             let member_cc = group_read.member(LookupKey::Index(1))?;
             assert_eq!(member_cc.name, "cc".to_owned());
             assert_eq!(member_cc.group_type, ObjectType::Array);
-            assert_eq!("file://".to_owned() + group_uri + "/cc", member_cc.uri);
+            assert_eq!(group_uri.clone() + "/cc", member_cc.uri);
 
             let is_aa_relative = group_read.is_relative_uri("aa")?;
             assert!(is_aa_relative);
@@ -730,19 +722,17 @@ mod tests {
 
     #[test]
     fn test_group_config() -> TileDBResult<()> {
-        let tmp_dir =
-            TempDir::new().map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri = test_util::get_uri_generator()?;
 
         let tdb = Context::new()?;
-        let group_path = tmp_dir.path().join("group");
-        let group_uri = group_path.to_str().unwrap();
-        Group::create(&tdb, group_uri)?;
+        let group_uri = test_uri.with_path("group")?;
+        Group::create(&tdb, &group_uri)?;
 
         let mut cfg = Config::new()?;
         cfg.set("foo", "bar")?;
 
         let group_read =
-            Group::open(&tdb, group_uri, QueryType::Read, Some(&cfg))?;
+            Group::open(&tdb, &group_uri, QueryType::Read, Some(&cfg))?;
         let cfg_copy = group_read.config()?;
         assert!(cfg.eq(&cfg_copy));
 

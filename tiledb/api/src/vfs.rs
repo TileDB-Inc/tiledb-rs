@@ -543,7 +543,9 @@ impl VFSHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
+    // There is no cloud service backend for the VFS so we're not using the
+    // URI generator facilities in these tests.
+    use crate::test_util::TestDirectory;
 
     #[test]
     fn vfs_alloc() -> TileDBResult<()> {
@@ -559,40 +561,14 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new().unwrap();
+        let test_uri = TestDirectory::new()?;
+        let base_dir = test_uri.base_dir()?;
+        assert!(vfs.is_dir(&base_dir)?);
 
-        let tmp_uri = String::from("file://")
-            + tmp_dir.path().to_str().expect("Error creating tmp_uri");
-
-        assert!(vfs.is_dir(&tmp_uri)?);
-
-        let dir1_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_1")
-                .to_str()
-                .expect("Whoops.");
-
-        let dir1_foo_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_1/foo")
-                .to_str()
-                .expect("Whoops.");
-
-        let dir2_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_2")
-                .to_str()
-                .expect("Whoops.");
-
-        let dir3_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_3")
-                .to_str()
-                .expect("Whoops.");
+        let dir1_uri = test_uri.with_path("vfs_test_dir_1")?;
+        let dir1_foo_uri = test_uri.with_paths(&["vfs_test_dir_1", "foo"])?;
+        let dir2_uri = test_uri.with_path("vfs_test_dir_2")?;
+        let dir3_uri = test_uri.with_path("vfs_test_dir_3")?;
 
         assert!(!vfs.is_dir(&dir1_uri)?);
         vfs.create_dir(&dir1_uri)?;
@@ -636,28 +612,10 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new().unwrap();
-
-        let file1_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_file_1")
-                .to_str()
-                .expect("Whoops.");
-
-        let file2_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_file_2")
-                .to_str()
-                .expect("Whoops.");
-
-        let file3_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_file_3")
-                .to_str()
-                .expect("Whoops.");
+        let test_uri = TestDirectory::new()?;
+        let file1_uri = test_uri.with_path("vfs_test_file_1")?;
+        let file2_uri = test_uri.with_path("vfs_test_file_2")?;
+        let file3_uri = test_uri.with_path("vfs_test_file_3")?;
 
         // A file doesn't exist before creation, but does after.
         assert!(!vfs.is_file(&file1_uri)?);
@@ -704,40 +662,15 @@ mod tests {
 
     fn create_test_dir_structure(
         vfs: &VFS,
-        tmp_dir: &TempDir,
+        test_uri: &TestDirectory,
     ) -> TileDBResult<()> {
-        let tmp_uri = String::from("file://")
-            + tmp_dir.path().to_str().expect("Error creating tmp_uri");
+        let base_dir = test_uri.base_dir()?;
+        assert!(vfs.is_dir(&base_dir)?);
 
-        assert!(vfs.is_dir(&tmp_uri)?);
-
-        let dir1_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_1")
-                .to_str()
-                .expect("Whoops.");
-
-        let dir1_foo_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_1/foo")
-                .to_str()
-                .expect("Whoops.");
-
-        let dir2_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_2")
-                .to_str()
-                .expect("Whoops.");
-
-        let dir3_uri = String::from("file://")
-            + tmp_dir
-                .path()
-                .join("vfs_test_dir_3")
-                .to_str()
-                .expect("Whoops.");
+        let dir1_uri = test_uri.with_path("vfs_test_dir_1")?;
+        let dir1_foo_uri = test_uri.with_paths(&["vfs_test_dir_1", "foo"])?;
+        let dir2_uri = test_uri.with_path("vfs_test_dir_2")?;
+        let dir3_uri = test_uri.with_path("vfs_test_dir_3")?;
 
         vfs.create_dir(&dir1_uri)?;
         vfs.create_dir(&dir2_uri)?;
@@ -756,18 +689,18 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new().unwrap();
+        let test_uri = TestDirectory::new()?;
 
-        create_test_dir_structure(&vfs, &tmp_dir)?;
+        create_test_dir_structure(&vfs, &test_uri)?;
 
-        let tmp_uri = tmp_dir.path().to_str().expect("Error getting temp dir");
+        let tmp_uri = test_uri.base_dir()?;
         let mut count: u64 = 0;
         let cb = |_: &str| -> VFSLsStatus {
             count += 1;
             VFSLsStatus::Continue
         };
 
-        vfs.ls(tmp_uri, cb)?;
+        vfs.ls(&tmp_uri, cb)?;
 
         // ls only sees the three directories.
         assert_eq!(count, 3);
@@ -787,15 +720,15 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new().unwrap();
+        let test_uri = TestDirectory::new()?;
 
-        let tmp_uri = tmp_dir.path().to_str().expect("Error getting tmp_uri");
+        let tmp_uri = test_uri.base_dir()?;
         let mut count: u64 = 0;
         let cb = |_: &str, _: u64| -> VFSLsStatus {
             count += 1;
             VFSLsStatus::Continue
         };
-        assert!(vfs.ls_recursive(tmp_uri, cb).is_err());
+        assert!(vfs.ls_recursive(&tmp_uri, cb).is_err());
 
         Ok(())
     }
@@ -814,17 +747,17 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let tmp_dir = TempDir::new().unwrap();
+        let test_uri = TestDirectory::new()?;
 
-        create_test_dir_structure(&vfs, &tmp_dir)?;
+        create_test_dir_structure(&vfs, &test_uri)?;
 
-        let tmp_uri = tmp_dir.path().to_str().expect("Error getting temp dir");
+        let tmp_uri = test_uri.base_dir()?;
         let mut count: u64 = 0;
         let cb = |_: &str, _: u64| -> VFSLsStatus {
             count += 1;
             VFSLsStatus::Continue
         };
-        vfs.ls_recursive(tmp_uri, cb)?;
+        vfs.ls_recursive(&tmp_uri, cb)?;
 
         // ls_recursive sees three directories and one file.
         assert_eq!(count, 4);
