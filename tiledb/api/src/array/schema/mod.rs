@@ -456,7 +456,7 @@ impl Schema {
     ///
     /// - For a dense array schema, this is always `false`.
     /// - For a sparse array schema, if set to `true`, then any number
-    /// of cells may be written with the same coordinates.
+    ///   of cells may be written with the same coordinates.
     pub fn allows_duplicates(&self) -> TileDBResult<bool> {
         let c_schema = self.capi();
         let mut c_allows_duplicates: std::os::raw::c_int = out_ptr!();
@@ -731,7 +731,7 @@ impl Builder {
     /// be written.
     ///
     /// - For a dense array schema, duplicate coordinate values are not permitted and this function
-    /// returns `Err`.
+    ///   returns `Err`.
     /// - For sparse array values, any setting is permitted.
     ///
     /// Returns `self` if there is not an error.
