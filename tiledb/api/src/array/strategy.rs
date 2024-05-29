@@ -4,10 +4,12 @@ mod tests {
     use util::assert_option_subset;
     use util::option::OptionSubset;
 
+    use tiledb_test_utils::{self, TestArrayUri};
+
     use crate::array::schema::SchemaData;
     use crate::array::{Array, Schema};
     use crate::context::Context;
-    use crate::test_util::{self, TestArrayUri};
+    use crate::error::Error;
     use crate::Factory;
 
     #[test]
@@ -18,8 +20,8 @@ mod tests {
             let schema_in = schema_spec.create(&ctx)
                 .expect("Error constructing arbitrary schema");
 
-            let test_uri = test_util::get_uri_generator()?;
-            let uri = test_uri.with_path("array")?;
+            let test_uri = tiledb_test_utils::get_uri_generator().map_err(|e| Error::Other(e.to_string()))?;
+            let uri = test_uri.with_path("array").map_err(|e| Error::Other(e.to_string()))?;
 
             Array::create(&ctx, &uri, schema_in)
                 .expect("Error creating array");

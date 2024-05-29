@@ -959,13 +959,14 @@ pub mod strategy;
 
 #[cfg(test)]
 mod tests {
+    use tiledb_test_utils::{self, TestArrayUri};
+
     use super::*;
     use crate::array::tests::create_quickstart_dense;
     use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
     use crate::filter::{
         CompressionData, CompressionType, FilterData, FilterListBuilder,
     };
-    use crate::test_util::{self, TestArrayUri};
 
     fn sample_attribute(c: &Context) -> Attribute {
         AttributeBuilder::new(c, "a1", Datatype::Int32)
@@ -1118,7 +1119,8 @@ mod tests {
 
     #[test]
     fn test_load() -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
 
@@ -1148,7 +1150,7 @@ mod tests {
         assert_eq!(cols_domain[1], 4);
 
         // Make sure we can remove the array we created.
-        test_uri.close()
+        test_uri.close().map_err(|e| Error::Other(e.to_string()))
     }
 
     #[test]
