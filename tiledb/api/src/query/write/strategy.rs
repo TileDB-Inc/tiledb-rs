@@ -786,32 +786,67 @@ impl Arbitrary for WriteInput {
 }
 
 #[derive(Clone, Debug)]
-pub struct WriteSequenceParameters<W> {
+pub struct WriteSequenceParametersImpl<W> {
     pub write: Rc<W>,
     pub min_writes: usize,
     pub max_writes: usize,
 }
 
 pub type DenseWriteSequenceParameters =
-    WriteSequenceParameters<DenseWriteParameters>;
+    WriteSequenceParametersImpl<DenseWriteParameters>;
 pub type SparseWriteSequenceParameters =
-    WriteSequenceParameters<SparseWriteParameters>;
+    WriteSequenceParametersImpl<SparseWriteParameters>;
 
-impl<W> WriteSequenceParameters<W> {
+impl<W> WriteSequenceParametersImpl<W> {
     pub const DEFAULT_MIN_WRITES: usize = 1;
     pub const DEFAULT_MAX_WRITES: usize = 8;
 }
 
-impl<W> Default for WriteSequenceParameters<W>
+impl<W> Default for WriteSequenceParametersImpl<W>
 where
     W: Default,
 {
     fn default() -> Self {
-        WriteSequenceParameters {
+        WriteSequenceParametersImpl {
             write: Rc::new(Default::default()),
             min_writes: Self::DEFAULT_MIN_WRITES,
             max_writes: Self::DEFAULT_MAX_WRITES,
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum WriteSequenceParameters {
+    Dense(DenseWriteSequenceParameters),
+    Sparse(SparseWriteSequenceParameters),
+}
+
+impl WriteSequenceParameters {
+    pub fn default_for(schema: Rc<SchemaData>) -> Self {
+        match schema.array_type {
+            ArrayType::Dense => Self::Dense(DenseWriteSequenceParameters {
+                write: Rc::new(DenseWriteParameters {
+                    schema: Some(schema),
+                    ..Default::default()
+                }),
+                min_writes: DenseWriteSequenceParameters::DEFAULT_MIN_WRITES,
+                max_writes: DenseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+            }),
+            ArrayType::Sparse => Self::Sparse(SparseWriteSequenceParameters {
+                write: Rc::new(SparseWriteParameters {
+                    schema: Some(schema),
+                    ..Default::default()
+                }),
+                min_writes: SparseWriteSequenceParameters::DEFAULT_MIN_WRITES,
+                max_writes: SparseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+            }),
+        }
+    }
+}
+
+impl Default for WriteSequenceParameters {
+    fn default() -> Self {
+        Self::Dense(Default::default())
     }
 }
 
@@ -849,34 +884,21 @@ impl IntoIterator for WriteSequence {
 }
 
 impl Arbitrary for WriteSequence {
-    type Parameters = Option<Rc<SchemaData>>;
+    type Parameters = WriteSequenceParameters;
     type Strategy = BoxedStrategy<WriteSequence>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
-            ArrayType::Dense => {
-                let write_params = DenseWriteParameters {
-                    schema: Some(schema),
-                    ..Default::default()
-                };
-                let seq_params = DenseWriteSequenceParameters {
-                    write: Rc::new(write_params),
-                    ..Default::default()
-                };
-
-                any_with::<DenseWriteSequence>(seq_params)
-                    .prop_map(WriteSequence::Dense)
+        match params {
+            WriteSequenceParameters::Dense(d) => {
+                any_with::<DenseWriteSequence>(d)
+                    .prop_map(Self::Dense)
                     .boxed()
             }
-            ArrayType::Sparse => unimplemented!(),
-        };
-
-        if let Some(schema) = params {
-            strat_schema(schema)
-        } else {
-            any::<SchemaData>()
-                .prop_flat_map(move |schema| strat_schema(Rc::new(schema)))
-                .boxed()
+            WriteSequenceParameters::Sparse(s) => {
+                any_with::<SparseWriteSequence>(s)
+                    .prop_map(Self::Sparse)
+                    .boxed()
+            }
         }
     }
 }
@@ -922,13 +944,13 @@ mod tests {
             .expect("Error constructing arbitrary schema");
         Array::create(ctx, &uri, schema_in).expect("Error creating array");
 
-        let mut array =
-            Array::open(ctx, &uri, Mode::Write).expect("Error opening array");
-
         let mut accumulated_domain: Option<Vec<Range>> = None;
         let mut accumulated_write: Option<Cells> = None;
 
         for write in write_sequence {
+            let mut array = Array::open(ctx, &uri, Mode::Write)
+                .expect("Error opening array");
+
             /* write data and preserve ranges for sanity check */
             let write_ranges = {
                 let write_query = write
@@ -1069,17 +1091,23 @@ mod tests {
 
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
-    #[ignore]
     fn write_sequence_readback() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context");
 
-        let strategy = any::<SchemaData>().prop_flat_map(|schema| {
-            let schema = Rc::new(schema);
-            (
-                Just(Rc::clone(&schema)),
-                any_with::<WriteSequence>(Some(Rc::clone(&schema))),
-            )
-        });
+        let schema_req = query_write_schema_requirements(None);
+
+        let strategy = any_with::<SchemaData>(Rc::new(schema_req))
+            .prop_flat_map(|schema| {
+                let schema = Rc::new(schema);
+                (
+                    Just(Rc::clone(&schema)),
+                    any_with::<WriteSequence>(
+                        WriteSequenceParameters::default_for(Rc::clone(
+                            &schema,
+                        )),
+                    ),
+                )
+            });
 
         proptest!(|((schema_spec, write_sequence) in strategy)| {
             do_write_readback(&ctx, schema_spec, write_sequence)?;
