@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::num::NonZeroU32;
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -313,7 +314,7 @@ impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MultiValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -333,14 +334,45 @@ impl MultiValueRange {
         Ok(())
     }
 
+    /// Returns the number of values held by each end of this range.
+    pub fn num_values(&self) -> usize {
+        crate::multi_value_range_go!(self, _DT, ref start, _, start.len())
+    }
+
+    /// Returns a `CellValNum` which matches the values in this range.
+    pub fn cell_val_num(&self) -> CellValNum {
+        CellValNum::Fixed(NonZeroU32::new(self.num_values() as u32).unwrap())
+    }
+
     /// Returns the range covered by the union of `self` and `other`.
     ///
     /// # Panics
     ///
     /// Panics if `self` and `other` do not have the same physical datatype or the same fixed
     /// length.
-    pub fn union(&self, _other: &Self) -> Self {
-        todo!()
+    pub fn union(&self, other: &Self) -> Self {
+        assert_eq!(self.num_values(), other.num_values(),
+            "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
+            self, other);
+
+        use std::cmp::Ordering;
+        crate::multi_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
+            {
+                let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
+                    lstart.clone()
+                } else {
+                    rstart.clone()
+                };
+
+                let max = if matches!(lend.bits_cmp(rend), Ordering::Greater) {
+                    lend.clone()
+                } else {
+                    rend.clone()
+                };
+
+                MultiValueRange::try_from((self.cell_val_num(), min, max)).unwrap()
+            },
+            panic!("`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
     }
 }
 
@@ -435,6 +467,56 @@ macro_rules! multi_value_range_go {
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! multi_value_range_cmp {
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $cmp:expr, $else:expr) => {{
+        use $crate::range::MultiValueRange::*;
+        match ($rexpr, $lexpr) {
+            (UInt8($lstart, $lend), UInt8($rstart, $rend)) => {
+                type $DT = u8;
+                $cmp
+            }
+            (UInt16($lstart, $lend), UInt16($rstart, $rend)) => {
+                type $DT = u16;
+                $cmp
+            }
+            (UInt32($lstart, $lend), UInt32($rstart, $rend)) => {
+                type $DT = u32;
+                $cmp
+            }
+            (UInt64($lstart, $lend), UInt64($rstart, $rend)) => {
+                type $DT = u64;
+                $cmp
+            }
+            (Int8($lstart, $lend), Int8($rstart, $rend)) => {
+                type $DT = i8;
+                $cmp
+            }
+            (Int16($lstart, $lend), Int16($rstart, $rend)) => {
+                type $DT = i16;
+                $cmp
+            }
+            (Int32($lstart, $lend), Int32($rstart, $rend)) => {
+                type $DT = i32;
+                $cmp
+            }
+            (Int64($lstart, $lend), Int64($rstart, $rend)) => {
+                type $DT = i64;
+                $cmp
+            }
+            (Float32($lstart, $lend), Float32($rstart, $rend)) => {
+                type $DT = f32;
+                $cmp
+            }
+            (Float64($lstart, $lend), Float64($rstart, $rend)) => {
+                type $DT = f64;
+                $cmp
+            }
+            _ => $else,
+        }
+    }};
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
