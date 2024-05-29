@@ -226,27 +226,19 @@ impl Array {
         ))
     }
 
+    /// Opens the array located at `uri` for queries of type `mode`.
     pub fn open<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
     where
         S: AsRef<str>,
     {
-        let mut array_raw: *mut ffi::tiledb_array_t = std::ptr::null_mut();
-        let c_uri = cstring!(uri.as_ref());
+        ArrayOpener::new(context, uri, mode)?.open()
+    }
 
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_array_alloc(ctx, c_uri.as_ptr(), &mut array_raw)
-        })?;
-
-        let mode_raw = mode.capi_enum();
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_array_open(ctx, array_raw, mode_raw)
-        })?;
-
-        Ok(Array {
-            context: context.clone(),
-            uri: uri.as_ref().to_owned(),
-            raw: RawArray::Owned(array_raw),
-        })
+    pub fn refresh(self) -> ArrayOpener {
+        ArrayOpener {
+            array: self,
+            mode: None,
+        }
     }
 
     /// Returns the URI that this array is located at
@@ -676,8 +668,85 @@ impl Array {
 impl Drop for Array {
     fn drop(&mut self) {
         let c_array = *self.raw;
-        self.capi_call(|ctx| unsafe { ffi::tiledb_array_close(ctx, c_array) })
+        let mut c_is_open: i32 = out_ptr!();
+
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_is_open(ctx, c_array, &mut c_is_open)
+        })
+        .expect("TileDB internal error when closing array");
+
+        // the array will not be open if the user constructs Opener and drops it without calling
+        // `Opener::open`.  This bit of al dente buccatini is mitigated by the fact that the
+        // user still never sees a non-open Array object. Maybe worth refactoring at some point
+        // nonetheless.
+        if c_is_open == 1 {
+            self.capi_call(|ctx| unsafe {
+                ffi::tiledb_array_close(ctx, c_array)
+            })
             .expect("TileDB internal error when closing array");
+        }
+    }
+}
+
+pub struct ArrayOpener {
+    array: Array,
+    /// Mode for opening the array, or `None` if re-opening.
+    mode: Option<Mode>,
+}
+
+impl ArrayOpener {
+    pub fn new<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+    {
+        let mut array_raw: *mut ffi::tiledb_array_t = out_ptr!();
+        let c_uri = cstring!(uri.as_ref());
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_alloc(ctx, c_uri.as_ptr(), &mut array_raw)
+        })?;
+
+        Ok(ArrayOpener {
+            array: Array {
+                context: context.clone(),
+                uri: uri.as_ref().to_owned(),
+                raw: RawArray::Owned(array_raw),
+            },
+            mode: Some(mode),
+        })
+    }
+
+    pub fn start_timestamp(self, timestamp: u64) -> TileDBResult<Self> {
+        let c_array = *self.array.raw;
+        self.array.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_set_open_timestamp_start(ctx, c_array, timestamp)
+        })?;
+        Ok(self)
+    }
+
+    pub fn end_timestamp(self, timestamp: u64) -> TileDBResult<Self> {
+        let c_array = *self.array.raw;
+        self.array.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_set_open_timestamp_end(ctx, c_array, timestamp)
+        })?;
+        Ok(self)
+    }
+
+    pub fn open(self) -> TileDBResult<Array> {
+        let c_array = *self.array.raw;
+
+        if let Some(mode) = self.mode {
+            let c_mode = mode.capi_enum();
+            self.array.capi_call(|ctx| unsafe {
+                ffi::tiledb_array_open(ctx, c_array, c_mode)
+            })?;
+        } else {
+            self.array.capi_call(|ctx| unsafe {
+                ffi::tiledb_array_reopen(ctx, c_array)
+            })?;
+        }
+
+        Ok(self.array)
     }
 }
 
