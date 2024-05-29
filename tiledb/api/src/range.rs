@@ -437,7 +437,7 @@ macro_rules! multi_value_range_go {
     };
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum VarValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -462,8 +462,25 @@ impl VarValueRange {
     /// # Panics
     ///
     /// Panics if `self` and `other` do not have the same physical datatype.
-    pub fn union(&self, _other: &Self) -> Self {
-        todo!()
+    pub fn union(&self, other: &Self) -> Self {
+        use std::cmp::Ordering;
+        crate::var_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
+            {
+                let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
+                    lstart.clone()
+                } else {
+                    rstart.clone()
+                };
+
+                let max = if matches!(lend.bits_cmp(rend), Ordering::Greater) {
+                    lend.clone()
+                } else {
+                    rend.clone()
+                };
+
+                VarValueRange::from((min, max))
+            },
+            panic!("`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
     }
 }
 
@@ -562,6 +579,56 @@ macro_rules! var_value_range_go {
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! var_value_range_cmp {
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $cmp:expr, $else:expr) => {{
+        use $crate::range::VarValueRange::*;
+        match ($rexpr, $lexpr) {
+            (UInt8($lstart, $lend), UInt8($rstart, $rend)) => {
+                type $DT = u8;
+                $cmp
+            }
+            (UInt16($lstart, $lend), UInt16($rstart, $rend)) => {
+                type $DT = u16;
+                $cmp
+            }
+            (UInt32($lstart, $lend), UInt32($rstart, $rend)) => {
+                type $DT = u32;
+                $cmp
+            }
+            (UInt64($lstart, $lend), UInt64($rstart, $rend)) => {
+                type $DT = u64;
+                $cmp
+            }
+            (Int8($lstart, $lend), Int8($rstart, $rend)) => {
+                type $DT = i8;
+                $cmp
+            }
+            (Int16($lstart, $lend), Int16($rstart, $rend)) => {
+                type $DT = i16;
+                $cmp
+            }
+            (Int32($lstart, $lend), Int32($rstart, $rend)) => {
+                type $DT = i32;
+                $cmp
+            }
+            (Int64($lstart, $lend), Int64($rstart, $rend)) => {
+                type $DT = i64;
+                $cmp
+            }
+            (Float32($lstart, $lend), Float32($rstart, $rend)) => {
+                type $DT = f32;
+                $cmp
+            }
+            (Float64($lstart, $lend), Float64($rstart, $rend)) => {
+                type $DT = f64;
+                $cmp
+            }
+            _ => $else,
+        }
+    }};
 }
 
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
