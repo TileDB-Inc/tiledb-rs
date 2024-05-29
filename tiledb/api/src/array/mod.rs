@@ -684,10 +684,11 @@ pub mod strategy;
 
 #[cfg(test)]
 pub mod tests {
+    use tiledb_test_utils::{self, TestArrayUri};
+
     use crate::array::*;
     use crate::metadata::Value;
     use crate::query::QueryType;
-    use crate::test_util::{self, TestArrayUri};
     use crate::Datatype;
 
     /// Create the array used in the "quickstart_dense" example
@@ -733,14 +734,17 @@ pub mod tests {
             .build()
             .unwrap();
 
-        let uri = test_uri.with_path("quickstart_dense")?;
+        let uri = test_uri
+            .with_path("quickstart_dense")
+            .map_err(|e| Error::Other(e.to_string()))?;
         Array::create(context, &uri, s)?;
         Ok(uri)
     }
 
     #[test]
     fn test_array_create() -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
 
@@ -748,14 +752,15 @@ pub mod tests {
         assert!(r.is_ok());
 
         // Make sure we can remove the array we created.
-        test_uri.close()?;
+        test_uri.close().map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(())
     }
 
     #[test]
     fn test_array_metadata() -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
         let r = create_quickstart_dense(&test_uri, &tdb);
@@ -817,12 +822,13 @@ pub mod tests {
             assert_eq!(has_aaa, None);
         }
 
-        test_uri.close()
+        test_uri.close().map_err(|e| Error::Other(e.to_string()))
     }
 
     #[test]
     fn test_mode_metadata() -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
         let r = create_quickstart_dense(&test_uri, &tdb);
@@ -874,6 +880,6 @@ pub mod tests {
             assert!(res.is_err());
         }
 
-        test_uri.close()
+        test_uri.close().map_err(|e| Error::Other(e.to_string()))
     }
 }

@@ -1,0 +1,9 @@
+[package]
+name = "tiledb-test-utils"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+tempfile = "3"

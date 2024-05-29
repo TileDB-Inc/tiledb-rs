@@ -1293,10 +1293,10 @@ dependencies = [
  "proptest-derive",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror",
  "tiledb-proc-macro",
  "tiledb-sys",
+ "tiledb-test-utils",
  "tiledb-utils",
 ]
 
@@ -1314,6 +1314,14 @@ name = "tiledb-sys"
 version = "0.1.0"
 dependencies = [
  "pkg-config",
+]
+
+[[package]]
+name = "tiledb-test-utils"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
 ]
 
 [[package]]

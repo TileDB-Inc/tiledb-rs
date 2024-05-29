@@ -338,23 +338,26 @@ where
 
 #[cfg(test)]
 mod tests {
+    use tiledb_test_utils::{self, TestArrayUri};
+
     use super::*;
     use crate::array::*;
     use crate::query::{Query, QueryBuilder, ReadBuilder};
-    use crate::test_util::{self, TestArrayUri};
     use crate::Datatype;
 
     #[test]
     fn test_dense_ranges() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
         test_ranges(&ctx, ArrayType::Dense, &test_uri)
     }
 
     #[test]
     fn test_sparse_ranges() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
         test_ranges(&ctx, ArrayType::Sparse, &test_uri)
     }
 
@@ -399,10 +402,11 @@ mod tests {
         test_uri: &dyn TestArrayUri,
     ) -> TileDBResult<String> {
         let array_uri = if atype == ArrayType::Dense {
-            test_uri.with_path("range_test_dense")?
+            test_uri.with_path("range_test_dense")
         } else {
-            test_uri.with_path("range_test_sparse")?
-        };
+            test_uri.with_path("range_test_sparse")
+        }
+        .map_err(|e| Error::Other(e.to_string()))?;
 
         let domain = {
             let rows = DimensionBuilder::new(

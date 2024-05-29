@@ -901,12 +901,14 @@ impl Iterator for WriteSequenceIter {
 
 #[cfg(test)]
 mod tests {
+    use tiledb_test_utils::{self, TestArrayUri};
+
     use super::*;
     use crate::array::{Array, Mode};
+    use crate::error::Error;
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
     };
-    use crate::test_util::{self, TestArrayUri};
     use crate::{Context, Factory};
 
     fn do_write_readback(
@@ -914,8 +916,11 @@ mod tests {
         schema_spec: Rc<SchemaData>,
         write_sequence: WriteSequence,
     ) -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
-        let uri = test_uri.with_path("array")?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let uri = test_uri
+            .with_path("array")
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let schema_in = schema_spec
             .create(ctx)
