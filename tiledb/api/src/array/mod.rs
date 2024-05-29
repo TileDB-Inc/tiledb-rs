@@ -13,7 +13,9 @@ use crate::datatype::{LogicalType, PhysicalType};
 use crate::error::{DatatypeErrorKind, Error, ModeErrorKind};
 use crate::key::LookupKey;
 use crate::metadata::Metadata;
-use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
+use crate::range::{
+    Range, SingleValueRange, TypedNonEmptyDomain, TypedRange, VarValueRange,
+};
 use crate::Result as TileDBResult;
 use crate::{fn_typed, Datatype};
 
@@ -661,13 +663,13 @@ impl Array {
     /// coordinate values of each dimension which have been populated.
     ///
     /// This is the union of all the non-empty domains of all array fragments.
-    pub fn nonempty_domain(&self) -> TileDBResult<Option<Vec<TypedRange>>> {
+    pub fn nonempty_domain(&self) -> TileDBResult<Option<TypedNonEmptyDomain>> {
         // note to devs: calling `tiledb_array_get_non_empty_domain`
         // looks like a huge pain, if this is ever a performance bottleneck
         // then maybe we can look into it
         (0..self.schema()?.domain()?.ndim()?)
             .map(|d| self.dimension_nonempty_domain(d))
-            .collect::<TileDBResult<Option<Vec<TypedRange>>>>()
+            .collect::<TileDBResult<Option<TypedNonEmptyDomain>>>()
     }
 }
 

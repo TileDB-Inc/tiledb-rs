@@ -16,7 +16,7 @@ use crate::query::strategy::{
     FieldDataParameters, RawResultCallback, StructuredCells,
 };
 use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
-use crate::range::{Range, SingleValueRange};
+use crate::range::{NonEmptyDomain, Range, SingleValueRange};
 use crate::{
     single_value_range_go, typed_field_data_go, Result as TileDBResult,
 };
@@ -454,7 +454,7 @@ pub struct SparseWriteInput {
 }
 
 impl SparseWriteInput {
-    pub fn domain(&self) -> Option<Vec<Range>> {
+    pub fn domain(&self) -> Option<NonEmptyDomain> {
         self.dimensions
             .iter()
             .map(|(dim, cell_val_num)| {
@@ -491,7 +491,7 @@ impl SparseWriteInput {
                     }
                 ))
             })
-            .collect::<Option<Vec<Range>>>()
+            .collect::<Option<NonEmptyDomain>>()
     }
 
     pub fn attach_write<'data>(
@@ -683,7 +683,7 @@ impl WriteInput {
         }
     }
 
-    pub fn domain(&self) -> Option<Vec<Range>> {
+    pub fn domain(&self) -> Option<NonEmptyDomain> {
         match self {
             Self::Dense(ref dense) => Some(
                 dense
@@ -691,7 +691,7 @@ impl WriteInput {
                     .clone()
                     .into_iter()
                     .map(Range::from)
-                    .collect::<Vec<Range>>(),
+                    .collect::<NonEmptyDomain>(),
             ),
             Self::Sparse(ref sparse) => sparse.domain(),
         }
@@ -944,7 +944,7 @@ mod tests {
             .expect("Error constructing arbitrary schema");
         Array::create(ctx, &uri, schema_in).expect("Error creating array");
 
-        let mut accumulated_domain: Option<Vec<Range>> = None;
+        let mut accumulated_domain: Option<NonEmptyDomain> = None;
         let mut accumulated_write: Option<Cells> = None;
 
         for write in write_sequence {
@@ -1018,12 +1018,8 @@ mod tests {
                 let fi = array.fragment_info().unwrap();
                 let this_fragment =
                     fi.get_fragment(fi.num_fragments().unwrap() - 1).unwrap();
-                let nonempty_domain = this_fragment
-                    .non_empty_domain()
-                    .unwrap()
-                    .into_iter()
-                    .map(|typed| typed.range)
-                    .collect::<Vec<_>>();
+                let nonempty_domain =
+                    this_fragment.non_empty_domain().unwrap().untyped();
 
                 assert_eq!(write_domain, nonempty_domain);
             } else {
@@ -1032,21 +1028,20 @@ mod tests {
             }
 
             /* then check array non-empty domain */
-            if accumulated_domain.as_mut().is_some() {
-                /* TODO: range extension, when we update test for a write sequence */
-                unimplemented!()
+            if let Some(accumulated_domain) = accumulated_domain.as_mut() {
+                if let Some(write_domain) = write.domain() {
+                    *accumulated_domain =
+                        accumulated_domain.union(&write_domain);
+                } else {
+                    assert_eq!(0, write.cells().len());
+                }
             } else {
                 accumulated_domain = write.domain();
             }
 
             if let Some(acc) = accumulated_domain.as_ref() {
-                let nonempty = array
-                    .nonempty_domain()
-                    .unwrap()
-                    .unwrap()
-                    .into_iter()
-                    .map(|typed| typed.range)
-                    .collect::<Vec<_>>();
+                let nonempty =
+                    array.nonempty_domain().unwrap().unwrap().untyped();
                 assert_eq!(*acc, nonempty);
             }
 
