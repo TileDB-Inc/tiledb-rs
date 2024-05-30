@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
 use std::rc::Rc;
 
 use paste::paste;
@@ -470,13 +470,6 @@ pub struct FieldDataParameters {
     pub datatype: Option<FieldStrategyDatatype>,
     pub value_min_var_size: usize,
     pub value_max_var_size: usize,
-    pub unique: bool,
-}
-
-impl FieldDataParameters {
-    pub fn require_unique_cells(&self) -> bool {
-        self.unique
-    }
 }
 
 impl Default for FieldDataParameters {
@@ -486,7 +479,6 @@ impl Default for FieldDataParameters {
             datatype: None,
             value_min_var_size: 0,
             value_max_var_size: 8, /* TODO */
-            unique: false,
         }
     }
 }
@@ -510,19 +502,9 @@ where
         value_strat: BoxedStrategy<Self>,
     ) -> BoxedStrategy<FieldData> {
         if cell_val_num == 1u32 {
-            if params.require_unique_cells() {
-                proptest::collection::btree_set(value_strat, params.nrecords)
-                    .prop_flat_map(|cell_set| {
-                        Just(cell_set.into_iter().collect::<Vec<_>>())
-                            .prop_shuffle()
-                            .prop_map(FieldData::from)
-                    })
-                    .boxed()
-            } else {
-                proptest::collection::vec(value_strat, params.nrecords)
-                    .prop_map(FieldData::from)
-                    .boxed()
-            }
+            proptest::collection::vec(value_strat, params.nrecords)
+                .prop_map(FieldData::from)
+                .boxed()
         } else {
             let (min, max) = if cell_val_num.is_var_sized() {
                 (params.value_min_var_size, params.value_max_var_size)
@@ -533,19 +515,9 @@ where
 
             let cell_strat = proptest::collection::vec(value_strat, min..=max);
 
-            if params.require_unique_cells() {
-                proptest::collection::btree_set(cell_strat, params.nrecords)
-                    .prop_flat_map(|cell_set| {
-                        Just(cell_set.into_iter().collect::<Vec<_>>())
-                            .prop_shuffle()
-                            .prop_map(FieldData::from)
-                    })
-                    .boxed()
-            } else {
-                proptest::collection::vec(cell_strat, params.nrecords)
-                    .prop_map(FieldData::from)
-                    .boxed()
-            }
+            proptest::collection::vec(cell_strat, params.nrecords)
+                .prop_map(FieldData::from)
+                .boxed()
         }
     }
 }
@@ -618,24 +590,6 @@ impl Arbitrary for FieldData {
                 let value_strat = d.value_strategy();
                 let cell_val_num =
                     d.cell_val_num.unwrap_or(CellValNum::single());
-
-                /* if unique values are required then the request may not be satisfiable */
-                if params.require_unique_cells()
-                    && !matches!(d.cell_val_num, Some(CellValNum::Var))
-                {
-                    let CellValNum::Fixed(nz) =
-                        d.cell_val_num.unwrap_or(CellValNum::single())
-                    else {
-                        unreachable!()
-                    };
-
-                    if let Some(num_cells) = d.constraints.num_cells() {
-                        let num_cell_values = num_cells * nz.get() as u128;
-                        if num_cell_values < params.nrecords.start() as u128 {
-                            panic!("Uniqueness is not satisfiable for strategy parameters: nrecords = {:?}, num_cells = {:?}, dimension = {:?}", params.nrecords, num_cells, d);
-                        }
-                    }
-                }
 
                 dimension_constraints_go!(
                     d.constraints,
@@ -899,16 +853,36 @@ impl Cells {
         assert_eq!(other.fields.len(), 0);
     }
 
-    fn index_comparator(&self) -> impl Fn(&usize, &usize) -> Ordering + '_ {
-        let key_order = {
-            let mut keys = self.fields.keys().collect::<Vec<&String>>();
-            keys.sort_unstable();
-            keys
-        };
+    /// Returns a view over a slice of the cells,
+    /// with a subset of the fields viewed as indicated by `keys`.
+    /// This is useful for comparing a section of `self` to another `Cells` instance.
+    pub fn view<'a>(
+        &'a self,
+        keys: &'a [String],
+        slice: Range<usize>,
+    ) -> CellsView<'a> {
+        for k in keys.iter() {
+            if !self.fields.contains_key(k) {
+                panic!("Cannot construct view: key '{}' not found (fields are {:?})",
+                    k, self.fields.keys())
+            }
+        }
 
+        CellsView {
+            cells: self,
+            keys,
+            slice,
+        }
+    }
+
+    /// Returns a comparator for ordering indices into the cells.
+    fn index_comparator<'a>(
+        &'a self,
+        keys: &'a [String],
+    ) -> impl Fn(&usize, &usize) -> Ordering + 'a {
         move |l: &usize, r: &usize| -> Ordering {
-            for key in key_order.iter() {
-                typed_field_data_go!(self.fields[*key], ref data, {
+            for key in keys.iter() {
+                typed_field_data_go!(self.fields[key], ref data, {
                     match BitsOrd::bits_cmp(&data[*l], &data[*r]) {
                         Ordering::Less => return Ordering::Less,
                         Ordering::Greater => return Ordering::Greater,
@@ -920,11 +894,9 @@ impl Cells {
         }
     }
 
-    /// Returns whether the cells are sorted.
-    /// The first sort key is the first field in alphabetical order,
-    /// the second key is the second, and so on.
-    pub fn is_sorted(&self) -> bool {
-        let index_comparator = self.index_comparator();
+    /// Returns whether the cells are sorted according to `keys`. See `Self::sort`.
+    pub fn is_sorted(&self, keys: &[String]) -> bool {
+        let index_comparator = self.index_comparator(keys);
         for i in 1..self.len() {
             if index_comparator(&(i - 1), &i) == Ordering::Greater {
                 return false;
@@ -933,17 +905,17 @@ impl Cells {
         true
     }
 
-    /// Sorts the cells of the argument for comparing a write and read set.
-    /// The first sort key is the first field in alphabetical order,
-    /// the second key is the second, and so on.
-    pub fn sort(&mut self) {
+    /// Sorts the cells using `keys`. If two elements are equal on the first item in `keys`,
+    /// then they will be ordered using the second; and so on.
+    /// May not preserve the order of elements which are equal for all fields in `keys`.
+    pub fn sort(&mut self, keys: &[String]) {
         let mut idx = std::iter::repeat(())
             .take(self.len())
             .enumerate()
             .map(|(i, _)| i)
             .collect::<Vec<usize>>();
 
-        let idx_comparator = self.index_comparator();
+        let idx_comparator = self.index_comparator(keys);
         idx.sort_by(idx_comparator);
 
         for data in self.fields.values_mut() {
@@ -960,10 +932,47 @@ impl Cells {
     }
 
     /// Returns a copy of the cells, sorted as if by `self.sort()`.
-    pub fn sorted(&self) -> Self {
+    pub fn sorted(&self, keys: &[String]) -> Self {
         let mut sorted = self.clone();
-        sorted.sort();
+        sorted.sort(keys);
         sorted
+    }
+
+    /// Returns the number of distinct values grouped on `keys`
+    pub fn count_distinct(&self, keys: &[String]) -> usize {
+        if self.len() <= 1 {
+            return self.len();
+        }
+
+        let key_cells = {
+            let key_fields = self
+                .fields
+                .iter()
+                .filter(|(k, _)| keys.contains(k))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<HashMap<_, _>>();
+            Cells::new(key_fields).sorted(keys)
+        };
+
+        let mut icmp = 0;
+        let mut count = 1;
+
+        for i in 1..key_cells.len() {
+            let distinct = keys.iter().any(|k| {
+                let v = key_cells.fields().get(k).unwrap();
+                typed_field_data_go!(
+                    v,
+                    ref cells,
+                    cells[i].bits_ne(&cells[icmp])
+                )
+            });
+            if distinct {
+                icmp = i;
+                count += 1;
+            }
+        }
+
+        count
     }
 
     /// Returns a subset of the records using the bitmap to determine which are included
@@ -974,6 +983,42 @@ impl Cells {
                 .map(|(k, v)| (k.clone(), v.filter(set)))
                 .collect::<HashMap<String, FieldData>>(),
         )
+    }
+
+    /// Returns a subset of `self` containing only cells which have distinct values in `keys`
+    /// such that `self.dedup(keys).count_distinct(keys) == self.len()`.
+    /// The order of cells in the input is preserved and the
+    /// first cell for each value of `keys` is preserved in the output.
+    pub fn dedup(&self, keys: &[String]) -> Cells {
+        if self.is_empty() {
+            return self.clone();
+        }
+
+        let mut idx = (0..self.len()).collect::<Vec<usize>>();
+
+        let idx_comparator = self.index_comparator(keys);
+        idx.sort_by(idx_comparator);
+
+        let mut icmp = 0;
+        let mut preserve = VarBitSet::new_bitset(idx.len());
+        preserve.set(idx[0]);
+
+        for i in 1..idx.len() {
+            let distinct = keys.iter().any(|k| {
+                let v = self.fields.get(k).unwrap();
+                typed_field_data_go!(
+                    v,
+                    ref field_cells,
+                    field_cells[idx[i]].bits_ne(&field_cells[idx[icmp]])
+                )
+            });
+            if distinct {
+                icmp = i;
+                preserve.set(idx[i]);
+            }
+        }
+
+        self.filter(&preserve)
     }
 }
 
@@ -1109,6 +1154,46 @@ impl StructuredCells {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CellsView<'a> {
+    cells: &'a Cells,
+    keys: &'a [String],
+    slice: Range<usize>,
+}
+
+impl<'a, 'b> PartialEq<CellsView<'b>> for CellsView<'a> {
+    fn eq(&self, other: &CellsView<'b>) -> bool {
+        // must have same number of values
+        if self.slice.len() != other.slice.len() {
+            return false;
+        }
+
+        for key in self.keys.iter() {
+            let Some(mine) = self.cells.fields.get(key) else {
+                // validated on construction
+                unreachable!()
+            };
+            let Some(theirs) = other.cells.fields.get(key) else {
+                return false;
+            };
+
+            typed_field_data_cmp!(
+                mine,
+                theirs,
+                _DT,
+                ref mine,
+                ref theirs,
+                if mine[self.slice.clone()] != theirs[other.slice.clone()] {
+                    return false;
+                },
+                return false
+            );
+        }
+
+        self.keys.len() == other.keys.len()
+    }
+}
+
 /// Mask for whether a field should be included in a write query.
 // As of this writing, core does not support default values being filled in,
 // so this construct is not terribly useful. But someday that may change
@@ -1174,6 +1259,13 @@ impl CellsValueTree {
             .next()
             .unwrap()
             .len();
+
+        // sanity check
+        for f in field_data.values() {
+            if let Some(f) = f.1.as_ref() {
+                assert_eq!(nrecords, f.len())
+            }
+        }
 
         let nchunks = WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES;
         let records_included = (0..nrecords).collect::<Vec<usize>>();
@@ -1390,12 +1482,14 @@ impl CellsStrategySchema {
     fn new_field_tree(
         &self,
         runner: &mut TestRunner,
-        nrecords: usize,
+        nrecords: RangeInclusive<usize>,
     ) -> HashMap<String, (FieldMask, Option<FieldData>)> {
         let field_data_parameters_base = FieldDataParameters::default();
 
         match self {
             Self::Fields(fields) => {
+                let nrecords = nrecords.new_tree(runner).unwrap().current();
+
                 let field_mask = fields
                     .iter()
                     .map(|(k, v)| {
@@ -1467,34 +1561,109 @@ impl CellsStrategySchema {
                         .collect::<Vec<(SchemaField, FieldMask)>>()
                 };
 
-                field_mask
-                    .into_iter()
-                    .map(|(field, mask)| {
-                        let require_unique_values = field.is_dimension()
-                            && !schema.allow_duplicates.unwrap_or(false);
-                        let field_name = field.name().to_string();
-                        let field_data = if mask.is_included() {
+                if schema.array_type == ArrayType::Sparse
+                    && !schema.allow_duplicates.unwrap_or(false)
+                {
+                    // dimension coordinates must be unique, generate them first
+                    let unique_keys = schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| d.name.clone())
+                        .collect::<Vec<String>>();
+                    let dimension_data = schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| {
                             let params = FieldDataParameters {
-                                nrecords: nrecords.into(),
+                                nrecords: (*nrecords.end()..=*nrecords.end())
+                                    .into(),
                                 datatype: Some(
-                                    FieldStrategyDatatype::SchemaField(field),
+                                    FieldStrategyDatatype::SchemaField(
+                                        SchemaField::Dimension(d.clone()),
+                                    ),
                                 ),
-                                unique: require_unique_values,
                                 ..field_data_parameters_base.clone()
                             };
-                            Some(
+                            (
+                                d.name.clone(),
                                 any_with::<FieldData>(params)
                                     .new_tree(runner)
                                     .unwrap()
                                     .current(),
                             )
-                        } else {
-                            None
-                        };
-                        (field_name, (mask, field_data))
-                    })
+                        })
+                        .collect::<HashMap<String, FieldData>>();
+
+                    let mut dedup_fields =
+                        Cells::new(dimension_data).dedup(&unique_keys);
+
+                    // choose the number of records
+                    let nrecords = {
+                        /*
+                         * TODO: not really accurate but in practice nrecords.start
+                         * is probably zero so this is the easy lazy thing to do
+                         */
+                        assert!(*nrecords.start() <= dedup_fields.len());
+
+                        (*nrecords.start()..=dedup_fields.len())
+                            .new_tree(runner)
+                            .unwrap()
+                            .current()
+                    };
+
+                    field_mask.into_iter()
+                        .map(|(field, mask)| {
+                            let field_name = field.name().to_owned();
+                            let field_data = if let Some(mut dim) = dedup_fields.fields.remove(&field_name) {
+                                assert!(field.is_dimension());
+                                dim.truncate(nrecords);
+                                dim
+                            } else {
+                                assert!(field.is_attribute());
+                                let params = FieldDataParameters {
+                                    nrecords: (nrecords..=nrecords).into(),
+                                    datatype: Some(FieldStrategyDatatype::SchemaField(field)),
+                                    ..field_data_parameters_base.clone()
+                                };
+                                any_with::<FieldData>(params)
+                                    .new_tree(runner)
+                                    .unwrap()
+                                    .current()
+                            };
+                            assert_eq!(nrecords, field_data.len());
+                            (field_name, (mask, Some(field_data)))
+                        })
+                    .collect::<HashMap<String, (FieldMask, Option<FieldData>)>>()
+                } else {
+                    let nrecords = nrecords.new_tree(runner).unwrap().current();
+                    field_mask
+                        .into_iter()
+                        .map(|(field, mask)| {
+                            let field_name = field.name().to_string();
+                            let field_data = if mask.is_included() {
+                                let params = FieldDataParameters {
+                                    nrecords: (nrecords..=nrecords).into(),
+                                    datatype: Some(
+                                        FieldStrategyDatatype::SchemaField(field),
+                                    ),
+                                    ..field_data_parameters_base.clone()
+                                };
+                                Some(
+                                    any_with::<FieldData>(params)
+                                    .new_tree(runner)
+                                    .unwrap()
+                                    .current(),
+                                )
+                            } else {
+                                None
+                            };
+                            (field_name, (mask, field_data))
+                        })
                     .collect::<HashMap<String, (FieldMask, Option<FieldData>)>>(
                     )
+                }
             }
             Self::ReadSchema(_) => {
                 /* presumably any subset of the fields */
@@ -1585,10 +1754,8 @@ impl Strategy for CellsStrategy {
             self.params.min_records..=self.params.max_records
         };
 
-        let nrecords = strat_nrecords.new_tree(runner)?.current();
-
         /* generate an initial set of fields to write */
-        let field_tree = self.schema.new_field_tree(runner, nrecords);
+        let field_tree = self.schema.new_field_tree(runner, strat_nrecords);
 
         Ok(CellsValueTree::new(self.params.clone(), field_tree))
     }
@@ -1619,63 +1786,8 @@ impl Arbitrary for Cells {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::datatype::physical::BitsKeyAdapter;
     use std::collections::HashSet;
-
-    fn do_field_data_unique(data: FieldData) {
-        typed_field_data_go!(
-            data,
-            _DT,
-            values,
-            {
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values = {:?}",
-                    values
-                );
-            },
-            {
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values = {:?}",
-                    values
-                );
-            },
-            {
-                let values =
-                    values.into_iter().map(|f| f.to_bits()).collect::<Vec<_>>();
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values.to_bits = {:?}",
-                    values
-                );
-            },
-            {
-                let values = values
-                    .into_iter()
-                    .map(|v| {
-                        v.into_iter().map(|f| f.to_bits()).collect::<Vec<_>>()
-                    })
-                    .collect::<Vec<Vec<_>>>();
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values.to_bits = {:?}",
-                    values
-                );
-            }
-        )
-    }
 
     fn do_field_data_extend(dst: FieldData, src: FieldData) {
         let orig_dst = dst.clone();
@@ -1726,13 +1838,13 @@ mod tests {
         assert_eq!(orig_src.fields.len(), dst.fields.len());
     }
 
-    fn do_cells_sort(cells: Cells) {
-        let cells_sorted = cells.sorted();
-        assert!(cells_sorted.is_sorted());
+    fn do_cells_sort(cells: Cells, keys: Vec<String>) {
+        let cells_sorted = cells.sorted(keys.as_slice());
+        assert!(cells_sorted.is_sorted(keys.as_slice()));
 
         assert_eq!(cells.fields().len(), cells_sorted.fields().len());
 
-        if cells.is_sorted() {
+        if cells.is_sorted(keys.as_slice()) {
             // running the sort should not have changed anything
             assert_eq!(cells, cells_sorted);
         }
@@ -1889,31 +2001,107 @@ mod tests {
         }
     }
 
-    #[test]
-    fn cells_3d_example() {
-        let cells = Cells::new(
-            [(
-                "a".to_owned(),
-                FieldData::Int64(vec![
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-                    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-                    32, 33, 34, 35,
-                ]),
-            )]
-            .into_iter()
-            .collect::<HashMap<_, _>>(),
-        );
+    fn do_cells_count_distinct_1d(cells: Cells) {
+        for (key, field_cells) in cells.fields().iter() {
+            let expect_count =
+                typed_field_data_go!(field_cells, ref field_cells, {
+                    let mut c = field_cells.clone();
+                    c.sort_by(|l, r| l.bits_cmp(r));
+                    c.dedup_by(|l, r| l.bits_eq(r));
+                    c.len()
+                });
 
-        do_cells_slice_3d(cells, 2, 1, 1, 0..2, 0..1, 0..1)
+            let keys_for_distinct = vec![key.clone()];
+            let actual_count =
+                cells.count_distinct(keys_for_distinct.as_slice());
+
+            assert_eq!(expect_count, actual_count);
+        }
+    }
+
+    fn do_cells_count_distinct_2d(cells: Cells) {
+        let keys = cells.fields().keys().collect::<Vec<_>>();
+
+        for i in 0..keys.len() {
+            for j in 0..keys.len() {
+                let expect_count = {
+                    typed_field_data_go!(
+                        cells.fields().get(keys[i]).unwrap(),
+                        ref ki_cells,
+                        {
+                            typed_field_data_go!(
+                                cells.fields().get(keys[j]).unwrap(),
+                                ref kj_cells,
+                                {
+                                    let mut unique = HashMap::new();
+
+                                    for r in 0..ki_cells.len() {
+                                        let values = match unique
+                                            .entry(BitsKeyAdapter(&ki_cells[r]))
+                                        {
+                                            Entry::Vacant(v) => {
+                                                v.insert(HashSet::new())
+                                            }
+                                            Entry::Occupied(o) => o.into_mut(),
+                                        };
+                                        values.insert(BitsKeyAdapter(
+                                            &kj_cells[r],
+                                        ));
+                                    }
+
+                                    unique.values().flatten().count()
+                                }
+                            )
+                        }
+                    )
+                };
+
+                let keys_for_distinct = vec![keys[i].clone(), keys[j].clone()];
+                let actual_count =
+                    cells.count_distinct(keys_for_distinct.as_slice());
+
+                assert_eq!(expect_count, actual_count);
+            }
+        }
+    }
+
+    fn do_cells_dedup(cells: Cells, keys: Vec<String>) {
+        let dedup = cells.dedup(keys.as_slice());
+        assert_eq!(dedup.len(), dedup.count_distinct(keys.as_slice()));
+
+        // invariant check
+        for field in dedup.fields().values() {
+            assert_eq!(dedup.len(), field.len());
+        }
+
+        if dedup.is_empty() {
+            assert!(cells.is_empty());
+            return;
+        } else if dedup.len() == cells.len() {
+            assert_eq!(cells, dedup);
+            return;
+        }
+
+        // check that order within the original cells is preserved
+        assert_eq!(cells.view(&keys, 0..1), dedup.view(&keys, 0..1));
+
+        let mut in_cursor = 1;
+        let mut out_cursor = 1;
+
+        while in_cursor < cells.len() && out_cursor < dedup.len() {
+            if cells.view(&keys, in_cursor..(in_cursor + 1))
+                == dedup.view(&keys, out_cursor..(out_cursor + 1))
+            {
+                out_cursor += 1;
+                in_cursor += 1;
+            } else {
+                in_cursor += 1;
+            }
+        }
+        assert_eq!(dedup.len(), out_cursor);
     }
 
     proptest! {
-        #[test]
-        fn field_data_unique(data in any_with::<FieldData>(FieldDataParameters { unique: true, ..Default::default() }))
-        {
-            do_field_data_unique(data)
-        }
-
         #[test]
         fn field_data_extend((dst, src) in (any::<Datatype>(), any::<CellValNum>()).prop_flat_map(|(dt, cvn)| {
             let params = FieldDataParameters {
@@ -1937,8 +2125,12 @@ mod tests {
         }
 
         #[test]
-        fn cells_sort(cells in any::<Cells>()) {
-            do_cells_sort(cells)
+        fn cells_sort((cells, keys) in any::<Cells>().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nkeys = keys.len();
+            (Just(c), proptest::sample::subsequence(keys, 0..=nkeys).prop_shuffle())
+        })) {
+            do_cells_sort(cells, keys)
         }
 
         #[test]
@@ -2005,6 +2197,27 @@ mod tests {
             let s2 = std::cmp::min(b21, b22).. std::cmp::max(b21, b22);
             let s3 = std::cmp::min(b31, b32).. std::cmp::max(b31, b32);
             do_cells_slice_3d(cells, d1, d2, d3, s1, s2, s3)
+        }
+
+        #[test]
+        fn cells_count_distinct_1d(cells in any::<Cells>()) {
+            do_cells_count_distinct_1d(cells)
+        }
+
+        #[test]
+        fn cells_count_distinct_2d(cells in any::<Cells>()) {
+            prop_assume!(cells.fields().len() >= 2);
+            do_cells_count_distinct_2d(cells)
+        }
+
+        #[test]
+        fn cells_dedup((cells, keys) in any::<Cells>().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nkeys = keys.len();
+            (Just(c), proptest::sample::subsequence(keys, 0..=nkeys).prop_shuffle())
+        }))
+        {
+            do_cells_dedup(cells, keys)
         }
     }
 }

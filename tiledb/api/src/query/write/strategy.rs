@@ -933,6 +933,22 @@ mod tests {
         let mut accumulated_domain: Option<Vec<Range>> = None;
         let mut accumulated_write: Option<Cells> = None;
 
+        /*
+         * Results do not come back in a defined order, so we must sort and
+         * compare. Writes currently have to write all fields.
+         */
+        let sort_keys = match write_sequence {
+            WriteSequence::Dense(_) => schema_spec
+                .attributes
+                .iter()
+                .map(|f| f.name.clone())
+                .collect::<Vec<String>>(),
+            WriteSequence::Sparse(_) => schema_spec
+                .fields()
+                .map(|f| f.name().to_owned())
+                .collect::<Vec<String>>(),
+        };
+
         for write in write_sequence {
             /* write data and preserve ranges for sanity check */
             let write_ranges = {
@@ -988,8 +1004,8 @@ mod tests {
 
                 /* `cells` should match the write */
                 {
-                    let write_sorted = write.cells().sorted();
-                    cells.sort();
+                    let write_sorted = write.cells().sorted(&sort_keys);
+                    cells.sort(&sort_keys);
                     assert_eq!(write_sorted, cells);
                 }
 
