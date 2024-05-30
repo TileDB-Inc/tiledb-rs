@@ -21,6 +21,15 @@ pub trait BitsEq {
     }
 }
 
+impl<T> BitsEq for &T
+where
+    T: BitsEq,
+{
+    fn bits_eq(&self, other: &Self) -> bool {
+        (**self).bits_eq(*other)
+    }
+}
+
 impl<T> BitsEq for [T]
 where
     T: BitsEq,
@@ -73,6 +82,15 @@ pub trait BitsOrd {
         } else {
             max
         }
+    }
+}
+
+impl<T> BitsOrd for &T
+where
+    T: BitsOrd,
+{
+    fn bits_cmp(&self, other: &Self) -> Ordering {
+        (**self).bits_cmp(*other)
     }
 }
 
@@ -280,7 +298,7 @@ where
     T: BitsEq + BitsOrd,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.0.bits_cmp(&other.0))
+        Some(Ord::cmp(self, other))
     }
 }
 

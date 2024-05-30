@@ -994,7 +994,7 @@ impl Cells {
             return self.clone();
         }
 
-        let mut idx = (0..self.len()).into_iter().collect::<Vec<usize>>();
+        let mut idx = (0..self.len()).collect::<Vec<usize>>();
 
         let idx_comparator = self.index_comparator(keys);
         idx.sort_by(idx_comparator);
@@ -2036,16 +2036,16 @@ mod tests {
                                     let mut unique = HashMap::new();
 
                                     for r in 0..ki_cells.len() {
-                                        let values = match unique.entry(
-                                            BitsKeyAdapter(ki_cells[r].clone()),
-                                        ) {
+                                        let values = match unique
+                                            .entry(BitsKeyAdapter(&ki_cells[r]))
+                                        {
                                             Entry::Vacant(v) => {
                                                 v.insert(HashSet::new())
                                             }
                                             Entry::Occupied(o) => o.into_mut(),
                                         };
                                         values.insert(BitsKeyAdapter(
-                                            kj_cells[r].clone(),
+                                            &kj_cells[r],
                                         ));
                                     }
 
