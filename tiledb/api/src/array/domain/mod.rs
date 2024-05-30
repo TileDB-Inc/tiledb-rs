@@ -12,6 +12,7 @@ use crate::array::{
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::key::LookupKey;
+use crate::range::{NonEmptyDomain, Range};
 use crate::{Factory, Result as TileDBResult};
 
 pub(crate) enum RawDomain {
@@ -289,6 +290,15 @@ impl DomainData {
             total = total.checked_mul(d.constraints.num_cells()?)?;
         }
         usize::try_from(total).ok()
+    }
+
+    /// Returns the domains of each dimension as a `NonEmptyDomain`,
+    /// or `None` if any dimension is not constrained into a domain
+    pub fn domains(&self) -> Option<NonEmptyDomain> {
+        self.dimension
+            .iter()
+            .map(|d| d.constraints.domain().map(Range::Single))
+            .collect::<Option<NonEmptyDomain>>()
     }
 }
 
