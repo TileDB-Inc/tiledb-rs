@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
-use std::ops::Range;
+use std::ops::{Range, RangeInclusive};
 use std::rc::Rc;
 
 use paste::paste;
@@ -470,13 +470,6 @@ pub struct FieldDataParameters {
     pub datatype: Option<FieldStrategyDatatype>,
     pub value_min_var_size: usize,
     pub value_max_var_size: usize,
-    pub unique: bool,
-}
-
-impl FieldDataParameters {
-    pub fn require_unique_cells(&self) -> bool {
-        self.unique
-    }
 }
 
 impl Default for FieldDataParameters {
@@ -486,7 +479,6 @@ impl Default for FieldDataParameters {
             datatype: None,
             value_min_var_size: 0,
             value_max_var_size: 8, /* TODO */
-            unique: false,
         }
     }
 }
@@ -510,19 +502,9 @@ where
         value_strat: BoxedStrategy<Self>,
     ) -> BoxedStrategy<FieldData> {
         if cell_val_num == 1u32 {
-            if params.require_unique_cells() {
-                proptest::collection::btree_set(value_strat, params.nrecords)
-                    .prop_flat_map(|cell_set| {
-                        Just(cell_set.into_iter().collect::<Vec<_>>())
-                            .prop_shuffle()
-                            .prop_map(FieldData::from)
-                    })
-                    .boxed()
-            } else {
-                proptest::collection::vec(value_strat, params.nrecords)
-                    .prop_map(FieldData::from)
-                    .boxed()
-            }
+            proptest::collection::vec(value_strat, params.nrecords)
+                .prop_map(FieldData::from)
+                .boxed()
         } else {
             let (min, max) = if cell_val_num.is_var_sized() {
                 (params.value_min_var_size, params.value_max_var_size)
@@ -533,19 +515,9 @@ where
 
             let cell_strat = proptest::collection::vec(value_strat, min..=max);
 
-            if params.require_unique_cells() {
-                proptest::collection::btree_set(cell_strat, params.nrecords)
-                    .prop_flat_map(|cell_set| {
-                        Just(cell_set.into_iter().collect::<Vec<_>>())
-                            .prop_shuffle()
-                            .prop_map(FieldData::from)
-                    })
-                    .boxed()
-            } else {
-                proptest::collection::vec(cell_strat, params.nrecords)
-                    .prop_map(FieldData::from)
-                    .boxed()
-            }
+            proptest::collection::vec(cell_strat, params.nrecords)
+                .prop_map(FieldData::from)
+                .boxed()
         }
     }
 }
@@ -618,24 +590,6 @@ impl Arbitrary for FieldData {
                 let value_strat = d.value_strategy();
                 let cell_val_num =
                     d.cell_val_num.unwrap_or(CellValNum::single());
-
-                /* if unique values are required then the request may not be satisfiable */
-                if params.require_unique_cells()
-                    && !matches!(d.cell_val_num, Some(CellValNum::Var))
-                {
-                    let CellValNum::Fixed(nz) =
-                        d.cell_val_num.unwrap_or(CellValNum::single())
-                    else {
-                        unreachable!()
-                    };
-
-                    if let Some(num_cells) = d.constraints.num_cells() {
-                        let num_cell_values = num_cells * nz.get() as u128;
-                        if num_cell_values < params.nrecords.start() as u128 {
-                            panic!("Uniqueness is not satisfiable for strategy parameters: nrecords = {:?}, num_cells = {:?}, dimension = {:?}", params.nrecords, num_cells, d);
-                        }
-                    }
-                }
 
                 dimension_constraints_go!(
                     d.constraints,
@@ -1294,6 +1248,13 @@ impl CellsValueTree {
             .unwrap()
             .len();
 
+        // sanity check
+        for f in field_data.values() {
+            if let Some(f) = f.1.as_ref() {
+                assert_eq!(nrecords, f.len())
+            }
+        }
+
         let nchunks = WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES;
         let records_included = (0..nrecords).collect::<Vec<usize>>();
 
@@ -1509,12 +1470,14 @@ impl CellsStrategySchema {
     fn new_field_tree(
         &self,
         runner: &mut TestRunner,
-        nrecords: usize,
+        nrecords: RangeInclusive<usize>,
     ) -> HashMap<String, (FieldMask, Option<FieldData>)> {
         let field_data_parameters_base = FieldDataParameters::default();
 
         match self {
             Self::Fields(fields) => {
+                let nrecords = nrecords.new_tree(runner).unwrap().current();
+
                 let field_mask = fields
                     .iter()
                     .map(|(k, v)| {
@@ -1586,34 +1549,109 @@ impl CellsStrategySchema {
                         .collect::<Vec<(SchemaField, FieldMask)>>()
                 };
 
-                field_mask
-                    .into_iter()
-                    .map(|(field, mask)| {
-                        let require_unique_values = field.is_dimension()
-                            && !schema.allow_duplicates.unwrap_or(false);
-                        let field_name = field.name().to_string();
-                        let field_data = if mask.is_included() {
+                if schema.array_type == ArrayType::Sparse
+                    && !schema.allow_duplicates.unwrap_or(false)
+                {
+                    // dimension coordinates must be unique, generate them first
+                    let unique_keys = schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| d.name.clone())
+                        .collect::<Vec<String>>();
+                    let dimension_data = schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| {
                             let params = FieldDataParameters {
-                                nrecords: nrecords.into(),
+                                nrecords: (*nrecords.end()..=*nrecords.end())
+                                    .into(),
                                 datatype: Some(
-                                    FieldStrategyDatatype::SchemaField(field),
+                                    FieldStrategyDatatype::SchemaField(
+                                        SchemaField::Dimension(d.clone()),
+                                    ),
                                 ),
-                                unique: require_unique_values,
                                 ..field_data_parameters_base.clone()
                             };
-                            Some(
+                            (
+                                d.name.clone(),
                                 any_with::<FieldData>(params)
                                     .new_tree(runner)
                                     .unwrap()
                                     .current(),
                             )
-                        } else {
-                            None
-                        };
-                        (field_name, (mask, field_data))
-                    })
+                        })
+                        .collect::<HashMap<String, FieldData>>();
+
+                    let mut dedup_fields =
+                        Cells::new(dimension_data).dedup(&*unique_keys);
+
+                    // choose the number of records
+                    let nrecords = {
+                        /*
+                         * TODO: not really accurate but in practice nrecords.start
+                         * is probably zero so this is the easy lazy thing to do
+                         */
+                        assert!(*nrecords.start() <= dedup_fields.len());
+
+                        (*nrecords.start()..=dedup_fields.len())
+                            .new_tree(runner)
+                            .unwrap()
+                            .current()
+                    };
+
+                    field_mask.into_iter()
+                        .map(|(field, mask)| {
+                            let field_name = field.name().to_owned();
+                            let field_data = if let Some(mut dim) = dedup_fields.fields.remove(&field_name) {
+                                assert!(field.is_dimension());
+                                dim.truncate(nrecords);
+                                dim
+                            } else {
+                                assert!(field.is_attribute());
+                                let params = FieldDataParameters {
+                                    nrecords: (nrecords..=nrecords).into(),
+                                    datatype: Some(FieldStrategyDatatype::SchemaField(field)),
+                                    ..field_data_parameters_base.clone()
+                                };
+                                any_with::<FieldData>(params)
+                                    .new_tree(runner)
+                                    .unwrap()
+                                    .current()
+                            };
+                            assert_eq!(nrecords, field_data.len());
+                            (field_name, (mask, Some(field_data)))
+                        })
+                    .collect::<HashMap<String, (FieldMask, Option<FieldData>)>>()
+                } else {
+                    let nrecords = nrecords.new_tree(runner).unwrap().current();
+                    field_mask
+                        .into_iter()
+                        .map(|(field, mask)| {
+                            let field_name = field.name().to_string();
+                            let field_data = if mask.is_included() {
+                                let params = FieldDataParameters {
+                                    nrecords: (nrecords..=nrecords).into(),
+                                    datatype: Some(
+                                        FieldStrategyDatatype::SchemaField(field),
+                                    ),
+                                    ..field_data_parameters_base.clone()
+                                };
+                                Some(
+                                    any_with::<FieldData>(params)
+                                    .new_tree(runner)
+                                    .unwrap()
+                                    .current(),
+                                )
+                            } else {
+                                None
+                            };
+                            (field_name, (mask, field_data))
+                        })
                     .collect::<HashMap<String, (FieldMask, Option<FieldData>)>>(
                     )
+                }
             }
             Self::ReadSchema(_) => {
                 /* presumably any subset of the fields */
@@ -1704,10 +1742,8 @@ impl Strategy for CellsStrategy {
             self.params.min_records..=self.params.max_records
         };
 
-        let nrecords = strat_nrecords.new_tree(runner)?.current();
-
         /* generate an initial set of fields to write */
-        let field_tree = self.schema.new_field_tree(runner, nrecords);
+        let field_tree = self.schema.new_field_tree(runner, strat_nrecords);
 
         Ok(CellsValueTree::new(self.params.clone(), field_tree))
     }
@@ -1740,62 +1776,6 @@ mod tests {
     use super::*;
     use crate::datatype::physical::BitsKeyAdapter;
     use std::collections::HashSet;
-
-    fn do_field_data_unique(data: FieldData) {
-        typed_field_data_go!(
-            data,
-            _DT,
-            values,
-            {
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values = {:?}",
-                    values
-                );
-            },
-            {
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values = {:?}",
-                    values
-                );
-            },
-            {
-                let values =
-                    values.into_iter().map(|f| f.to_bits()).collect::<Vec<_>>();
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values.to_bits = {:?}",
-                    values
-                );
-            },
-            {
-                let values = values
-                    .into_iter()
-                    .map(|v| {
-                        v.into_iter().map(|f| f.to_bits()).collect::<Vec<_>>()
-                    })
-                    .collect::<Vec<Vec<_>>>();
-                let num_cells = values.len();
-                let num_unique_cells =
-                    values.clone().into_iter().collect::<HashSet<_>>().len();
-                assert_eq!(
-                    num_cells, num_unique_cells,
-                    "values.to_bits = {:?}",
-                    values
-                );
-            }
-        )
-    }
 
     fn do_field_data_extend(dst: FieldData, src: FieldData) {
         let orig_dst = dst.clone();
@@ -2077,6 +2057,11 @@ mod tests {
         let dedup = cells.dedup(keys.as_slice());
         assert_eq!(dedup.len(), dedup.count_distinct(keys.as_slice()));
 
+        // invariant check
+        for field in dedup.fields().values() {
+            assert_eq!(dedup.len(), field.len());
+        }
+
         if dedup.is_empty() {
             assert!(cells.is_empty());
             return;
@@ -2105,12 +2090,6 @@ mod tests {
     }
 
     proptest! {
-        #[test]
-        fn field_data_unique(data in any_with::<FieldData>(FieldDataParameters { unique: true, ..Default::default() }))
-        {
-            do_field_data_unique(data)
-        }
-
         #[test]
         fn field_data_extend((dst, src) in (any::<Datatype>(), any::<CellValNum>()).prop_flat_map(|(dt, cvn)| {
             let params = FieldDataParameters {

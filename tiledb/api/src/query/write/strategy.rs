@@ -928,10 +928,17 @@ mod tests {
         let mut accumulated_domain: Option<Vec<Range>> = None;
         let mut accumulated_write: Option<Cells> = None;
 
-        let sort_keys = schema_spec
-            .fields()
-            .map(|f| f.name().to_owned())
-            .collect::<Vec<String>>();
+        let sort_keys = match write_sequence {
+            WriteSequence::Dense(_) => schema_spec
+                .attributes
+                .iter()
+                .map(|f| f.name.clone())
+                .collect::<Vec<String>>(),
+            WriteSequence::Sparse(_) => schema_spec
+                .fields()
+                .map(|f| f.name().to_owned())
+                .collect::<Vec<String>>(),
+        };
 
         for write in write_sequence {
             /* write data and preserve ranges for sanity check */
