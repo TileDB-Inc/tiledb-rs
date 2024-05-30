@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
-use std::ops::RangeInclusive;
+use std::ops::{Deref, RangeInclusive};
 use std::rc::Rc;
 
 use proptest::prelude::*;
@@ -597,9 +597,10 @@ pub struct DenseWriteSequence {
     writes: Vec<DenseWriteInput>,
 }
 
-impl DenseWriteSequence {
-    pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
-        self.into_iter()
+impl Deref for DenseWriteSequence {
+    type Target = Vec<DenseWriteInput>;
+    fn deref(&self) -> &Self::Target {
+        &self.writes
     }
 }
 
@@ -645,23 +646,15 @@ impl IntoIterator for DenseWriteSequence {
     }
 }
 
-impl<'a> IntoIterator for &'a DenseWriteSequence {
-    type Item = &'a DenseWriteInput;
-    type IntoIter = <&'a Vec<DenseWriteInput> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.writes.iter()
-    }
-}
-
 #[derive(Debug)]
 pub struct SparseWriteSequence {
     writes: Vec<SparseWriteInput>,
 }
 
-impl SparseWriteSequence {
-    pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
-        self.into_iter()
+impl Deref for SparseWriteSequence {
+    type Target = Vec<SparseWriteInput>;
+    fn deref(&self) -> &Self::Target {
+        &self.writes
     }
 }
 
@@ -703,15 +696,6 @@ impl IntoIterator for SparseWriteSequence {
 
     fn into_iter(self) -> Self::IntoIter {
         self.writes.into_iter()
-    }
-}
-
-impl<'a> IntoIterator for &'a SparseWriteSequence {
-    type Item = &'a SparseWriteInput;
-    type IntoIter = <&'a Vec<SparseWriteInput> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.writes.iter()
     }
 }
 
@@ -1070,8 +1054,8 @@ impl Iterator for WriteSequenceIter {
 }
 
 pub enum WriteSequenceRefIter<'a> {
-    Dense(<&'a DenseWriteSequence as IntoIterator>::IntoIter),
-    Sparse(<&'a SparseWriteSequence as IntoIterator>::IntoIter),
+    Dense(<&'a Vec<DenseWriteInput> as IntoIterator>::IntoIter),
+    Sparse(<&'a Vec<SparseWriteInput> as IntoIterator>::IntoIter),
 }
 
 impl<'a> Iterator for WriteSequenceRefIter<'a> {
