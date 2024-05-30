@@ -966,6 +966,43 @@ impl Cells {
         sorted
     }
 
+    /// Returns the number of distinct values grouped on `keys`
+    pub fn count_distinct(&self, keys: &[String]) -> usize {
+        if self.len() <= 1 {
+            return self.len();
+        }
+
+        let key_cells = {
+            let key_fields = self
+                .fields
+                .iter()
+                .filter(|(k, _)| keys.contains(k))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect::<HashMap<_, _>>();
+            Cells::new(key_fields).sorted()
+        };
+
+        let mut icmp = 0;
+        let mut count = 1;
+
+        for i in 1..key_cells.len() {
+            let distinct = keys.iter().any(|k| {
+                let v = key_cells.fields().get(k).unwrap();
+                typed_field_data_go!(
+                    v,
+                    ref cells,
+                    cells[i].bits_ne(&cells[icmp])
+                )
+            });
+            if distinct {
+                icmp = i;
+                count += 1;
+            }
+        }
+
+        count
+    }
+
     /// Returns a subset of the records using the bitmap to determine which are included
     pub fn filter(&self, set: &VarBitSet) -> Cells {
         Self::new(
@@ -1619,6 +1656,7 @@ impl Arbitrary for Cells {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::datatype::physical::BitsKeyAdapter;
     use std::collections::HashSet;
 
     fn do_field_data_unique(data: FieldData) {
@@ -1889,22 +1927,68 @@ mod tests {
         }
     }
 
-    #[test]
-    fn cells_3d_example() {
-        let cells = Cells::new(
-            [(
-                "a".to_owned(),
-                FieldData::Int64(vec![
-                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-                    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
-                    32, 33, 34, 35,
-                ]),
-            )]
-            .into_iter()
-            .collect::<HashMap<_, _>>(),
-        );
+    fn do_cells_count_distinct_1d(cells: Cells) {
+        for (key, field_cells) in cells.fields().iter() {
+            let expect_count =
+                typed_field_data_go!(field_cells, ref field_cells, {
+                    let mut c = field_cells.clone();
+                    c.sort_by(|l, r| l.bits_cmp(r));
+                    c.dedup_by(|l, r| l.bits_eq(r));
+                    c.len()
+                });
 
-        do_cells_slice_3d(cells, 2, 1, 1, 0..2, 0..1, 0..1)
+            let keys_for_distinct = vec![key.clone()];
+            let actual_count =
+                cells.count_distinct(keys_for_distinct.as_slice());
+
+            assert_eq!(expect_count, actual_count);
+        }
+    }
+
+    fn do_cells_count_distinct_2d(cells: Cells) {
+        let keys = cells.fields().keys().collect::<Vec<_>>();
+
+        for i in 0..keys.len() {
+            for j in 0..keys.len() {
+                let expect_count = {
+                    typed_field_data_go!(
+                        cells.fields().get(keys[i]).unwrap(),
+                        ref ki_cells,
+                        {
+                            typed_field_data_go!(
+                                cells.fields().get(keys[j]).unwrap(),
+                                ref kj_cells,
+                                {
+                                    let mut unique = HashMap::new();
+
+                                    for r in 0..ki_cells.len() {
+                                        let values = match unique.entry(
+                                            BitsKeyAdapter(ki_cells[r].clone()),
+                                        ) {
+                                            Entry::Vacant(v) => {
+                                                v.insert(HashSet::new())
+                                            }
+                                            Entry::Occupied(o) => o.into_mut(),
+                                        };
+                                        values.insert(BitsKeyAdapter(
+                                            kj_cells[r].clone(),
+                                        ));
+                                    }
+
+                                    unique.values().flatten().count()
+                                }
+                            )
+                        }
+                    )
+                };
+
+                let keys_for_distinct = vec![keys[i].clone(), keys[j].clone()];
+                let actual_count =
+                    cells.count_distinct(keys_for_distinct.as_slice());
+
+                assert_eq!(expect_count, actual_count);
+            }
+        }
     }
 
     proptest! {
@@ -2005,6 +2089,17 @@ mod tests {
             let s2 = std::cmp::min(b21, b22).. std::cmp::max(b21, b22);
             let s3 = std::cmp::min(b31, b32).. std::cmp::max(b31, b32);
             do_cells_slice_3d(cells, d1, d2, d3, s1, s2, s3)
+        }
+
+        #[test]
+        fn cells_count_distinct_1d(cells in any::<Cells>()) {
+            do_cells_count_distinct_1d(cells)
+        }
+
+        #[test]
+        fn cells_count_distinct_2d(cells in any::<Cells>()) {
+            prop_assume!(cells.fields().len() >= 2);
+            do_cells_count_distinct_2d(cells)
         }
     }
 }
