@@ -545,7 +545,8 @@ mod tests {
     use super::*;
     // There is no cloud service backend for the VFS so we're not using the
     // URI generator facilities in these tests.
-    use crate::test_util::TestDirectory;
+    use crate::error::Error;
+    use tiledb_test_utils::uri_generators::TestDirectory;
 
     #[test]
     fn vfs_alloc() -> TileDBResult<()> {
@@ -561,14 +562,25 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let test_uri = TestDirectory::new()?;
-        let base_dir = test_uri.base_dir()?;
+        let test_uri =
+            TestDirectory::new().map_err(|e| Error::Other(e.to_string()))?;
+        let base_dir = test_uri
+            .base_dir()
+            .map_err(|e| Error::Other(e.to_string()))?;
         assert!(vfs.is_dir(&base_dir)?);
 
-        let dir1_uri = test_uri.with_path("vfs_test_dir_1")?;
-        let dir1_foo_uri = test_uri.with_paths(&["vfs_test_dir_1", "foo"])?;
-        let dir2_uri = test_uri.with_path("vfs_test_dir_2")?;
-        let dir3_uri = test_uri.with_path("vfs_test_dir_3")?;
+        let dir1_uri = test_uri
+            .with_path("vfs_test_dir_1")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let dir1_foo_uri = test_uri
+            .with_paths(&["vfs_test_dir_1", "foo"])
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let dir2_uri = test_uri
+            .with_path("vfs_test_dir_2")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let dir3_uri = test_uri
+            .with_path("vfs_test_dir_3")
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         assert!(!vfs.is_dir(&dir1_uri)?);
         vfs.create_dir(&dir1_uri)?;
@@ -612,10 +624,17 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let test_uri = TestDirectory::new()?;
-        let file1_uri = test_uri.with_path("vfs_test_file_1")?;
-        let file2_uri = test_uri.with_path("vfs_test_file_2")?;
-        let file3_uri = test_uri.with_path("vfs_test_file_3")?;
+        let test_uri =
+            TestDirectory::new().map_err(|e| Error::Other(e.to_string()))?;
+        let file1_uri = test_uri
+            .with_path("vfs_test_file_1")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let file2_uri = test_uri
+            .with_path("vfs_test_file_2")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let file3_uri = test_uri
+            .with_path("vfs_test_file_3")
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         // A file doesn't exist before creation, but does after.
         assert!(!vfs.is_file(&file1_uri)?);
@@ -664,13 +683,23 @@ mod tests {
         vfs: &VFS,
         test_uri: &TestDirectory,
     ) -> TileDBResult<()> {
-        let base_dir = test_uri.base_dir()?;
+        let base_dir = test_uri
+            .base_dir()
+            .map_err(|e| Error::Other(e.to_string()))?;
         assert!(vfs.is_dir(&base_dir)?);
 
-        let dir1_uri = test_uri.with_path("vfs_test_dir_1")?;
-        let dir1_foo_uri = test_uri.with_paths(&["vfs_test_dir_1", "foo"])?;
-        let dir2_uri = test_uri.with_path("vfs_test_dir_2")?;
-        let dir3_uri = test_uri.with_path("vfs_test_dir_3")?;
+        let dir1_uri = test_uri
+            .with_path("vfs_test_dir_1")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let dir1_foo_uri = test_uri
+            .with_paths(&["vfs_test_dir_1", "foo"])
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let dir2_uri = test_uri
+            .with_path("vfs_test_dir_2")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let dir3_uri = test_uri
+            .with_path("vfs_test_dir_3")
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         vfs.create_dir(&dir1_uri)?;
         vfs.create_dir(&dir2_uri)?;
@@ -689,11 +718,14 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let test_uri = TestDirectory::new()?;
+        let test_uri =
+            TestDirectory::new().map_err(|e| Error::Other(e.to_string()))?;
 
         create_test_dir_structure(&vfs, &test_uri)?;
 
-        let tmp_uri = test_uri.base_dir()?;
+        let tmp_uri = test_uri
+            .base_dir()
+            .map_err(|e| Error::Other(e.to_string()))?;
         let mut count: u64 = 0;
         let cb = |_: &str| -> VFSLsStatus {
             count += 1;
@@ -720,9 +752,12 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let test_uri = TestDirectory::new()?;
+        let test_uri =
+            TestDirectory::new().map_err(|e| Error::Other(e.to_string()))?;
 
-        let tmp_uri = test_uri.base_dir()?;
+        let tmp_uri = test_uri
+            .base_dir()
+            .map_err(|e| Error::Other(e.to_string()))?;
         let mut count: u64 = 0;
         let cb = |_: &str, _: u64| -> VFSLsStatus {
             count += 1;
@@ -747,11 +782,15 @@ mod tests {
         let cfg = Config::new()?;
         let vfs = VFS::new(&ctx, &cfg)?;
 
-        let test_uri = TestDirectory::new()?;
+        let test_uri =
+            TestDirectory::new().map_err(|e| Error::Other(e.to_string()))?;
 
-        create_test_dir_structure(&vfs, &test_uri)?;
+        create_test_dir_structure(&vfs, &test_uri)
+            .map_err(|e| Error::Other(e.to_string()))?;
 
-        let tmp_uri = test_uri.base_dir()?;
+        let tmp_uri = test_uri
+            .base_dir()
+            .map_err(|e| Error::Other(e.to_string()))?;
         let mut count: u64 = 0;
         let cb = |_: &str, _: u64| -> VFSLsStatus {
             count += 1;

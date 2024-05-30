@@ -492,12 +492,12 @@ impl Drop for Group {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_util::{self, TestArrayUri};
     use crate::{
         array::{Array, ArrayType},
         config::Config,
         context::Context,
         datatype::Datatype,
+        error::Error,
         group::{Group, QueryType},
         key::LookupKey,
         metadata::{self, Metadata},
@@ -510,13 +510,17 @@ mod tests {
         context::ObjectType,
         Result as TileDBResult,
     };
+    use tiledb_test_utils::{self, TestArrayUri};
 
     #[test]
     fn test_group_metadata() -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
-        let group1_uri = test_uri.with_path("group1")?;
+        let group1_uri = test_uri
+            .with_path("group1")
+            .map_err(|e| Error::Other(e.to_string()))?;
         Group::create(&tdb, &group1_uri)?;
         {
             let mut group1_err =
@@ -595,7 +599,7 @@ mod tests {
             Group::open(&tdb, &group1_uri, QueryType::ModifyExclusive, None)?;
         group1_write.delete_group(group1_uri, true)?;
 
-        test_uri.close()
+        test_uri.close().map_err(|e| Error::Other(e.to_string()))
     }
 
     fn create_array<S>(array_uri: S, array_type: ArrayType) -> TileDBResult<()>
@@ -645,10 +649,13 @@ mod tests {
 
     #[test]
     fn test_group_functionality() -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
-        let group_uri = test_uri.with_path("group2")?;
+        let group_uri = test_uri
+            .with_path("group2")
+            .map_err(|e| Error::Other(e.to_string()))?;
         Group::create(&tdb, &group_uri)?;
 
         {
@@ -722,10 +729,13 @@ mod tests {
 
     #[test]
     fn test_group_config() -> TileDBResult<()> {
-        let test_uri = test_util::get_uri_generator()?;
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
-        let group_uri = test_uri.with_path("group")?;
+        let group_uri = test_uri
+            .with_path("group")
+            .map_err(|e| Error::Other(e.to_string()))?;
         Group::create(&tdb, &group_uri)?;
 
         let mut cfg = Config::new()?;

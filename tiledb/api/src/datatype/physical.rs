@@ -1,4 +1,6 @@
+use std::cmp::Ordering;
 use std::fmt::Debug;
+use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +15,19 @@ pub trait BitsEq {
     /// This is often the same as `PartialEq::eq`, but is not in the case
     /// of floats where `NaN != NaN`.
     fn bits_eq(&self, other: &Self) -> bool;
+
+    fn bits_ne(&self, other: &Self) -> bool {
+        !self.bits_eq(other)
+    }
+}
+
+impl<T> BitsEq for &T
+where
+    T: BitsEq,
+{
+    fn bits_eq(&self, other: &Self) -> bool {
+        (**self).bits_eq(*other)
+    }
 }
 
 impl<T> BitsEq for [T]
@@ -50,7 +65,7 @@ where
 pub trait BitsOrd {
     /// Return the ordering between `self` and `other`.
     /// This function defines a total order for all values of `Self`.
-    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering;
+    fn bits_cmp(&self, other: &Self) -> Ordering;
 
     /// Restrict a value to a certain interval, using `bits_cmp` as
     /// the ordering function. See `std::cmp::Ord::clamp`.
@@ -58,8 +73,6 @@ pub trait BitsOrd {
     where
         Self: Sized,
     {
-        use std::cmp::Ordering;
-
         assert_eq!(min.bits_cmp(&max), Ordering::Less);
 
         if matches!(self.bits_cmp(&min), Ordering::Less) {
@@ -72,14 +85,21 @@ pub trait BitsOrd {
     }
 }
 
+impl<T> BitsOrd for &T
+where
+    T: BitsOrd,
+{
+    fn bits_cmp(&self, other: &Self) -> Ordering {
+        (**self).bits_cmp(*other)
+    }
+}
+
 /// Implements lexicographic comparison of slices using the `BitsOrd` trait of the element.
 impl<T> BitsOrd for [T]
 where
     T: BitsOrd,
 {
-    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use std::cmp::Ordering;
-
+    fn bits_cmp(&self, other: &Self) -> Ordering {
         for (l, r) in self.iter().zip(other.iter()) {
             match l.bits_cmp(r) {
                 Ordering::Less => return Ordering::Less,
@@ -97,8 +117,46 @@ impl<T> BitsOrd for Vec<T>
 where
     T: BitsOrd,
 {
-    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn bits_cmp(&self, other: &Self) -> Ordering {
         self.as_slice().bits_cmp(other.as_slice())
+    }
+}
+
+/// Trait for hashing based on value bits.
+/// This exists to work around float types, which do not implement `Hash`.
+/// That makes generic programming on all physical types more challenging.
+///
+/// Types implementing `BitsHash` can be hashed by an instance of `Hasher`
+/// using `BitsKeyAdapter` which adapts `Self::bits_hash` into an implementation
+/// of the `Hash` trait.
+pub trait BitsHash {
+    fn bits_hash<H>(&self, state: &mut H)
+    where
+        H: Hasher;
+}
+
+impl<T> BitsHash for &T
+where
+    T: BitsHash,
+{
+    fn bits_hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        (**self).bits_hash(state)
+    }
+}
+
+impl<T> BitsHash for Vec<T>
+where
+    T: BitsHash,
+{
+    fn bits_hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        let adapted = self.iter().map(BitsKeyAdapter).collect::<Vec<_>>();
+        adapted.hash(state)
     }
 }
 
@@ -109,6 +167,7 @@ where
 /// in Rust and TileDB.
 pub trait PhysicalType:
     BitsEq
+    + BitsHash
     + BitsOrd
     + Copy
     + Debug
@@ -138,8 +197,14 @@ macro_rules! integral_type_impls {
             }
 
             impl BitsOrd for $T {
-                fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
+                fn bits_cmp(&self, other: &Self) -> Ordering {
                     <Self as Ord>::cmp(self, other)
+                }
+            }
+
+            impl BitsHash for $T {
+                fn bits_hash<H>(&self, state: &mut H) where H: Hasher {
+                    <Self as Hash>::hash(self, state)
                 }
             }
 
@@ -163,8 +228,17 @@ impl BitsEq for f32 {
 }
 
 impl BitsOrd for f32 {
-    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn bits_cmp(&self, other: &Self) -> Ordering {
         self.total_cmp(other)
+    }
+}
+
+impl BitsHash for f32 {
+    fn bits_hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.to_bits().bits_hash(state)
     }
 }
 
@@ -177,9 +251,62 @@ impl BitsEq for f64 {
 }
 
 impl BitsOrd for f64 {
-    fn bits_cmp(&self, other: &Self) -> std::cmp::Ordering {
+    fn bits_cmp(&self, other: &Self) -> Ordering {
         self.total_cmp(other)
     }
 }
 
+impl BitsHash for f64 {
+    fn bits_hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.to_bits().bits_hash(state)
+    }
+}
 impl PhysicalType for f64 {}
+
+/// Adapts a generic type to use as a key in `std` collections via
+/// the `BitsEq`, `BitsOrd`, or `BitsHash` traits.
+pub struct BitsKeyAdapter<T>(pub T);
+
+impl<T> PartialEq for BitsKeyAdapter<T>
+where
+    T: BitsEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0.bits_eq(&other.0)
+    }
+}
+
+impl<T> Eq for BitsKeyAdapter<T> where T: BitsEq {}
+
+impl<T> Hash for BitsKeyAdapter<T>
+where
+    T: BitsHash,
+{
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.0.bits_hash(state)
+    }
+}
+
+impl<T> PartialOrd for BitsKeyAdapter<T>
+where
+    T: BitsEq + BitsOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(Ord::cmp(self, other))
+    }
+}
+
+impl<T> Ord for BitsKeyAdapter<T>
+where
+    T: BitsEq + BitsOrd,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.bits_cmp(&other.0)
+    }
+}

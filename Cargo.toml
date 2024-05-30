@@ -4,6 +4,7 @@ members = [
   "tiledb/api",
   "tiledb/proc-macro",
   "tiledb/sys",
+  "tiledb/test-utils",
   "tiledb/utils",
   "tools/api-coverage"
 ]
@@ -25,5 +26,6 @@ serde_json = { version = "1.0.114", features = ["float_roundtrip"] }
 tiledb = { path = "tiledb/api", version = "0.1.0" }
 tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
+tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }
 tiledb-utils = { path = "tiledb/utils", version = "0.1.0" }
 pkg-config = "0.3.30"
