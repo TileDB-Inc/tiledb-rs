@@ -650,7 +650,7 @@ impl<'a> IntoIterator for &'a DenseWriteSequence {
     type IntoIter = <&'a Vec<DenseWriteInput> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&self.writes).into_iter()
+        self.writes.iter()
     }
 }
 
@@ -711,7 +711,7 @@ impl<'a> IntoIterator for &'a SparseWriteSequence {
     type IntoIter = <&'a Vec<SparseWriteInput> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        (&self.writes).into_iter()
+        self.writes.iter()
     }
 }
 
@@ -805,8 +805,8 @@ impl<'a> WriteInputRef<'a> {
     /// Returns a reference to the cells of input of this write operation.
     pub fn cells(&self) -> &Cells {
         match self {
-            Self::Dense(ref dense) => &dense.data,
-            Self::Sparse(ref sparse) => &sparse.data,
+            Self::Dense(dense) => &dense.data,
+            Self::Sparse(sparse) => &sparse.data,
         }
     }
 
@@ -814,7 +814,7 @@ impl<'a> WriteInputRef<'a> {
     /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
         match self {
-            Self::Dense(ref dense) => Some(
+            Self::Dense(dense) => Some(
                 dense
                     .subarray
                     .clone()
@@ -822,7 +822,7 @@ impl<'a> WriteInputRef<'a> {
                     .map(Range::from)
                     .collect::<NonEmptyDomain>(),
             ),
-            Self::Sparse(ref sparse) => sparse.domain(),
+            Self::Sparse(sparse) => sparse.domain(),
         }
     }
 
@@ -842,8 +842,8 @@ impl<'a> WriteInputRef<'a> {
         b: WriteBuilder<'data>,
     ) -> TileDBResult<WriteBuilder<'data>> {
         match self {
-            Self::Dense(ref d) => d.attach_write(b),
-            Self::Sparse(ref s) => s.attach_write(b),
+            Self::Dense(d) => d.attach_write(b),
+            Self::Sparse(s) => s.attach_write(b),
         }
     }
 
@@ -862,8 +862,8 @@ impl<'a> WriteInputRef<'a> {
         B: ReadQueryBuilder<'data>,
     {
         match self {
-            Self::Dense(ref d) => d.attach_read(b),
-            Self::Sparse(ref s) => s.attach_read(b),
+            Self::Dense(d) => d.attach_read(b),
+            Self::Sparse(s) => s.attach_read(b),
         }
     }
 }
