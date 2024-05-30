@@ -853,11 +853,21 @@ impl Cells {
         assert_eq!(other.fields.len(), 0);
     }
 
+    /// Returns a view over a slice of the cells,
+    /// with a subset of the fields viewed as indicated by `keys`.
+    /// This is useful for comparing a section of `self` to another `Cells` instance.
     pub fn view<'a>(
         &'a self,
         keys: &'a [String],
         slice: Range<usize>,
     ) -> CellsView<'a> {
+        for k in keys.iter() {
+            if !self.fields.contains_key(k) {
+                panic!("Cannot construct view: key '{}' not found (fields are {:?})",
+                    k, self.fields.keys())
+            }
+        }
+
         CellsView {
             cells: self,
             keys,
@@ -865,6 +875,7 @@ impl Cells {
         }
     }
 
+    /// Returns a comparator for ordering indices into the cells.
     fn index_comparator<'a>(
         &'a self,
         keys: &'a [String],
@@ -1159,8 +1170,9 @@ impl<'a, 'b> PartialEq<CellsView<'b>> for CellsView<'a> {
 
         for key in self.keys.iter() {
             let Some(mine) = self.cells.fields.get(key) else {
+                // validated on construction
                 unreachable!()
-            }; // TODO: validate on construction
+            };
             let Some(theirs) = other.cells.fields.get(key) else {
                 return false;
             };
@@ -1585,7 +1597,7 @@ impl CellsStrategySchema {
                         .collect::<HashMap<String, FieldData>>();
 
                     let mut dedup_fields =
-                        Cells::new(dimension_data).dedup(&*unique_keys);
+                        Cells::new(dimension_data).dedup(&unique_keys);
 
                     // choose the number of records
                     let nrecords = {
@@ -2071,14 +2083,14 @@ mod tests {
         }
 
         // check that order within the original cells is preserved
-        assert_eq!(cells.view(&*keys, 0..1), dedup.view(&*keys, 0..1));
+        assert_eq!(cells.view(&keys, 0..1), dedup.view(&keys, 0..1));
 
         let mut in_cursor = 1;
         let mut out_cursor = 1;
 
         while in_cursor < cells.len() && out_cursor < dedup.len() {
-            if cells.view(&*keys, in_cursor..(in_cursor + 1))
-                == dedup.view(&*keys, out_cursor..(out_cursor + 1))
+            if cells.view(&keys, in_cursor..(in_cursor + 1))
+                == dedup.view(&keys, out_cursor..(out_cursor + 1))
             {
                 out_cursor += 1;
                 in_cursor += 1;

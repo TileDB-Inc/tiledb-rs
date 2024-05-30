@@ -928,6 +928,10 @@ mod tests {
         let mut accumulated_domain: Option<Vec<Range>> = None;
         let mut accumulated_write: Option<Cells> = None;
 
+        /*
+         * Results do not come back in a defined order, so we must sort and
+         * compare. Writes currently have to write all fields.
+         */
         let sort_keys = match write_sequence {
             WriteSequence::Dense(_) => schema_spec
                 .attributes

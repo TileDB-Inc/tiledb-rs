@@ -104,6 +104,13 @@ where
     }
 }
 
+/// Trait for hashing based on value bits.
+/// This exists to work around float types, which do not implement `Hash`.
+/// That makes generic programming on all physical types more challenging.
+///
+/// Types implementing `BitsHash` can be hashed by an instance of `Hasher`
+/// using `BitsKeyAdapter` which adapts `Self::bits_hash` into an implementation
+/// of the `Hash` trait.
 pub trait BitsHash {
     fn bits_hash<H>(&self, state: &mut H)
     where
