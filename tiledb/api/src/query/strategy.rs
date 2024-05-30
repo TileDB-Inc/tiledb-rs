@@ -899,16 +899,25 @@ impl Cells {
         assert_eq!(other.fields.len(), 0);
     }
 
-    fn index_comparator(&self) -> impl Fn(&usize, &usize) -> Ordering + '_ {
-        let key_order = {
-            let mut keys = self.fields.keys().collect::<Vec<&String>>();
-            keys.sort_unstable();
-            keys
-        };
+    pub fn view<'a>(
+        &'a self,
+        keys: &'a [String],
+        slice: Range<usize>,
+    ) -> CellsView<'a> {
+        CellsView {
+            cells: self,
+            keys,
+            slice,
+        }
+    }
 
+    fn index_comparator<'a>(
+        &'a self,
+        keys: &'a [String],
+    ) -> impl Fn(&usize, &usize) -> Ordering + 'a {
         move |l: &usize, r: &usize| -> Ordering {
-            for key in key_order.iter() {
-                typed_field_data_go!(self.fields[*key], ref data, {
+            for key in keys.iter() {
+                typed_field_data_go!(self.fields[key], ref data, {
                     match BitsOrd::bits_cmp(&data[*l], &data[*r]) {
                         Ordering::Less => return Ordering::Less,
                         Ordering::Greater => return Ordering::Greater,
@@ -920,11 +929,9 @@ impl Cells {
         }
     }
 
-    /// Returns whether the cells are sorted.
-    /// The first sort key is the first field in alphabetical order,
-    /// the second key is the second, and so on.
-    pub fn is_sorted(&self) -> bool {
-        let index_comparator = self.index_comparator();
+    /// Returns whether the cells are sorted according to `keys`. See `Self::sort`.
+    pub fn is_sorted(&self, keys: &[String]) -> bool {
+        let index_comparator = self.index_comparator(keys);
         for i in 1..self.len() {
             if index_comparator(&(i - 1), &i) == Ordering::Greater {
                 return false;
@@ -933,17 +940,17 @@ impl Cells {
         true
     }
 
-    /// Sorts the cells of the argument for comparing a write and read set.
-    /// The first sort key is the first field in alphabetical order,
-    /// the second key is the second, and so on.
-    pub fn sort(&mut self) {
+    /// Sorts the cells using `keys`. If two elements are equal on the first item in `keys`,
+    /// then they will be ordered using the second; and so on.
+    /// May not preserve the order of elements which are equal for all fields in `keys`.
+    pub fn sort(&mut self, keys: &[String]) {
         let mut idx = std::iter::repeat(())
             .take(self.len())
             .enumerate()
             .map(|(i, _)| i)
             .collect::<Vec<usize>>();
 
-        let idx_comparator = self.index_comparator();
+        let idx_comparator = self.index_comparator(keys);
         idx.sort_by(idx_comparator);
 
         for data in self.fields.values_mut() {
@@ -960,9 +967,9 @@ impl Cells {
     }
 
     /// Returns a copy of the cells, sorted as if by `self.sort()`.
-    pub fn sorted(&self) -> Self {
+    pub fn sorted(&self, keys: &[String]) -> Self {
         let mut sorted = self.clone();
-        sorted.sort();
+        sorted.sort(keys);
         sorted
     }
 
@@ -979,7 +986,7 @@ impl Cells {
                 .filter(|(k, _)| keys.contains(k))
                 .map(|(k, v)| (k.clone(), v.clone()))
                 .collect::<HashMap<_, _>>();
-            Cells::new(key_fields).sorted()
+            Cells::new(key_fields).sorted(keys)
         };
 
         let mut icmp = 0;
@@ -1011,6 +1018,42 @@ impl Cells {
                 .map(|(k, v)| (k.clone(), v.filter(set)))
                 .collect::<HashMap<String, FieldData>>(),
         )
+    }
+
+    /// Returns a subset of `self` containing only cells which have distinct values in `keys`
+    /// such that `self.dedup(keys).count_distinct(keys) == self.len()`.
+    /// The order of cells in the input is preserved and the
+    /// first cell for each value of `keys` is preserved in the output.
+    pub fn dedup(&self, keys: &[String]) -> Cells {
+        if self.is_empty() {
+            return self.clone();
+        }
+
+        let mut idx = (0..self.len()).into_iter().collect::<Vec<usize>>();
+
+        let idx_comparator = self.index_comparator(keys);
+        idx.sort_by(idx_comparator);
+
+        let mut icmp = 0;
+        let mut preserve = VarBitSet::new_bitset(idx.len());
+        preserve.set(idx[0]);
+
+        for i in 1..idx.len() {
+            let distinct = keys.iter().any(|k| {
+                let v = self.fields.get(k).unwrap();
+                typed_field_data_go!(
+                    v,
+                    ref field_cells,
+                    field_cells[idx[i]].bits_ne(&field_cells[idx[icmp]])
+                )
+            });
+            if distinct {
+                icmp = i;
+                preserve.set(idx[i]);
+            }
+        }
+
+        self.filter(&preserve)
     }
 }
 
@@ -1143,6 +1186,45 @@ impl StructuredCells {
             dimensions: self.dimensions.clone(),
             cells: self.cells.filter(&v),
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CellsView<'a> {
+    cells: &'a Cells,
+    keys: &'a [String],
+    slice: Range<usize>,
+}
+
+impl<'a, 'b> PartialEq<CellsView<'b>> for CellsView<'a> {
+    fn eq(&self, other: &CellsView<'b>) -> bool {
+        // must have same number of values
+        if self.slice.len() != other.slice.len() {
+            return false;
+        }
+
+        for key in self.keys.iter() {
+            let Some(mine) = self.cells.fields.get(key) else {
+                unreachable!()
+            }; // TODO: validate on construction
+            let Some(theirs) = other.cells.fields.get(key) else {
+                return false;
+            };
+
+            typed_field_data_cmp!(
+                mine,
+                theirs,
+                _DT,
+                ref mine,
+                ref theirs,
+                if mine[self.slice.clone()] != theirs[other.slice.clone()] {
+                    return false;
+                },
+                return false
+            );
+        }
+
+        self.keys.len() == other.keys.len()
     }
 }
 
@@ -1764,13 +1846,13 @@ mod tests {
         assert_eq!(orig_src.fields.len(), dst.fields.len());
     }
 
-    fn do_cells_sort(cells: Cells) {
-        let cells_sorted = cells.sorted();
-        assert!(cells_sorted.is_sorted());
+    fn do_cells_sort(cells: Cells, keys: Vec<String>) {
+        let cells_sorted = cells.sorted(keys.as_slice());
+        assert!(cells_sorted.is_sorted(keys.as_slice()));
 
         assert_eq!(cells.fields().len(), cells_sorted.fields().len());
 
-        if cells.is_sorted() {
+        if cells.is_sorted(keys.as_slice()) {
             // running the sort should not have changed anything
             assert_eq!(cells, cells_sorted);
         }
@@ -1991,6 +2073,37 @@ mod tests {
         }
     }
 
+    fn do_cells_dedup(cells: Cells, keys: Vec<String>) {
+        let dedup = cells.dedup(keys.as_slice());
+        assert_eq!(dedup.len(), dedup.count_distinct(keys.as_slice()));
+
+        if dedup.is_empty() {
+            assert!(cells.is_empty());
+            return;
+        } else if dedup.len() == cells.len() {
+            assert_eq!(cells, dedup);
+            return;
+        }
+
+        // check that order within the original cells is preserved
+        assert_eq!(cells.view(&*keys, 0..1), dedup.view(&*keys, 0..1));
+
+        let mut in_cursor = 1;
+        let mut out_cursor = 1;
+
+        while in_cursor < cells.len() && out_cursor < dedup.len() {
+            if cells.view(&*keys, in_cursor..(in_cursor + 1))
+                == dedup.view(&*keys, out_cursor..(out_cursor + 1))
+            {
+                out_cursor += 1;
+                in_cursor += 1;
+            } else {
+                in_cursor += 1;
+            }
+        }
+        assert_eq!(dedup.len(), out_cursor);
+    }
+
     proptest! {
         #[test]
         fn field_data_unique(data in any_with::<FieldData>(FieldDataParameters { unique: true, ..Default::default() }))
@@ -2021,8 +2134,12 @@ mod tests {
         }
 
         #[test]
-        fn cells_sort(cells in any::<Cells>()) {
-            do_cells_sort(cells)
+        fn cells_sort((cells, keys) in any::<Cells>().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nkeys = keys.len();
+            (Just(c), proptest::sample::subsequence(keys, 0..=nkeys).prop_shuffle())
+        })) {
+            do_cells_sort(cells, keys)
         }
 
         #[test]
@@ -2100,6 +2217,16 @@ mod tests {
         fn cells_count_distinct_2d(cells in any::<Cells>()) {
             prop_assume!(cells.fields().len() >= 2);
             do_cells_count_distinct_2d(cells)
+        }
+
+        #[test]
+        fn cells_dedup((cells, keys) in any::<Cells>().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nkeys = keys.len();
+            (Just(c), proptest::sample::subsequence(keys, 0..=nkeys).prop_shuffle())
+        }))
+        {
+            do_cells_dedup(cells, keys)
         }
     }
 }
