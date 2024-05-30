@@ -23,10 +23,16 @@ use crate::{
 
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
+/// Returns a base set of requirements for filters to be used
+/// in write queries. Requirements are chosen to either avoid
+/// constraints on input (e.g. positive delta filtering requires
+/// sorted input, float scale filtering is not invertible)
+/// or to avoid issues in the tiledb core library in as
+/// many scenarios as possible.
 // now that we're actually writing data we will hit the fun bugs.
 // there are several in the filter pipeline, so we must heavily
 // restrict what is allowed until the bugs are fixed.
-fn query_write_filter_requirements() -> FilterRequirements {
+pub fn query_write_filter_requirements() -> FilterRequirements {
     FilterRequirements {
         allow_bit_reduction: false,     // SC-47560
         allow_positive_delta: false,    // nothing yet to ensure sort order
@@ -39,7 +45,10 @@ fn query_write_filter_requirements() -> FilterRequirements {
     }
 }
 
-fn query_write_schema_requirements(
+/// Returns a base set of schema requirements for running a query.
+/// Requirements are chosen to either avoid constraints on write input
+/// or to avoid issues in the tiledb core library in as many scenarios as possible.
+pub fn query_write_schema_requirements(
     array_type: Option<ArrayType>,
 ) -> crate::array::schema::strategy::Requirements {
     crate::array::schema::strategy::Requirements {
@@ -112,9 +121,9 @@ impl DenseWriteInput {
 
 #[derive(Clone, Debug, Default)]
 pub struct DenseWriteParameters {
-    schema: Option<Rc<SchemaData>>,
-    layout: Option<CellOrder>,
-    memory_limit: Option<usize>,
+    pub schema: Option<Rc<SchemaData>>,
+    pub layout: Option<CellOrder>,
+    pub memory_limit: Option<usize>,
 }
 
 pub struct DenseWriteValueTree {
