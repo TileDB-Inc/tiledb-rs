@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use anyhow::anyhow;
 use proptest::prelude::*;
-use proptest::strategy::{NewTree, Strategy};
+use proptest::strategy::{NewTree, Strategy, ValueTree};
 use proptest::test_runner::{TestRng, TestRunner};
 
 use tiledb::array::attribute::AttributeData;
@@ -13,7 +13,6 @@ use tiledb::Result as TileDBResult;
 
 use crate::attribute;
 use crate::domain;
-use crate::explorer::{ValueTreeExplorer, ValueTreeExplorerAdaptor};
 use crate::filter_list::{self, FilterListContextKind};
 use crate::util;
 
@@ -100,104 +99,103 @@ fn gen_attributes(
     Ok(ret)
 }
 
-#[derive(Debug)]
-enum Phase {
-    Dimensions,
+// pub struct SchemaData {
+//     pub array_type: ArrayType,
+//     pub domain: DomainData,
+//     pub capacity: Option<u64>,
+//     pub cell_order: Option<CellOrder>,
+//     pub tile_order: Option<TileOrder>,
+//     pub allow_duplicates: Option<bool>,
+//     pub attributes: Vec<AttributeData>,
+//     pub coordinate_filters: FilterListData,
+//     pub offsets_filters: FilterListData,
+//     pub nullity_filters: FilterListData,
+// }
+
+#[repr(u8)]
+#[derive(Clone, Debug)]
+enum SimplifyState {
+    Domain,
+    Capacity,
+    CellOrder,
+    TileOrder,
+    AllowDuplicates,
     Attributes,
-    Finished,
+    CoordinateFilters,
+    OffsetFilters,
+    NullityFilters,
+    Done,
+}
+
+impl SimplifyState {
+    fn next(&self) -> Self {
+        let val = self.clone() as u8;
+        SimplifyState::from(val + 1)
+    }
+}
+
+impl From<u8> for SimplifyState {
+    fn from(value: u8) -> SimplifyState {
+        match value {
+            0 => SimplifyState::Domain,
+            1 => SimplifyState::Capacity,
+            2 => SimplifyState::CellOrder,
+            3 => SimplifyState::TileOrder,
+            4 => SimplifyState::AllowDuplicates,
+            5 => SimplifyState::Attributes,
+            6 => SimplifyState::CoordinateFilters,
+            7 => SimplifyState::OffsetFilters,
+            8 => SimplifyState::NullityFilters,
+            _ => SimplifyState::Done,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct SchemaValueTree {
-    root: SchemaData,
-    current: SchemaData,
+    state: SimplifyState,
     schema: SchemaData,
-    phase: Phase,
+    domain: domain::DomainValueTree,
 }
 
 impl SchemaValueTree {
     pub fn new(schema: SchemaData) -> Self {
-        let mut root = schema.clone();
-        if !schema.domain.dimension.is_empty() {
-            root.domain.dimension = vec![schema.domain.dimension[0].clone()];
-        }
-        if !schema.attributes.is_empty() {
-            root.attributes = vec![schema.attributes[0].clone()];
-        }
-
+        let domain = domain::DomainValueTree::new(schema.domain.clone());
         Self {
-            root: root.clone(),
-            current: root.clone(),
+            state: SimplifyState::Domain,
             schema,
-            phase: Phase::Dimensions,
+            domain,
         }
     }
 }
 
-impl ValueTreeExplorer for SchemaValueTree {
+impl ValueTree for SchemaValueTree {
     type Value = SchemaData;
 
-    fn root(&self) -> Self::Value {
-        self.root.clone()
-    }
-
     fn current(&self) -> Self::Value {
-        self.current.clone()
-    }
-
-    fn explore(
-        &mut self,
-    ) -> Result<
-        Option<Box<dyn ValueTreeExplorer<Value = Self::Value>>>,
-        TestCaseError,
-    > {
-        println!("Exploring: {:?}", self.current);
-        // We explore the schema error state in two phases. First, we extend
-        // out all dimensions, then attributes.
-        match self.phase {
-            Phase::Dimensions => {
-                let curr_dims = self.current.domain.dimension.len();
-                let schema_dims = self.schema.domain.dimension.len();
-
-                if curr_dims < schema_dims {
-                    self.current
-                        .domain
-                        .dimension
-                        .push(self.schema.domain.dimension[curr_dims].clone());
-                }
-
-                if curr_dims + 1 >= schema_dims {
-                    self.phase = Phase::Attributes;
-                }
-
-                Ok(None)
-            }
-            Phase::Attributes => {
-                let curr_attrs = self.current.attributes.len();
-                let schema_attrs = self.schema.attributes.len();
-
-                if curr_attrs < schema_attrs {
-                    self.current
-                        .attributes
-                        .push(self.schema.attributes[curr_attrs].clone());
-                }
-
-                if curr_attrs + 1 >= schema_attrs {
-                    self.phase = Phase::Finished;
-                }
-
-                Ok(None)
-            }
-            Phase::Finished => Err(TestCaseError::Fail(
-                "Failed to find error.".to_string().into(),
-            )),
+        let ret = self.schema.clone();
+        SchemaData {
+            domain: self.domain.current(),
+            ..ret
         }
     }
 
-    fn refine(&mut self) -> bool {
-        // Ignore for now. We'll skip efficient searching until I can prove
-        // this isn't all a terrible idea.
-        println!("Refining: {:?}", self.current);
+    fn simplify(&mut self) -> bool {
+        match self.state {
+            SimplifyState::Domain => {
+                if self.domain.simplify() {
+                    return true;
+                }
+
+                self.state = self.state.next();
+                self.simplify()
+            }
+            _ => false,
+        }
+    }
+
+    fn complicate(&mut self) -> bool {
+        println!("Complicate!");
         false
     }
 }
@@ -212,10 +210,11 @@ impl SchemaStrategy {
 }
 
 impl Strategy for SchemaStrategy {
-    type Tree = ValueTreeExplorerAdaptor<SchemaValueTree>;
+    type Tree = SchemaValueTree;
     type Value = SchemaData;
 
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+        println!("New tree!");
         let mut field_names: HashSet<String> = HashSet::new();
         let array_type = gen_array_type(runner.rng());
 
@@ -293,8 +292,6 @@ impl Strategy for SchemaStrategy {
             )
         })?;
 
-        let explorer = Box::new(SchemaValueTree::new(schema));
-        let adaptor = ValueTreeExplorerAdaptor::new(explorer);
-        Ok(adaptor)
+        Ok(SchemaValueTree::new(schema))
     }
 }

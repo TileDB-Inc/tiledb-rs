@@ -8,6 +8,7 @@ version.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+itertools = "0"
 proptest = { version = "1.0.0" }
 rand = { version = "0.8.5" }
 num-traits = { version = "0.2" }

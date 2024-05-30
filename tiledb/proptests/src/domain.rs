@@ -1,8 +1,13 @@
 use std::collections::HashSet;
+use std::iter::IntoIterator;
 
+use itertools::structs::Combinations;
+use itertools::Itertools;
 use proptest::prelude::*;
+use proptest::strategy::ValueTree;
 use proptest::test_runner::TestRng;
 
+use tiledb::array::dimension::DimensionData;
 use tiledb::array::domain::DomainData;
 use tiledb::array::schema::SchemaData;
 use tiledb::array::ArrayType;
@@ -34,4 +39,43 @@ pub fn generate(
     }
 
     Ok(DomainData { dimension: dims })
+}
+
+#[derive(Debug)]
+pub struct DomainValueTree {
+    domain: DomainData,
+    iter: Combinations<std::vec::IntoIter<DimensionData>>,
+    current: Option<Vec<DimensionData>>,
+    len: usize,
+}
+
+impl DomainValueTree {
+    pub fn new(domain: DomainData) -> Self {
+        assert!(!domain.dimension.is_empty());
+        let mut iter = domain.dimension.clone().into_iter().combinations(1);
+        let current = iter.next();
+        assert!(current.is_some());
+        Self {
+            domain,
+            iter,
+            current,
+            len: 1,
+        }
+    }
+}
+
+impl ValueTree for DomainValueTree {
+    type Value = DomainData;
+
+    fn current(&self) -> Self::Value {
+        self.domain.clone()
+    }
+
+    fn simplify(&mut self) -> bool {
+        false
+    }
+
+    fn complicate(&mut self) -> bool {
+        false
+    }
 }

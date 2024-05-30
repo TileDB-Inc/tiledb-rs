@@ -5,5 +5,6 @@ pub mod domain;
 pub mod explorer;
 pub mod filter;
 pub mod filter_list;
+pub mod minset;
 pub mod schema;
 pub mod util;

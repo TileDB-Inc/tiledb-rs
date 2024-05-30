@@ -21,11 +21,10 @@ fn schema_creation() -> TileDBResult<()> {
     let iter: Rc<RefCell<u64>> = Rc::new(RefCell::new(0));
     let start = Instant::now();
 
-    let uris = proptest::string::string_regex("[a-z]+")
-        .expect("Error creating URI property.");
     let schemas = schema::SchemaStrategy::new();
 
-    proptest!(cfg, move |(uri in uris, schema in schemas)| {
+    proptest!(cfg, move |(schema in schemas)| {
+        println!("Generated test: {:#?}", schema);
         let mut tmp = iter.borrow_mut();
         *tmp += 1;
         if *tmp % 10_000 == 0 {
@@ -37,7 +36,7 @@ fn schema_creation() -> TileDBResult<()> {
             println!("Iter: {} {:?} {}", *tmp, time_elapsed, current_rate);
         }
         let tmp_dir = TempDir::new()?;
-        let arr_dir = tmp_dir.path().join(uri);
+        let arr_dir = tmp_dir.path().join("test_array");
         let schema = schema.create(&ctx)?;
         println!("Creating array!");
         Array::create(&ctx, arr_dir.to_string_lossy(), schema)?;
