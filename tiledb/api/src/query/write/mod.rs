@@ -85,6 +85,7 @@ impl<'data> WriteBuilder<'data> {
             let mut config = Config::new()?;
             config.set("sm.var_offsets.bitsize", "64")?;
             config.set("sm.var_offsets.mode", "elements")?;
+            config.set("sm.var_offsets.extra_element", "true")?;
 
             /*
              * TODO: make sure that users can't override this somehow,
