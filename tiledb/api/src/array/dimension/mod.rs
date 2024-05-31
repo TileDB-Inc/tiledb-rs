@@ -521,7 +521,6 @@ impl DimensionData {
         cell_bound: Option<usize>,
     ) -> Option<proptest::strategy::BoxedStrategy<crate::range::SingleValueRange>>
     {
-        use crate::range::SingleValueRange;
         use proptest::prelude::Just;
         use proptest::strategy::Strategy;
 
