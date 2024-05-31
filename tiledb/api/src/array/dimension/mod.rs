@@ -396,7 +396,7 @@ impl DimensionConstraints {
             [low, high],
             _,
             Some(SingleValueRange::from(&[*low, *high])),
-            return None
+            None
         )
     }
 }

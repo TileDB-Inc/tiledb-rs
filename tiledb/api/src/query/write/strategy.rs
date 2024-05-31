@@ -7,7 +7,7 @@ use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 use serde_json::json;
 
-use crate::array::{ArrayOpener, ArrayType, CellOrder, CellValNum, SchemaData};
+use crate::array::{ArrayType, CellOrder, CellValNum, SchemaData};
 use crate::datatype::physical::BitsOrd;
 use crate::filter::strategy::Requirements as FilterRequirements;
 use crate::query::read::{CallbackVarArgReadBuilder, MapAdapter};
@@ -926,7 +926,7 @@ mod tests {
     use tiledb_test_utils::{self, TestArrayUri};
 
     use super::*;
-    use crate::array::{Array, Mode};
+    use crate::array::{Array, ArrayOpener, Mode};
     use crate::error::Error;
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
