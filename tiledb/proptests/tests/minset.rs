@@ -9,9 +9,9 @@ use tiledb_proptests::minset::MinSet;
 
 #[test]
 fn minset_correctness() {
-    let cfg = ProptestConfig::with_cases(1000);
+    let cfg = ProptestConfig::with_cases(25);
 
-    let size = 1usize..5;
+    let size = 1usize..4096;
     let size_and_indices =
         size.prop_flat_map(|size| (Just(size), vec(any::<Index>(), 0..size)));
 
@@ -25,11 +25,9 @@ fn minset_correctness() {
             .collect::<HashSet<_>>();
 
         let mut minset = MinSet::new(values.clone());
-        println!("-> {:#?}", minset);
 
         if minset.simplify() {
             loop {
-                println!("=> {:#?}", minset);
                 let found = minset.current().into_iter().collect::<HashSet<_>>();
 
                 // The logic on whether a "test" would pass with the returned
@@ -53,8 +51,6 @@ fn minset_correctness() {
                 // what happens in the proptest TestRunner's shrink method.
                 let test_passed = !test_failed;
 
-                println!("{:?} {:?} {} {} {} {}", found, required, always_fail, meets_requirements, test_failed, test_passed);
-
                 if test_passed {
                     if !minset.complicate() {
                         break;
@@ -64,8 +60,6 @@ fn minset_correctness() {
                 }
             }
         }
-
-        println!("!> MinSet: {:#?}", minset);
 
         // The actual test is whether minset found exactly the required
         // set of elements.
