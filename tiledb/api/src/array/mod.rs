@@ -226,7 +226,7 @@ impl Array {
         ))
     }
 
-    /// Opens the array located at `uri` for queries of type `mode`.
+    /// Opens the array located at `uri` for queries of type `mode` using default configurations.
     pub fn open<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
     where
         S: AsRef<str>,
@@ -234,6 +234,9 @@ impl Array {
         ArrayOpener::new(context, uri, mode)?.open()
     }
 
+    /// Prepares an array to be "re-opened". Re-opening the array will bring in any changes
+    /// which occured since it was initially opened. This also allows changing configurations
+    /// of an open array, such as the timestamp range.
     pub fn refresh(self) -> ArrayOpener {
         ArrayOpener {
             array: self,
@@ -688,6 +691,7 @@ impl Drop for Array {
     }
 }
 
+/// Holds configuration options for opening an array located at a particular URI.
 pub struct ArrayOpener {
     array: Array,
     /// Mode for opening the array, or `None` if re-opening.
@@ -695,6 +699,7 @@ pub struct ArrayOpener {
 }
 
 impl ArrayOpener {
+    /// Prepares to open the array located at `uri` for operations indicated by `mode`.
     pub fn new<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
     where
         S: AsRef<str>,
@@ -716,6 +721,11 @@ impl ArrayOpener {
         })
     }
 
+    /// Configures the start timestamp for an open array.
+    /// The start and end timestamps determine the set of fragments
+    /// which will be loaded and used for queries.
+    /// Use `start_timestamp` to avoid reading data from older fragments,
+    /// such as to see only recently-written data.
     pub fn start_timestamp(self, timestamp: u64) -> TileDBResult<Self> {
         let c_array = *self.array.raw;
         self.array.capi_call(|ctx| unsafe {
@@ -724,6 +734,11 @@ impl ArrayOpener {
         Ok(self)
     }
 
+    /// Configures the end timestamp for an open array.
+    /// The start and end timestamps determine the set of fragments
+    /// which will be loaded and used for queries.
+    /// Use `end_timestamp` to avoid reading data from newer fragments,
+    /// such as for historical queries.
     pub fn end_timestamp(self, timestamp: u64) -> TileDBResult<Self> {
         let c_array = *self.array.raw;
         self.array.capi_call(|ctx| unsafe {
@@ -732,6 +747,7 @@ impl ArrayOpener {
         Ok(self)
     }
 
+    /// Opens the array and returns a handle to it, consuming `self`.
     pub fn open(self) -> TileDBResult<Array> {
         let c_array = *self.array.raw;
 

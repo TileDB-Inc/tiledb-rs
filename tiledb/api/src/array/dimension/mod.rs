@@ -388,6 +388,7 @@ impl DimensionConstraints {
         Some(1 + (high - low) as u128)
     }
 
+    /// Returns the domain of the dimension constraint, if present, as a range.
     pub fn domain(&self) -> Option<SingleValueRange> {
         crate::dimension_constraints_go!(
             self,
