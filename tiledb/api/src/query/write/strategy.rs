@@ -733,7 +733,7 @@ impl WriteInput {
     /// Returns the subarray for this write operation,
     /// if it is a dense write. Returns `None` otherwise.
     pub fn subarray(&self) -> Option<NonEmptyDomain> {
-        if let Self::Dense(ref d) = self {
+        if let Self::Dense(_) = self {
             self.domain()
         } else {
             None
@@ -813,7 +813,7 @@ impl<'a> WriteInputRef<'a> {
     /// Returns the subarray for this write operation,
     /// if it is a dense write. Returns `None` otherwise.
     pub fn subarray(&self) -> Option<NonEmptyDomain> {
-        if let Self::Dense(ref d) = self {
+        if let Self::Dense(_) = self {
             self.domain()
         } else {
             None
