@@ -1205,13 +1205,15 @@ mod tests {
                 this_fragment.timestamp_range().unwrap()
             };
 
+            let safety_write_start = std::time::Instant::now();
+
             /*
              * Then re-open the array to read back what we just wrote
              * into the most recent fragment only
              */
             {
                 array = array
-                    .refresh()
+                    .reopen()
                     .start_timestamp(timestamp_min)
                     .unwrap()
                     .end_timestamp(timestamp_max)
@@ -1243,7 +1245,7 @@ mod tests {
             }
 
             /* finally, check that everything written up until now is correct */
-            array = array.refresh().start_timestamp(0).unwrap().open().unwrap();
+            array = array.reopen().start_timestamp(0).unwrap().open().unwrap();
 
             /* check array non-empty domain */
             if let Some(accumulated_domain) = accumulated_domain.as_mut() {
@@ -1280,6 +1282,13 @@ mod tests {
                 };
 
                 assert_eq!(acc, cells);
+            }
+
+            // safety valve to ensure we don't write two fragments in the same millisecond
+            if safety_write_start.elapsed()
+                < std::time::Duration::from_millis(1)
+            {
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
         }
 

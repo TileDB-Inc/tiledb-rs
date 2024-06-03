@@ -237,7 +237,7 @@ impl Array {
     /// Prepares an array to be "re-opened". Re-opening the array will bring in any changes
     /// which occured since it was initially opened. This also allows changing configurations
     /// of an open array, such as the timestamp range.
-    pub fn refresh(self) -> ArrayOpener {
+    pub fn reopen(self) -> ArrayOpener {
         ArrayOpener {
             array: self,
             mode: None,
@@ -721,7 +721,7 @@ impl ArrayOpener {
         })
     }
 
-    /// Configures the start timestamp for an open array.
+    /// Configures the start timestamp for an array.
     /// The start and end timestamps determine the set of fragments
     /// which will be loaded and used for queries.
     /// Use `start_timestamp` to avoid reading data from older fragments,
@@ -734,7 +734,7 @@ impl ArrayOpener {
         Ok(self)
     }
 
-    /// Configures the end timestamp for an open array.
+    /// Configures the end timestamp for an array.
     /// The start and end timestamps determine the set of fragments
     /// which will be loaded and used for queries.
     /// Use `end_timestamp` to avoid reading data from newer fragments,
