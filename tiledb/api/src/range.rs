@@ -1,4 +1,6 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::num::NonZeroU32;
+use std::ops::Deref;
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
@@ -6,12 +8,12 @@ use serde_json::json;
 
 use crate::array::CellValNum;
 use crate::datatype::logical::*;
+use crate::datatype::physical::BitsOrd;
 use crate::datatype::Datatype;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::fn_typed;
 use crate::Result as TileDBResult;
 
-pub type NonEmptyDomain = Vec<TypedRange>;
 pub type MinimumBoundingRectangle = Vec<TypedRange>;
 
 macro_rules! check_datatype_inner {
@@ -83,6 +85,32 @@ impl SingleValueRange {
     pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
         check_datatype!(self, datatype);
         Ok(())
+    }
+
+    /// Returns the range covered by the union of `self` and `other`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` and `other` do not have the same physical datatype.
+    pub fn union(&self, other: &Self) -> Self {
+        crate::single_value_range_go!(
+            self,
+            other,
+            DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
+            {
+                let cmp = |l: &DT, r: &DT| l.bits_cmp(r);
+                let min = std::cmp::min_by(*lstart, *rstart, cmp);
+                let max = std::cmp::max_by(*lend, *rend, cmp);
+                SingleValueRange::from(&[min, max])
+            },
+            {
+                panic!("`SingleValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other)
+            }
+        )
     }
 }
 
@@ -286,7 +314,7 @@ impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
     }
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum MultiValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -304,6 +332,47 @@ impl MultiValueRange {
     pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
         check_datatype!(self, datatype);
         Ok(())
+    }
+
+    /// Returns the number of values held by each end of this range.
+    pub fn num_values(&self) -> usize {
+        crate::multi_value_range_go!(self, _DT, ref start, _, start.len())
+    }
+
+    /// Returns a `CellValNum` which matches the values in this range.
+    pub fn cell_val_num(&self) -> CellValNum {
+        CellValNum::Fixed(NonZeroU32::new(self.num_values() as u32).unwrap())
+    }
+
+    /// Returns the range covered by the union of `self` and `other`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` and `other` do not have the same physical datatype or the same fixed
+    /// length.
+    pub fn union(&self, other: &Self) -> Self {
+        assert_eq!(self.num_values(), other.num_values(),
+            "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
+            self, other);
+
+        use std::cmp::Ordering;
+        crate::multi_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
+            {
+                let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
+                    lstart.clone()
+                } else {
+                    rstart.clone()
+                };
+
+                let max = if matches!(lend.bits_cmp(rend), Ordering::Greater) {
+                    lend.clone()
+                } else {
+                    rend.clone()
+                };
+
+                MultiValueRange::try_from((self.cell_val_num(), min, max)).unwrap()
+            },
+            panic!("`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
     }
 }
 
@@ -400,7 +469,57 @@ macro_rules! multi_value_range_go {
     };
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[macro_export]
+macro_rules! multi_value_range_cmp {
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $cmp:expr, $else:expr) => {{
+        use $crate::range::MultiValueRange::*;
+        match ($rexpr, $lexpr) {
+            (UInt8($lstart, $lend), UInt8($rstart, $rend)) => {
+                type $DT = u8;
+                $cmp
+            }
+            (UInt16($lstart, $lend), UInt16($rstart, $rend)) => {
+                type $DT = u16;
+                $cmp
+            }
+            (UInt32($lstart, $lend), UInt32($rstart, $rend)) => {
+                type $DT = u32;
+                $cmp
+            }
+            (UInt64($lstart, $lend), UInt64($rstart, $rend)) => {
+                type $DT = u64;
+                $cmp
+            }
+            (Int8($lstart, $lend), Int8($rstart, $rend)) => {
+                type $DT = i8;
+                $cmp
+            }
+            (Int16($lstart, $lend), Int16($rstart, $rend)) => {
+                type $DT = i16;
+                $cmp
+            }
+            (Int32($lstart, $lend), Int32($rstart, $rend)) => {
+                type $DT = i32;
+                $cmp
+            }
+            (Int64($lstart, $lend), Int64($rstart, $rend)) => {
+                type $DT = i64;
+                $cmp
+            }
+            (Float32($lstart, $lend), Float32($rstart, $rend)) => {
+                type $DT = f32;
+                $cmp
+            }
+            (Float64($lstart, $lend), Float64($rstart, $rend)) => {
+                type $DT = f64;
+                $cmp
+            }
+            _ => $else,
+        }
+    }};
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum VarValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -418,6 +537,32 @@ impl VarValueRange {
     pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
         check_datatype!(self, datatype);
         Ok(())
+    }
+
+    /// Returns the range covered by the union of `self` and `other`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` and `other` do not have the same physical datatype.
+    pub fn union(&self, other: &Self) -> Self {
+        use std::cmp::Ordering;
+        crate::var_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
+            {
+                let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
+                    lstart.clone()
+                } else {
+                    rstart.clone()
+                };
+
+                let max = if matches!(lend.bits_cmp(rend), Ordering::Greater) {
+                    lend.clone()
+                } else {
+                    rend.clone()
+                };
+
+                VarValueRange::from((min, max))
+            },
+            panic!("`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
     }
 }
 
@@ -518,6 +663,56 @@ macro_rules! var_value_range_go {
     };
 }
 
+#[macro_export]
+macro_rules! var_value_range_cmp {
+    ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $cmp:expr, $else:expr) => {{
+        use $crate::range::VarValueRange::*;
+        match ($rexpr, $lexpr) {
+            (UInt8($lstart, $lend), UInt8($rstart, $rend)) => {
+                type $DT = u8;
+                $cmp
+            }
+            (UInt16($lstart, $lend), UInt16($rstart, $rend)) => {
+                type $DT = u16;
+                $cmp
+            }
+            (UInt32($lstart, $lend), UInt32($rstart, $rend)) => {
+                type $DT = u32;
+                $cmp
+            }
+            (UInt64($lstart, $lend), UInt64($rstart, $rend)) => {
+                type $DT = u64;
+                $cmp
+            }
+            (Int8($lstart, $lend), Int8($rstart, $rend)) => {
+                type $DT = i8;
+                $cmp
+            }
+            (Int16($lstart, $lend), Int16($rstart, $rend)) => {
+                type $DT = i16;
+                $cmp
+            }
+            (Int32($lstart, $lend), Int32($rstart, $rend)) => {
+                type $DT = i32;
+                $cmp
+            }
+            (Int64($lstart, $lend), Int64($rstart, $rend)) => {
+                type $DT = i64;
+                $cmp
+            }
+            (Float32($lstart, $lend), Float32($rstart, $rend)) => {
+                type $DT = f32;
+                $cmp
+            }
+            (Float64($lstart, $lend), Float64($rstart, $rend)) => {
+                type $DT = f64;
+                $cmp
+            }
+            _ => $else,
+        }
+    }};
+}
+
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
 pub enum Range {
     Single(SingleValueRange),
@@ -580,6 +775,21 @@ impl Range {
         }
 
         Ok(())
+    }
+
+    /// Returns the range covered by the union of `self` and `other`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` and `other` are not the same variant, or if
+    /// `self` and `other` do not have the same physical datatype.
+    pub fn union(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Single(ref l), Self::Single(ref r)) => Self::Single(l.union(r)),
+            (Self::Multi(ref l), Self::Multi(ref r)) => Self::Multi(l.union(r)),
+            (Self::Var(ref l), Self::Var(ref r)) => Self::Var(l.union(r)),
+            _ => panic!("`Range::union` on non-matching range variants: `self` = {:?}, `other` = {:?}", self, other)
+        }
     }
 }
 
@@ -648,7 +858,7 @@ impl From<SingleValueRange> for Range {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Deserialize, PartialEq, Serialize)]
 pub struct TypedRange {
     pub datatype: Datatype,
     pub range: Range,
@@ -739,6 +949,87 @@ impl TypedRange {
 impl Debug for TypedRange {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         write!(f, "{}", json!(self))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct NonEmptyDomain(Vec<Range>);
+
+impl NonEmptyDomain {
+    /// Returns the non-empty domain covered by the union of `self` and `other`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the physical datatypes of the dimensions do not match,
+    /// or if `self` and `other` do not have the same number of dimensions.
+    pub fn union(&self, other: &Self) -> Self {
+        assert_eq!(self.len(), other.len());
+
+        self.iter()
+            .zip(other.iter())
+            .map(|(l, r)| l.union(r))
+            .collect::<Self>()
+    }
+}
+
+impl Deref for NonEmptyDomain {
+    type Target = Vec<Range>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<F> From<F> for NonEmptyDomain
+where
+    Vec<Range>: From<F>,
+{
+    fn from(value: F) -> Self {
+        NonEmptyDomain(value.into())
+    }
+}
+
+impl FromIterator<Range> for NonEmptyDomain {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = Range>,
+    {
+        NonEmptyDomain(Vec::<Range>::from_iter(iter))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypedNonEmptyDomain(Vec<TypedRange>);
+
+impl TypedNonEmptyDomain {
+    pub fn untyped(&self) -> NonEmptyDomain {
+        self.iter()
+            .map(|typed_range| typed_range.range.clone())
+            .collect::<NonEmptyDomain>()
+    }
+}
+
+impl Deref for TypedNonEmptyDomain {
+    type Target = Vec<TypedRange>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<F> From<F> for TypedNonEmptyDomain
+where
+    Vec<TypedRange>: From<F>,
+{
+    fn from(value: F) -> Self {
+        TypedNonEmptyDomain(value.into())
+    }
+}
+
+impl FromIterator<TypedRange> for TypedNonEmptyDomain {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = TypedRange>,
+    {
+        TypedNonEmptyDomain(Vec::<TypedRange>::from_iter(iter))
     }
 }
 

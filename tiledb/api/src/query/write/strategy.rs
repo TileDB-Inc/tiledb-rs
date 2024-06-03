@@ -16,7 +16,7 @@ use crate::query::strategy::{
     FieldDataParameters, RawResultCallback, StructuredCells,
 };
 use crate::query::{QueryBuilder, ReadQueryBuilder, WriteBuilder};
-use crate::range::{Range, SingleValueRange};
+use crate::range::{NonEmptyDomain, Range, SingleValueRange};
 use crate::{
     single_value_range_go, typed_field_data_go, Result as TileDBResult,
 };
@@ -454,7 +454,7 @@ pub struct SparseWriteInput {
 }
 
 impl SparseWriteInput {
-    pub fn domain(&self) -> Option<Vec<Range>> {
+    pub fn domain(&self) -> Option<NonEmptyDomain> {
         self.dimensions
             .iter()
             .map(|(dim, cell_val_num)| {
@@ -491,7 +491,7 @@ impl SparseWriteInput {
                     }
                 ))
             })
-            .collect::<Option<Vec<Range>>>()
+            .collect::<Option<NonEmptyDomain>>()
     }
 
     pub fn attach_write<'data>(
@@ -683,7 +683,7 @@ impl WriteInput {
         }
     }
 
-    pub fn domain(&self) -> Option<Vec<Range>> {
+    pub fn domain(&self) -> Option<NonEmptyDomain> {
         match self {
             Self::Dense(ref dense) => Some(
                 dense
@@ -691,7 +691,7 @@ impl WriteInput {
                     .clone()
                     .into_iter()
                     .map(Range::from)
-                    .collect::<Vec<Range>>(),
+                    .collect::<NonEmptyDomain>(),
             ),
             Self::Sparse(ref sparse) => sparse.domain(),
         }
@@ -786,32 +786,67 @@ impl Arbitrary for WriteInput {
 }
 
 #[derive(Clone, Debug)]
-pub struct WriteSequenceParameters<W> {
+pub struct WriteSequenceParametersImpl<W> {
     pub write: Rc<W>,
     pub min_writes: usize,
     pub max_writes: usize,
 }
 
 pub type DenseWriteSequenceParameters =
-    WriteSequenceParameters<DenseWriteParameters>;
+    WriteSequenceParametersImpl<DenseWriteParameters>;
 pub type SparseWriteSequenceParameters =
-    WriteSequenceParameters<SparseWriteParameters>;
+    WriteSequenceParametersImpl<SparseWriteParameters>;
 
-impl<W> WriteSequenceParameters<W> {
+impl<W> WriteSequenceParametersImpl<W> {
     pub const DEFAULT_MIN_WRITES: usize = 1;
     pub const DEFAULT_MAX_WRITES: usize = 8;
 }
 
-impl<W> Default for WriteSequenceParameters<W>
+impl<W> Default for WriteSequenceParametersImpl<W>
 where
     W: Default,
 {
     fn default() -> Self {
-        WriteSequenceParameters {
+        WriteSequenceParametersImpl {
             write: Rc::new(Default::default()),
             min_writes: Self::DEFAULT_MIN_WRITES,
             max_writes: Self::DEFAULT_MAX_WRITES,
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum WriteSequenceParameters {
+    Dense(DenseWriteSequenceParameters),
+    Sparse(SparseWriteSequenceParameters),
+}
+
+impl WriteSequenceParameters {
+    pub fn default_for(schema: Rc<SchemaData>) -> Self {
+        match schema.array_type {
+            ArrayType::Dense => Self::Dense(DenseWriteSequenceParameters {
+                write: Rc::new(DenseWriteParameters {
+                    schema: Some(schema),
+                    ..Default::default()
+                }),
+                min_writes: DenseWriteSequenceParameters::DEFAULT_MIN_WRITES,
+                max_writes: DenseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+            }),
+            ArrayType::Sparse => Self::Sparse(SparseWriteSequenceParameters {
+                write: Rc::new(SparseWriteParameters {
+                    schema: Some(schema),
+                    ..Default::default()
+                }),
+                min_writes: SparseWriteSequenceParameters::DEFAULT_MIN_WRITES,
+                max_writes: SparseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+            }),
+        }
+    }
+}
+
+impl Default for WriteSequenceParameters {
+    fn default() -> Self {
+        Self::Dense(Default::default())
     }
 }
 
@@ -849,34 +884,21 @@ impl IntoIterator for WriteSequence {
 }
 
 impl Arbitrary for WriteSequence {
-    type Parameters = Option<Rc<SchemaData>>;
+    type Parameters = WriteSequenceParameters;
     type Strategy = BoxedStrategy<WriteSequence>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let strat_schema = |schema: Rc<SchemaData>| match schema.array_type {
-            ArrayType::Dense => {
-                let write_params = DenseWriteParameters {
-                    schema: Some(schema),
-                    ..Default::default()
-                };
-                let seq_params = DenseWriteSequenceParameters {
-                    write: Rc::new(write_params),
-                    ..Default::default()
-                };
-
-                any_with::<DenseWriteSequence>(seq_params)
-                    .prop_map(WriteSequence::Dense)
+        match params {
+            WriteSequenceParameters::Dense(d) => {
+                any_with::<DenseWriteSequence>(d)
+                    .prop_map(Self::Dense)
                     .boxed()
             }
-            ArrayType::Sparse => unimplemented!(),
-        };
-
-        if let Some(schema) = params {
-            strat_schema(schema)
-        } else {
-            any::<SchemaData>()
-                .prop_flat_map(move |schema| strat_schema(Rc::new(schema)))
-                .boxed()
+            WriteSequenceParameters::Sparse(s) => {
+                any_with::<SparseWriteSequence>(s)
+                    .prop_map(Self::Sparse)
+                    .boxed()
+            }
         }
     }
 }
@@ -904,12 +926,176 @@ mod tests {
     use tiledb_test_utils::{self, TestArrayUri};
 
     use super::*;
-    use crate::array::{Array, Mode};
+    use crate::array::{Array, ArrayOpener, Mode};
     use crate::error::Error;
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, WriteBuilder,
     };
     use crate::{Context, Factory};
+
+    struct DenseCellsAccumulator {
+        // TODO: implement accepting more than one write for dense write sequence
+        write: Option<DenseWriteInput>,
+    }
+
+    impl DenseCellsAccumulator {
+        pub fn new(_: &SchemaData) -> Self {
+            DenseCellsAccumulator { write: None }
+        }
+
+        pub fn cells(&self) -> &Cells {
+            // will not be called until first cells are written
+            &self.write.as_ref().unwrap().data
+        }
+
+        pub fn accumulate(&mut self, write: DenseWriteInput) {
+            if self.write.is_some() {
+                unimplemented!()
+            }
+            self.write = Some(write)
+        }
+
+        pub fn attach_read<'data, B>(
+            &'data self,
+            b: B,
+        ) -> TileDBResult<
+            CallbackVarArgReadBuilder<
+                'data,
+                MapAdapter<CellsConstructor, RawResultCallback>,
+                B,
+            >,
+        >
+        where
+            B: ReadQueryBuilder<'data>,
+        {
+            // TODO: this is not correct as we accumulate multiple writes
+            self.write.as_ref().unwrap().attach_read(b)
+        }
+    }
+
+    struct SparseCellsAccumulator {
+        cells: Option<Cells>,
+        dedup_keys: Option<Vec<String>>,
+    }
+
+    impl SparseCellsAccumulator {
+        pub fn new(schema: &SchemaData) -> Self {
+            let dedup_keys = if schema.allow_duplicates.unwrap_or(false) {
+                None
+            } else {
+                Some(
+                    schema
+                        .domain
+                        .dimension
+                        .iter()
+                        .map(|d| d.name.clone())
+                        .collect::<Vec<String>>(),
+                )
+            };
+            SparseCellsAccumulator {
+                cells: None,
+                dedup_keys,
+            }
+        }
+
+        pub fn cells(&self) -> &Cells {
+            // will not be called until first cells arrive
+            self.cells.as_ref().unwrap()
+        }
+
+        /// Update state representing what we expect to see in the array.
+        /// For a sparse array this means adding this write's coordinates,
+        /// overwriting the old coordinates if they overlap.
+        pub fn accumulate(&mut self, mut write: SparseWriteInput) {
+            if let Some(cells) = self.cells.take() {
+                write.data.extend(cells);
+                if let Some(dedup_keys) = self.dedup_keys.as_ref() {
+                    self.cells = Some(write.data.dedup(dedup_keys));
+                } else {
+                    self.cells = Some(write.data);
+                }
+            } else {
+                self.cells = Some(write.data);
+            }
+        }
+
+        pub fn attach_read<'data, B>(
+            &'data self,
+            b: B,
+        ) -> TileDBResult<
+            CallbackVarArgReadBuilder<
+                'data,
+                MapAdapter<CellsConstructor, RawResultCallback>,
+                B,
+            >,
+        >
+        where
+            B: ReadQueryBuilder<'data>,
+        {
+            Ok(self.cells().attach_read(b)?.map(CellsConstructor::new()))
+        }
+    }
+
+    enum CellsAccumulator {
+        Dense(DenseCellsAccumulator),
+        Sparse(SparseCellsAccumulator),
+    }
+
+    impl CellsAccumulator {
+        pub fn new(schema: &SchemaData) -> Self {
+            match schema.array_type {
+                ArrayType::Dense => {
+                    Self::Dense(DenseCellsAccumulator::new(schema))
+                }
+                ArrayType::Sparse => {
+                    Self::Sparse(SparseCellsAccumulator::new(schema))
+                }
+            }
+        }
+
+        pub fn cells(&self) -> &Cells {
+            match self {
+                Self::Dense(ref d) => d.cells(),
+                Self::Sparse(ref s) => s.cells(),
+            }
+        }
+
+        pub fn accumulate(&mut self, write: WriteInput) {
+            match write {
+                WriteInput::Sparse(w) => {
+                    let Self::Sparse(ref mut sparse) = self else {
+                        unreachable!()
+                    };
+                    sparse.accumulate(w)
+                }
+                WriteInput::Dense(w) => {
+                    let Self::Dense(ref mut dense) = self else {
+                        unreachable!()
+                    };
+                    dense.accumulate(w)
+                }
+            }
+        }
+
+        pub fn attach_read<'data, B>(
+            &'data self,
+            b: B,
+        ) -> TileDBResult<
+            CallbackVarArgReadBuilder<
+                'data,
+                MapAdapter<CellsConstructor, RawResultCallback>,
+                B,
+            >,
+        >
+        where
+            B: ReadQueryBuilder<'data>,
+        {
+            match self {
+                Self::Dense(ref d) => d.attach_read(b),
+                Self::Sparse(ref s) => s.attach_read(b),
+            }
+        }
+    }
 
     fn do_write_readback(
         ctx: &Context,
@@ -927,11 +1113,8 @@ mod tests {
             .expect("Error constructing arbitrary schema");
         Array::create(ctx, &uri, schema_in).expect("Error creating array");
 
-        let mut array =
-            Array::open(ctx, &uri, Mode::Write).expect("Error opening array");
-
-        let mut accumulated_domain: Option<Vec<Range>> = None;
-        let mut accumulated_write: Option<Cells> = None;
+        let mut accumulated_domain: Option<NonEmptyDomain> = None;
+        let mut accumulated_write = CellsAccumulator::new(&schema_spec);
 
         /*
          * Results do not come back in a defined order, so we must sort and
@@ -952,6 +1135,9 @@ mod tests {
         for write in write_sequence {
             /* write data and preserve ranges for sanity check */
             let write_ranges = {
+                let array = Array::open(ctx, &uri, Mode::Write)
+                    .expect("Error opening array");
+
                 let write_query = write
                     .attach_write(
                         WriteBuilder::new(array)
@@ -976,19 +1162,65 @@ mod tests {
                     None
                 };
 
-                array = write_query
+                let _ = write_query
                     .finalize()
                     .expect("Error finalizing write query");
 
                 write_ranges
             };
 
-            array = Array::open(ctx, array.uri(), Mode::Read).unwrap();
+            if write.cells().is_empty() {
+                // in this case, writing and finalizing does not create a new fragment
+                // TODO
+                continue;
+            }
 
             /* NB: results are not read back in a defined order, so we must sort and compare */
 
-            /* first, read back what we just wrote */
+            let mut array = ArrayOpener::new(ctx, &uri, Mode::Read)
+                .unwrap()
+                .open()
+                .unwrap();
+
+            /*
+             * First check fragment - its domain should match what we just wrote, and we need the
+             * timestamp so we can read back only this fragment
+             */
+            let [timestamp_min, timestamp_max] = {
+                let fi = array.fragment_info().unwrap();
+                let nf = fi.num_fragments().unwrap();
+                assert!(nf > 0);
+
+                let this_fragment = fi.get_fragment(nf - 1).unwrap();
+
+                if let Some(write_domain) = write.domain() {
+                    let nonempty_domain =
+                        this_fragment.non_empty_domain().unwrap().untyped();
+                    assert_eq!(write_domain, nonempty_domain);
+                } else {
+                    // most recent fragment should be empty,
+                    // what does that look like if no data was written?
+                }
+
+                this_fragment.timestamp_range().unwrap()
+            };
+
+            let safety_write_start = std::time::Instant::now();
+
+            /*
+             * Then re-open the array to read back what we just wrote
+             * into the most recent fragment only
+             */
             {
+                array = array
+                    .reopen()
+                    .start_timestamp(timestamp_min)
+                    .unwrap()
+                    .end_timestamp(timestamp_max)
+                    .unwrap()
+                    .open()
+                    .unwrap();
+
                 let mut read = write
                     .attach_read(ReadBuilder::new(array).unwrap())
                     .unwrap()
@@ -1012,51 +1244,52 @@ mod tests {
                 array = read.finalize().unwrap();
             }
 
-            /* the most recent fragment info should match what we just wrote */
-            if let Some(write_domain) = write.domain() {
-                let fi = array.fragment_info().unwrap();
-                let this_fragment =
-                    fi.get_fragment(fi.num_fragments().unwrap() - 1).unwrap();
-                let nonempty_domain = this_fragment
-                    .non_empty_domain()
-                    .unwrap()
-                    .into_iter()
-                    .map(|typed| typed.range)
-                    .collect::<Vec<_>>();
+            /* finally, check that everything written up until now is correct */
+            array = array.reopen().start_timestamp(0).unwrap().open().unwrap();
 
-                assert_eq!(write_domain, nonempty_domain);
-            } else {
-                // most recent fragment should be empty,
-                // what does that look like if no data was written?
-            }
-
-            /* then check array non-empty domain */
-            if accumulated_domain.as_mut().is_some() {
-                /* TODO: range extension, when we update test for a write sequence */
-                unimplemented!()
+            /* check array non-empty domain */
+            if let Some(accumulated_domain) = accumulated_domain.as_mut() {
+                let Some(write_domain) = write.domain() else {
+                    unreachable!()
+                };
+                *accumulated_domain = accumulated_domain.union(&write_domain);
             } else {
                 accumulated_domain = write.domain();
             }
-
-            if let Some(acc) = accumulated_domain.as_ref() {
-                let nonempty = array
-                    .nonempty_domain()
-                    .unwrap()
-                    .unwrap()
-                    .into_iter()
-                    .map(|typed| typed.range)
-                    .collect::<Vec<_>>();
+            {
+                let Some(acc) = accumulated_domain.as_ref() else {
+                    unreachable!()
+                };
+                let nonempty =
+                    array.nonempty_domain().unwrap().unwrap().untyped();
                 assert_eq!(*acc, nonempty);
             }
 
             /* update accumulated expected array data */
-            if let Some(acc) = accumulated_write.as_mut() {
-                acc.copy_from(write.unwrap_cells())
-            } else {
-                accumulated_write = Some(write.unwrap_cells());
+            accumulated_write.accumulate(write);
+            {
+                let acc = accumulated_write.cells().sorted(&sort_keys);
+
+                let cells = {
+                    let mut read = accumulated_write
+                        .attach_read(ReadBuilder::new(array).unwrap())
+                        .unwrap()
+                        .build();
+
+                    let (mut cells, _) = read.execute().unwrap();
+                    cells.sort(&sort_keys);
+                    cells
+                };
+
+                assert_eq!(acc, cells);
             }
 
-            /* TODO: read all ranges and check against accumulated writes */
+            // safety valve to ensure we don't write two fragments in the same millisecond
+            if safety_write_start.elapsed()
+                < std::time::Duration::from_millis(1)
+            {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
         }
 
         Ok(())
@@ -1090,17 +1323,24 @@ mod tests {
 
     /// Test that each write in the sequence can be read back correctly at the right timestamp
     #[test]
-    #[ignore]
     fn write_sequence_readback() -> TileDBResult<()> {
         let ctx = Context::new().expect("Error creating context");
 
-        let strategy = any::<SchemaData>().prop_flat_map(|schema| {
-            let schema = Rc::new(schema);
-            (
-                Just(Rc::clone(&schema)),
-                any_with::<WriteSequence>(Some(Rc::clone(&schema))),
-            )
-        });
+        let schema_req =
+            query_write_schema_requirements(Some(ArrayType::Sparse));
+
+        let strategy = any_with::<SchemaData>(Rc::new(schema_req))
+            .prop_flat_map(|schema| {
+                let schema = Rc::new(schema);
+                (
+                    Just(Rc::clone(&schema)),
+                    any_with::<WriteSequence>(
+                        WriteSequenceParameters::default_for(Rc::clone(
+                            &schema,
+                        )),
+                    ),
+                )
+            });
 
         proptest!(|((schema_spec, write_sequence) in strategy)| {
             do_write_readback(&ctx, schema_spec, write_sequence)?;

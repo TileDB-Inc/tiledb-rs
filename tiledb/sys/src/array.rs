@@ -166,4 +166,28 @@ extern "C" {
         end: *mut ::std::os::raw::c_void,
         is_empty: *mut i32,
     ) -> i32;
+
+    pub fn tiledb_array_set_open_timestamp_start(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        timestamp_start: u64,
+    ) -> i32;
+
+    pub fn tiledb_array_set_open_timestamp_end(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        timestamp_end: u64,
+    ) -> i32;
+
+    pub fn tiledb_array_get_open_timestamp_start(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        timestamp_start: *mut u64,
+    ) -> i32;
+
+    pub fn tiledb_array_get_open_timestamp_end(
+        ctx: *mut tiledb_ctx_t,
+        array: *mut tiledb_array_t,
+        timestamp_end: *mut u64,
+    ) -> i32;
 }

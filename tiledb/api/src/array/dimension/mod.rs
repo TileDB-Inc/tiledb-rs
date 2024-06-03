@@ -10,6 +10,7 @@ use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::{LogicalType, PhysicalType};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
+use crate::range::SingleValueRange;
 use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawDimension {
@@ -386,6 +387,18 @@ impl DimensionConstraints {
 
         Some(1 + (high - low) as u128)
     }
+
+    /// Returns the domain of the dimension constraint, if present, as a range.
+    pub fn domain(&self) -> Option<SingleValueRange> {
+        crate::dimension_constraints_go!(
+            self,
+            _DT,
+            [low, high],
+            _,
+            Some(SingleValueRange::from(&[*low, *high])),
+            None
+        )
+    }
 }
 
 pub struct Builder {
@@ -509,7 +522,6 @@ impl DimensionData {
         cell_bound: Option<usize>,
     ) -> Option<proptest::strategy::BoxedStrategy<crate::range::SingleValueRange>>
     {
-        use crate::range::SingleValueRange;
         use proptest::prelude::Just;
         use proptest::strategy::Strategy;
 

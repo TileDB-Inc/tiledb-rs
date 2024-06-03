@@ -10,7 +10,7 @@ use crate::datatype::{Datatype, LogicalType};
 use crate::error::{DatatypeErrorKind, Error};
 use crate::fn_typed;
 use crate::range::{
-    MinimumBoundingRectangle, NonEmptyDomain, Range, TypedRange,
+    MinimumBoundingRectangle, Range, TypedNonEmptyDomain, TypedRange,
 };
 use crate::string::{RawTDBString, TDBString};
 use crate::Result as TileDBResult;
@@ -547,7 +547,7 @@ impl<'info> FragmentInfo<'info> {
         self.info.schema(self.index)
     }
 
-    pub fn non_empty_domain(&self) -> TileDBResult<NonEmptyDomain> {
+    pub fn non_empty_domain(&self) -> TileDBResult<TypedNonEmptyDomain> {
         let schema = self.info.schema(self.index)?;
         let num_dims = schema.domain()?.ndim()? as u32;
 
@@ -557,7 +557,7 @@ impl<'info> FragmentInfo<'info> {
             ret.push(range)
         }
 
-        Ok(ret)
+        Ok(TypedNonEmptyDomain::from(ret))
     }
 
     pub fn num_mbrs(&self) -> TileDBResult<u64> {

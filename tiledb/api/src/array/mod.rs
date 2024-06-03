@@ -13,7 +13,9 @@ use crate::datatype::{LogicalType, PhysicalType};
 use crate::error::{DatatypeErrorKind, Error, ModeErrorKind};
 use crate::key::LookupKey;
 use crate::metadata::Metadata;
-use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
+use crate::range::{
+    Range, SingleValueRange, TypedNonEmptyDomain, TypedRange, VarValueRange,
+};
 use crate::Result as TileDBResult;
 use crate::{fn_typed, Datatype};
 
@@ -224,27 +226,22 @@ impl Array {
         ))
     }
 
+    /// Opens the array located at `uri` for queries of type `mode` using default configurations.
     pub fn open<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
     where
         S: AsRef<str>,
     {
-        let mut array_raw: *mut ffi::tiledb_array_t = std::ptr::null_mut();
-        let c_uri = cstring!(uri.as_ref());
+        ArrayOpener::new(context, uri, mode)?.open()
+    }
 
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_array_alloc(ctx, c_uri.as_ptr(), &mut array_raw)
-        })?;
-
-        let mode_raw = mode.capi_enum();
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_array_open(ctx, array_raw, mode_raw)
-        })?;
-
-        Ok(Array {
-            context: context.clone(),
-            uri: uri.as_ref().to_owned(),
-            raw: RawArray::Owned(array_raw),
-        })
+    /// Prepares an array to be "re-opened". Re-opening the array will bring in any changes
+    /// which occured since it was initially opened. This also allows changing configurations
+    /// of an open array, such as the timestamp range.
+    pub fn reopen(self) -> ArrayOpener {
+        ArrayOpener {
+            array: self,
+            mode: None,
+        }
     }
 
     /// Returns the URI that this array is located at
@@ -661,21 +658,111 @@ impl Array {
     /// coordinate values of each dimension which have been populated.
     ///
     /// This is the union of all the non-empty domains of all array fragments.
-    pub fn nonempty_domain(&self) -> TileDBResult<Option<Vec<TypedRange>>> {
+    pub fn nonempty_domain(&self) -> TileDBResult<Option<TypedNonEmptyDomain>> {
         // note to devs: calling `tiledb_array_get_non_empty_domain`
         // looks like a huge pain, if this is ever a performance bottleneck
         // then maybe we can look into it
         (0..self.schema()?.domain()?.ndim()?)
             .map(|d| self.dimension_nonempty_domain(d))
-            .collect::<TileDBResult<Option<Vec<TypedRange>>>>()
+            .collect::<TileDBResult<Option<TypedNonEmptyDomain>>>()
     }
 }
 
 impl Drop for Array {
     fn drop(&mut self) {
         let c_array = *self.raw;
-        self.capi_call(|ctx| unsafe { ffi::tiledb_array_close(ctx, c_array) })
+        let mut c_is_open: i32 = out_ptr!();
+
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_is_open(ctx, c_array, &mut c_is_open)
+        })
+        .expect("TileDB internal error when closing array");
+
+        // the array will not be open if the user constructs Opener and drops it without calling
+        // `Opener::open`.  This bit of al dente buccatini is mitigated by the fact that the
+        // user still never sees a non-open Array object. Maybe worth refactoring at some point
+        // nonetheless.
+        if c_is_open == 1 {
+            self.capi_call(|ctx| unsafe {
+                ffi::tiledb_array_close(ctx, c_array)
+            })
             .expect("TileDB internal error when closing array");
+        }
+    }
+}
+
+/// Holds configuration options for opening an array located at a particular URI.
+pub struct ArrayOpener {
+    array: Array,
+    /// Mode for opening the array, or `None` if re-opening.
+    mode: Option<Mode>,
+}
+
+impl ArrayOpener {
+    /// Prepares to open the array located at `uri` for operations indicated by `mode`.
+    pub fn new<S>(context: &Context, uri: S, mode: Mode) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+    {
+        let mut array_raw: *mut ffi::tiledb_array_t = out_ptr!();
+        let c_uri = cstring!(uri.as_ref());
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_alloc(ctx, c_uri.as_ptr(), &mut array_raw)
+        })?;
+
+        Ok(ArrayOpener {
+            array: Array {
+                context: context.clone(),
+                uri: uri.as_ref().to_owned(),
+                raw: RawArray::Owned(array_raw),
+            },
+            mode: Some(mode),
+        })
+    }
+
+    /// Configures the start timestamp for an array.
+    /// The start and end timestamps determine the set of fragments
+    /// which will be loaded and used for queries.
+    /// Use `start_timestamp` to avoid reading data from older fragments,
+    /// such as to see only recently-written data.
+    pub fn start_timestamp(self, timestamp: u64) -> TileDBResult<Self> {
+        let c_array = *self.array.raw;
+        self.array.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_set_open_timestamp_start(ctx, c_array, timestamp)
+        })?;
+        Ok(self)
+    }
+
+    /// Configures the end timestamp for an array.
+    /// The start and end timestamps determine the set of fragments
+    /// which will be loaded and used for queries.
+    /// Use `end_timestamp` to avoid reading data from newer fragments,
+    /// such as for historical queries.
+    pub fn end_timestamp(self, timestamp: u64) -> TileDBResult<Self> {
+        let c_array = *self.array.raw;
+        self.array.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_set_open_timestamp_end(ctx, c_array, timestamp)
+        })?;
+        Ok(self)
+    }
+
+    /// Opens the array and returns a handle to it, consuming `self`.
+    pub fn open(self) -> TileDBResult<Array> {
+        let c_array = *self.array.raw;
+
+        if let Some(mode) = self.mode {
+            let c_mode = mode.capi_enum();
+            self.array.capi_call(|ctx| unsafe {
+                ffi::tiledb_array_open(ctx, c_array, c_mode)
+            })?;
+        } else {
+            self.array.capi_call(|ctx| unsafe {
+                ffi::tiledb_array_reopen(ctx, c_array)
+            })?;
+        }
+
+        Ok(self.array)
     }
 }
 

@@ -477,7 +477,7 @@ impl Default for FieldDataParameters {
         FieldDataParameters {
             nrecords: (0..=1024).into(),
             datatype: None,
-            value_min_var_size: 0,
+            value_min_var_size: 1, /* SC-48409 and SC-48428 workaround */
             value_max_var_size: 8, /* TODO */
         }
     }
