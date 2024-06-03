@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
-use std::ops::RangeInclusive;
+use std::ops::{Deref, RangeInclusive};
 use std::rc::Rc;
 
 use proptest::prelude::*;
@@ -23,10 +23,16 @@ use crate::{
 
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
+/// Returns a base set of requirements for filters to be used
+/// in write queries. Requirements are chosen to either avoid
+/// constraints on input (e.g. positive delta filtering requires
+/// sorted input, float scale filtering is not invertible)
+/// or to avoid issues in the tiledb core library in as
+/// many scenarios as possible.
 // now that we're actually writing data we will hit the fun bugs.
 // there are several in the filter pipeline, so we must heavily
 // restrict what is allowed until the bugs are fixed.
-fn query_write_filter_requirements() -> FilterRequirements {
+pub fn query_write_filter_requirements() -> FilterRequirements {
     FilterRequirements {
         allow_bit_reduction: false,     // SC-47560
         allow_positive_delta: false,    // nothing yet to ensure sort order
@@ -39,7 +45,10 @@ fn query_write_filter_requirements() -> FilterRequirements {
     }
 }
 
-fn query_write_schema_requirements(
+/// Returns a base set of schema requirements for running a query.
+/// Requirements are chosen to either avoid constraints on write input
+/// or to avoid issues in the tiledb core library in as many scenarios as possible.
+pub fn query_write_schema_requirements(
     array_type: Option<ArrayType>,
 ) -> crate::array::schema::strategy::Requirements {
     crate::array::schema::strategy::Requirements {
@@ -69,6 +78,7 @@ pub struct DenseWriteInput {
 }
 
 impl DenseWriteInput {
+    /// Prepares a write query to insert data from this write.
     pub fn attach_write<'data>(
         &'data self,
         b: WriteBuilder<'data>,
@@ -82,6 +92,8 @@ impl DenseWriteInput {
         subarray.finish_subarray()?.layout(self.layout)
     }
 
+    /// Prepares a read query to read the fields written by this operation
+    /// restricted to the subarray represented by this write.
     pub fn attach_read<'data, B>(
         &'data self,
         b: B,
@@ -109,9 +121,9 @@ impl DenseWriteInput {
 
 #[derive(Clone, Debug, Default)]
 pub struct DenseWriteParameters {
-    schema: Option<Rc<SchemaData>>,
-    layout: Option<CellOrder>,
-    memory_limit: Option<usize>,
+    pub schema: Option<Rc<SchemaData>>,
+    pub layout: Option<CellOrder>,
+    pub memory_limit: Option<usize>,
 }
 
 pub struct DenseWriteValueTree {
@@ -454,6 +466,8 @@ pub struct SparseWriteInput {
 }
 
 impl SparseWriteInput {
+    /// Returns the minimum bounding rectangle containing all
+    /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
         self.dimensions
             .iter()
@@ -494,6 +508,7 @@ impl SparseWriteInput {
             .collect::<Option<NonEmptyDomain>>()
     }
 
+    /// Prepares a write query to insert data from this write operation.
     pub fn attach_write<'data>(
         &'data self,
         b: WriteBuilder<'data>,
@@ -501,6 +516,7 @@ impl SparseWriteInput {
         self.data.attach_write(b)
     }
 
+    /// Prepares a read query to read the fields written by this operation.
     pub fn attach_read<'data, B>(
         &'data self,
         b: B,
@@ -581,6 +597,13 @@ pub struct DenseWriteSequence {
     writes: Vec<DenseWriteInput>,
 }
 
+impl Deref for DenseWriteSequence {
+    type Target = Vec<DenseWriteInput>;
+    fn deref(&self) -> &Self::Target {
+        &self.writes
+    }
+}
+
 impl Arbitrary for DenseWriteSequence {
     type Parameters = DenseWriteSequenceParameters;
     type Strategy = BoxedStrategy<DenseWriteSequence>;
@@ -626,6 +649,13 @@ impl IntoIterator for DenseWriteSequence {
 #[derive(Debug)]
 pub struct SparseWriteSequence {
     writes: Vec<SparseWriteInput>,
+}
+
+impl Deref for SparseWriteSequence {
+    type Target = Vec<SparseWriteInput>;
+    fn deref(&self) -> &Self::Target {
+        &self.writes
+    }
 }
 
 impl Arbitrary for SparseWriteSequence {
@@ -676,6 +706,7 @@ pub enum WriteInput {
 }
 
 impl WriteInput {
+    /// Returns a reference to the cells of input of this write operation.
     pub fn cells(&self) -> &Cells {
         match self {
             Self::Dense(ref dense) => &dense.data,
@@ -683,6 +714,8 @@ impl WriteInput {
         }
     }
 
+    /// Returns the minimum bounding rectangle containing
+    /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
         match self {
             Self::Dense(ref dense) => Some(
@@ -697,6 +730,17 @@ impl WriteInput {
         }
     }
 
+    /// Returns the subarray for this write operation,
+    /// if it is a dense write. Returns `None` otherwise.
+    pub fn subarray(&self) -> Option<NonEmptyDomain> {
+        if let Self::Dense(_) = self {
+            self.domain()
+        } else {
+            None
+        }
+    }
+
+    /// Consumes `self` and returns the underlying test data.
     pub fn unwrap_cells(self) -> Cells {
         match self {
             Self::Dense(dense) => dense.data,
@@ -704,6 +748,7 @@ impl WriteInput {
         }
     }
 
+    /// Prepares a write queryto insert data from this write operation.
     pub fn attach_write<'data>(
         &'data self,
         b: WriteBuilder<'data>,
@@ -714,6 +759,7 @@ impl WriteInput {
         }
     }
 
+    /// Prepares a read query to read the fields written by this operation.
     pub fn attach_read<'data, B>(
         &'data self,
         b: B,
@@ -732,12 +778,76 @@ impl WriteInput {
             Self::Sparse(ref s) => s.attach_read(b),
         }
     }
+}
 
-    pub fn ranges(&self) -> Option<&[SingleValueRange]> {
-        if let Self::Dense(ref d) = self {
-            Some(&d.subarray)
+pub enum WriteInputRef<'a> {
+    Dense(&'a DenseWriteInput),
+    Sparse(&'a SparseWriteInput),
+}
+
+impl<'a> WriteInputRef<'a> {
+    /// Returns a reference to the cells of input of this write operation.
+    pub fn cells(&self) -> &Cells {
+        match self {
+            Self::Dense(dense) => &dense.data,
+            Self::Sparse(sparse) => &sparse.data,
+        }
+    }
+
+    /// Returns the minimum bounding rectangle containing
+    /// the coordinates of this write operation.
+    pub fn domain(&self) -> Option<NonEmptyDomain> {
+        match self {
+            Self::Dense(dense) => Some(
+                dense
+                    .subarray
+                    .clone()
+                    .into_iter()
+                    .map(Range::from)
+                    .collect::<NonEmptyDomain>(),
+            ),
+            Self::Sparse(sparse) => sparse.domain(),
+        }
+    }
+
+    /// Returns the subarray for this write operation,
+    /// if it is a dense write. Returns `None` otherwise.
+    pub fn subarray(&self) -> Option<NonEmptyDomain> {
+        if let Self::Dense(_) = self {
+            self.domain()
         } else {
             None
+        }
+    }
+
+    /// Prepares a write queryto insert data from this write operation.
+    pub fn attach_write<'data>(
+        &'data self,
+        b: WriteBuilder<'data>,
+    ) -> TileDBResult<WriteBuilder<'data>> {
+        match self {
+            Self::Dense(d) => d.attach_write(b),
+            Self::Sparse(s) => s.attach_write(b),
+        }
+    }
+
+    /// Prepares a read query to read the fields written by this operation.
+    pub fn attach_read<'data, B>(
+        &'data self,
+        b: B,
+    ) -> TileDBResult<
+        CallbackVarArgReadBuilder<
+            'data,
+            MapAdapter<CellsConstructor, RawResultCallback>,
+            B,
+        >,
+    >
+    where
+        B: ReadQueryBuilder<'data>,
+    {
+        match self {
+            Self::Dense(d) => d.attach_read(b),
+            Self::Sparse(s) => s.attach_read(b),
         }
     }
 }
@@ -856,6 +966,12 @@ pub enum WriteSequence {
     Sparse(SparseWriteSequence),
 }
 
+impl WriteSequence {
+    pub fn iter(&self) -> WriteSequenceRefIter {
+        self.into_iter()
+    }
+}
+
 impl From<WriteInput> for WriteSequence {
     fn from(value: WriteInput) -> Self {
         match value {
@@ -878,6 +994,22 @@ impl IntoIterator for WriteSequence {
             Self::Dense(dense) => WriteSequenceIter::Dense(dense.into_iter()),
             Self::Sparse(sparse) => {
                 WriteSequenceIter::Sparse(sparse.into_iter())
+            }
+        }
+    }
+}
+
+impl<'a> IntoIterator for &'a WriteSequence {
+    type Item = WriteInputRef<'a>;
+    type IntoIter = WriteSequenceRefIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match *self {
+            WriteSequence::Dense(ref dense) => {
+                WriteSequenceRefIter::Dense(dense.iter())
+            }
+            WriteSequence::Sparse(ref sparse) => {
+                WriteSequenceRefIter::Sparse(sparse.iter())
             }
         }
     }
@@ -916,6 +1048,26 @@ impl Iterator for WriteSequenceIter {
             Self::Dense(ref mut dense) => dense.next().map(WriteInput::Dense),
             Self::Sparse(ref mut sparse) => {
                 sparse.next().map(WriteInput::Sparse)
+            }
+        }
+    }
+}
+
+pub enum WriteSequenceRefIter<'a> {
+    Dense(<&'a Vec<DenseWriteInput> as IntoIterator>::IntoIter),
+    Sparse(<&'a Vec<SparseWriteInput> as IntoIterator>::IntoIter),
+}
+
+impl<'a> Iterator for WriteSequenceRefIter<'a> {
+    type Item = WriteInputRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::Dense(ref mut dense) => {
+                dense.next().map(WriteInputRef::Dense)
+            }
+            Self::Sparse(ref mut sparse) => {
+                sparse.next().map(WriteInputRef::Sparse)
             }
         }
     }
@@ -1147,12 +1299,12 @@ mod tests {
                     .build();
                 write_query.submit().expect("Error running write query");
 
-                let write_ranges = if let Some(ranges) = write.ranges() {
+                let write_ranges = if let Some(ranges) = write.subarray() {
                     let generic_ranges = ranges
                         .iter()
                         .cloned()
-                        .map(|svr| vec![crate::range::Range::Single(svr)])
-                        .collect::<Vec<Vec<crate::range::Range>>>();
+                        .map(|r| vec![r])
+                        .collect::<Vec<Vec<Range>>>();
                     assert_eq!(
                         generic_ranges,
                         write_query.subarray().unwrap().ranges().unwrap()
