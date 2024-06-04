@@ -93,6 +93,59 @@ macro_rules! value_go {
 }
 pub use value_go;
 
+/// Applies a generic expression to the interiors of two `Value`s with matching variants,
+/// i.e. with the same physical data type. Typical usage is for comparing the insides of the two
+/// `Value`s.
+#[macro_export]
+macro_rules! value_cmp {
+    ($lexpr:expr, $rexpr:expr, $typename:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
+        use $crate::metadata::Value;
+        match ($lexpr, $rexpr) {
+            (Value::Int8Value($lpat), Value::Int8Value($rpat)) => {
+                type $typename = i8;
+                $same_type
+            }
+            (Value::Int16Value($lpat), Value::Int16Value($rpat)) => {
+                type $typename = i16;
+                $same_type
+            }
+            (Value::Int32Value($lpat), Value::Int32Value($rpat)) => {
+                type $typename = i32;
+                $same_type
+            }
+            (Value::Int64Value($lpat), Value::Int64Value($rpat)) => {
+                type $typename = i64;
+                $same_type
+            }
+            (Value::UInt8Value($lpat), Value::UInt8Value($rpat)) => {
+                type $typename = u8;
+                $same_type
+            }
+            (Value::UInt16Value($lpat), Value::UInt16Value($rpat)) => {
+                type $typename = u16;
+                $same_type
+            }
+            (Value::UInt32Value($lpat), Value::UInt32Value($rpat)) => {
+                type $typename = u32;
+                $same_type
+            }
+            (Value::UInt64Value($lpat), Value::UInt64Value($rpat)) => {
+                type $typename = u64;
+                $same_type
+            }
+            (Value::Float32Value($lpat), Value::Float32Value($rpat)) => {
+                type $typename = f32;
+                $same_type
+            }
+            (Value::Float64Value($lpat), Value::Float64Value($rpat)) => {
+                type $typename = f64;
+                $same_type
+            }
+            _ => $else,
+        }
+    }};
+}
+
 impl Value {
     pub(crate) fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
         value_go!(self, _DT, ref vec, get_value_vec(vec))
@@ -191,5 +244,37 @@ impl Metadata {
         let (vec_ptr, vec_size) = self.value.c_vec();
         let c_datatype = self.datatype.capi_enum();
         (vec_size, vec_ptr, c_datatype)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn value_cmp() {
+        let v1 = Value::UInt8Value(vec![0, 1, 2]);
+        value_cmp!(
+            &v1,
+            &v1,
+            _DT,
+            ref vl,
+            ref vr,
+            assert_eq!(vl, vr),
+            unreachable!()
+        );
+
+        let v2 = Value::Float64Value(vec![0f64, 1f64, 2f64]);
+        value_cmp!(
+            &v1,
+            &v1,
+            _DT,
+            ref vl,
+            ref vr,
+            assert_eq!(vl, vr),
+            unreachable!()
+        );
+
+        value_cmp!(&v1, &v2, _DT, _, _, unreachable!(), {});
     }
 }
