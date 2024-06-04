@@ -10,6 +10,10 @@ use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
+/// Create a strategy to generate `Vec`s containing elements drawn from `element` and with a size
+/// range given by `size`.  In contrast to `proptest::collection::vec`, value trees produced by
+/// this strategy do not attempt to shrink any of the elements of the vector, instead shrinking
+/// by more rapidly searching for the minimum set of elements needed to produce a failure.
 pub fn vec_records_strategy<T>(
     element: T,
     size: impl Into<SizeRange>,
@@ -23,8 +27,15 @@ where
     }
 }
 
+/// A value which represents a collection of logical records.
 pub trait Records: Clone + Debug {
+    /// Returns the number of records in the collection.
+    /// Implementations should panic if `self` is somehow invalid.
     fn len(&self) -> usize;
+
+    /// Returns a filtered set of `self`'s records, with `subset` indicating
+    /// the set of records to include.
+    /// Implementations should panic if `self` is somehow invalid.
     fn filter(&self, subset: &VarBitSet) -> Self;
 
     fn is_empty(&self) -> bool {
@@ -117,6 +128,8 @@ macro_rules! tuple_impls_record {
 // this is what std does for identifiers, who knows why
 tuple_impls_record!(E, D, C, B, A, Z, Y, X, W, V, U, T);
 
+/// Strategy to create `Vec`s in a size range, using a dependent strategy to create elements.
+/// See `vec_records_strategy`.
 #[derive(Debug)]
 pub struct VecRecordsStrategy<T> {
     element: T,
@@ -143,6 +156,25 @@ where
     }
 }
 
+/// A `ValueTree` implementation which searches over any `Records` to find the minimum
+/// set of elements needed to produce a failure.
+///
+/// For any set of N records, there are `2^N` candidate subsets which could be the minimum failing
+/// set. Rather than search for that, we choose to shrink the space quickly and find
+/// a reasonably small input after a hopefully small number of iterations.
+///
+/// The algorithm used is to partition the records into a fixed number of pieces.
+/// For each piece P, run the test with all of the records excluding P.
+/// A failure means that piece P is not necessary for the test to fail.
+/// After enumerating each of the P pieces, shrink the record set down to only the
+/// pieces which passed when they were not included in the test input.
+///
+/// This algorithm does not precisely identify the minimum record set which fails,
+/// since it reasons about contiguous chunks of records.  In the best case,
+/// where exactly one record is responsible for a test failure, we will find it
+/// after O(P * log_P N) iterations.  In the worst case, where there is exactly
+/// one record in each of the initial P chunks, we will be very sad and not
+/// shrink at all.
 pub struct RecordsValueTree<R> {
     min_records: usize,
     init: R,
@@ -158,6 +190,8 @@ where
 {
     const CONTAINER_VALUE_TREE_DEFAULT_EXPLORE_CHUNKS: usize = 8;
 
+    /// Initializes a value tree to choosing records from `init`.
+    /// The number of records produced for each iteration is bounded by `min_records`.
     pub fn new(min_records: usize, init: R) -> Self {
         let nchunks = std::cmp::min(
             init.len(),
@@ -175,6 +209,7 @@ where
         }
     }
 
+    /// Computes the bit mask for which records to include in the next iteration
     fn record_mask(&self) -> VarBitSet {
         match self.search {
             None => VarBitSet::saturated(self.init.len()),
@@ -220,6 +255,7 @@ where
         }
     }
 
+    /// Receive the latest test result and return whether further steps can be taken.
     fn explore_step(&mut self, failed: bool) -> bool {
         match self.search {
             None => {
@@ -292,6 +328,8 @@ where
         }
     }
 
+    /// Called after exploring each of P chunks to choose the set
+    /// of records for the next level of exploration.
     fn explore_level_finished(&mut self) -> bool {
         let nchunks = self.explore_results.len();
         let approx_chunk_len = self.records_included.len() / nchunks;
