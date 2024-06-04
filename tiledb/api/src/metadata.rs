@@ -20,9 +20,6 @@ pub enum Value {
     Int64Value(Vec<i64>),
     Float32Value(Vec<f32>),
     Float64Value(Vec<f64>),
-    //StringAsciiValue(CString),
-    //BooleanValue(bool),
-    // maybe blobs?
 }
 
 fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
@@ -31,59 +28,82 @@ fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
     (vec_ptr, vec_size)
 }
 
+/// Applies a generic expression to the interior of a `Value`.
+///
+/// # Examples
+/// ```
+/// use tiledb::metadata::Value;
+/// use tiledb::value_go;
+///
+/// fn truncate(v: &mut Value, len: usize) {
+///     value_go!(v, _DT, ref mut v_inner, v_inner.truncate(len));
+/// }
+///
+/// let mut v = Value::UInt64Value(vec![0, 24, 48]);
+/// truncate(&mut v, 2);
+/// assert_eq!(v, Value::UInt64Value(vec![0, 24]));
+/// ```
 #[macro_export]
-macro_rules! value_typed {
-    ($valuetype:expr, $typename:ident, $vec:ident, $then: expr) => {{
+macro_rules! value_go {
+    ($valuetype:expr, $typename:ident, $vec:pat, $then: expr) => {{
         use $crate::metadata::Value;
         match $valuetype {
-            Value::Int8Value(ref $vec) => {
+            Value::Int8Value($vec) => {
                 type $typename = i8;
                 $then
             }
-            Value::Int16Value(ref $vec) => {
+            Value::Int16Value($vec) => {
                 type $typename = i16;
                 $then
             }
-            Value::Int32Value(ref $vec) => {
+            Value::Int32Value($vec) => {
                 type $typename = i32;
                 $then
             }
-            Value::Int64Value(ref $vec) => {
+            Value::Int64Value($vec) => {
                 type $typename = i64;
                 $then
             }
-            Value::UInt8Value(ref $vec) => {
+            Value::UInt8Value($vec) => {
                 type $typename = u8;
                 $then
             }
-            Value::UInt16Value(ref $vec) => {
+            Value::UInt16Value($vec) => {
                 type $typename = u16;
                 $then
             }
-            Value::UInt32Value(ref $vec) => {
+            Value::UInt32Value($vec) => {
                 type $typename = u32;
                 $then
             }
-            Value::UInt64Value(ref $vec) => {
+            Value::UInt64Value($vec) => {
                 type $typename = u64;
                 $then
             }
-            Value::Float32Value(ref $vec) => {
+            Value::Float32Value($vec) => {
                 type $typename = f32;
                 $then
             }
-            Value::Float64Value(ref $vec) => {
+            Value::Float64Value($vec) => {
                 type $typename = f64;
                 $then
             }
         }
     }};
 }
-pub use value_typed;
+pub use value_go;
 
 impl Value {
-    pub fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
-        value_typed!(self, _DT, vec, get_value_vec(vec))
+    pub(crate) fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
+        value_go!(self, _DT, ref vec, get_value_vec(vec))
+    }
+
+    pub fn len(&self) -> usize {
+        value_go!(self, _DT, ref v, v.len())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        value_go!(self, _DT, ref v, v.is_empty())
     }
 }
 
