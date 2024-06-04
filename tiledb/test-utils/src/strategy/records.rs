@@ -73,6 +73,50 @@ where
     }
 }
 
+macro_rules! tuple_impls_record {
+    ($T:ident) => {
+        tuple_impls_record!(@impl $T);
+    };
+    ($T:ident, $( $U:ident ),+) => {
+        tuple_impls_record!($($U),+);
+        tuple_impls_record!(@impl $T, $($U),+);
+    };
+
+    // internal implementation
+    (@impl $($T:ident),+) => {
+        impl<$($T: Records),+> Records for ($($T,)+) {
+            fn len(&self) -> usize {
+                #[allow(non_snake_case)]
+                let ($(ref $T,)+) = self;
+
+                let mut nrecords = None;
+                $(
+                    if let Some(nrecords) = nrecords {
+                        assert_eq!(nrecords, $T.len());
+                    } else {
+                        nrecords = Some($T.len());
+                    }
+                )+
+
+                nrecords.unwrap()
+            }
+
+            fn filter(&self, subset: &VarBitSet) -> Self {
+                #[allow(non_snake_case)]
+                let ($(ref $T,)+) = self;
+                (
+                    $(
+                        $T.filter(subset),
+                    )+
+                )
+            }
+        }
+    };
+}
+
+// this is what std does for identifiers, who knows why
+tuple_impls_record!(E, D, C, B, A, Z, Y, X, W, V, U, T);
+
 #[derive(Debug)]
 pub struct VecRecordsStrategy<T> {
     element: T,
@@ -340,6 +384,32 @@ mod tests {
 
         for _ in 0..runner.config().cases {
             let mut tree = strat.new_tree(&mut runner).unwrap();
+
+            while tree.simplify() {}
+
+            let convergence = tree.current();
+            assert!(
+                convergence.is_empty(),
+                "Value tree converged to: {:?}",
+                convergence
+            );
+        }
+    }
+
+    #[test]
+    fn shrink_convergence_u32_u32() {
+        let strat =
+            vec_records_strategy((any::<u32>(), any::<u32>()), 0..=1024)
+                .prop_map(|v| v.into_iter().unzip::<_, _, Vec<_>, Vec<_>>());
+
+        let mut runner = TestRunner::new(Default::default());
+
+        for _ in 0..runner.config().cases {
+            let mut tree: RecordsValueTree<(Vec<u32>, Vec<u32>)> =
+                RecordsValueTree::new(
+                    0,
+                    strat.new_tree(&mut runner).unwrap().current(),
+                );
 
             while tree.simplify() {}
 
