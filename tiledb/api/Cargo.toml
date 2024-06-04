@@ -13,8 +13,8 @@ arrow = { version = "51.0.0", features = ["prettyprint"], optional = true }
 itertools = "0"
 num-traits = { version = "0.2", optional = true }
 paste = "1.0"
-proptest = { version = "1.0.0", optional = true }
-proptest-derive = { version = "0.4.0", optional = true }
+proptest = { workspace = true, optional = true }
+proptest-derive = { workspace = true, optional = true }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = "1.0.58"
@@ -24,8 +24,8 @@ tiledb-utils = { workspace = true, features = ["serde_json"] }
 
 [dev-dependencies]
 num-traits = { version = "0.2" }
-proptest = { version = "1.0.0" }
-proptest-derive = { version = "0.4.0" }
+proptest = { workspace = true }
+proptest-derive = { workspace = true }
 tiledb-test-utils = { workspace = true }
 
 [build-dependencies]

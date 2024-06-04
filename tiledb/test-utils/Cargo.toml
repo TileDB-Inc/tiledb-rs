@@ -6,4 +6,5 @@ version.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+proptest = { workspace = true }
 tempfile = "3"
