@@ -181,7 +181,7 @@ value_impl!(u64, Value::UInt64Value);
 value_impl!(f32, Value::Float32Value);
 value_impl!(f64, Value::Float64Value);
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Metadata {
     pub key: String,
     pub datatype: Datatype,
