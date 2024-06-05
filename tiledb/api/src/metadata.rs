@@ -253,6 +253,7 @@ pub mod strategy {
     use proptest::collection::{vec, SizeRange};
     use proptest::prelude::*;
 
+    use crate::datatype::strategy::DatatypeContext;
     use crate::datatype::LogicalType;
 
     pub struct Requirements {
@@ -262,7 +263,7 @@ pub mod strategy {
     }
 
     impl Requirements {
-        const DEFAULT_VALUE_LENGTH_MIN: usize = 0;
+        const DEFAULT_VALUE_LENGTH_MIN: usize = 1; // SC-48955
         const DEFAULT_VALUE_LENGTH_MAX: usize = 64;
     }
 
@@ -270,7 +271,7 @@ pub mod strategy {
         fn default() -> Self {
             Requirements {
                 key: any::<String>().boxed(),
-                datatype: any::<Datatype>().boxed(),
+                datatype: any_with::<Datatype>(DatatypeContext::NotAny).boxed(),
                 value_length: (Self::DEFAULT_VALUE_LENGTH_MIN
                     ..=Self::DEFAULT_VALUE_LENGTH_MAX)
                     .into(),
@@ -300,6 +301,39 @@ pub mod strategy {
                     value,
                 })
                 .boxed()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use tiledb_test_utils::TestArrayUri;
+
+        use super::*;
+        use crate::array::{Array, Mode};
+        use crate::Context;
+
+        #[test]
+        fn arbitrary_put() {
+            let test_uri = tiledb_test_utils::get_uri_generator().unwrap();
+            let uri = test_uri.with_path("quickstart_dense").unwrap();
+
+            let c: Context = Context::new().unwrap();
+            crate::array::tests::create_quickstart_dense(&test_uri, &c)
+                .unwrap();
+
+            proptest!(move |(m_in in any::<Metadata>())| {
+                // write
+                {
+                    let mut a = Array::open(&c, &uri, Mode::Write).unwrap();
+                    a.put_metadata(m_in.clone()).expect("Error writing metadata");
+                }
+                // read
+                {
+                    let a = Array::open(&c, &uri, Mode::Read).unwrap();
+                    let m_out = a.metadata(m_in.key.clone()).expect("Error reading metadata");
+                    assert_eq!(m_in, m_out);
+                }
+            });
         }
     }
 }

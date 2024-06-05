@@ -187,6 +187,7 @@ fn prop_datatype_for_delta_filter() -> impl Strategy<Value = Datatype> {
 pub enum DatatypeContext {
     #[default]
     Any,
+    NotAny,
     DenseDimension,
     SparseDimension,
     DeltaFilterReinterpretDatatype,
@@ -200,6 +201,9 @@ impl Arbitrary for Datatype {
     fn arbitrary_with(p: Self::Parameters) -> Self::Strategy {
         match p {
             DatatypeContext::Any => prop_datatype().boxed(),
+            DatatypeContext::NotAny => prop_datatype()
+                .prop_filter("Datatype::Any", |dt| *dt != Datatype::Any)
+                .boxed(),
             DatatypeContext::DenseDimension => {
                 prop_datatype_for_dense_dimension().boxed()
             }
