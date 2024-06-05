@@ -385,11 +385,13 @@ impl Datatype {
     }
 
     pub fn same_physical_type(&self, other: &Datatype) -> bool {
-        crate::fn_typed!(self, MLT, {
-            type MPT = <MLT as LogicalType>::PhysicalType;
-            crate::fn_typed!(other, TLT, {
-                type TPT = <TLT as LogicalType>::PhysicalType;
-                std::any::TypeId::of::<MPT>() == std::any::TypeId::of::<TPT>()
+        crate::fn_typed!(self, MyLogicalType, {
+            type MyPhysicalType = <MyLogicalType as LogicalType>::PhysicalType;
+            crate::fn_typed!(other, TheirLogicalType, {
+                type TheirPhysicalType =
+                    <TheirLogicalType as LogicalType>::PhysicalType;
+                std::any::TypeId::of::<MyPhysicalType>()
+                    == std::any::TypeId::of::<TheirPhysicalType>()
             })
         })
     }

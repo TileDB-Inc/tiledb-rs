@@ -290,7 +290,7 @@ pub mod strategy {
                     let value_strat = fn_typed!(dt, LT, {
                         type DT = <LT as LogicalType>::PhysicalType;
                         vec(any::<DT>(), params.value_length.clone())
-                            .prop_map(|v| Value::from(v))
+                            .prop_map(Value::from)
                             .boxed()
                     });
                     (params.key.clone(), Just(dt), value_strat)
