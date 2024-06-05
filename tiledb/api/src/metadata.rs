@@ -247,34 +247,86 @@ impl Metadata {
     }
 }
 
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy {
+    use super::*;
+    use proptest::collection::{vec, SizeRange};
+    use proptest::prelude::*;
+
+    use crate::datatype::LogicalType;
+
+    pub struct Requirements {
+        key: BoxedStrategy<String>,
+        datatype: BoxedStrategy<Datatype>,
+        value_length: SizeRange,
+    }
+
+    impl Requirements {
+        const DEFAULT_VALUE_LENGTH_MIN: usize = 0;
+        const DEFAULT_VALUE_LENGTH_MAX: usize = 64;
+    }
+
+    impl Default for Requirements {
+        fn default() -> Self {
+            Requirements {
+                key: any::<String>().boxed(),
+                datatype: any::<Datatype>().boxed(),
+                value_length: (Self::DEFAULT_VALUE_LENGTH_MIN
+                    ..=Self::DEFAULT_VALUE_LENGTH_MAX)
+                    .into(),
+            }
+        }
+    }
+
+    impl Arbitrary for Metadata {
+        type Parameters = Requirements;
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+            params
+                .datatype
+                .prop_flat_map(move |dt| {
+                    let value_strat = fn_typed!(dt, LT, {
+                        type DT = <LT as LogicalType>::PhysicalType;
+                        vec(any::<DT>(), params.value_length.clone())
+                            .prop_map(|v| Value::from(v))
+                            .boxed()
+                    });
+                    (params.key.clone(), Just(dt), value_strat)
+                })
+                .prop_map(|(key, datatype, value)| Metadata {
+                    key,
+                    datatype,
+                    value,
+                })
+                .boxed()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
-    #[test]
-    fn value_cmp() {
-        let v1 = Value::UInt8Value(vec![0, 1, 2]);
-        value_cmp!(
-            &v1,
-            &v1,
-            _DT,
-            ref vl,
-            ref vr,
-            assert_eq!(vl, vr),
-            unreachable!()
-        );
+    fn do_value_cmp(m1: Metadata, m2: Metadata) {
+        if m1.datatype.same_physical_type(&m2.datatype) {
+            value_cmp!(&m1.value, &m2.value, _DT, _, _,
+                (),
+                unreachable!("Non-matching `Value` variants for same physical type: {:?} and {:?}",
+                    m1, m2));
+        } else {
+            value_cmp!(&m1.value, &m2.value, _DT, _, _,
+                unreachable!("Matching `Value` variants for different physical type: {:?} and {:?}",
+                    m1, m2),
+                ());
+        }
+    }
 
-        let v2 = Value::Float64Value(vec![0f64, 1f64, 2f64]);
-        value_cmp!(
-            &v1,
-            &v1,
-            _DT,
-            ref vl,
-            ref vr,
-            assert_eq!(vl, vr),
-            unreachable!()
-        );
-
-        value_cmp!(&v1, &v2, _DT, _, _, unreachable!(), {});
+    proptest! {
+        #[test]
+        fn value_cmp((m1, m2) in (any::<Metadata>(), any::<Metadata>())) {
+            do_value_cmp(m1, m2)
+        }
     }
 }

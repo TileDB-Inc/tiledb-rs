@@ -190,6 +190,7 @@ pub enum DatatypeContext {
     DenseDimension,
     SparseDimension,
     DeltaFilterReinterpretDatatype,
+    Fixed(Datatype),
 }
 
 impl Arbitrary for Datatype {
@@ -208,6 +209,7 @@ impl Arbitrary for Datatype {
             DatatypeContext::DeltaFilterReinterpretDatatype => {
                 prop_datatype_for_delta_filter().boxed()
             }
+            DatatypeContext::Fixed(dt) => Just(dt).boxed(),
         }
     }
 }

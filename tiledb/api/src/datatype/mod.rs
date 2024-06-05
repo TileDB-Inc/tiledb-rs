@@ -384,6 +384,16 @@ impl Datatype {
                 || self.is_time_type())
     }
 
+    pub fn same_physical_type(&self, other: &Datatype) -> bool {
+        crate::fn_typed!(self, MLT, {
+            type MPT = <MLT as LogicalType>::PhysicalType;
+            crate::fn_typed!(other, TLT, {
+                type TPT = <TLT as LogicalType>::PhysicalType;
+                std::any::TypeId::of::<MPT>() == std::any::TypeId::of::<TPT>()
+            })
+        })
+    }
+
     #[cfg(test)]
     pub fn iter() -> Iter<'static, Datatype> {
         static DATATYPES: [Datatype; 43] = [
