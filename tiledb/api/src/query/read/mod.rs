@@ -3,6 +3,7 @@ use super::*;
 use std::cell::RefCell;
 use std::pin::Pin;
 
+use ffi::{tiledb_channel_operation_t, tiledb_query_channel_t};
 use paste::paste;
 
 use crate::config::Config;
@@ -385,6 +386,104 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     }
 }
 
+pub struct CountReader {
+    query : QueryBase
+}
+
+impl Query for CountReader {
+    fn base(&self) -> &QueryBase {
+        &self.query
+    }
+
+    fn finalize(self) -> TileDBResult<Array>
+        where
+            Self: Sized {
+        self.query.finalize()
+    }
+}
+
+impl ReadQuery for CountReader {
+    type Intermediate = ();
+    type Final = u64;
+
+    fn step(
+        &mut self,
+    ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        // Register the data buffer (set data buffer)
+        let context = self.base().context();
+        let cquery = **self.base().cquery();
+        let location : *mut u64 = out_ptr!();
+        let size : *mut u64 = out_ptr!();
+        unsafe {
+            *size = 8;
+        }
+
+        let c_bufptr = location as *mut std::ffi::c_void;
+        let c_sizeptr = size as *mut u64;
+        let count_str = String::from("Count");
+        let count_c_ptr = count_str.as_ptr() as *const i8;
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_set_data_buffer(
+                ctx,
+                cquery,
+                count_c_ptr,
+                c_bufptr,
+                c_sizeptr,
+            )
+        })?;
+
+        let base_result = self.base().step()?;
+        
+        // Run the query in a loop until you get the final result
+        let return_val = unsafe {match base_result {
+            ReadStepOutput::Final(_) => *location,
+            ReadStepOutput::Intermediate(()) => unreachable!(),
+            ReadStepOutput::NotEnoughSpace => unreachable!(),
+        }};
+
+        Ok(ReadStepOutput::Final(return_val))
+
+    }
+}
+
+pub enum AggregateType {
+    Count,
+    Sum
+    // agg_type : AggregateType , attr_name : Option<String>
+}
+
+pub trait AggregateBuilder : QueryBuilder {
+    fn apply_aggregate(self) -> TileDBResult<CountReader> {
+        // Put aggregate C API functions here (channel initialization and setup)
+        // So far only count
+        let context = self.base().context();
+        let cquery = **self.base().cquery();
+        let default_channel : *mut tiledb_query_channel_t = out_ptr!();
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_default_channel(ctx, cquery, &mut default_channel)
+        })?;
+
+        let count_agg : *const tiledb_channel_operation_t = out_ptr!();
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_aggregate_count_get(ctx, &mut count_agg)
+        })?;
+
+        let count = String::from("Count");
+        let ccount = cstring!(count).as_bytes();
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_channel_apply_aggregate(ctx, default_channel, ccount, count_agg)
+
+        })?;
+
+        Ok(CountReader{
+            query: self.base()
+        })
+
+    }
+}
+
 pub struct ReadBuilder {
     base: BuilderBase,
 }
@@ -454,3 +553,4 @@ impl<I, F> Iterator for ReadQueryIterator<I, F> {
 }
 
 impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}
+impl AggregateBuilder for ReadBuilder {}

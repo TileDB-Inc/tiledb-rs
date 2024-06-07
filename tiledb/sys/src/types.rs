@@ -122,3 +122,21 @@ pub struct tiledb_vfs_fh_t {
 pub struct tiledb_group_t {
     _unused: [u8; 0],
 }
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct tiledb_query_channel_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_channel_operation_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+pub struct tiledb_channel_operator_t {
+    _unused: [u8; 0],
+}
