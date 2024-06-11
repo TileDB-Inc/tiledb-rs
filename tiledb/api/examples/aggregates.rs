@@ -1,7 +1,7 @@
 extern crate tiledb;
 
 use tiledb::query::read::AggregateBuilder;
-use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
+use tiledb::query::{QueryBuilder, ReadQuery};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 

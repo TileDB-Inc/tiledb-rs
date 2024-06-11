@@ -390,6 +390,25 @@ pub struct CountReader<Q> {
     base : Q
 }
 
+pub struct CountBuilder<B> {
+    base : B
+}
+
+impl<B> QueryBuilder for CountBuilder<B> where B : QueryBuilder {
+    type Query = CountReader<B::Query>;
+
+    fn base(&self) -> &BuilderBase {
+        &self.base.base()
+    }
+
+    fn build(self) -> Self::Query {
+        CountReader {
+            base: self.base.build()
+        }
+    }
+}
+    
+
 impl<Q> Query for CountReader<Q> where Q : Query {
     fn base(&self) -> &QueryBase {
         &self.base.base()
@@ -454,7 +473,7 @@ pub enum AggregateType {
 }
 
 pub trait AggregateBuilder : QueryBuilder {
-    fn apply_aggregate(self) -> TileDBResult<CountReader<Self>> {
+    fn apply_aggregate(self) -> TileDBResult<CountBuilder<Self>> {
         // Put aggregate C API functions here (channel initialization and setup)
         // So far only count
         let context = self.base().context();
@@ -477,7 +496,7 @@ pub trait AggregateBuilder : QueryBuilder {
 
         })?;
 
-        Ok(CountReader{
+        Ok(CountBuilder{
             base: self
         })
 
@@ -554,3 +573,5 @@ impl<I, F> Iterator for ReadQueryIterator<I, F> {
 
 impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}
 impl AggregateBuilder for ReadBuilder {}
+
+impl<B : QueryBuilder> AggregateBuilder for CountBuilder<B> {}
