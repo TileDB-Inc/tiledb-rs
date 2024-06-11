@@ -386,23 +386,23 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     }
 }
 
-pub struct CountReader {
-    query : QueryBase
+pub struct CountReader<Q> {
+    base : Q
 }
 
-impl Query for CountReader {
+impl<Q> Query for CountReader<Q> where Q : Query {
     fn base(&self) -> &QueryBase {
-        &self.query
+        &self.base.base()
     }
 
     fn finalize(self) -> TileDBResult<Array>
         where
             Self: Sized {
-        self.query.finalize()
+        self.base.finalize()
     }
 }
 
-impl ReadQuery for CountReader {
+impl<Q> ReadQuery for CountReader<Q> where Q: ReadQuery, {
     type Intermediate = ();
     type Final = u64;
 
@@ -433,12 +433,12 @@ impl ReadQuery for CountReader {
             )
         })?;
 
-        let base_result = self.base().step()?;
+        let base_result = self.base.step()?;
         
         // Run the query in a loop until you get the final result
         let return_val = unsafe {match base_result {
             ReadStepOutput::Final(_) => *location,
-            ReadStepOutput::Intermediate(()) => unreachable!(),
+            ReadStepOutput::Intermediate(_) => unreachable!(),
             ReadStepOutput::NotEnoughSpace => unreachable!(),
         }};
 
@@ -454,7 +454,7 @@ pub enum AggregateType {
 }
 
 pub trait AggregateBuilder : QueryBuilder {
-    fn apply_aggregate(self) -> TileDBResult<CountReader> {
+    fn apply_aggregate(self) -> TileDBResult<CountReader<Self>> {
         // Put aggregate C API functions here (channel initialization and setup)
         // So far only count
         let context = self.base().context();
@@ -478,7 +478,7 @@ pub trait AggregateBuilder : QueryBuilder {
         })?;
 
         Ok(CountReader{
-            query: self.base().query
+            base: self
         })
 
     }
