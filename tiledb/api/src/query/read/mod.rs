@@ -459,18 +459,18 @@ pub trait AggregateBuilder : QueryBuilder {
         // So far only count
         let context = self.base().context();
         let cquery = **self.base().cquery();
-        let default_channel : *mut tiledb_query_channel_t = out_ptr!();
+        let mut default_channel : *mut tiledb_query_channel_t = out_ptr!();
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_query_get_default_channel(ctx, cquery, &mut default_channel)
         })?;
 
-        let count_agg : *const tiledb_channel_operation_t = out_ptr!();
+        let mut count_agg : *const tiledb_channel_operation_t = out_ptr!();
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_aggregate_count_get(ctx, &mut count_agg)
         })?;
 
         let count = String::from("Count");
-        let ccount = cstring!(count).as_bytes();
+        let ccount = cstring!(count).as_c_str().as_ptr();
 
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_channel_apply_aggregate(ctx, default_channel, ccount, count_agg)
@@ -478,7 +478,7 @@ pub trait AggregateBuilder : QueryBuilder {
         })?;
 
         Ok(CountReader{
-            query: self.base()
+            query: self.base().query
         })
 
     }
