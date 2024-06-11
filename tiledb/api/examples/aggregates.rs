@@ -112,9 +112,11 @@ fn get_count() -> TileDBResult<()> {
         tiledb::array::Mode::Read,
     )?;
 
+    let name = String::from("Count");
+
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_aggregate()?
+        .apply_aggregate(name.as_str())?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?

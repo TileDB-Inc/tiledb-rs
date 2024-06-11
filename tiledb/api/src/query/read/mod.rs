@@ -386,16 +386,18 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     }
 }
 
-pub struct CountReader<Q> {
-    base : Q
+pub struct CountReader<'a, Q> {
+    base : Q,
+    count_str: &'a str
 }
 
-pub struct CountBuilder<B> {
-    base : B
+pub struct CountBuilder<'a, B> {
+    base : B,
+    count_str : &'a str
 }
 
-impl<B> QueryBuilder for CountBuilder<B> where B : QueryBuilder {
-    type Query = CountReader<B::Query>;
+impl<'a, B> QueryBuilder for CountBuilder<'a, B> where B : QueryBuilder {
+    type Query = CountReader<'a, B::Query>;
 
     fn base(&self) -> &BuilderBase {
         &self.base.base()
@@ -403,13 +405,14 @@ impl<B> QueryBuilder for CountBuilder<B> where B : QueryBuilder {
 
     fn build(self) -> Self::Query {
         CountReader {
-            base: self.base.build()
+            base: self.base.build(),
+            count_str: self.count_str
         }
     }
 }
     
 
-impl<Q> Query for CountReader<Q> where Q : Query {
+impl<'a, Q> Query for CountReader<'a, Q> where Q : Query {
     fn base(&self) -> &QueryBase {
         &self.base.base()
     }
@@ -421,7 +424,7 @@ impl<Q> Query for CountReader<Q> where Q : Query {
     }
 }
 
-impl<Q> ReadQuery for CountReader<Q> where Q: ReadQuery, {
+impl<'a, Q> ReadQuery for CountReader<'a, Q> where Q: ReadQuery, {
     type Intermediate = ();
     type Final = u64;
 
@@ -431,15 +434,14 @@ impl<Q> ReadQuery for CountReader<Q> where Q: ReadQuery, {
         // Register the data buffer (set data buffer)
         let context = self.base().context();
         let cquery = **self.base().cquery();
-        let location : *mut u64 = out_ptr!();
-        let size : *mut u64 = out_ptr!();
-        unsafe {
-            *size = 8;
-        }
+        let mut location : u64 = out_ptr!();
+        let mut size : u64 = out_ptr!();
+        size = 8;
 
-        let c_bufptr = location as *mut std::ffi::c_void;
-        let c_sizeptr = size as *mut u64;
-        let count_str = String::from("Count");
+        let location_ptr = &mut location as *mut u64;
+        let c_bufptr = location_ptr as *mut std::ffi::c_void;
+        let c_sizeptr = &mut size as *mut u64;
+        let count_str = self.count_str;
         let count_c_ptr = count_str.as_ptr() as *const i8;
 
         context.capi_call(|ctx| unsafe {
@@ -455,11 +457,11 @@ impl<Q> ReadQuery for CountReader<Q> where Q: ReadQuery, {
         let base_result = self.base.step()?;
         
         // Run the query in a loop until you get the final result
-        let return_val = unsafe {match base_result {
-            ReadStepOutput::Final(_) => *location,
+        let return_val = match base_result {
+            ReadStepOutput::Final(_) => location,
             ReadStepOutput::Intermediate(_) => unreachable!(),
             ReadStepOutput::NotEnoughSpace => unreachable!(),
-        }};
+        };
 
         Ok(ReadStepOutput::Final(return_val))
 
@@ -473,7 +475,7 @@ pub enum AggregateType {
 }
 
 pub trait AggregateBuilder : QueryBuilder {
-    fn apply_aggregate(self) -> TileDBResult<CountBuilder<Self>> {
+    fn apply_aggregate(self, name : &str) -> TileDBResult<CountBuilder<Self>>  {
         // Put aggregate C API functions here (channel initialization and setup)
         // So far only count
         let context = self.base().context();
@@ -488,16 +490,17 @@ pub trait AggregateBuilder : QueryBuilder {
             ffi::tiledb_aggregate_count_get(ctx, &mut count_agg)
         })?;
 
-        let count = String::from("Count");
-        let ccount = cstring!(count).as_c_str().as_ptr();
+        let ccount = cstring!(name).as_c_str().as_ptr();
 
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_channel_apply_aggregate(ctx, default_channel, ccount, count_agg)
 
         })?;
 
+
         Ok(CountBuilder{
-            base: self
+            base: self,
+            count_str : name
         })
 
     }
@@ -574,4 +577,4 @@ impl<I, F> Iterator for ReadQueryIterator<I, F> {
 impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}
 impl AggregateBuilder for ReadBuilder {}
 
-impl<B : QueryBuilder> AggregateBuilder for CountBuilder<B> {}
+impl<'a, B : QueryBuilder> AggregateBuilder for CountBuilder<'a, B> {}
