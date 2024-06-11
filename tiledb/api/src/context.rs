@@ -178,22 +178,24 @@ impl Context {
         Ok(())
     }
 
-    pub fn object_type<S>(&self, name: S) -> TileDBResult<Option<ObjectType>>
+    /// Returns the `ObjectType` for the resource located at the given `uri`.
+    ///
+    /// # Errors
+    ///
+    /// This function performs I/O operations which may result in a return of `Err`.
+    /// This function also returns `Err` if there is no resource located at the `uri`.
+    pub fn object_type<S>(&self, uri: S) -> TileDBResult<ObjectType>
     where
         S: AsRef<str>,
     {
-        let c_name = cstring!(name.as_ref());
+        let c_uri = cstring!(uri.as_ref());
         let mut c_objtype: ffi::tiledb_object_t = out_ptr!();
 
         self.capi_call(|ctx| unsafe {
-            ffi::tiledb_object_type(ctx, c_name.as_ptr(), &mut c_objtype)
+            ffi::tiledb_object_type(ctx, c_uri.as_ptr(), &mut c_objtype)
         })?;
 
-        Ok(match c_objtype {
-            ffi::tiledb_object_t_TILEDB_ARRAY => Some(ObjectType::Array),
-            ffi::tiledb_object_t_TILEDB_GROUP => Some(ObjectType::Group),
-            _ => None,
-        })
+        ObjectType::try_from(c_objtype)
     }
 }
 
@@ -245,5 +247,18 @@ mod tests {
         let ctx = Context::new().expect("Error creating context instance.");
         ctx.set_tag("foo", "bar")
             .expect("Error setting tag on context.");
+    }
+
+    #[test]
+    fn ctx_object_type_not_found() {
+        let ctx = Context::new().expect("Error creating context instance.");
+        let obj = ctx.object_type(
+            "this_uri_should_not_exist_with_overwhelming_probability",
+        );
+
+        // "no resource found" is an error inside of core,
+        // if there is ever an error code instead of string then we should handle
+        // it and turn this into `Option`
+        assert!(obj.is_err());
     }
 }
