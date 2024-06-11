@@ -637,12 +637,34 @@ impl Arbitrary for DenseWriteSequence {
     }
 }
 
+impl<T> From<T> for DenseWriteSequence
+where
+    T: Into<Vec<DenseWriteInput>>,
+{
+    fn from(value: T) -> Self {
+        DenseWriteSequence {
+            writes: value.into(),
+        }
+    }
+}
+
 impl IntoIterator for DenseWriteSequence {
     type Item = DenseWriteInput;
     type IntoIter = <Vec<Self::Item> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.writes.into_iter()
+    }
+}
+
+impl FromIterator<DenseWriteInput> for DenseWriteSequence {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = DenseWriteInput>,
+    {
+        DenseWriteSequence {
+            writes: iter.into_iter().collect::<Vec<_>>(),
+        }
     }
 }
 
@@ -690,12 +712,34 @@ impl Arbitrary for SparseWriteSequence {
     }
 }
 
+impl<T> From<T> for SparseWriteSequence
+where
+    T: Into<Vec<SparseWriteInput>>,
+{
+    fn from(value: T) -> Self {
+        SparseWriteSequence {
+            writes: value.into(),
+        }
+    }
+}
+
 impl IntoIterator for SparseWriteSequence {
     type Item = SparseWriteInput;
     type IntoIter = <Vec<Self::Item> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
         self.writes.into_iter()
+    }
+}
+
+impl FromIterator<SparseWriteInput> for SparseWriteSequence {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = SparseWriteInput>,
+    {
+        SparseWriteSequence {
+            writes: iter.into_iter().collect::<Vec<_>>(),
+        }
     }
 }
 
