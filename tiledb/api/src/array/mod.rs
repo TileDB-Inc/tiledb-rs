@@ -306,13 +306,16 @@ impl Array {
         Ok(num)
     }
 
-    pub fn metadata(&self, key: LookupKey) -> TileDBResult<Metadata> {
+    pub fn metadata<K: Into<LookupKey>>(
+        &self,
+        key: K,
+    ) -> TileDBResult<Metadata> {
         let c_array = *self.raw;
         let mut vec_size: u32 = out_ptr!();
         let mut c_datatype: ffi::tiledb_datatype_t = out_ptr!();
         let mut vec_ptr: *const std::ffi::c_void = out_ptr!();
 
-        let name: String = match key {
+        let name: String = match key.into() {
             LookupKey::Index(index) => {
                 let mut key_ptr: *const std::ffi::c_char = out_ptr!();
                 let mut key_len: u32 = out_ptr!();

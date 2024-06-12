@@ -703,7 +703,7 @@ impl Factory for AttributeData {
             }
         }
         if let Some(ref fill) = self.fill {
-            b = crate::metadata::value_typed!(fill.data, _DT, value, {
+            b = crate::metadata::value_go!(fill.data, _DT, ref value, {
                 if let Some(fill_nullability) = fill.nullability {
                     b.fill_value_nullability(value.as_slice(), fill_nullability)
                 } else {

@@ -384,6 +384,18 @@ impl Datatype {
                 || self.is_time_type())
     }
 
+    pub fn same_physical_type(&self, other: &Datatype) -> bool {
+        crate::fn_typed!(self, MyLogicalType, {
+            type MyPhysicalType = <MyLogicalType as LogicalType>::PhysicalType;
+            crate::fn_typed!(other, TheirLogicalType, {
+                type TheirPhysicalType =
+                    <TheirLogicalType as LogicalType>::PhysicalType;
+                std::any::TypeId::of::<MyPhysicalType>()
+                    == std::any::TypeId::of::<TheirPhysicalType>()
+            })
+        })
+    }
+
     #[cfg(test)]
     pub fn iter() -> Iter<'static, Datatype> {
         static DATATYPES: [Datatype; 43] = [
