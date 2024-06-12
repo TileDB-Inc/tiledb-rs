@@ -410,6 +410,10 @@ impl Schema {
         ArrayType::try_from(c_atype)
     }
 
+    /// Returns the sparse tile capacity for this schema,
+    /// i.e. the number of cells which are contained in each tile of a sparse schema.
+    /// If this is a dense array schema, the value returned is
+    /// not used by tiledb.
     pub fn capacity(&self) -> TileDBResult<u64> {
         let c_schema = self.capi();
         let mut c_capacity: u64 = out_ptr!();
@@ -701,6 +705,12 @@ impl Builder {
         })
     }
 
+    /// Set the sparse tile capacity of this schema.
+    ///
+    /// # Errors
+    ///
+    /// This function is not guaranteed to error if this schema
+    /// is for a dense array - this method may instead have no effect.
     pub fn capacity(self, capacity: u64) -> TileDBResult<Self> {
         let c_schema = *self.schema.raw;
         self.context().capi_call(|ctx| unsafe {

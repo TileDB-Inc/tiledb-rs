@@ -34,7 +34,8 @@ impl Requirements {
     pub const DEFAULT_MAX_ATTRIBUTES: usize = 32;
 
     pub const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
-    pub const DEFAULT_MAX_SPARSE_TILE_CAPACITY: u64 = 1024 * 1024;
+    pub const DEFAULT_MAX_SPARSE_TILE_CAPACITY: u64 =
+        DomainRequirements::DEFAULT_CELLS_PER_TILE_LIMIT as u64;
 }
 
 impl Default for Requirements {
