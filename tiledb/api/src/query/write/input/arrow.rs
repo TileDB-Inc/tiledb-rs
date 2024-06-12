@@ -45,7 +45,7 @@ fn cell_structure_var(
             Ok(CellStructure::Fixed(nz))
         }
         CellValNum::Var => Ok(CellStructure::Var(Buffer::Borrowed(
-            &offsets.inner().inner().typed_data::<u64>()[0..offsets.len() - 1],
+            &offsets.inner().inner().typed_data::<u64>()[0..offsets.len()],
         ))),
     }
 }
@@ -679,20 +679,7 @@ mod tests {
                 let cells_in = &rr_in.cell_structure().offsets_ref().unwrap();
                 let cells_out = qb_out.cell_structure().offsets_ref().unwrap();
 
-                /*
-                 * As input to arrow, we should have the "extra offset"
-                 * (this simulates the read query behavior).
-                 * But as output from arrow we do not
-                 * (this simulates the expected input for a write query).
-                 */
-                let actual_overlap =
-                    std::cmp::min(cells_out.len(), cells_in.len());
-                assert_eq!(
-                    cells_in[0..actual_overlap],
-                    cells_out[0..actual_overlap]
-                );
-                assert_eq!(cells_in.len(), cells_out.len() + 1);
-                assert_eq!(rr_in.nvalues(), qb_out.values_capacity());
+                assert_eq!(*cells_in, cells_out);
             }
         }
 
@@ -720,23 +707,7 @@ mod tests {
         let qb_out_as_input = TypedRawReadOutput {
             datatype: rr_in.datatype,
             ncells: arrow.len(),
-            buffers: match qb_out.cell_structure().as_cell_val_num() {
-                CellValNum::Fixed(_) => qb_out,
-                CellValNum::Var => {
-                    /* we must append the extra offset */
-                    typed_query_buffers_go!(qb_out, _DT, qb, {
-                        let mut cells =
-                            qb.cell_structure.unwrap().unwrap().to_vec();
-                        cells.push(rr_in.nvalues() as u64);
-                        QueryBuffers {
-                            data: qb.data,
-                            cell_structure: CellStructure::Var(cells.into()),
-                            validity: qb.validity,
-                        }
-                        .into()
-                    })
-                }
-            },
+            buffers: qb_out,
         };
         let arrow_again =
             Arc::<dyn ArrowArray>::try_from(qb_out_as_input).unwrap();
