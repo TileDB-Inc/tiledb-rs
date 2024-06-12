@@ -14,7 +14,7 @@ use util::option::OptionSubset;
 use crate::error::DatatypeErrorKind;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
 #[repr(u64)]
 pub enum Datatype {
     /// A 32-bit signed integer
