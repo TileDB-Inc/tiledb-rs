@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::{Range, RangeInclusive};
 use std::rc::Rc;
@@ -11,6 +11,7 @@ use proptest::collection::SizeRange;
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
+use tiledb_test_utils::strategy::records::{Records, RecordsValueTree};
 
 use crate::array::schema::FieldData as SchemaField;
 use crate::array::{ArrayType, CellValNum, SchemaData};
@@ -121,6 +122,16 @@ impl From<&TypedRawReadOutput<'_>> for FieldData {
                 ),
             }
         })
+    }
+}
+
+impl Records for FieldData {
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn filter(&self, subset: &VarBitSet) -> Self {
+        self.filter(subset)
     }
 }
 
@@ -1215,16 +1226,6 @@ impl FieldMask {
     }
 }
 
-/// Tracks the last step taken for the write shrinking.
-enum ShrinkSearchStep {
-    /// Remove a range of records
-    Explore(usize),
-    Recur,
-    Done,
-}
-
-const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
-
 /// Value tree to shrink cells.
 /// For a failing test which writes N records, there are 2^N possible
 /// candidate subsets and we want to find the smallest one which fails the test
@@ -1238,13 +1239,8 @@ const WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES: usize = 8;
 ///
 /// TODO: for var sized attributes, follow up by shrinking the values.
 struct CellsValueTree {
-    params: CellsParameters,
-    field_data: HashMap<String, (FieldMask, Option<FieldData>)>,
-    nrecords: usize,
-    last_records_included: Option<Vec<usize>>,
-    records_included: Vec<usize>,
-    explore_results: Box<[Option<bool>]>,
-    search: Option<ShrinkSearchStep>,
+    _field_masks: HashMap<String, FieldMask>,
+    field_data_tree: RecordsValueTree<HashMap<String, FieldData>>,
 }
 
 impl CellsValueTree {
@@ -1252,144 +1248,36 @@ impl CellsValueTree {
         params: CellsParameters,
         field_data: HashMap<String, (FieldMask, Option<FieldData>)>,
     ) -> Self {
-        let nrecords = field_data
-            .values()
-            .filter_map(|(_, f)| f.as_ref())
-            .take(1)
-            .next()
-            .unwrap()
-            .len();
-
         // sanity check
-        for f in field_data.values() {
-            if let Some(f) = f.1.as_ref() {
-                assert_eq!(nrecords, f.len())
+        {
+            let mut nrecords = None;
+            for f in field_data.values() {
+                if let Some(f) = f.1.as_ref() {
+                    if let Some(nrecords) = nrecords {
+                        assert_eq!(nrecords, f.len())
+                    } else {
+                        nrecords = Some(f.len())
+                    }
+                }
             }
         }
 
-        let nchunks = WRITE_QUERY_DATA_VALUE_TREE_EXPLORE_PIECES;
-        let records_included = (0..nrecords).collect::<Vec<usize>>();
+        let field_masks = field_data
+            .iter()
+            .map(|(fname, &(fmask, _))| (fname.clone(), fmask))
+            .collect::<HashMap<String, FieldMask>>();
+        let field_data = field_data
+            .into_iter()
+            .filter(|&(_, (fmask, _))| fmask.is_included())
+            .map(|(fname, (_, fdata))| (fname, fdata.unwrap()))
+            .collect::<HashMap<String, FieldData>>();
+
+        let field_data_tree =
+            RecordsValueTree::new(params.min_records, field_data);
 
         CellsValueTree {
-            params,
-            field_data,
-            nrecords,
-            last_records_included: None,
-            records_included,
-            explore_results: vec![None; nchunks].into_boxed_slice(),
-            search: None,
-        }
-    }
-
-    fn explore_step(&mut self, failed: bool) -> bool {
-        match self.search {
-            None => {
-                if failed && self.nrecords > 0 {
-                    /* failed on the whole input, begin the search */
-                    self.search = Some(ShrinkSearchStep::Explore(0));
-                    true
-                } else {
-                    /* passed on the whole input, nothing to do */
-                    false
-                }
-            }
-            Some(ShrinkSearchStep::Explore(c)) => {
-                let nchunks = std::cmp::min(
-                    self.records_included.len(),
-                    self.explore_results.len(),
-                );
-
-                self.explore_results[c] = Some(failed);
-
-                match (c + 1).cmp(&nchunks) {
-                    Ordering::Less => {
-                        self.search = Some(ShrinkSearchStep::Explore(c + 1));
-                        true
-                    }
-                    Ordering::Equal => {
-                        /* finished exploring at this level, either recur or finish */
-                        let approx_chunk_len =
-                            self.records_included.len() / nchunks;
-                        let mut new_records_included = vec![];
-                        for i in 0..nchunks {
-                            let chunk_min = i * approx_chunk_len;
-                            let chunk_max = if i + 1 == nchunks {
-                                self.records_included.len()
-                            } else {
-                                (i + 1) * approx_chunk_len
-                            };
-
-                            if !self.explore_results[i].take().unwrap() {
-                                /* the test passed when chunk `i` was not included; keep it */
-                                new_records_included.extend_from_slice(
-                                    &self.records_included
-                                        [chunk_min..chunk_max],
-                                );
-                            }
-                        }
-
-                        if new_records_included.len() < self.params.min_records
-                        {
-                            /* buffer with some extras because the strategy requires it */
-                            let mut rec = new_records_included
-                                .into_iter()
-                                .collect::<BTreeSet<usize>>();
-                            let mut i = 0;
-                            while rec.len() < self.params.min_records {
-                                rec.insert(i);
-                                i += 1;
-                            }
-                            new_records_included =
-                                rec.into_iter().collect::<Vec<usize>>();
-                        }
-
-                        if new_records_included == self.records_included {
-                            /* everything was needed to pass */
-                            self.search = Some(ShrinkSearchStep::Done);
-                        } else {
-                            self.last_records_included =
-                                Some(std::mem::replace(
-                                    &mut self.records_included,
-                                    new_records_included,
-                                ));
-                            self.search = Some(ShrinkSearchStep::Recur);
-                        }
-                        /* run another round on the updated input */
-                        true
-                    }
-                    Ordering::Greater => {
-                        assert_eq!(0, nchunks);
-                        false
-                    }
-                }
-            }
-            Some(ShrinkSearchStep::Recur) => {
-                if failed {
-                    self.search = Some(ShrinkSearchStep::Explore(0));
-                } else {
-                    /*
-                     * This means that removing more than one chunk causes the
-                     * test to no longer fail.
-                     * Try again with a larger chunk size if possible
-                     */
-                    if self.explore_results.len() == 1 {
-                        unreachable!()
-                    }
-                    let Some(last_records_included) =
-                        self.last_records_included.take()
-                    else {
-                        unreachable!()
-                    };
-                    self.last_records_included = None;
-                    self.records_included = last_records_included;
-                    self.explore_results =
-                        vec![None; self.explore_results.len() / 2]
-                            .into_boxed_slice();
-                }
-                self.search = Some(ShrinkSearchStep::Explore(0));
-                true
-            }
-            Some(ShrinkSearchStep::Done) => false,
+            _field_masks: field_masks,
+            field_data_tree,
         }
     }
 }
@@ -1398,66 +1286,15 @@ impl ValueTree for CellsValueTree {
     type Value = Cells;
 
     fn current(&self) -> Self::Value {
-        let record_mask = match self.search {
-            None => VarBitSet::saturated(self.nrecords),
-            Some(ShrinkSearchStep::Explore(c)) => {
-                let nchunks = self
-                    .records_included
-                    .len()
-                    .clamp(1, self.explore_results.len());
-
-                let approx_chunk_len = self.records_included.len() / nchunks;
-
-                if approx_chunk_len == 0 {
-                    /* no records are included, we have shrunk down to empty */
-                    VarBitSet::new_bitset(self.nrecords)
-                } else {
-                    let mut record_mask = VarBitSet::new_bitset(self.nrecords);
-
-                    let exclude_min = c * approx_chunk_len;
-                    let exclude_max = if c + 1 == nchunks {
-                        self.records_included.len()
-                    } else {
-                        (c + 1) * approx_chunk_len
-                    };
-
-                    for r in self.records_included[0..exclude_min]
-                        .iter()
-                        .chain(self.records_included[exclude_max..].iter())
-                    {
-                        record_mask.set(*r)
-                    }
-
-                    record_mask
-                }
-            }
-            Some(ShrinkSearchStep::Recur) | Some(ShrinkSearchStep::Done) => {
-                let mut record_mask = VarBitSet::new_bitset(self.nrecords);
-                for r in self.records_included.iter() {
-                    record_mask.set(*r);
-                }
-                record_mask
-            }
-        };
-
-        let fields = self
-            .field_data
-            .iter()
-            .filter(|(_, &(mask, _))| mask.is_included())
-            .map(|(name, (_, data))| {
-                (name.clone(), data.as_ref().unwrap().filter(&record_mask))
-            })
-            .collect::<HashMap<String, FieldData>>();
-
-        Cells::new(fields)
+        Cells::new(self.field_data_tree.current())
     }
 
     fn simplify(&mut self) -> bool {
-        self.explore_step(true)
+        self.field_data_tree.simplify()
     }
 
     fn complicate(&mut self) -> bool {
-        self.explore_step(false)
+        self.field_data_tree.complicate()
     }
 }
 

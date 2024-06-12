@@ -1321,6 +1321,7 @@ name = "tiledb-test-utils"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "proptest",
  "tempfile",
 ]
 
