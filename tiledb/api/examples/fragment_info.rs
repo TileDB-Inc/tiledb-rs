@@ -1,13 +1,21 @@
 extern crate tiledb;
 
+use std::path::PathBuf;
+
 use tiledb::query::QueryBuilder;
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
-const FRAGMENT_INFO_ARRAY_URI: &str = "fragment_info_example_array";
+const FRAGMENT_INFO_ARRAY_URI: &str = "fragment_info";
 const FRAGMENT_INFO_ATTRIBUTE_NAME: &str = "a";
 
 fn main() {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     if !array_exists() {
         create_array().expect("Failed to create array");
 

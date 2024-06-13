@@ -1,11 +1,14 @@
 extern crate tiledb;
+
+use std::path::PathBuf;
+
 use tiledb::config::Config;
 use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::vfs::VFS;
 use tiledb::Datatype;
 use tiledb::{Array, Result as TileDBResult};
 
-const ARRAY_NAME: &str = "stats_array";
+const ARRAY_NAME: &str = "using_tiledb_stats";
 const ATTRIBUTE_NAME: &str = "a";
 
 /// Function that takes a vector of tiledb::stats::Metrics struct and prints
@@ -161,6 +164,12 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
 }
 
 fn main() -> TileDBResult<()> {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     create_array(1, 12000)?;
     write_array()?;
     read_array(false)?;

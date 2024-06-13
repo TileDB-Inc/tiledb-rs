@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::path::PathBuf;
 
 use itertools::izip;
 
@@ -13,13 +14,19 @@ use tiledb::query::{
 };
 use tiledb::{Context, Datatype, Result as TileDBResult};
 
-const ARRAY_URI: &str = "example_query_condition_dense";
+const ARRAY_URI: &str = "query_condition_dense";
 const NUM_ELEMS: i32 = 10;
 const C_FILL_VALUE: i32 = -1;
 const D_FILL_VALUE: f32 = 0.0;
 
 /// Demonstrate reading dense arrays with query conditions.
 fn main() -> TileDBResult<()> {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     let ctx = Context::new()?;
     if !Array::exists(&ctx, ARRAY_URI)? {
         create_array(&ctx)?;

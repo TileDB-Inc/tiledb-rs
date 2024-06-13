@@ -1,10 +1,12 @@
 extern crate tiledb;
 
+use std::path::PathBuf;
+
 use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
-const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense_array";
+const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense";
 const QUICKSTART_ATTRIBUTE_NAME: &str = "a";
 
 /// Returns whether the example array already exists
@@ -132,6 +134,12 @@ fn read_array() -> TileDBResult<()> {
 }
 
 fn main() {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     if !array_exists() {
         create_array().expect("Failed to create array");
     }

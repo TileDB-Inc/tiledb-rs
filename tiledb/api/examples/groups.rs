@@ -1,4 +1,7 @@
 extern crate tiledb;
+
+use std::path::PathBuf;
+
 use tiledb::group::Group;
 use tiledb::vfs::VFS;
 use tiledb::{Datatype, Result as TileDBResult};
@@ -146,6 +149,12 @@ fn cleanup() -> TileDBResult<()> {
 }
 
 fn main() -> TileDBResult<()> {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     create_arrays_groups()?;
     print_group()?;
     cleanup()?;
