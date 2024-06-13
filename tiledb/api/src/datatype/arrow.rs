@@ -462,7 +462,7 @@ pub fn from_arrow(
                 }
             }
         }
-        ADT::LargeUtf8 => {
+        ADT::Utf8 | ADT::Utf8View | ADT::LargeUtf8 => {
             /*
              * NB: arrow checks for valid UTF-8 but tiledb does not.
              * This is not an exact conversion for that reason
@@ -512,14 +512,11 @@ pub fn from_arrow(
                 }
             }
         }
-        ADT::Binary | ADT::Utf8 | ADT::List(_) => {
+        ADT::Binary | ADT::List(_) => {
             /* offsets are 64 bits, these types use 32-bit offsets */
             Res::None
         }
-        ADT::BinaryView
-        | ADT::Utf8View
-        | ADT::ListView(_)
-        | ADT::LargeListView(_) => {
+        ADT::BinaryView | ADT::ListView(_) | ADT::LargeListView(_) => {
             /* data does not arrive from tiledb core in this format */
             Res::None
         }
