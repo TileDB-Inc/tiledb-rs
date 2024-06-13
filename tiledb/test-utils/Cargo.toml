@@ -6,5 +6,6 @@ version.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+nix = { version = "0", features = ["signal"] }
 proptest = { workspace = true }
 tempfile = "3"
