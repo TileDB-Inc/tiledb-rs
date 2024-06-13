@@ -14,18 +14,18 @@ pub enum ObjectType {
     Group,
 }
 
-impl TryFrom<ffi::tiledb_object_t> for ObjectType {
-    type Error = crate::error::Error;
-    fn try_from(value: ffi::tiledb_object_t) -> TileDBResult<Self> {
-        Ok(match value {
-            ffi::tiledb_object_t_TILEDB_ARRAY => ObjectType::Array,
-            ffi::tiledb_object_t_TILEDB_GROUP => ObjectType::Group,
-            _ => {
-                return Err(crate::error::Error::ObjectType(
-                    ObjectTypeErrorKind::InvalidDiscriminant(value as u64),
-                ))
-            }
-        })
+impl ObjectType {
+    pub(crate) fn from_capi(
+        value: ffi::tiledb_object_t,
+    ) -> TileDBResult<Option<ObjectType>> {
+        match value {
+            ffi::tiledb_object_t_TILEDB_INVALID => Ok(None),
+            ffi::tiledb_object_t_TILEDB_ARRAY => Ok(Some(ObjectType::Array)),
+            ffi::tiledb_object_t_TILEDB_GROUP => Ok(Some(ObjectType::Group)),
+            other => Err(crate::error::Error::ObjectType(
+                ObjectTypeErrorKind::InvalidDiscriminant(other as u64),
+            )),
+        }
     }
 }
 
@@ -178,13 +178,13 @@ impl Context {
         Ok(())
     }
 
-    /// Returns the `ObjectType` for the resource located at the given `uri`.
+    /// Returns the `ObjectType` for the resource located at the given `uri`,
+    /// if any. If there is no resource, returns `None`.
     ///
     /// # Errors
     ///
     /// This function performs I/O operations which may result in a return of `Err`.
-    /// This function also returns `Err` if there is no resource located at the `uri`.
-    pub fn object_type<S>(&self, uri: S) -> TileDBResult<ObjectType>
+    pub fn object_type<S>(&self, uri: S) -> TileDBResult<Option<ObjectType>>
     where
         S: AsRef<str>,
     {
@@ -195,7 +195,7 @@ impl Context {
             ffi::tiledb_object_type(ctx, c_uri.as_ptr(), &mut c_objtype)
         })?;
 
-        ObjectType::try_from(c_objtype)
+        ObjectType::from_capi(c_objtype)
     }
 }
 
@@ -255,10 +255,11 @@ mod tests {
         let obj = ctx.object_type(
             "this_uri_should_not_exist_with_overwhelming_probability",
         );
+        assert!(matches!(obj, Ok(None)));
 
-        // "no resource found" is an error inside of core,
-        // if there is ever an error code instead of string then we should handle
-        // it and turn this into `Option`
-        assert!(obj.is_err());
+        let obj = ctx.object_type(
+            "this_dir_should_not_exist_with_overwhelming_probability/file",
+        );
+        assert!(matches!(obj, Ok(None)));
     }
 }

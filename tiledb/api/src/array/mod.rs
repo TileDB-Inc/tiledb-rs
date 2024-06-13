@@ -222,7 +222,7 @@ impl Array {
     {
         Ok(matches!(
             context.object_type(uri)?,
-            crate::context::ObjectType::Array
+            Some(crate::context::ObjectType::Array)
         ))
     }
 
