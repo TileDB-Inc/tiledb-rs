@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::sync::Mutex;
 
-use nix::sys::signal::{SigHandler, Signal};
+pub use nix::sys::signal::{SigHandler, Signal};
 
 /// Overrides a signal handler within its scope.
 pub struct SignalGuard {

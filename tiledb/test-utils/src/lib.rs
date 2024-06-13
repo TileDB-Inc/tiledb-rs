@@ -4,6 +4,5 @@ pub mod signal;
 pub mod strategy;
 pub mod uri_generators;
 
-pub use nix::sys::signal::{SigHandler, Signal};
 pub use signal::*;
 pub use uri_generators::{get_uri_generator, TestArrayUri};
