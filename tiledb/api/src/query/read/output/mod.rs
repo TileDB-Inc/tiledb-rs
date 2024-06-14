@@ -528,6 +528,10 @@ pub struct FieldScratchAllocator {
     pub is_nullable: bool,
 }
 
+impl FieldScratchAllocator {
+    pub const DEFAULT_MEMORY_LIMIT: usize = 64 * 1024 * 1024;
+}
+
 impl<C> ScratchAllocator<C> for FieldScratchAllocator
 where
     C: PhysicalType,

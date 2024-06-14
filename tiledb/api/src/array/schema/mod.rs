@@ -218,8 +218,9 @@ impl Field {
 
     pub fn query_scratch_allocator(
         &self,
+        memory_limit: Option<usize>,
     ) -> TileDBResult<crate::query::read::output::FieldScratchAllocator> {
-        Ok(FieldData::try_from(self)?.query_scratch_allocator())
+        Ok(FieldData::try_from(self)?.query_scratch_allocator(memory_limit))
     }
 }
 
@@ -280,20 +281,27 @@ impl FieldData {
 
     pub fn query_scratch_allocator(
         &self,
+        memory_limit: Option<usize>,
     ) -> crate::query::read::output::FieldScratchAllocator {
         /*
-         * TODO: a hint from the schema would be good to use in some way,
-         * this number is super made up and should be improved
-         * (especially if there is a large fixed cell val num).
-         * The user can use a custom allocator if they want, of course,
-         * but they probably aren't going to, so we ought to come up
-         * with something good by default.
+         * Allocate space for the largest integral number of cells
+         * which fits within the memory limit.
          */
-        let record_capacity = 1024 * 1024;
+        let est_values_per_cell = match self.cell_val_num().unwrap_or_default()
+        {
+            CellValNum::Fixed(nz) => nz.get() as usize,
+            CellValNum::Var => 64,
+        };
+        let est_cell_size =
+            est_values_per_cell * self.datatype().size() as usize;
+
+        let est_cell_capacity = memory_limit
+            .unwrap_or(FieldScratchAllocator::DEFAULT_MEMORY_LIMIT)
+            / est_cell_size;
 
         FieldScratchAllocator {
             cell_val_num: self.cell_val_num().unwrap_or_default(),
-            record_capacity: NonZeroUsize::new(record_capacity).unwrap(),
+            record_capacity: NonZeroUsize::new(est_cell_capacity).unwrap(),
             is_nullable: self.nullability().unwrap_or(true),
         }
     }
@@ -843,6 +851,8 @@ pub struct SchemaData {
 }
 
 impl SchemaData {
+    const DEFAULT_SPARSE_TILE_CAPACITY: u64 = 10000;
+
     pub fn num_fields(&self) -> usize {
         self.domain.dimension.len() + self.attributes.len()
     }
@@ -1669,7 +1679,10 @@ mod tests {
             .expect("Error creating schema from mostly-default settings");
 
         assert_eq!(ArrayType::Sparse, sparse_schema.array_type().unwrap());
-        assert_eq!(10000, sparse_schema.capacity().unwrap());
+        assert_eq!(
+            SchemaData::DEFAULT_SPARSE_TILE_CAPACITY,
+            sparse_schema.capacity().unwrap()
+        );
         assert_eq!(CellOrder::RowMajor, sparse_schema.cell_order().unwrap());
         assert_eq!(TileOrder::RowMajor, sparse_schema.tile_order().unwrap());
         assert!(!sparse_schema.allows_duplicates().unwrap());

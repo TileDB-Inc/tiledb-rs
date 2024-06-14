@@ -797,7 +797,7 @@ impl Cells {
                     fn_typed!(field.datatype().unwrap(), LT, {
                         type DT = <LT as LogicalType>::PhysicalType;
                         let managed: ManagedBuffer<DT> = ManagedBuffer::new(
-                            field.query_scratch_allocator().unwrap(),
+                            field.query_scratch_allocator(None).unwrap(),
                         );
                         let metadata = FieldMetadata::try_from(&field).unwrap();
                         let rr = RawReadHandle::managed(metadata, managed);
