@@ -870,6 +870,22 @@ impl SchemaData {
     pub fn fields(&self) -> FieldDataIter {
         FieldDataIter::new(self)
     }
+
+    /// Returns the number of cells per tile
+    pub fn num_cells_per_tile(&self) -> usize {
+        match self.array_type {
+            ArrayType::Dense => {
+                // it should be safe to unwrap, the two `None` conditions must not
+                // be satisfied for a dense array domain
+                // (TODO: what about for string ascii dense domains?)
+                self.domain.num_cells_per_tile().unwrap()
+            }
+            ArrayType::Sparse => {
+                self.capacity.unwrap_or(Self::DEFAULT_SPARSE_TILE_CAPACITY)
+                    as usize
+            }
+        }
+    }
 }
 
 impl Display for SchemaData {
