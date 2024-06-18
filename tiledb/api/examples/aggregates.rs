@@ -1,8 +1,8 @@
 extern crate tiledb;
 
+use crate::tiledb::query::read::AggregateBuilderTrait;
 use tiledb::query::read::{AggregateBuilder, AggregateType};
 use tiledb::query::{QueryBuilder, ReadQuery};
-use crate::tiledb::query::read::AggregateBuilderTrait;
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
@@ -128,10 +128,38 @@ fn get_count() -> TileDBResult<()> {
     Ok(())
 }
 
+fn get_sum() -> TileDBResult<()> {
+    let tdb = tiledb::context::Context::new()?;
+
+    let array = tiledb::Array::open(
+        &tdb,
+        QUICKSTART_DENSE_ARRAY_URI,
+        tiledb::array::Mode::Read,
+    )?;
+
+    let mut query = tiledb::query::ReadBuilder::new(array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .apply_aggregate::<i32>(
+            AggregateType::Sum,
+            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+        )?
+        .start_subarray()?
+        .add_range("rows", &[1i32, 2])?
+        .add_range("columns", &[2i32, 4])?
+        .finish_subarray()?
+        .build();
+
+    let results = query.execute()?;
+    println!("{}", results);
+
+    Ok(())
+}
+
 fn main() {
     if !array_exists() {
         create_array().expect("Failed to create array");
     }
     write_array().expect("Failed to write array");
-    get_count().expect("Failed to read array");
+    //get_count().expect("Failed to count array");
+    get_sum().expect("Failed to sum array");
 }

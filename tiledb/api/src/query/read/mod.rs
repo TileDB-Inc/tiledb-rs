@@ -6,16 +6,19 @@ use std::marker::PhantomData;
 use std::mem;
 use std::pin::Pin;
 
-use anyhow::Error;
 use anyhow::anyhow;
-use ffi::{tiledb_channel_operation_t, tiledb_channel_operator_t, tiledb_query_channel_t};
+use anyhow::Error;
+use ffi::{
+    tiledb_channel_operation_t, tiledb_channel_operator_t,
+    tiledb_query_channel_t,
+};
 use paste::paste;
 
 use crate::config::Config;
+use crate::error::Error as TileDBError;
 use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::read::output::ScratchAllocator;
 use crate::Result as TileDBResult;
-use crate::error::Error as TileDBError;
 
 mod callback;
 pub mod output;
@@ -403,10 +406,15 @@ pub struct AggregateReader<Q, T> {
     base: Q,
     agg_str: CString,
     _attr_str: Option<CString>,
-    attr_type: PhantomData<T>,
+    data : T,
+    data_size : u64
 }
 
-impl<B, T> QueryBuilder for AggregateBuilder<B, T> where B : QueryBuilder {
+impl<B, T> QueryBuilder for AggregateBuilder<B, T>
+where
+    B: QueryBuilder,
+    T : Default,
+{
     type Query = AggregateReader<B::Query, T>;
 
     fn base(&self) -> &BuilderBase {
@@ -418,25 +426,33 @@ impl<B, T> QueryBuilder for AggregateBuilder<B, T> where B : QueryBuilder {
             base: self.base.build(),
             agg_str: self.agg_str,
             _attr_str: self.attr_str,
-            attr_type: self.attr_type
+            data: T::default(),
+            data_size : mem::size_of::<T>() as u64
         }
     }
 }
-    
 
-impl<Q, T> Query for AggregateReader<Q, T> where Q : Query {
+impl<Q, T> Query for AggregateReader<Q, T>
+where
+    Q: Query,
+{
     fn base(&self) -> &QueryBase {
         &self.base.base()
     }
 
     fn finalize(self) -> TileDBResult<Array>
-        where
-            Self: Sized {
+    where
+        Self: Sized,
+    {
         self.base.finalize()
     }
 }
 
-impl<Q, T> ReadQuery for AggregateReader<Q, T> where Q: ReadQuery, {
+impl<Q, T> ReadQuery for AggregateReader<Q, T>
+where
+    Q: ReadQuery,
+    T : Copy
+{
     type Intermediate = ();
     type Final = T;
 
@@ -446,36 +462,28 @@ impl<Q, T> ReadQuery for AggregateReader<Q, T> where Q: ReadQuery, {
         // Register the data buffer (set data buffer)
         let context = self.base().context();
         let cquery = **self.base().cquery();
-        let mut location : T = out_ptr!();
-        let mut size : u64 = mem::size_of::<T>().try_into().unwrap();
-
-        let location_ptr = &mut location as *mut T;
+        let location_ptr = &mut self.data as *mut T;
         let c_bufptr = location_ptr as *mut std::ffi::c_void;
-        let c_sizeptr = &mut size as *mut u64;
+        let c_sizeptr = &mut self.data_size as *mut u64;
         let agg_str: &CString = &self.agg_str;
         let agg_c_ptr = agg_str.as_c_str().as_ptr() as *const i8;
 
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_data_buffer(
-                ctx,
-                cquery,
-                agg_c_ptr,
-                c_bufptr,
-                c_sizeptr,
+                ctx, cquery, agg_c_ptr, c_bufptr, c_sizeptr,
             )
         })?;
 
         let base_result = self.base.step()?;
-        
+
         // Run the query in a loop until you get the final result
         let return_val = match base_result {
-            ReadStepOutput::Final(_) => location,
+            ReadStepOutput::Final(_) => self.data,
             ReadStepOutput::Intermediate(_) => unreachable!(),
             ReadStepOutput::NotEnoughSpace => unreachable!(),
         };
 
         Ok(ReadStepOutput::Final(return_val))
-
     }
 }
 
@@ -486,104 +494,152 @@ pub enum AggregateType {
     Mean,
     Min,
     NullCount,
-    Sum
+    Sum,
 }
 
-pub trait AggregateBuilderTrait : QueryBuilder {
-    fn apply_aggregate<T>(self, agg_type : AggregateType, name: Option<String>) -> TileDBResult<AggregateBuilder<Self, T>>  {
+pub trait AggregateBuilderTrait: QueryBuilder {
+    fn apply_aggregate<T>(
+        self,
+        agg_type: AggregateType,
+        name: Option<String>,
+    ) -> TileDBResult<AggregateBuilder<Self, T>> 
+    {
         // Put aggregate C API functions here (channel initialization and setup)
         // So far only count
         let context = self.base().context();
         let cquery = **self.base().cquery();
-        let mut default_channel : *mut tiledb_query_channel_t = out_ptr!();
+        let mut default_channel: *mut tiledb_query_channel_t = out_ptr!();
         context.capi_call(|ctx| unsafe {
-            ffi::tiledb_query_get_default_channel(ctx, cquery, &mut default_channel)
+            ffi::tiledb_query_get_default_channel(
+                ctx,
+                cquery,
+                &mut default_channel,
+            )
         })?;
 
         let (agg_name, attr_name) = match agg_type {
-            AggregateType::Count => {
-                (cstring!("Count"), None)
-            },
+            AggregateType::Count => (cstring!("Count"), None),
             AggregateType::NullCount => {
                 if name.is_none() {
-                    return Err(TileDBError::InvalidArgument(anyhow!("Sum aggregate should have an attribute to sum over.")))
+                    return Err(TileDBError::InvalidArgument(anyhow!(
+                        "Sum aggregate should have an attribute to sum over."
+                    )));
                 }
-                (cstring!("NullCount"), Some(cstring!(name.unwrap().as_str())))
-            },
+                (
+                    cstring!("NullCount"),
+                    Some(cstring!(name.unwrap().as_str())),
+                )
+            }
             AggregateType::Sum => {
                 if name.is_none() {
-                    return Err(TileDBError::InvalidArgument(anyhow!("Sum aggregate should have an attribute to sum over.")))
+                    return Err(TileDBError::InvalidArgument(anyhow!(
+                        "Sum aggregate should have an attribute to sum over."
+                    )));
                 }
                 (cstring!("Sum"), Some(cstring!(name.unwrap().as_str())))
-            },
+            }
             AggregateType::Max => {
                 if name.is_none() {
-                    return Err(TileDBError::InvalidArgument(anyhow!("Max aggregate should have an attribute to max over.")))
+                    return Err(TileDBError::InvalidArgument(anyhow!(
+                        "Max aggregate should have an attribute to max over."
+                    )));
                 }
-               ( cstring!("Max"), Some(cstring!(name.unwrap().as_str())))
-            }, 
+                (cstring!("Max"), Some(cstring!(name.unwrap().as_str())))
+            }
             AggregateType::Min => {
                 if name.is_none() {
-                    return Err(TileDBError::InvalidArgument(anyhow!("Min aggregate should have an attribute to min over.")))
+                    return Err(TileDBError::InvalidArgument(anyhow!(
+                        "Min aggregate should have an attribute to min over."
+                    )));
                 }
                 (cstring!("Min"), Some(cstring!(name.unwrap().as_str())))
-            },
+            }
             AggregateType::Mean => {
                 if name.is_none() {
-                    return Err(TileDBError::InvalidArgument(anyhow!("Mean aggregate should have an attribute to average over.")))
+                    return Err(TileDBError::InvalidArgument(anyhow!("Mean aggregate should have an attribute to average over.")));
                 }
                 (cstring!("Mean"), Some(cstring!(name.unwrap().as_str())))
             }
         };
 
         // C API functionality
-        let mut agg_operator : *const tiledb_channel_operator_t = out_ptr!();
-        let mut agg_operation : *mut tiledb_channel_operation_t = out_ptr!();
+        let mut agg_operator: *const tiledb_channel_operator_t = out_ptr!();
+        let mut agg_operation: *mut tiledb_channel_operation_t = out_ptr!();
         let c_agg_name = agg_name.as_c_str().as_ptr();
 
         if agg_type == AggregateType::Count {
             context.capi_call(|ctx| unsafe {
-                ffi::tiledb_aggregate_count_get(ctx, core::ptr::addr_of_mut!(agg_operation) as *mut *const tiledb_channel_operation_t)
+                ffi::tiledb_aggregate_count_get(
+                    ctx,
+                    core::ptr::addr_of_mut!(agg_operation)
+                        as *mut *const tiledb_channel_operation_t,
+                )
             })?;
         } else {
-            let c_attr_name : *const i8 = attr_name.as_ref().unwrap().as_c_str().as_ptr();
+            let c_attr_name: *const i8 =
+                attr_name.as_ref().unwrap().as_c_str().as_ptr();
             match agg_type {
                 AggregateType::NullCount => {
                     context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_null_count_get(ctx, &mut agg_operator)
+                        ffi::tiledb_channel_operator_null_count_get(
+                            ctx,
+                            &mut agg_operator,
+                        )
                     })?;
                 }
                 AggregateType::Sum => {
                     context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_sum_get(ctx, &mut agg_operator)
+                        ffi::tiledb_channel_operator_sum_get(
+                            ctx,
+                            &mut agg_operator,
+                        )
                     })?;
-                },
+                }
                 AggregateType::Max => {
                     context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_max_get(ctx, &mut agg_operator)
+                        ffi::tiledb_channel_operator_max_get(
+                            ctx,
+                            &mut agg_operator,
+                        )
                     })?;
-                }, 
+                }
                 AggregateType::Min => {
                     context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_min_get(ctx, &mut agg_operator)
+                        ffi::tiledb_channel_operator_min_get(
+                            ctx,
+                            &mut agg_operator,
+                        )
                     })?;
-                },
+                }
                 AggregateType::Mean => {
                     context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_mean_get(ctx, &mut agg_operator)
+                        ffi::tiledb_channel_operator_mean_get(
+                            ctx,
+                            &mut agg_operator,
+                        )
                     })?;
-                },
-                AggregateType::Count => unreachable!()
+                }
+                AggregateType::Count => unreachable!(),
             };
             context.capi_call(|ctx| unsafe {
-                ffi::tiledb_create_unary_aggregate(ctx, cquery, agg_operator, c_attr_name, &mut agg_operation)
+                ffi::tiledb_create_unary_aggregate(
+                    ctx,
+                    cquery,
+                    agg_operator,
+                    c_attr_name,
+                    &mut agg_operation,
+                )
             })?;
         }
 
         // Apply aggregate to the default channel.
         context.capi_call(|ctx| unsafe {
-            ffi::tiledb_channel_apply_aggregate(ctx, default_channel, c_agg_name, agg_operation)
-
+            ffi::tiledb_channel_apply_aggregate(
+                ctx,
+                default_channel,
+                c_agg_name,
+                agg_operation,
+            )
         })?;
 
         Ok(AggregateBuilder::<Self, T> {
@@ -592,7 +648,6 @@ pub trait AggregateBuilderTrait : QueryBuilder {
             attr_str: attr_name,
             attr_type: PhantomData,
         })
-
     }
 }
 
@@ -669,3 +724,4 @@ impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}
 impl AggregateBuilder for ReadBuilder {}
 impl AggregateBuilderTrait for ReadBuilder {}
 impl<B : QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> {}
+impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where T : Default{}
