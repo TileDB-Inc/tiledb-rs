@@ -1,7 +1,8 @@
 extern crate tiledb;
 
-use tiledb::query::read::AggregateBuilder;
+use tiledb::query::read::{AggregateBuilder, AggregateType};
 use tiledb::query::{QueryBuilder, ReadQuery};
+use crate::tiledb::query::read::AggregateBuilderTrait;
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
@@ -112,11 +113,9 @@ fn get_count() -> TileDBResult<()> {
         tiledb::array::Mode::Read,
     )?;
 
-    let name = String::from("Count");
-
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_aggregate(name.as_str())?
+        .apply_aggregate::<u64>(AggregateType::Count, None)?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?
