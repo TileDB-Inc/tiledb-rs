@@ -402,7 +402,7 @@ pub struct AggregateBuilder<B, T> {
 pub struct AggregateReader<Q, T> {
     base: Q,
     agg_str: CString,
-    attr_str: Option<CString>,
+    _attr_str: Option<CString>,
     attr_type: PhantomData<T>,
 }
 
@@ -417,7 +417,7 @@ impl<B, T> QueryBuilder for AggregateBuilder<B, T> where B : QueryBuilder {
         AggregateReader::<B::Query, T> {
             base: self.base.build(),
             agg_str: self.agg_str,
-            attr_str: self.attr_str,
+            _attr_str: self.attr_str,
             attr_type: self.attr_type
         }
     }
@@ -543,7 +543,7 @@ pub trait AggregateBuilderTrait : QueryBuilder {
 
         if agg_type == AggregateType::Count {
             context.capi_call(|ctx| unsafe {
-                ffi::tiledb_aggregate_count_get(ctx, &mut agg_operation.cast_const() as *mut *const tiledb_channel_operation_t)
+                ffi::tiledb_aggregate_count_get(ctx, core::ptr::addr_of_mut!(agg_operation) as *mut *const tiledb_channel_operation_t)
             })?;
         } else {
             let c_attr_name : *const i8 = attr_name.as_ref().unwrap().as_c_str().as_ptr();
