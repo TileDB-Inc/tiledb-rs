@@ -3,12 +3,24 @@ use std::sync::Mutex;
 
 pub use nix::sys::signal::{SigHandler, Signal};
 
-/// Overrides a signal handler within its scope.
+/// On unix systems, overrides a signal handler within its scope.
+/// On windows, does nothing.
 pub struct SignalGuard {
     signo: Signal,
     restore_handler: SigHandler,
 }
 
+#[cfg(windows)]
+impl SignalGuard {
+    pub fn new(signo: Signal, handler: SigHandler) -> Self {
+        SignalGuard {
+            signo,
+            signal_handler,
+        }
+    }
+}
+
+#[cfg(not(windows))]
 impl SignalGuard {
     pub fn new(signo: Signal, handler: SigHandler) -> Self {
         let restore_handler =
@@ -22,6 +34,7 @@ impl SignalGuard {
     }
 }
 
+#[cfg(not(windows))]
 impl Drop for SignalGuard {
     fn drop(&mut self) {
         unsafe {
@@ -104,7 +117,7 @@ impl<'a> Drop for SignalCallback<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
 mod tests {
     use super::*;
 
