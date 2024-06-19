@@ -55,6 +55,13 @@ impl<'a> From<&mut SignalCallback<'a>> for RawSignalCallback {
 
 unsafe impl Send for RawSignalCallback {}
 
+/*
+ * https://rust-lang.github.io/rust-clippy/master/index.html#/declare_interior_mutable_const
+ * > A "non-constant" const item is a legacy way to supply an initialized
+ * > value to downstream static items. In this case the use of const is legit,
+ * > and this lint should be suppressed.
+ */
+#[allow(clippy::declare_interior_mutable_const)]
 const SIGNAL_CALLBACK_DEFAULT: Mutex<Option<RawSignalCallback>> =
     Mutex::new(None);
 static SIGNAL_CALLBACKS: [Mutex<Option<RawSignalCallback>>; 32] =
@@ -64,7 +71,7 @@ static SIGNAL_CALLBACKS: [Mutex<Option<RawSignalCallback>>; 32] =
 pub struct SignalCallback<'a> {
     guard: SignalGuard,
     restore_callback: Option<RawSignalCallback>,
-    action: Box<dyn FnMut() -> () + 'a>,
+    action: Box<dyn FnMut() + 'a>,
 }
 
 extern "C" fn signal_callback_dispatch(signo: i32) {
@@ -84,7 +91,7 @@ extern "C" fn signal_callback_dispatch(signo: i32) {
 impl<'a> SignalCallback<'a> {
     pub fn new<F>(signo: Signal, handler: F) -> Pin<Box<Self>>
     where
-        F: FnMut() -> () + 'a,
+        F: FnMut() + 'a,
     {
         // probably should mask off the signal during the following non-atomic operations
 
