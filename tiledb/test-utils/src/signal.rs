@@ -49,7 +49,9 @@ struct RawSignalCallback(*mut ());
 impl<'a> From<&mut SignalCallback<'a>> for RawSignalCallback {
     fn from(value: &mut SignalCallback<'a>) -> Self {
         let ptr = value as *const SignalCallback<'a>;
-        RawSignalCallback(unsafe { std::mem::transmute::<_, _>(ptr) })
+        RawSignalCallback(unsafe {
+            std::mem::transmute::<*const SignalCallback<'a>, *mut ()>(ptr)
+        })
     }
 }
 
@@ -79,7 +81,7 @@ extern "C" fn signal_callback_dispatch(signo: i32) {
         SIGNAL_CALLBACKS[signo as usize].lock().unwrap().as_mut()
     {
         let action = &mut unsafe {
-            &mut *std::mem::transmute::<_, *mut SignalCallback<'static>>(
+            &mut *std::mem::transmute::<*mut (), *mut SignalCallback<'static>>(
                 handler.0,
             )
         }
