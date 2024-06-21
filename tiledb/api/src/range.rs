@@ -67,6 +67,11 @@ impl SingleValueRange {
         Some(1 + (high - low) as u128)
     }
 
+    /// Returns a `CellValNum` description of values in this range, i.e. `CellValNum::single()`.
+    pub fn cell_val_num(&self) -> CellValNum {
+        CellValNum::single()
+    }
+
     pub fn is_integral(&self) -> bool {
         matches!(
             self,
@@ -533,6 +538,11 @@ pub enum VarValueRange {
 }
 
 impl VarValueRange {
+    /// Returns a `CellValNum` which matches the values in this range, i.e. `CellValNum::Var`.
+    pub fn cell_val_num(&self) -> CellValNum {
+        CellValNum::Var
+    }
+
     pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
         check_datatype!(self, datatype);
         Ok(())
@@ -720,6 +730,14 @@ pub enum Range {
 }
 
 impl Range {
+    pub fn cell_val_num(&self) -> CellValNum {
+        match self {
+            Self::Single(ref r) => r.cell_val_num(),
+            Self::Multi(ref r) => r.cell_val_num(),
+            Self::Var(ref r) => r.cell_val_num(),
+        }
+    }
+
     // N.B. This is not `check_field_compatibility` because dimensions have
     // restrictions on their cell_val_num that don't apply to attributes.
     //
@@ -866,6 +884,10 @@ pub struct TypedRange {
 impl TypedRange {
     pub fn new(datatype: Datatype, range: Range) -> Self {
         Self { datatype, range }
+    }
+
+    pub fn cell_val_num(&self) -> CellValNum {
+        self.range.cell_val_num()
     }
 
     pub fn from_slices(
