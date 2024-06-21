@@ -4,10 +4,9 @@ use std::num::NonZeroU32;
 use proptest::prelude::*;
 
 use crate::array::CellValNum;
-use crate::datatype::LogicalType;
 use crate::query::buffer::{CellStructure, QueryBuffers};
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
-use crate::{fn_typed, Datatype};
+use crate::{physical_type_go, Datatype};
 
 #[derive(Clone, Debug)]
 pub struct RawReadOutputParameters {
@@ -129,10 +128,10 @@ impl<'data> Arbitrary for TypedRawReadOutput<'data> {
 
         strategy_datatype
             .prop_flat_map(move |datatype| {
-                fn_typed!(
+                physical_type_go!(
                     datatype,
-                    LT,
-                    any_with::<RawReadOutput<<LT as LogicalType>::PhysicalType>>(
+                    DT,
+                    any_with::<RawReadOutput<DT>>(
                         params
                             .as_ref()
                             .cloned()

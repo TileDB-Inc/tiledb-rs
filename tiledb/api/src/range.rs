@@ -7,11 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::array::CellValNum;
-use crate::datatype::logical::*;
 use crate::datatype::physical::BitsOrd;
 use crate::datatype::Datatype;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::fn_typed;
+use crate::physical_type_go;
 use crate::Result as TileDBResult;
 
 pub type MinimumBoundingRectangle = Vec<TypedRange>;
@@ -909,8 +908,7 @@ impl TypedRange {
             }
         }
 
-        fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(datatype, DT, {
             let start_slice = unsafe {
                 std::slice::from_raw_parts(
                     start.as_ptr() as *const DT,
@@ -1115,14 +1113,13 @@ mod tests {
         assert_eq!(*range, range2.range);
     }
 
-    // fn_typed! seems to be fairly heavy for using with llvm-cov so I've
+    // physical_type_go! seems to be fairly heavy for using with llvm-cov so I've
     // minimized the number of usages in these tests by adding test helpers
-    // that are called from as few fn_typed macros as possible.
+    // that are called from as few physical_type_go macros as possible.
     #[test]
     fn test_single_value_range() {
         for datatype in Datatype::iter() {
-            fn_typed!(datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(datatype, DT, {
                 proptest!(ProptestConfig::with_cases(8),
                         |(start in any::<DT>(), end in any::<DT>())| {
 
@@ -1148,8 +1145,7 @@ mod tests {
     #[test]
     fn test_multi_value_range() {
         for datatype in Datatype::iter() {
-            fn_typed!(datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(datatype, DT, {
                 proptest!(ProptestConfig::with_cases(8),
                         |(data in vec(any::<DT>(), 2..=32))| {
                     let len = data.len() as u32;
@@ -1214,8 +1210,7 @@ mod tests {
     #[test]
     fn test_var_value_range() {
         for datatype in Datatype::iter() {
-            fn_typed!(datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(datatype, DT, {
                 proptest!(ProptestConfig::with_cases(8),
                         |(start in vec(any::<DT>(), 0..=32), end in vec(any::<DT>(), 0..=32))| {
                     let start = start.into_boxed_slice();

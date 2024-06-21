@@ -10,11 +10,10 @@ use crate::array::schema::arrow::{
 use crate::array::{Attribute, AttributeBuilder, CellValNum};
 use crate::context::ContextBound;
 use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
-use crate::datatype::LogicalType;
 use crate::error::Error;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
-use crate::{fn_typed, Context, Datatype, Result as TileDBResult};
+use crate::{physical_type_go, Context, Datatype, Result as TileDBResult};
 
 /// Encapsulates TileDB Attribute fill value data for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
@@ -33,8 +32,7 @@ pub struct AttributeMetadata {
 impl AttributeMetadata {
     pub fn new(attr: &Attribute) -> TileDBResult<Self> {
         Ok(AttributeMetadata {
-            fill_value: fn_typed!(attr.datatype()?, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            fill_value: physical_type_go!(attr.datatype()?, DT, {
                 let (fill_value, fill_nullable) =
                     attr.fill_value_nullable::<&[DT]>()?;
                 FillValueMetadata {
@@ -56,8 +54,7 @@ impl AttributeMetadata {
             .filters
             .apply(FilterListBuilder::new(&builder.context())?)?
             .build();
-        fn_typed!(builder.datatype()?, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(builder.datatype()?, DT, {
             let fill_value =
                 serde_json::from_value::<Vec<DT>>(self.fill_value.data.clone())
                     .map_err(|e| {

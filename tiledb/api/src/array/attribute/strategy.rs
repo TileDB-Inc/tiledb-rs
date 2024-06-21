@@ -5,10 +5,9 @@ use proptest::prelude::*;
 use crate::array::{
     attribute::FillData, ArrayType, AttributeData, CellValNum, DomainData,
 };
-use crate::datatype::LogicalType;
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::Requirements as FilterRequirements;
-use crate::{fn_typed, Datatype};
+use crate::{physical_type_go, Datatype};
 
 #[derive(Clone)]
 pub enum StrategyContext {
@@ -88,11 +87,10 @@ fn prop_attribute_for_datatype(
     datatype: Datatype,
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = AttributeData> {
-    fn_typed!(
+    physical_type_go!(
         datatype,
-        LT,
+        DT,
         {
-            type DT = <LT as LogicalType>::PhysicalType;
             let name = requirements
                 .name
                 .as_ref()

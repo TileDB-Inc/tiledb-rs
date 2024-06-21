@@ -12,12 +12,11 @@ use crate::array::dimension::DimensionConstraints;
 use crate::array::{ArrayType, CellValNum, DimensionData};
 use crate::datatype::physical::BitsOrd;
 use crate::datatype::strategy::*;
-use crate::datatype::LogicalType;
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
     Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
-use crate::{fn_typed, Datatype};
+use crate::{physical_type_go, Datatype};
 
 #[derive(Clone)]
 pub struct Requirements {
@@ -193,8 +192,7 @@ fn prop_dimension_for_datatype(
     } else {
         CellValNum::single()
     };
-    fn_typed!(datatype, LT, {
-        type DT = <LT as LogicalType>::PhysicalType;
+    physical_type_go!(datatype, DT, {
         let name = prop_dimension_name();
         let range_and_extent = if !datatype.is_string_type() {
             prop_range_and_extent::<DT>(params.extent_limit)

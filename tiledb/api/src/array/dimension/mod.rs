@@ -7,11 +7,11 @@ use util::option::OptionSubset;
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::{LogicalType, PhysicalType};
+use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::range::SingleValueRange;
-use crate::{fn_typed, Datatype, Factory, Result as TileDBResult};
+use crate::{physical_type_go, Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawDimension {
     Owned(*mut ffi::tiledb_dimension_t),
@@ -161,8 +161,7 @@ impl PartialEq<Dimension> for Dimension {
         eq_helper!(self.cell_val_num(), other.cell_val_num());
         eq_helper!(self.filters(), other.filters());
 
-        fn_typed!(self.datatype().unwrap(), LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(self.datatype().unwrap(), DT, {
             eq_helper!(self.domain::<DT>(), other.domain::<DT>());
             eq_helper!(self.extent::<DT>(), other.extent::<DT>())
         });
@@ -584,8 +583,7 @@ impl TryFrom<&Dimension> for DimensionData {
 
     fn try_from(dim: &Dimension) -> TileDBResult<Self> {
         let datatype = dim.datatype()?;
-        let constraints = fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        let constraints = physical_type_go!(datatype, DT, {
             let domain = dim.domain::<DT>()?;
             let extent = dim.extent::<DT>()?;
             if let Some(domain) = domain {

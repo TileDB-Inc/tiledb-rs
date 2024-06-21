@@ -4,8 +4,8 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 
 use crate::array::EnumerationData;
-use crate::datatype::{LogicalType, PhysicalType};
-use crate::{fn_typed, Datatype};
+use crate::datatype::PhysicalType;
+use crate::{physical_type_go, Datatype};
 
 const MIN_ENUMERATION_VALUES: usize = 1;
 const MAX_ENUMERATION_VALUES: usize = 1024;
@@ -28,8 +28,7 @@ fn do_cmp<T: PhysicalType>(a: &T, b: &T) -> Ordering {
 }
 
 fn prop_enumeration_values(datatype: Datatype) -> BoxedStrategy<Box<[u8]>> {
-    fn_typed!(datatype, LT, {
-        type DT = <LT as LogicalType>::PhysicalType;
+    physical_type_go!(datatype, DT, {
         vec(any::<DT>(), MIN_ENUMERATION_VALUES..=MAX_ENUMERATION_VALUES)
             .prop_map(|data| {
                 let mut data = data;

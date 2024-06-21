@@ -9,7 +9,7 @@ use util::option::OptionSubset;
 
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::{LogicalType, PhysicalType};
+use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error, ModeErrorKind};
 use crate::key::LookupKey;
 use crate::metadata::Metadata;
@@ -17,7 +17,7 @@ use crate::range::{
     Range, SingleValueRange, TypedNonEmptyDomain, TypedRange, VarValueRange,
 };
 use crate::Result as TileDBResult;
-use crate::{fn_typed, Datatype};
+use crate::{physical_type_go, Datatype};
 
 pub mod attribute;
 pub mod dimension;
@@ -605,8 +605,7 @@ impl Array {
     ) -> TileDBResult<Option<TypedRange>> {
         match cell_val_num {
             CellValNum::Fixed(nz) => {
-                fn_typed!(datatype, LT, {
-                    type DT = <LT as LogicalType>::PhysicalType;
+                physical_type_go!(datatype, DT, {
                     Ok(self
                         .dimension_nonempty_domain_impl_fixed::<DT>(
                             dimension_key,
@@ -616,8 +615,7 @@ impl Array {
                 })
             }
             CellValNum::Var => {
-                fn_typed!(datatype, LT, {
-                    type DT = <LT as LogicalType>::PhysicalType;
+                physical_type_go!(datatype, DT, {
                     let var_range = self
                         .dimension_nonempty_domain_impl_var::<DT>(
                             dimension_key,

@@ -5,13 +5,13 @@ use anyhow::anyhow;
 
 use crate::array::Schema;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::{LogicalType, PhysicalType};
+use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::key::LookupKey;
 use crate::query::QueryBuilder;
 use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
 use crate::Result as TileDBResult;
-use crate::{fn_typed, single_value_range_go, var_value_range_go};
+use crate::{physical_type_go, single_value_range_go, var_value_range_go};
 
 pub(crate) enum RawSubarray {
     Owned(*mut ffi::tiledb_subarray_t),
@@ -120,8 +120,7 @@ impl<'query> Subarray<'query> {
                     // Apparently stride exists in the API but isn't used.
                     let mut stride: *const std::ffi::c_void = out_ptr!();
 
-                    fn_typed!(dtype, LT, {
-                        type DT = <LT as LogicalType>::PhysicalType;
+                    physical_type_go!(dtype, DT, {
                         let mut start_ptr: *const DT = out_ptr!();
                         let mut end_ptr: *const DT = out_ptr!();
                         self.capi_call(|ctx| unsafe {
