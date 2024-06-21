@@ -292,6 +292,17 @@ impl DomainData {
         usize::try_from(total).ok()
     }
 
+    /// Returns the number of cells in each tile, or `None` if:
+    /// - any dimension does not have a tile extent specified (e.g. for a sparse array); or
+    /// - the number of cells in a tile exceeds `usize::MAX`.
+    pub fn num_cells_per_tile(&self) -> Option<usize> {
+        let mut total = 1usize;
+        for d in self.dimension.iter() {
+            total = total.checked_mul(d.constraints.num_cells_per_tile()?)?;
+        }
+        Some(total)
+    }
+
     /// Returns the domains of each dimension as a `NonEmptyDomain`,
     /// or `None` if any dimension is not constrained into a domain
     pub fn domains(&self) -> Option<NonEmptyDomain> {

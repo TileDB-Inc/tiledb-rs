@@ -240,7 +240,7 @@ macro_rules! fn_register_callback {
                         let metadata = FieldMetadata::try_from(&field)?;
                         match [< scratch_ $U:snake >] {
                             ScratchStrategy::AttributeDefault => {
-                                let alloc : Box<dyn ScratchAllocator<<T as $Callback>::$U> + 'data> = Box::new(field.query_scratch_allocator()?);
+                                let alloc : Box<dyn ScratchAllocator<<T as $Callback>::$U> + 'data> = Box::new(field.query_scratch_allocator(None)?);
                                 let managed = ManagedBuffer::from(alloc);
                                 RawReadHandle::managed(metadata, managed)
                             },

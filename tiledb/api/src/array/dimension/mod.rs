@@ -388,6 +388,24 @@ impl DimensionConstraints {
         Some(1 + (high - low) as u128)
     }
 
+    /// Returns the number of cells spanned by a
+    /// single tile under this constraint, if applicable
+    pub fn num_cells_per_tile(&self) -> Option<usize> {
+        crate::dimension_constraints_go!(
+            self,
+            _DT,
+            _,
+            extent,
+            extent.map(|extent| {
+                #[allow(clippy::unnecessary_fallible_conversions)]
+                // this `unwrap` should be safe, validation will confirm nonzero
+                usize::try_from(extent).unwrap()
+            }),
+            None,
+            None
+        )
+    }
+
     /// Returns the domain of the dimension constraint, if present, as a range.
     pub fn domain(&self) -> Option<SingleValueRange> {
         crate::dimension_constraints_go!(
