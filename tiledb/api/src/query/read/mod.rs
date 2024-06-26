@@ -1,13 +1,14 @@
 use super::*;
 
+use std::any::TypeId;
 use std::cell::RefCell;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::marker::PhantomData;
 use std::mem;
 use std::pin::Pin;
 
 use anyhow::anyhow;
-use anyhow::Error;
 use ffi::{
     tiledb_channel_operation_t, tiledb_channel_operator_t,
     tiledb_query_channel_t,
@@ -18,7 +19,7 @@ use crate::config::Config;
 use crate::error::Error as TileDBError;
 use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::read::output::ScratchAllocator;
-use crate::Result as TileDBResult;
+use crate::{Datatype, Result as TileDBResult};
 
 mod callback;
 pub mod output;
@@ -405,20 +406,20 @@ pub struct AggregateBuilder<B, T> {
 pub struct AggregateReader<Q, T> {
     base: Q,
     agg_str: CString,
-    _attr_str: Option<CString>,
-    data : T,
-    data_size : u64
+    _attr_str: Option<CString>, // Unused because the C API uses this memory to store the attribute name.
+    data: T,
+    data_size: u64,
 }
 
 impl<B, T> QueryBuilder for AggregateBuilder<B, T>
 where
     B: QueryBuilder,
-    T : Default,
+    T: Default,
 {
     type Query = AggregateReader<B::Query, T>;
 
     fn base(&self) -> &BuilderBase {
-        &self.base.base()
+        self.base.base()
     }
 
     fn build(self) -> Self::Query {
@@ -427,7 +428,7 @@ where
             agg_str: self.agg_str,
             _attr_str: self.attr_str,
             data: T::default(),
-            data_size : mem::size_of::<T>() as u64
+            data_size: 8u64,
         }
     }
 }
@@ -437,7 +438,7 @@ where
     Q: Query,
 {
     fn base(&self) -> &QueryBase {
-        &self.base.base()
+        self.base.base()
     }
 
     fn finalize(self) -> TileDBResult<Array>
@@ -451,7 +452,7 @@ where
 impl<Q, T> ReadQuery for AggregateReader<Q, T>
 where
     Q: ReadQuery,
-    T : Copy
+    T: Copy,
 {
     type Intermediate = ();
     type Final = T;
@@ -466,7 +467,7 @@ where
         let c_bufptr = location_ptr as *mut std::ffi::c_void;
         let c_sizeptr = &mut self.data_size as *mut u64;
         let agg_str: &CString = &self.agg_str;
-        let agg_c_ptr = agg_str.as_c_str().as_ptr() as *const i8;
+        let agg_c_ptr = agg_str.as_c_str().as_ptr();
 
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_data_buffer(
@@ -476,18 +477,23 @@ where
 
         let base_result = self.base.step()?;
 
-        // Run the query in a loop until you get the final result
+        // There are no intermediate results for aggregates since the buffer size should be one
+        // element (and therefore, no space constraints).
         let return_val = match base_result {
             ReadStepOutput::Final(_) => self.data,
-            ReadStepOutput::Intermediate(_) => unreachable!(),
-            ReadStepOutput::NotEnoughSpace => unreachable!(),
+            ReadStepOutput::Intermediate(_) => {
+                unreachable!("Aggregate step function.")
+            }
+            ReadStepOutput::NotEnoughSpace => {
+                unreachable!("Aggregate step function.")
+            }
         };
 
         Ok(ReadStepOutput::Final(return_val))
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum AggregateType {
     Count,
     Max,
@@ -497,25 +503,133 @@ pub enum AggregateType {
     Sum,
 }
 
+impl Display for AggregateType {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        <Self as Debug>::fmt(self, f)
+    }
+}
+
+fn aggregate_type_checker<T: 'static>(
+    agg_type: AggregateType,
+    attr_type_option: Option<Datatype>,
+) -> TileDBResult<()> {
+    let tid = TypeId::of::<T>();
+
+    if (agg_type == AggregateType::NullCount
+        || agg_type == AggregateType::Count)
+        && tid != TypeId::of::<u64>()
+    {
+        return Err(TileDBError::InvalidArgument(anyhow!(
+            "Count aggregates should have u64 result types."
+        )));
+    }
+
+    if agg_type == AggregateType::Mean && tid != TypeId::of::<f64>() {
+        return Err(TileDBError::InvalidArgument(anyhow!(
+            "Mean aggregates should have f64 result types."
+        )));
+    }
+
+    // Check if aggregate type is sum, then the size of the type should be 8, and
+    // the integral type should match.
+    if agg_type == AggregateType::Sum {
+        if mem::size_of::<T>() != 8 {
+            return Err(TileDBError::InvalidArgument(anyhow!(
+                "Sum aggregate should come with a value of size 8."
+            )));
+        }
+
+        let attr_type = attr_type_option.as_ref().unwrap();
+        if (*attr_type == Datatype::Int8
+            || *attr_type == Datatype::Int16
+            || *attr_type == Datatype::Int32
+            || *attr_type == Datatype::Int64)
+            && tid != TypeId::of::<i64>()
+        {
+            return Err(TileDBError::InvalidArgument(anyhow!(
+                "Signed integral sum aggregate type should be an i64."
+            )));
+        }
+
+        if (*attr_type == Datatype::UInt8
+            || *attr_type == Datatype::UInt16
+            || *attr_type == Datatype::UInt32
+            || *attr_type == Datatype::UInt64)
+            && tid != TypeId::of::<u64>()
+        {
+            return Err(TileDBError::InvalidArgument(anyhow!(
+                "Unsigned integral sum aggregate type should be an u64."
+            )));
+        }
+
+        if (*attr_type == Datatype::Float32 || *attr_type == Datatype::Float64)
+            && tid != TypeId::of::<f64>()
+        {
+            return Err(TileDBError::InvalidArgument(anyhow!(
+                "Floating point sum aggregate type should be an f64."
+            )));
+        }
+    } else if agg_type == AggregateType::Min || agg_type == AggregateType::Max {
+        let attr_type = attr_type_option.as_ref().unwrap();
+        if *attr_type == Datatype::Int8 && tid != TypeId::of::<i8>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int8: unmatched result type.")));
+        }
+        if *attr_type == Datatype::Int16 && tid != TypeId::of::<i16>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int16: unmatched result type.")));
+        }
+        if *attr_type == Datatype::Int32 && tid != TypeId::of::<i32>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int32: unmatched result type.")));
+        }
+        if *attr_type == Datatype::Int64 && tid != TypeId::of::<i64>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int64: unmatched result type.")));
+        }
+        if *attr_type == Datatype::UInt8 && tid != TypeId::of::<u8>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt8: unmatched result type.")));
+        }
+        if *attr_type == Datatype::UInt16 && tid != TypeId::of::<u16>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt16: unmatched result type.")));
+        }
+        if *attr_type == Datatype::UInt32 && tid != TypeId::of::<u32>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt32: unmatched result type.")));
+        }
+        if *attr_type == Datatype::UInt64 && tid != TypeId::of::<u64>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt64: unmatched result type.")));
+        }
+        if *attr_type == Datatype::Float32 && tid != TypeId::of::<f32>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Float32: unmatched result type.")));
+        }
+        if *attr_type == Datatype::Float64 && tid != TypeId::of::<f64>() {
+            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Float64: unmatched result type.")));
+        }
+    }
+
+    Ok(())
+}
+
+/// Trait for query types which can have an aggregate channel placed on top of them.
 pub trait AggregateBuilderTrait: QueryBuilder {
-    fn apply_aggregate<T>(
+    fn apply_aggregate<T: 'static>(
         self,
         agg_type: AggregateType,
         name: Option<String>,
-    ) -> TileDBResult<AggregateBuilder<Self, T>> 
-    {
-        // Put aggregate C API functions here (channel initialization and setup)
-        // So far only count
-        let context = self.base().context();
-        let cquery = **self.base().cquery();
-        let mut default_channel: *mut tiledb_query_channel_t = out_ptr!();
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_query_get_default_channel(
-                ctx,
-                cquery,
-                &mut default_channel,
-            )
-        })?;
+    ) -> TileDBResult<AggregateBuilder<Self, T>> {
+        if agg_type == AggregateType::Count {
+            aggregate_type_checker::<T>(agg_type, None)?;
+        } else {
+            // Checking that the attribute exists in the schema.
+            let schema = self.base().array().schema()?;
+            if name.is_none() {
+                return Err(TileDBError::InvalidArgument(anyhow!(
+                    agg_type.to_string()
+                        + " aggregate should have an attribute to sum over."
+                )));
+            }
+
+            let an: &String = name.as_ref().unwrap();
+            let attr = schema.field(an)?;
+            let attr_type = attr.datatype()?;
+            aggregate_type_checker::<T>(agg_type, Some(attr_type))?;
+        }
 
         let (agg_name, attr_name) = match agg_type {
             AggregateType::Count => (cstring!("Count"), None),
@@ -561,6 +675,19 @@ pub trait AggregateBuilderTrait: QueryBuilder {
                 (cstring!("Mean"), Some(cstring!(name.unwrap().as_str())))
             }
         };
+
+        // Put aggregate C API functions here (channel initialization and setup)
+        // So far only count
+        let context = self.base().context();
+        let cquery = **self.base().cquery();
+        let mut default_channel: *mut tiledb_query_channel_t = out_ptr!();
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_default_channel(
+                ctx,
+                cquery,
+                &mut default_channel,
+            )
+        })?;
 
         // C API functionality
         let mut agg_operator: *const tiledb_channel_operator_t = out_ptr!();
@@ -725,3 +852,7 @@ impl AggregateBuilder for ReadBuilder {}
 impl AggregateBuilderTrait for ReadBuilder {}
 impl<B : QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> {}
 impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where T : Default{}
+impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where
+    T: Default
+{
+}
