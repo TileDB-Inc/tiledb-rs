@@ -850,8 +850,11 @@ impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}
 
 impl AggregateBuilder for ReadBuilder {}
 impl AggregateBuilderTrait for ReadBuilder {}
-impl<B : QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> {}
-impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where T : Default{}
+impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> {}
+impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where
+    T: Default
+{
+}
 impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where
     T: Default
 {
