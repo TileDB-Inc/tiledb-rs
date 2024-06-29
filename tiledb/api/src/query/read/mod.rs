@@ -444,11 +444,10 @@ impl<I, F> Iterator for ReadQueryIterator<I, F> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.query.take().map(|mut q| {
-            q.step().map(|r| {
+            q.step().inspect(|r| {
                 if !r.is_final() {
                     self.query = Some(q);
                 }
-                r
             })
         })
     }
