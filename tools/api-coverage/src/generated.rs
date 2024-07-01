@@ -20,7 +20,7 @@ impl<'ast> Visit<'ast> for BindgenDefs {
         if ident == "UNINIT" {
             return;
         }
-        if self.constants.get(&ident).is_some() {
+        if self.constants.contains_key(&ident) {
             panic!("Duplicate constant defintion: {}", ident);
         }
 
@@ -41,7 +41,7 @@ impl<'ast> Visit<'ast> for BindgenDefs {
             visit::visit_signature(self, node);
             return;
         }
-        if self.signatures.get(&ident).is_some() {
+        if self.signatures.contains_key(&ident) {
             panic!("Duplicate signature definition: {}", ident);
         }
         self.signatures.insert(ident, node.clone());
