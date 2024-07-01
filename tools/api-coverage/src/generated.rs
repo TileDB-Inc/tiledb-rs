@@ -51,15 +51,20 @@ impl<'ast> Visit<'ast> for BindgenDefs {
 
 fn generate_bindings(generated: &String, wrapper: &String) -> Result<()> {
     // Only generate bindings if they don't exist.
+    println!("Generating bindings!");
+
     let genpath = Path::new(&generated);
     if genpath.is_file() {
         return Ok(());
     }
 
+    println!("Checking wrapper header.");
     let wrappath = Path::new(&wrapper);
     if !wrappath.is_file() {
         return Err(anyhow!("Missing wrapper file: {}", wrapper));
     }
+
+    println!("Getting pkg-config info");
 
     let tiledb_lib = pkg_config::Config::new()
         .cargo_metadata(false)
@@ -67,13 +72,15 @@ fn generate_bindings(generated: &String, wrapper: &String) -> Result<()> {
         .arg("--variable=includedir")
         .probe("tiledb")?;
 
+    println!("pkg-config: {:#?}", tiledb_lib);
+
     let mut bindings = bindgen::Builder::default()
         .header(wrapper)
         .allowlist_function("^tiledb_.*")
         .allowlist_type("^tiledb_.*")
         .allowlist_var("^TILEDB_.*");
 
-    println!("Config: {:#?}", tiledb_lib);
+    println!("Bindings: {:#?}", bindings);
 
     for path in tiledb_lib.include_paths.iter() {
         println!("ADD PATH: {}", path.display());
