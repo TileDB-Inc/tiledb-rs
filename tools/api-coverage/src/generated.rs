@@ -64,7 +64,6 @@ fn generate_bindings(generated: &String, wrapper: &String) -> Result<()> {
     let tiledb_lib = pkg_config::Config::new()
         .cargo_metadata(false)
         .env_metadata(false)
-        .arg("--variable=includedir")
         .probe("tiledb")?;
 
     let mut bindings = bindgen::Builder::default()
