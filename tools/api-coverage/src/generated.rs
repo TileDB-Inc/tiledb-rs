@@ -69,7 +69,6 @@ fn generate_bindings(generated: &String, wrapper: &String) -> Result<()> {
     let tiledb_lib = pkg_config::Config::new()
         .cargo_metadata(false)
         .env_metadata(false)
-        .arg("--variable=includedir")
         .probe("tiledb")?;
 
     println!("pkg-config: {:#?}", tiledb_lib);
