@@ -73,6 +73,8 @@ fn generate_bindings(generated: &String, wrapper: &String) -> Result<()> {
         .allowlist_type("^tiledb_.*")
         .allowlist_var("^TILEDB_.*");
 
+    println!("Config: {:#?}", tiledb_lib);
+
     for path in tiledb_lib.include_paths.iter() {
         println!("ADD PATH: {}", path.display());
         bindings = bindings.clang_arg(format!("-I{}", path.to_string_lossy()));
