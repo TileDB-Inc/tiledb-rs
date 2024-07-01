@@ -22,5 +22,7 @@ jobs:
         run: cat /usr/share/miniconda/lib/pkgconfig/tiledb.pc
       - name: More debug
         run: pkg-config --variable=includedir tiledb
+      - name: Check headers
+        run: find `pkg-config --variable=includedir tiledb`/tiledb
       - name: Calculate Coverage
         run: ./target/debug/api-coverage 2>&1 >> $GITHUB_STEP_SUMMARY
