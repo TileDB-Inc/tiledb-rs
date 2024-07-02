@@ -13,10 +13,10 @@ use util::option::OptionSubset;
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::physical::BitsEq;
-use crate::datatype::{LogicalType, PhysicalType};
+use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
-use crate::fn_typed;
+use crate::physical_type_go;
 use crate::{Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawAttribute {
@@ -251,8 +251,7 @@ impl PartialEq<Attribute> for Attribute {
         }
 
         let fill_value_match = if self.is_nullable().unwrap() {
-            fn_typed!(self.datatype().unwrap(), LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(self.datatype().unwrap(), DT, {
                 match (
                     self.fill_value_nullable::<&[DT]>(),
                     other.fill_value_nullable::<&[DT]>(),
@@ -268,8 +267,7 @@ impl PartialEq<Attribute> for Attribute {
                 }
             })
         } else {
-            fn_typed!(self.datatype().unwrap(), LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(self.datatype().unwrap(), DT, {
                 match (self.fill_value::<&[DT]>(), other.fill_value::<&[DT]>())
                 {
                     (Ok(mine), Ok(theirs)) => mine.bits_eq(theirs),
@@ -624,8 +622,7 @@ impl AttributeData {
             )
         });
 
-        fn_typed!(self.datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(self.datatype, DT, {
             if has_double_delta {
                 if std::any::TypeId::of::<DT>() == std::any::TypeId::of::<u64>()
                 {
@@ -657,8 +654,7 @@ impl TryFrom<&Attribute> for AttributeData {
 
     fn try_from(attr: &Attribute) -> TileDBResult<Self> {
         let datatype = attr.datatype()?;
-        let fill = fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        let fill = physical_type_go!(datatype, DT, {
             let (fill_value, fill_value_nullability) =
                 attr.fill_value_nullable::<&[DT]>()?;
             FillData {

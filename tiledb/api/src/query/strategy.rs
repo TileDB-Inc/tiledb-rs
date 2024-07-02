@@ -16,7 +16,6 @@ use tiledb_test_utils::strategy::records::{Records, RecordsValueTree};
 use crate::array::schema::FieldData as SchemaField;
 use crate::array::{ArrayType, CellValNum, SchemaData};
 use crate::datatype::physical::{BitsEq, BitsOrd, IntegralType};
-use crate::datatype::LogicalType;
 use crate::query::read::output::{
     CellStructureSingleIterator, FixedDataIterator, RawReadOutput,
     TypedRawReadOutput, VarDataIterator,
@@ -27,8 +26,8 @@ use crate::query::read::{
 };
 use crate::query::WriteBuilder;
 use crate::{
-    dimension_constraints_go, fn_typed, typed_query_buffers_go, Datatype,
-    Result as TileDBResult,
+    dimension_constraints_go, physical_type_go, typed_query_buffers_go,
+    Datatype, Result as TileDBResult,
 };
 
 /// Represents the write query input for a single field.
@@ -630,8 +629,7 @@ impl Arbitrary for FieldData {
                 let cell_val_num =
                     a.cell_val_num.unwrap_or(CellValNum::single());
 
-                fn_typed!(a.datatype, LT, {
-                    type DT = <LT as LogicalType>::PhysicalType;
+                physical_type_go!(a.datatype, DT, {
                     <DT as ArbitraryFieldData>::arbitrary(
                         params,
                         cell_val_num,
@@ -640,8 +638,7 @@ impl Arbitrary for FieldData {
                 })
             }
             Some(FieldStrategyDatatype::Datatype(datatype, cell_val_num)) => {
-                fn_typed!(datatype, LT, {
-                    type DT = <LT as LogicalType>::PhysicalType;
+                physical_type_go!(datatype, DT, {
                     let value_strat = any::<DT>().boxed();
                     <DT as ArbitraryFieldData>::arbitrary(
                         params,
@@ -652,8 +649,7 @@ impl Arbitrary for FieldData {
             }
             None => (any::<Datatype>(), any::<CellValNum>())
                 .prop_flat_map(move |(datatype, cell_val_num)| {
-                    fn_typed!(datatype, LT, {
-                        type DT = <LT as LogicalType>::PhysicalType;
+                    physical_type_go!(datatype, DT, {
                         let value_strat = any::<DT>().boxed();
                         <DT as ArbitraryFieldData>::arbitrary(
                             params.clone(),
@@ -794,8 +790,7 @@ impl Cells {
                 .iter()
                 .map(|name| {
                     let field = schema.field(name.clone()).unwrap();
-                    fn_typed!(field.datatype().unwrap(), LT, {
-                        type DT = <LT as LogicalType>::PhysicalType;
+                    physical_type_go!(field.datatype().unwrap(), DT, {
                         let managed: ManagedBuffer<DT> = ManagedBuffer::new(
                             field.query_scratch_allocator(None).unwrap(),
                         );

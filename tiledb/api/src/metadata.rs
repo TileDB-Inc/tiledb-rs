@@ -1,6 +1,6 @@
-use crate::datatype::{Datatype, LogicalType};
+use crate::datatype::Datatype;
 use crate::error::DatatypeErrorKind;
-use crate::fn_typed;
+use crate::physical_type_go;
 use crate::Result as TileDBResult;
 use core::slice;
 use std::convert::From;
@@ -219,8 +219,7 @@ impl Metadata {
         vec_ptr: *const std::ffi::c_void,
         vec_size: u32,
     ) -> Self {
-        let value = fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        let value = physical_type_go!(datatype, DT, {
             let vec_slice = unsafe {
                 slice::from_raw_parts(
                     vec_ptr as *const DT,
@@ -254,7 +253,6 @@ pub mod strategy {
     use proptest::prelude::*;
 
     use crate::datatype::strategy::DatatypeContext;
-    use crate::datatype::LogicalType;
 
     pub struct Requirements {
         key: BoxedStrategy<String>,
@@ -287,8 +285,7 @@ pub mod strategy {
             params
                 .datatype
                 .prop_flat_map(move |dt| {
-                    let value_strat = fn_typed!(dt, LT, {
-                        type DT = <LT as LogicalType>::PhysicalType;
+                    let value_strat = physical_type_go!(dt, DT, {
                         vec(any::<DT>(), params.value_length.clone())
                             .prop_map(Value::from)
                             .boxed()

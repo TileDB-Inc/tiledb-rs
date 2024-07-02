@@ -11,10 +11,11 @@ use crate::array::schema::arrow::{
 use crate::array::{Dimension, DimensionBuilder};
 use crate::context::{Context as TileDBContext, ContextBound};
 use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
-use crate::datatype::LogicalType;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
-use crate::{error::Error as TileDBError, fn_typed, Result as TileDBResult};
+use crate::{
+    error::Error as TileDBError, physical_type_go, Result as TileDBResult,
+};
 
 /// Encapsulates fields of a TileDB dimension which are not part of an Arrow
 /// field
@@ -27,8 +28,7 @@ pub struct DimensionMetadata {
 
 impl DimensionMetadata {
     pub fn new(dim: &Dimension) -> TileDBResult<Self> {
-        fn_typed!(dim.datatype()?, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(dim.datatype()?, DT, {
             let domain = dim.domain::<DT>()?;
             let extent = dim.extent::<DT>()?;
 
@@ -102,8 +102,7 @@ pub fn from_arrow(
             ))))?,
         };
 
-        let dim = fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        let dim = physical_type_go!(datatype, DT, {
             let deser = |v: &serde_json::value::Value| {
                 serde_json::from_value::<DT>(v.clone()).map_err(|e| {
                     TileDBError::Deserialization(

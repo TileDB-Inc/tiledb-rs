@@ -385,11 +385,8 @@ impl Datatype {
     }
 
     pub fn same_physical_type(&self, other: &Datatype) -> bool {
-        crate::fn_typed!(self, MyLogicalType, {
-            type MyPhysicalType = <MyLogicalType as LogicalType>::PhysicalType;
-            crate::fn_typed!(other, TheirLogicalType, {
-                type TheirPhysicalType =
-                    <TheirLogicalType as LogicalType>::PhysicalType;
+        crate::physical_type_go!(self, MyPhysicalType, {
+            crate::physical_type_go!(other, TheirPhysicalType, {
                 std::any::TypeId::of::<MyPhysicalType>()
                     == std::any::TypeId::of::<TheirPhysicalType>()
             })
@@ -561,30 +558,17 @@ impl TryFrom<ffi::tiledb_datatype_t> for Datatype {
     }
 }
 
-/// Apply a generic function `$func` to data which implements `$datatype` and then run
-/// the expression `$then` on the result.
-/// The `$then` expression may use the function name as an identifier for the function result.
+/// Apply a generic expression `$then` with a static type binding in the identifier `$typename`
+/// for a logical type corresponding to the dynamic `$datatype`.
 ///
-/// Variants:
-/// - fn_typed!(my_function, my_datatype, arg1, ..., argN => then_expr)
-///   Calls the function on the supplied arguments with a generic type parameter, and afterwards
-///   runs `then_expr` on the result. The result is bound to an identifier which shadows the
-///   function name.
-/// - fn_typed!(obj.my_function, my_datatype, arg1, ..., argN => then_expr)
-///   Calls the method on the supplied arguments with a generic type parameter, and afterwards
-///   runs `then_expr` on the result. The result is bound to an identifier which shadows the
-///   method name.
-/// - fn_typed!(my_datatype, TypeName, then_expr)
-///   Binds the type which implements `my_datatype` to `TypeName` for use in `then_expr`.
-
+/// This is similar to `physical_type_go!` but binds the logical type
+/// instead of the physical type.
 // note to developers: this is mimicking the C++ code
 //      template <class Fn, class... Args>
 //      inline auto apply_with_type(Fn&& f, Datatype type, Args&&... args)
 //
-// Also we probably only need the third variation since that can easily implement the other ones
-//
 #[macro_export]
-macro_rules! fn_typed {
+macro_rules! logical_type_go {
     ($datatype:expr, $typename:ident, $then:expr) => {{
         type Datatype = $crate::Datatype;
         match $datatype {
@@ -774,6 +758,44 @@ macro_rules! fn_typed {
     }};
 }
 
+/// Apply a generic expression `$then` with a static type binding in the identifier `$typename`
+/// for a physical type corresponding to the dynamic `$datatype`.
+///
+/// This is similar to `logical_type_go!` but binds the physical type instead of logical
+/// type which is useful for calling generic functions and methods with a `PhysicalType`
+/// trait bound.
+///
+/// # Examples
+///
+/// ```
+/// use tiledb::{physical_type_go, Context, Datatype};
+/// use tiledb::array::dimension::{Dimension, DimensionConstraints, Builder};
+///
+/// fn dimension_num_cells(d: &Dimension) -> Option<u64> {
+///     physical_type_go!(d.datatype().unwrap(), DT, {
+///         d.domain::<DT>().unwrap().map(|[low, high]| (high - low) as u64 + 1)
+///     })
+/// }
+/// let ctx = Context::new().unwrap();
+///
+/// let d1 = Builder::new(&ctx, "d1", Datatype::UInt32,
+///                       DimensionConstraints::UInt32([0, 16], Some(4))).unwrap().build();
+/// assert_eq!(Some(17), dimension_num_cells(&d1));
+///
+/// let d2 = Builder::new(&ctx, "d2", Datatype::Int8,
+///                       DimensionConstraints::Int8([-4, 4], Some(2))).unwrap().build();
+/// assert_eq!(Some(9), dimension_num_cells(&d2));
+/// ```
+#[macro_export]
+macro_rules! physical_type_go {
+    ($datatype:expr, $typename:ident, $then:expr) => {{
+        $crate::logical_type_go!($datatype, PhysicalTypeGoLogicalType, {
+            type $typename = <PhysicalTypeGoLogicalType as $crate::datatype::LogicalType>::PhysicalType;
+            $then
+        })
+    }};
+}
+
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
@@ -880,7 +902,7 @@ mod tests {
     proptest! {
         #[test]
         fn logical_type(dt in any::<Datatype>()) {
-            fn_typed!(dt, LT, {
+            logical_type_go!(dt, LT, {
                 let lt_constant = <LT as LogicalType>::DATA_TYPE;
                 assert_eq!(dt, lt_constant);
 

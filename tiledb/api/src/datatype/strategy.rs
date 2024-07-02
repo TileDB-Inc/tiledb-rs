@@ -226,7 +226,6 @@ mod tests {
         ArrayType, AttributeBuilder, DimensionBuilder, DomainBuilder, Schema,
         SchemaBuilder,
     };
-    use crate::datatype::LogicalType;
     use crate::error::Error;
     use crate::{Context, Result as TileDBResult};
 
@@ -237,7 +236,7 @@ mod tests {
         array_type: ArrayType,
         datatype: Datatype,
     ) -> TileDBResult<Schema> {
-        let dim = fn_typed!(datatype, LT, {
+        let dim = physical_type_go!(datatype, DT, {
             if matches!(datatype, Datatype::StringAscii) {
                 DimensionBuilder::new(
                     context,
@@ -246,7 +245,6 @@ mod tests {
                     DimensionConstraints::StringAscii,
                 )
             } else {
-                type DT = <LT as LogicalType>::PhysicalType;
                 let domain: [DT; 2] = [0 as DT, 127 as DT];
                 let extent: DT = 16 as DT;
                 DimensionBuilder::new(context, "d", datatype, (domain, extent))

@@ -6,9 +6,9 @@ use anyhow::anyhow;
 use crate::array::schema::{RawSchema, Schema};
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::datatype::{Datatype, LogicalType};
+use crate::datatype::Datatype;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::fn_typed;
+use crate::physical_type_go;
 use crate::range::{
     MinimumBoundingRectangle, Range, TypedNonEmptyDomain, TypedRange,
 };
@@ -304,8 +304,7 @@ impl FragmentInfoInternal {
         frag_idx: u32,
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
-        fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(datatype, DT, {
             let c_frag = self.capi();
             let mut range = [DT::default(), DT::default()];
             let c_range = range.as_mut_ptr();
@@ -345,8 +344,7 @@ impl FragmentInfoInternal {
             )
         })?;
 
-        fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(datatype, DT, {
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
                     user_type: std::any::type_name::<DT>().to_owned(),
@@ -420,8 +418,7 @@ impl FragmentInfoInternal {
         dim_idx: u32,
     ) -> TileDBResult<TypedRange> {
         let c_frag = self.capi();
-        fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(datatype, DT, {
             let mut range = [DT::default(), DT::default()];
             let c_range = range.as_mut_ptr();
             self.capi_call(|ctx| unsafe {
@@ -464,8 +461,7 @@ impl FragmentInfoInternal {
             )
         })?;
 
-        fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(datatype, DT, {
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
                 return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
                     user_type: std::any::type_name::<DT>().to_owned(),

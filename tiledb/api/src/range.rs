@@ -7,11 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::array::CellValNum;
-use crate::datatype::logical::*;
 use crate::datatype::physical::BitsOrd;
 use crate::datatype::Datatype;
 use crate::error::{DatatypeErrorKind, Error};
-use crate::fn_typed;
+use crate::physical_type_go;
 use crate::Result as TileDBResult;
 
 pub type MinimumBoundingRectangle = Vec<TypedRange>;
@@ -66,6 +65,11 @@ impl SingleValueRange {
             return None
         );
         Some(1 + (high - low) as u128)
+    }
+
+    /// Returns a `CellValNum` description of values in this range, i.e. `CellValNum::single()`.
+    pub fn cell_val_num(&self) -> CellValNum {
+        CellValNum::single()
     }
 
     pub fn is_integral(&self) -> bool {
@@ -534,6 +538,11 @@ pub enum VarValueRange {
 }
 
 impl VarValueRange {
+    /// Returns a `CellValNum` which matches the values in this range, i.e. `CellValNum::Var`.
+    pub fn cell_val_num(&self) -> CellValNum {
+        CellValNum::Var
+    }
+
     pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
         check_datatype!(self, datatype);
         Ok(())
@@ -721,6 +730,14 @@ pub enum Range {
 }
 
 impl Range {
+    pub fn cell_val_num(&self) -> CellValNum {
+        match self {
+            Self::Single(ref r) => r.cell_val_num(),
+            Self::Multi(ref r) => r.cell_val_num(),
+            Self::Var(ref r) => r.cell_val_num(),
+        }
+    }
+
     // N.B. This is not `check_field_compatibility` because dimensions have
     // restrictions on their cell_val_num that don't apply to attributes.
     //
@@ -869,6 +886,10 @@ impl TypedRange {
         Self { datatype, range }
     }
 
+    pub fn cell_val_num(&self) -> CellValNum {
+        self.range.cell_val_num()
+    }
+
     pub fn from_slices(
         datatype: Datatype,
         cell_val_num: CellValNum,
@@ -909,8 +930,7 @@ impl TypedRange {
             }
         }
 
-        fn_typed!(datatype, LT, {
-            type DT = <LT as LogicalType>::PhysicalType;
+        physical_type_go!(datatype, DT, {
             let start_slice = unsafe {
                 std::slice::from_raw_parts(
                     start.as_ptr() as *const DT,
@@ -1115,14 +1135,13 @@ mod tests {
         assert_eq!(*range, range2.range);
     }
 
-    // fn_typed! seems to be fairly heavy for using with llvm-cov so I've
+    // physical_type_go! seems to be fairly heavy for using with llvm-cov so I've
     // minimized the number of usages in these tests by adding test helpers
-    // that are called from as few fn_typed macros as possible.
+    // that are called from as few physical_type_go macros as possible.
     #[test]
     fn test_single_value_range() {
         for datatype in Datatype::iter() {
-            fn_typed!(datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(datatype, DT, {
                 proptest!(ProptestConfig::with_cases(8),
                         |(start in any::<DT>(), end in any::<DT>())| {
 
@@ -1148,8 +1167,7 @@ mod tests {
     #[test]
     fn test_multi_value_range() {
         for datatype in Datatype::iter() {
-            fn_typed!(datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(datatype, DT, {
                 proptest!(ProptestConfig::with_cases(8),
                         |(data in vec(any::<DT>(), 2..=32))| {
                     let len = data.len() as u32;
@@ -1214,8 +1232,7 @@ mod tests {
     #[test]
     fn test_var_value_range() {
         for datatype in Datatype::iter() {
-            fn_typed!(datatype, LT, {
-                type DT = <LT as LogicalType>::PhysicalType;
+            physical_type_go!(datatype, DT, {
                 proptest!(ProptestConfig::with_cases(8),
                         |(start in vec(any::<DT>(), 0..=32), end in vec(any::<DT>(), 0..=32))| {
                     let start = start.into_boxed_slice();
