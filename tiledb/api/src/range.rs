@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::num::NonZeroU32;
 use std::ops::Deref;
@@ -97,7 +98,7 @@ impl SingleValueRange {
     ///
     /// Panics if `self` and `other` do not have the same physical datatype.
     pub fn union(&self, other: &Self) -> Self {
-        crate::single_value_range_go!(
+        crate::single_value_range_cmp!(
             self,
             other,
             DT,
@@ -113,6 +114,38 @@ impl SingleValueRange {
             },
             {
                 panic!("`SingleValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other)
+            }
+        )
+    }
+
+    /// Returns the range covered by the intersection of `self` and `other`,
+    /// or `None` if `self` and `other` do not overlap.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` and `other` do not have the same physical datatype or the same fixed
+    /// length.
+    pub fn intersection(&self, other: &Self) -> Option<Self> {
+        crate::single_value_range_cmp!(
+            self,
+            other,
+            DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
+            {
+                if matches!(lend.bits_cmp(rstart), Ordering::Less) {
+                    return None;
+                }
+
+                let cmp = |l: &DT, r: &DT| l.bits_cmp(r);
+                let min = std::cmp::max_by(*lstart, *rstart, cmp);
+                let max = std::cmp::min_by(*lend, *rend, cmp);
+                Some(SingleValueRange::from(&[min, max]))
+            },
+            {
+                panic!("`SingleValueRange::intersection` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other)
             }
         )
     }
@@ -225,6 +258,10 @@ macro_rules! single_value_range_go {
             }
         }
     }};
+}
+
+#[macro_export]
+macro_rules! single_value_range_cmp {
     ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $then:expr, $else:expr) => {{
         use $crate::range::SingleValueRange;
         match ($lexpr, $rexpr) {
@@ -359,7 +396,6 @@ impl MultiValueRange {
             "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
             self, other);
 
-        use std::cmp::Ordering;
         crate::multi_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
             {
                 let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
@@ -554,7 +590,6 @@ impl VarValueRange {
     ///
     /// Panics if `self` and `other` do not have the same physical datatype.
     pub fn union(&self, other: &Self) -> Self {
-        use std::cmp::Ordering;
         crate::var_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
             {
                 let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
@@ -1053,6 +1088,39 @@ impl FromIterator<TypedRange> for TypedNonEmptyDomain {
     }
 }
 
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::physical_type_go;
+
+    impl Arbitrary for SingleValueRange {
+        type Parameters = Option<Datatype>;
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+            let strat_type = params
+                .map(|dt| Just(dt).boxed())
+                .unwrap_or(any::<Datatype>().boxed());
+            strat_type
+                .prop_flat_map(|dt| {
+                    physical_type_go!(dt, DT, {
+                        any::<DT>()
+                            .prop_flat_map(move |low| {
+                                (Just(low), low..=DT::MAX)
+                            })
+                            .prop_map(move |(low, high)| {
+                                SingleValueRange::from(&[low, high])
+                            })
+                            .boxed()
+                    })
+                })
+                .boxed()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1304,5 +1372,84 @@ mod tests {
             .is_err());
 
         let _ = format!("{:?}", range);
+    }
+
+    fn do_intersection_single(left: SingleValueRange, right: SingleValueRange) {
+        let output = left.intersection(&right);
+        if let Some(output) = output {
+            single_value_range_cmp!(
+                left,
+                output.clone(),
+                _DT,
+                lstart,
+                lend,
+                ostart,
+                oend,
+                {
+                    assert!(matches!(
+                        lstart.bits_cmp(&ostart),
+                        Ordering::Less | Ordering::Equal
+                    ));
+                    assert!(matches!(
+                        oend.bits_cmp(&lend),
+                        Ordering::Less | Ordering::Equal
+                    ));
+                },
+                unreachable!()
+            );
+            single_value_range_cmp!(
+                output.clone(),
+                right,
+                _DT,
+                ostart,
+                oend,
+                rstart,
+                rend,
+                {
+                    assert!(matches!(
+                        rstart.bits_cmp(&ostart),
+                        Ordering::Less | Ordering::Equal
+                    ));
+                    assert!(matches!(
+                        oend.bits_cmp(&rend),
+                        Ordering::Less | Ordering::Equal
+                    ));
+                },
+                unreachable!()
+            );
+        } else {
+            single_value_range_cmp!(
+                left,
+                right,
+                DT,
+                lstart,
+                lend,
+                rstart,
+                rend,
+                {
+                    assert!(lstart <= lend);
+                    assert!(rstart <= rend);
+                    assert!(lend < rstart || rend < lstart);
+                },
+                unreachable!()
+            )
+        }
+    }
+
+    fn strat_intersection_single(
+    ) -> impl Strategy<Value = (SingleValueRange, SingleValueRange)> {
+        any::<Datatype>().prop_flat_map(|dt| {
+            (
+                any_with::<SingleValueRange>(Some(dt)),
+                any_with::<SingleValueRange>(Some(dt)),
+            )
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn intersection_single((left, right) in strat_intersection_single()) {
+            do_intersection_single(left, right)
+        }
     }
 }
