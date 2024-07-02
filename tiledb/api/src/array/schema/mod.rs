@@ -857,13 +857,35 @@ impl SchemaData {
         self.domain.dimension.len() + self.attributes.len()
     }
 
-    pub fn field(&self, idx: usize) -> FieldData {
-        if idx < self.domain.dimension.len() {
-            FieldData::from(self.domain.dimension[idx].clone())
-        } else {
-            FieldData::from(
-                self.attributes[idx - self.domain.dimension.len()].clone(),
-            )
+    pub fn field<K: Into<LookupKey>>(&self, key: K) -> Option<FieldData> {
+        match key.into() {
+            LookupKey::Index(idx) => {
+                if idx < self.domain.dimension.len() {
+                    Some(FieldData::from(self.domain.dimension[idx].clone()))
+                } else if idx
+                    < self.domain.dimension.len() + self.attributes.len()
+                {
+                    Some(FieldData::from(
+                        self.attributes[idx - self.domain.dimension.len()]
+                            .clone(),
+                    ))
+                } else {
+                    None
+                }
+            }
+            LookupKey::Name(name) => {
+                for d in self.domain.dimension.iter() {
+                    if d.name == name {
+                        return Some(FieldData::from(d.clone()));
+                    }
+                }
+                for a in self.attributes.iter() {
+                    if a.name == name {
+                        return Some(FieldData::from(a.clone()));
+                    }
+                }
+                None
+            }
         }
     }
 
@@ -978,7 +1000,7 @@ impl<'a> Iterator for FieldDataIter<'a> {
         if self.cursor < self.schema.num_fields() {
             let item = self.schema.field(self.cursor);
             self.cursor += 1;
-            Some(item)
+            Some(item.expect("Internal indexing error"))
         } else {
             None
         }

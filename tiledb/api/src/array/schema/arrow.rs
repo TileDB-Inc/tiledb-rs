@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use anyhow::anyhow;
-use arrow::datatypes::Schema as ArrowSchema;
+use arrow::datatypes::{Field as ArrowField, Schema as ArrowSchema};
 use serde::{Deserialize, Serialize};
 
 use crate::array::{
@@ -124,6 +126,18 @@ pub fn to_arrow(tiledb: &Schema) -> TileDBResult<SchemaToArrowResult> {
     })
 }
 
+fn tiledb_metadata(schema: &ArrowSchema) -> TileDBResult<SchemaMetadata> {
+    let Some(metadata) = schema.metadata().get("tiledb") else {
+        return Err(Error::Other(format!(
+            "Schema does not have tiledb metadata field '{}'",
+            "tiledb"
+        )));
+    };
+    serde_json::from_str::<SchemaMetadata>(metadata).map_err(|e| {
+        Error::Deserialization(String::from("schema metadata"), anyhow!(e))
+    })
+}
+
 /// Construct a TileDB schema from an Arrow schema.
 /// A TileDB schema must have domain and dimension details.
 /// These are expected to be in the schema `metadata` beneath the key `tiledb`.
@@ -132,15 +146,10 @@ pub fn from_arrow(
     context: &Context,
     schema: &ArrowSchema,
 ) -> TileDBResult<SchemaFromArrowResult> {
-    let metadata = match schema.metadata().get("tiledb") {
-        Some(metadata) => serde_json::from_str::<SchemaMetadata>(metadata)
-            .map_err(|e| {
-                Error::Deserialization(
-                    String::from("schema metadata"),
-                    anyhow!(e),
-                )
-            })?,
-        None => return Ok(SchemaFromArrowResult::None),
+    let metadata = if schema.metadata.contains_key("tiledb") {
+        tiledb_metadata(schema)?
+    } else {
+        return Ok(SchemaFromArrowResult::None);
     };
 
     if schema.fields.len() < metadata.ndim {
@@ -216,8 +225,22 @@ pub fn from_arrow(
     })
 }
 
+/// Returns an `Iterator` over the fields of a schema which represent
+/// tiledb array dimensions.
+pub fn dimensions(schema: &ArrowSchema) -> TileDBResult<&[Arc<ArrowField>]> {
+    let metadata = tiledb_metadata(schema)?;
+    Ok(schema.fields.split_at(metadata.ndim).0)
+}
+
+pub fn attributes(schema: &ArrowSchema) -> TileDBResult<&[Arc<ArrowField>]> {
+    let metadata = tiledb_metadata(schema)?;
+    Ok(schema.fields.split_at(metadata.ndim).1)
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::array::schema::{Field as SchemaField, SchemaData};
     use crate::array::{AttributeData, DimensionData};
@@ -316,10 +339,47 @@ mod tests {
         }
     }
 
+    fn do_iterators(tdb: SchemaData) {
+        let arrow_schema = {
+            let c: Context = Context::new().unwrap();
+
+            let tdb = tdb
+                .create(&c)
+                .expect("Error constructing arbitrary tiledb attribute");
+
+            to_arrow(&tdb).unwrap().ok().unwrap()
+        };
+
+        let mut field_names = HashSet::new();
+
+        for f in dimensions(&arrow_schema).unwrap() {
+            assert!(tdb.field(f.name()).unwrap().is_dimension());
+            assert!(field_names.insert(f.name()));
+        }
+        assert_eq!(
+            tdb.domain.dimension.len(),
+            dimensions(&arrow_schema).unwrap().len()
+        );
+
+        for f in attributes(&arrow_schema).unwrap() {
+            assert!(tdb.field(f.name()).unwrap().is_attribute());
+            assert!(field_names.insert(f.name()));
+        }
+        assert_eq!(
+            tdb.attributes.len(),
+            attributes(&arrow_schema).unwrap().len()
+        );
+    }
+
     proptest! {
         #[test]
         fn test_to_arrow(tdb_in in any::<SchemaData>()) {
             do_to_arrow(tdb_in)
+        }
+
+        #[test]
+        fn test_iterators(tdb in any::<SchemaData>()) {
+            do_iterators(tdb)
         }
     }
 }
