@@ -44,6 +44,35 @@ macro_rules! check_datatype {
     };
 }
 
+fn intersection<'a, B>(
+    left_lower: &'a B,
+    left_upper: &'a B,
+    right_lower: &'a B,
+    right_upper: &'a B,
+) -> Option<(&'a B, &'a B)>
+where
+    B: BitsOrd + ?Sized,
+{
+    if matches!(left_upper.bits_cmp(right_lower), Ordering::Less) {
+        return None;
+    }
+
+    let lower = if matches!(left_lower.bits_cmp(right_lower), Ordering::Less) {
+        right_lower
+    } else {
+        left_lower
+    };
+
+    let upper = if matches!(left_upper.bits_cmp(right_upper), Ordering::Greater)
+    {
+        right_upper
+    } else {
+        left_upper
+    };
+
+    Some((lower, upper))
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub enum SingleValueRange {
     UInt8(u8, u8),
@@ -135,14 +164,9 @@ impl SingleValueRange {
             rstart,
             rend,
             {
-                if matches!(lend.bits_cmp(rstart), Ordering::Less) {
-                    return None;
-                }
-
-                let cmp = |l: &DT, r: &DT| l.bits_cmp(r);
-                let min = std::cmp::max_by(*lstart, *rstart, cmp);
-                let max = std::cmp::min_by(*lend, *rend, cmp);
-                Some(SingleValueRange::from(&[min, max]))
+                let (lower, upper) =
+                    intersection::<DT>(&lstart, &lend, &rstart, &rend)?;
+                Some(SingleValueRange::from(&[*lower, *upper]))
             },
             {
                 panic!("`SingleValueRange::intersection` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other)
@@ -338,6 +362,92 @@ macro_rules! single_value_range_cmp {
             _ => $else,
         }
     }};
+    ($expr1:expr, $expr2:expr, $expr3:expr, $DT:ident, $start1:pat, $end1:pat, $start2:pat, $end2:pat, $start3:pat, $end3:pat, $cmp:expr, $else:expr) => {{
+        use $crate::range::SingleValueRange::*;
+        match ($expr1, $expr2, $expr3) {
+            (
+                UInt8($start1, $end1),
+                UInt8($start2, $end2),
+                UInt8($start3, $end3),
+            ) => {
+                type $DT = u8;
+                $cmp
+            }
+            (
+                UInt16($start1, $end1),
+                UInt16($start2, $end2),
+                UInt16($start3, $end3),
+            ) => {
+                type $DT = u16;
+                $cmp
+            }
+            (
+                UInt32($start1, $end1),
+                UInt32($start2, $end2),
+                UInt32($start3, $end3),
+            ) => {
+                type $DT = u32;
+                $cmp
+            }
+            (
+                UInt64($start1, $end1),
+                UInt64($start2, $end2),
+                UInt64($start3, $end3),
+            ) => {
+                type $DT = u64;
+                $cmp
+            }
+            (
+                Int8($start1, $end1),
+                Int8($start2, $end2),
+                Int8($start3, $end3),
+            ) => {
+                type $DT = i8;
+                $cmp
+            }
+            (
+                Int16($start1, $end1),
+                Int16($start2, $end2),
+                Int16($start3, $end3),
+            ) => {
+                type $DT = i16;
+                $cmp
+            }
+            (
+                Int32($start1, $end1),
+                Int32($start2, $end2),
+                Int32($start3, $end3),
+            ) => {
+                type $DT = i32;
+                $cmp
+            }
+            (
+                Int64($start1, $end1),
+                Int64($start2, $end2),
+                Int64($start3, $end3),
+            ) => {
+                type $DT = i64;
+                $cmp
+            }
+            (
+                Float32($start1, $end1),
+                Float32($start2, $end2),
+                Float32($start3, $end3),
+            ) => {
+                type $DT = f32;
+                $cmp
+            }
+            (
+                Float64($start1, $end1),
+                Float64($start2, $end2),
+                Float64($start3, $end3),
+            ) => {
+                type $DT = f64;
+                $cmp
+            }
+            _ => $else,
+        }
+    }};
 }
 
 impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
@@ -411,6 +521,28 @@ impl MultiValueRange {
                 };
 
                 MultiValueRange::try_from((self.cell_val_num(), min, max)).unwrap()
+            },
+            panic!("`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+    }
+
+    /// Returns the range covered by the intersection of `self` and `other`,
+    /// or `None` if `self` and `other` do not overlap.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` and `other` do not have the same physical datatype or the same fixed
+    /// length.
+    pub fn intersection(&self, other: &Self) -> Option<Self> {
+        assert_eq!(self.num_values(), other.num_values(),
+            "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
+            self, other);
+
+        crate::multi_value_range_cmp!(self, other, DT, ref lstart, ref lend, ref rstart, ref rend,
+            {
+                let (lower, upper) = intersection::<[DT]>(&**lstart, &**lend, &**rstart, &**rend)?;
+                Some(MultiValueRange::try_from((self.cell_val_num(),
+                    lower.to_vec().into_boxed_slice(),
+                    upper.to_vec().into_boxed_slice())).unwrap())
             },
             panic!("`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
     }
@@ -513,7 +645,7 @@ macro_rules! multi_value_range_go {
 macro_rules! multi_value_range_cmp {
     ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $cmp:expr, $else:expr) => {{
         use $crate::range::MultiValueRange::*;
-        match ($rexpr, $lexpr) {
+        match ($lexpr, $rexpr) {
             (UInt8($lstart, $lend), UInt8($rstart, $rend)) => {
                 type $DT = u8;
                 $cmp
@@ -551,6 +683,92 @@ macro_rules! multi_value_range_cmp {
                 $cmp
             }
             (Float64($lstart, $lend), Float64($rstart, $rend)) => {
+                type $DT = f64;
+                $cmp
+            }
+            _ => $else,
+        }
+    }};
+    ($expr1:expr, $expr2:expr, $expr3:expr, $DT:ident, $start1:pat, $end1:pat, $start2:pat, $end2:pat, $start3:pat, $end3:pat, $cmp:expr, $else:expr) => {{
+        use $crate::range::MultiValueRange::*;
+        match ($expr1, $expr2, $expr3) {
+            (
+                UInt8($start1, $end1),
+                UInt8($start2, $end2),
+                UInt8($start3, $end3),
+            ) => {
+                type $DT = u8;
+                $cmp
+            }
+            (
+                UInt16($start1, $end1),
+                UInt16($start2, $end2),
+                UInt16($start3, $end3),
+            ) => {
+                type $DT = u16;
+                $cmp
+            }
+            (
+                UInt32($start1, $end1),
+                UInt32($start2, $end2),
+                UInt32($start3, $end3),
+            ) => {
+                type $DT = u32;
+                $cmp
+            }
+            (
+                UInt64($start1, $end1),
+                UInt64($start2, $end2),
+                UInt64($start3, $end3),
+            ) => {
+                type $DT = u64;
+                $cmp
+            }
+            (
+                Int8($start1, $end1),
+                Int8($start2, $end2),
+                Int8($start3, $end3),
+            ) => {
+                type $DT = i8;
+                $cmp
+            }
+            (
+                Int16($start1, $end1),
+                Int16($start2, $end2),
+                Int16($start3, $end3),
+            ) => {
+                type $DT = i16;
+                $cmp
+            }
+            (
+                Int32($start1, $end1),
+                Int32($start2, $end2),
+                Int32($start3, $end3),
+            ) => {
+                type $DT = i32;
+                $cmp
+            }
+            (
+                Int64($start1, $end1),
+                Int64($start2, $end2),
+                Int64($start3, $end3),
+            ) => {
+                type $DT = i64;
+                $cmp
+            }
+            (
+                Float32($start1, $end1),
+                Float32($start2, $end2),
+                Float32($start3, $end3),
+            ) => {
+                type $DT = f32;
+                $cmp
+            }
+            (
+                Float64($start1, $end1),
+                Float64($start2, $end2),
+                Float64($start3, $end3),
+            ) => {
                 type $DT = f64;
                 $cmp
             }
@@ -605,6 +823,21 @@ impl VarValueRange {
                 };
 
                 VarValueRange::from((min, max))
+            },
+            panic!("`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+    }
+
+    /// Returns the range covered by the intersection of `self` and `other`,
+    /// or `None` if `self` and `other` do not overlap.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self` and `other` do not have the same physical datatype.
+    pub fn intersection(&self, other: &Self) -> Option<Self> {
+        crate::var_value_range_cmp!(self, other, DT, ref lstart, ref lend, ref rstart, ref rend,
+            {
+                let (lower, upper) = intersection::<[DT]>(&**lstart, &**lend, &**rstart, &**rend)?;
+                Some(VarValueRange::from((lower.to_vec().into_boxed_slice(), upper.to_vec().into_boxed_slice())))
             },
             panic!("`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
     }
@@ -711,7 +944,7 @@ macro_rules! var_value_range_go {
 macro_rules! var_value_range_cmp {
     ($lexpr:expr, $rexpr:expr, $DT:ident, $lstart:pat, $lend:pat, $rstart:pat, $rend:pat, $cmp:expr, $else:expr) => {{
         use $crate::range::VarValueRange::*;
-        match ($rexpr, $lexpr) {
+        match ($lexpr, $rexpr) {
             (UInt8($lstart, $lend), UInt8($rstart, $rend)) => {
                 type $DT = u8;
                 $cmp
@@ -749,6 +982,92 @@ macro_rules! var_value_range_cmp {
                 $cmp
             }
             (Float64($lstart, $lend), Float64($rstart, $rend)) => {
+                type $DT = f64;
+                $cmp
+            }
+            _ => $else,
+        }
+    }};
+    ($expr1:expr, $expr2:expr, $expr3:expr, $DT:ident, $start1:pat, $end1:pat, $start2:pat, $end2:pat, $start3:pat, $end3:pat, $cmp:expr, $else:expr) => {{
+        use $crate::range::VarValueRange::*;
+        match ($expr1, $expr2, $expr3) {
+            (
+                UInt8($start1, $end1),
+                UInt8($start2, $end2),
+                UInt8($start3, $end3),
+            ) => {
+                type $DT = u8;
+                $cmp
+            }
+            (
+                UInt16($start1, $end1),
+                UInt16($start2, $end2),
+                UInt16($start3, $end3),
+            ) => {
+                type $DT = u16;
+                $cmp
+            }
+            (
+                UInt32($start1, $end1),
+                UInt32($start2, $end2),
+                UInt32($start3, $end3),
+            ) => {
+                type $DT = u32;
+                $cmp
+            }
+            (
+                UInt64($start1, $end1),
+                UInt64($start2, $end2),
+                UInt64($start3, $end3),
+            ) => {
+                type $DT = u64;
+                $cmp
+            }
+            (
+                Int8($start1, $end1),
+                Int8($start2, $end2),
+                Int8($start3, $end3),
+            ) => {
+                type $DT = i8;
+                $cmp
+            }
+            (
+                Int16($start1, $end1),
+                Int16($start2, $end2),
+                Int16($start3, $end3),
+            ) => {
+                type $DT = i16;
+                $cmp
+            }
+            (
+                Int32($start1, $end1),
+                Int32($start2, $end2),
+                Int32($start3, $end3),
+            ) => {
+                type $DT = i32;
+                $cmp
+            }
+            (
+                Int64($start1, $end1),
+                Int64($start2, $end2),
+                Int64($start3, $end3),
+            ) => {
+                type $DT = i64;
+                $cmp
+            }
+            (
+                Float32($start1, $end1),
+                Float32($start2, $end2),
+                Float32($start3, $end3),
+            ) => {
+                type $DT = f32;
+                $cmp
+            }
+            (
+                Float64($start1, $end1),
+                Float64($start2, $end2),
+                Float64($start3, $end3),
+            ) => {
                 type $DT = f64;
                 $cmp
             }
@@ -841,6 +1160,22 @@ impl Range {
             (Self::Multi(ref l), Self::Multi(ref r)) => Self::Multi(l.union(r)),
             (Self::Var(ref l), Self::Var(ref r)) => Self::Var(l.union(r)),
             _ => panic!("`Range::union` on non-matching range variants: `self` = {:?}, `other` = {:?}", self, other)
+        }
+    }
+
+    /// Returns the range covered by the intersection of `self` and `other`,
+    /// or `None` if `self` and `other` do not overlap.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `self.cell_val_num() != other.cell_val_num()` or if
+    /// `self` and `other` do not have the same physical datatype.
+    pub fn intersection(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (Self::Single(ref l), Self::Single(ref r)) => Some(Self::Single(l.intersection(r)?)),
+            (Self::Multi(ref l), Self::Multi(ref r)) => Some(Self::Multi(l.intersection(r)?)),
+            (Self::Var(ref l), Self::Var(ref r)) => Some(Self::Var(l.intersection(r)?)),
+            _ => panic!("`Range::intersection` on non-matching range variants: `self` = {:?}, `other` = {:?}", self, other)
         }
     }
 }
@@ -1119,6 +1454,101 @@ pub mod strategy {
                 .boxed()
         }
     }
+
+    impl Arbitrary for MultiValueRange {
+        type Parameters = (Option<Datatype>, Option<NonZeroU32>);
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+            let strat_type = params
+                .0
+                .map(|dt| Just(dt).boxed())
+                .unwrap_or(any::<Datatype>().boxed());
+            let strat_nz = params.1.map(|nz| Just(nz).boxed()).unwrap_or(
+                (1..1024u32)
+                    .prop_map(|nz| NonZeroU32::new(nz).unwrap())
+                    .boxed(),
+            );
+
+            (strat_type, strat_nz)
+                .prop_flat_map(|(dt, nz)| {
+                    physical_type_go!(dt, DT, {
+                        (
+                            proptest::collection::vec(
+                                any::<DT>(),
+                                nz.get() as usize,
+                            ),
+                            proptest::collection::vec(
+                                any::<DT>(),
+                                nz.get() as usize,
+                            ),
+                        )
+                            .prop_map(move |(left, right)| {
+                                let (min, max) = if left.bits_cmp(&right)
+                                    == Ordering::Less
+                                {
+                                    (left, right)
+                                } else {
+                                    (right, left)
+                                };
+                                MultiValueRange::try_from((
+                                    CellValNum::Fixed(nz),
+                                    min.into_boxed_slice(),
+                                    max.into_boxed_slice(),
+                                ))
+                                .unwrap()
+                            })
+                            .boxed()
+                    })
+                })
+                .boxed()
+        }
+    }
+
+    impl Arbitrary for VarValueRange {
+        type Parameters = Option<Datatype>;
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+            let strat_type = params
+                .map(|dt| Just(dt).boxed())
+                .unwrap_or(any::<Datatype>().boxed());
+
+            const VAR_RANGE_MIN_VALUES: usize = 0;
+            const VAR_RANGE_MAX_VALUES: usize = 1024;
+
+            strat_type
+                .prop_ind_flat_map(|dt| {
+                    physical_type_go!(dt, DT, {
+                        (
+                            proptest::collection::vec(
+                                any::<DT>(),
+                                VAR_RANGE_MIN_VALUES..=VAR_RANGE_MAX_VALUES,
+                            ),
+                            proptest::collection::vec(
+                                any::<DT>(),
+                                VAR_RANGE_MIN_VALUES..=VAR_RANGE_MAX_VALUES,
+                            ),
+                        )
+                            .prop_map(move |(left, right)| {
+                                let (min, max) = if left.bits_cmp(&right)
+                                    == Ordering::Less
+                                {
+                                    (left, right)
+                                } else {
+                                    (right, left)
+                                };
+                                VarValueRange::from((
+                                    min.into_boxed_slice(),
+                                    max.into_boxed_slice(),
+                                ))
+                            })
+                            .boxed()
+                    })
+                })
+                .boxed()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1374,54 +1804,168 @@ mod tests {
         let _ = format!("{:?}", range);
     }
 
+    fn assert_intersection_body<B>(
+        lstart: &B,
+        lend: &B,
+        rstart: &B,
+        rend: &B,
+        ostart: &B,
+        oend: &B,
+    ) where
+        B: BitsOrd + Debug + ?Sized,
+    {
+        match lstart.bits_cmp(ostart) {
+            Ordering::Less => {
+                assert_eq!(Ordering::Equal, rstart.bits_cmp(ostart))
+            }
+            Ordering::Equal => assert!(matches!(
+                rstart.bits_cmp(ostart),
+                Ordering::Less | Ordering::Equal
+            )),
+            Ordering::Greater => {
+                unreachable!(
+                    "Intersection of intervals is not narrower than an input"
+                )
+            }
+        }
+        match lend.bits_cmp(oend) {
+            Ordering::Less => unreachable!(
+                "Intersection of intervals is not narrower than an input"
+            ),
+            Ordering::Equal => assert!(matches!(
+                rend.bits_cmp(oend),
+                Ordering::Equal | Ordering::Greater
+            )),
+            Ordering::Greater => {
+                assert_eq!(Ordering::Equal, rend.bits_cmp(oend))
+            }
+        }
+    }
+
     fn do_intersection_single(left: SingleValueRange, right: SingleValueRange) {
-        let output = left.intersection(&right);
-        if let Some(output) = output {
+        fn assert_intersection(
+            left: SingleValueRange,
+            right: SingleValueRange,
+            output: SingleValueRange,
+        ) {
             single_value_range_cmp!(
                 left,
-                output.clone(),
-                _DT,
+                right,
+                output,
+                DT,
                 lstart,
                 lend,
-                ostart,
-                oend,
-                {
-                    assert!(matches!(
-                        lstart.bits_cmp(&ostart),
-                        Ordering::Less | Ordering::Equal
-                    ));
-                    assert!(matches!(
-                        oend.bits_cmp(&lend),
-                        Ordering::Less | Ordering::Equal
-                    ));
-                },
-                unreachable!()
-            );
-            single_value_range_cmp!(
-                output.clone(),
-                right,
-                _DT,
-                ostart,
-                oend,
                 rstart,
                 rend,
-                {
-                    assert!(matches!(
-                        rstart.bits_cmp(&ostart),
-                        Ordering::Less | Ordering::Equal
-                    ));
-                    assert!(matches!(
-                        oend.bits_cmp(&rend),
-                        Ordering::Less | Ordering::Equal
-                    ));
-                },
+                ostart,
+                oend,
+                assert_intersection_body::<DT>(
+                    &lstart, &lend, &rstart, &rend, &ostart, &oend
+                ),
                 unreachable!()
             );
+        }
+
+        let output = left.intersection(&right);
+        if let Some(output) = output {
+            assert_intersection(left, right, output);
         } else {
             single_value_range_cmp!(
                 left,
                 right,
+                _DT,
+                lstart,
+                lend,
+                rstart,
+                rend,
+                {
+                    assert!(lstart <= lend);
+                    assert!(rstart <= rend);
+                    assert!(lend < rstart || rend < lstart);
+                },
+                unreachable!()
+            )
+        }
+    }
+
+    fn do_intersection_multi(left: MultiValueRange, right: MultiValueRange) {
+        fn assert_intersection(
+            left: MultiValueRange,
+            right: MultiValueRange,
+            output: MultiValueRange,
+        ) {
+            multi_value_range_cmp!(
+                left,
+                right,
+                output,
                 DT,
+                lstart,
+                lend,
+                rstart,
+                rend,
+                ostart,
+                oend,
+                assert_intersection_body::<[DT]>(
+                    &lstart, &lend, &rstart, &rend, &ostart, &oend
+                ),
+                unreachable!()
+            );
+        }
+
+        let output = left.intersection(&right);
+        if let Some(output) = output {
+            assert_intersection(left, right, output);
+        } else {
+            multi_value_range_cmp!(
+                left,
+                right,
+                _DT,
+                lstart,
+                lend,
+                rstart,
+                rend,
+                {
+                    assert!(lstart <= lend);
+                    assert!(rstart <= rend);
+                    assert!(lend < rstart || rend < lstart);
+                },
+                unreachable!()
+            )
+        }
+    }
+
+    fn do_intersection_var(left: VarValueRange, right: VarValueRange) {
+        fn assert_intersection(
+            left: VarValueRange,
+            right: VarValueRange,
+            output: VarValueRange,
+        ) {
+            var_value_range_cmp!(
+                left,
+                right,
+                output,
+                DT,
+                lstart,
+                lend,
+                rstart,
+                rend,
+                ostart,
+                oend,
+                assert_intersection_body::<[DT]>(
+                    &lstart, &lend, &rstart, &rend, &ostart, &oend
+                ),
+                unreachable!()
+            );
+        }
+
+        let output = left.intersection(&right);
+        if let Some(output) = output {
+            assert_intersection(left, right, output);
+        } else {
+            var_value_range_cmp!(
+                left,
+                right,
+                _DT,
                 lstart,
                 lend,
                 rstart,
@@ -1446,10 +1990,41 @@ mod tests {
         })
     }
 
+    fn strat_intersection_multi(
+    ) -> impl Strategy<Value = (MultiValueRange, MultiValueRange)> {
+        (any::<Datatype>(), 2..1024u32).prop_flat_map(|(dt, nz)| {
+            let nz = NonZeroU32::try_from(nz).unwrap();
+            (
+                any_with::<MultiValueRange>((Some(dt), Some(nz))),
+                any_with::<MultiValueRange>((Some(dt), Some(nz))),
+            )
+        })
+    }
+
+    fn strat_intersection_var(
+    ) -> impl Strategy<Value = (VarValueRange, VarValueRange)> {
+        any::<Datatype>().prop_flat_map(|dt| {
+            (
+                any_with::<VarValueRange>(Some(dt)),
+                any_with::<VarValueRange>(Some(dt)),
+            )
+        })
+    }
+
     proptest! {
         #[test]
         fn intersection_single((left, right) in strat_intersection_single()) {
             do_intersection_single(left, right)
+        }
+
+        #[test]
+        fn intersection_multi((left, right) in strat_intersection_multi()) {
+            do_intersection_multi(left, right)
+        }
+
+        #[test]
+        fn intersection_var((left, right) in strat_intersection_var()) {
+            do_intersection_var(left, right)
         }
     }
 }
