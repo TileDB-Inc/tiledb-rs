@@ -59,6 +59,8 @@ impl<'query> Subarray<'query> {
     }
 
     /// Return all dimension ranges set on the query.
+    /// The outer `Vec` is indexed by the dimension number,
+    /// and the inner `Vec` is the set of ranges set for that dimension.
     pub fn ranges(&self) -> TileDBResult<Vec<Vec<Range>>> {
         let c_subarray = self.capi();
         let ndims = self.schema.domain()?.ndim()? as u32;
@@ -93,27 +95,42 @@ impl<'query> Subarray<'query> {
                         )
                     })?;
 
-                    let start =
-                        vec![0u8; start_size as usize].into_boxed_slice();
-                    let end = vec![0u8; end_size as usize].into_boxed_slice();
+                    /*
+                     * SC-48075: SIGABRT when calling this function if there is no range set
+                     * The SIGABRT should be fixed, but it's also fair that if no range is
+                     * set we don't really have a way to produce an upper bound which
+                     * must be arbitrarily long. Hence here we skip pushing a range.
+                     */
+                    if start_size > 0 || end_size > 0 {
+                        let start =
+                            vec![0u8; start_size as usize].into_boxed_slice();
+                        let end =
+                            vec![0u8; end_size as usize].into_boxed_slice();
 
-                    self.capi_call(|ctx| unsafe {
-                        ffi::tiledb_subarray_get_range_var(
-                            ctx,
-                            c_subarray,
-                            dim_idx,
-                            rng_idx,
-                            start.as_ptr() as *mut std::ffi::c_void,
-                            end.as_ptr() as *mut std::ffi::c_void,
-                        )
-                    })?;
+                        self.capi_call(|ctx| unsafe {
+                            ffi::tiledb_subarray_get_range_var(
+                                ctx,
+                                c_subarray,
+                                dim_idx,
+                                rng_idx,
+                                start.as_ptr() as *mut std::ffi::c_void,
+                                end.as_ptr() as *mut std::ffi::c_void,
+                            )
+                        })?;
 
-                    let dtype = dim.datatype()?;
-                    let cvn = dim.cell_val_num()?;
-                    let range =
-                        TypedRange::from_slices(dtype, cvn, &start, &end)?
-                            .range;
-                    dim_ranges.push(range);
+                        let dtype = dim.datatype()?;
+                        let cvn = dim.cell_val_num()?;
+                        let range =
+                            TypedRange::from_slices(dtype, cvn, &start, &end)?
+                                .range;
+                        dim_ranges.push(range);
+                    } else {
+                        /*
+                         * See SC-48075 above.
+                         * It's tempting to assert that `nranges == 1` but writing
+                         * down a range that's empty on both ends is valid
+                         */
+                    }
                 } else {
                     let dtype = dim.datatype()?;
 
@@ -343,6 +360,106 @@ mod tests {
     use crate::array::*;
     use crate::query::{Query, QueryBuilder, ReadBuilder};
     use crate::Datatype;
+
+    /// The default subarray of a query with a constrained dimension
+    /// is whatever the dimension constraints are
+    #[test]
+    fn default_subarray_constrained() -> TileDBResult<()> {
+        let ctx = Context::new().unwrap();
+
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri =
+            crate::array::tests::create_quickstart_dense(&test_uri, &ctx)?;
+
+        let a = Array::open(&ctx, &test_uri, Mode::Read)?;
+        let b = ReadBuilder::new(a)?;
+
+        // inspect builder in-progress subarray
+        {
+            let subarray = b.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(
+                vec![
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))],
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))]
+                ],
+                ranges
+            );
+        }
+
+        let q = b.build();
+
+        // inspect query subarray
+        {
+            let subarray = q.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(
+                vec![
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))],
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))]
+                ],
+                ranges
+            );
+        }
+
+        Ok(())
+    }
+
+    /// The default subarray of a query with unconstrained dimension
+    /// is anything goes. The array used here has one unconstrained
+    /// string dimension and one constrained int dimension, so we
+    /// should expect empty ranges for one dimension and the
+    /// dimension domain for the other.
+    #[test]
+    fn default_subarray_unconstrained() -> TileDBResult<()> {
+        let ctx = Context::new().unwrap();
+
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri = crate::array::tests::create_quickstart_sparse_string(
+            &test_uri, &ctx,
+        )?;
+
+        let a = Array::open(&ctx, &test_uri, Mode::Read)?;
+        let b = ReadBuilder::new(a)?;
+
+        // inspect builder in-progress subarray
+        {
+            let subarray = b.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(2, ranges.len());
+            assert!(
+                ranges[0].is_empty(),
+                "Expected empty ranges but found {:?}",
+                ranges[0]
+            );
+            assert_eq!(
+                ranges[1],
+                vec![Range::Single(SingleValueRange::Int32(1, 4))]
+            );
+        }
+
+        let q = b.build();
+
+        // inspect query subarray
+        {
+            let subarray = q.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(2, ranges.len());
+            assert!(
+                ranges[0].is_empty(),
+                "Expected empty ranges but found {:?}",
+                ranges[0]
+            );
+            assert_eq!(
+                ranges[1],
+                vec![Range::Single(SingleValueRange::Int32(1, 4))]
+            );
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn test_dense_ranges() -> TileDBResult<()> {

@@ -194,6 +194,23 @@ pub trait QueryBuilder: Sized {
         Ok(self)
     }
 
+    /// Get the in-progress subarray for this query.
+    ///
+    /// The returned `Subarray` is tied to the lifetime of `self`.
+    fn subarray(&self) -> TileDBResult<Subarray> {
+        let ctx = self.base().context();
+        let c_query = *self.base().query.raw;
+        let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_subarray_t(ctx, c_query, &mut c_subarray)
+        })?;
+
+        Ok(Subarray::new(
+            self.base().array().schema()?,
+            RawSubarray::Owned(c_subarray),
+        ))
+    }
+
     fn start_subarray(self) -> TileDBResult<SubarrayBuilder<Self>>
     where
         Self: Sized,
