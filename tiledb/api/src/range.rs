@@ -88,7 +88,13 @@ pub enum SingleValueRange {
 }
 
 impl SingleValueRange {
-    /// Returns the number of cells spanned by this range if it is an integral range
+    /// Returns the number of cells spanned by this range if it is a
+    /// range over a discrete domain.
+    /// ```
+    /// use tiledb::range::SingleValueRange;
+    /// assert_eq!(Some(100), SingleValueRange::Int64(1, 100).num_cells());
+    /// assert_eq!(None, SingleValueRange::Float64(1.0, 100.0).num_cells());
+    /// ```
     pub fn num_cells(&self) -> Option<u128> {
         let (low, high) = crate::single_value_range_go!(self, _DT : Integral, start, end,
             (i128::from(*start), i128::from(*end)),
@@ -490,6 +496,75 @@ impl MultiValueRange {
         crate::multi_value_range_go!(self, _DT, ref start, _, start.len())
     }
 
+    /// Returns the number of cells spanned by this range if it is a
+    /// range over a discrete domain.
+    ///
+    /// If the lower and upper bounds differ only in the last value,
+    /// then the result is the discrete difference between the last values.
+    /// ```
+    /// use tiledb::{array::CellValNum, range::MultiValueRange};
+    ///
+    /// let cvn = CellValNum::try_from(2).unwrap();
+    /// assert_eq!(Some(100),
+    ///            MultiValueRange::Int64(vec![1, 1].into_boxed_slice(),
+    ///                                   vec![1, 100].into_boxed_slice()).num_cells());
+    /// assert_eq!(None,
+    ///            MultiValueRange::Float64(vec![1.0, 1.0].into_boxed_slice(),
+    ///                                     vec![1.0, 100.0].into_boxed_slice()).num_cells());
+    /// ```
+    ///
+    /// If there is a difference in a prior value in the range,
+    /// then all possible values of the trailing values represent unique
+    /// cells in the range.
+    /// ```
+    /// use tiledb::range::MultiValueRange;
+    /// let num_i32s = ((i32::MAX as i128 - i32::MIN as i128) + 1) as u128;
+    /// let num_i64s = ((i64::MAX as i128 - i64::MIN as i128) + 1) as u128;
+    /// assert_eq!(Some(num_i32s + 1),
+    ///            MultiValueRange::Int32(vec![0, 0].into_boxed_slice(),
+    ///                                   vec![1, 0].into_boxed_slice()).num_cells());
+    /// assert_eq!(Some(num_i32s + 9 + 1),
+    ///            MultiValueRange::Int32(vec![0, 0].into_boxed_slice(),
+    ///                                   vec![1, 9].into_boxed_slice()).num_cells());
+    /// assert_eq!(Some(num_i64s + 1),
+    ///            MultiValueRange::Int64(vec![0, 0].into_boxed_slice(),
+    ///                                   vec![1, 0].into_boxed_slice()).num_cells());
+    /// assert_eq!(Some(num_i64s + 9 + 1),
+    ///            MultiValueRange::Int64(vec![0, 0].into_boxed_slice(),
+    ///                                   vec![1, 9].into_boxed_slice()).num_cells());
+    /// ```
+    /// This will also return `None` if the result would overflow an `i128` value.
+    pub fn num_cells(&self) -> Option<u128> {
+        crate::multi_value_range_go!(
+            self,
+            DT,
+            ref start,
+            ref end,
+            {
+                let iter_factor = i128::from(DT::MAX) - i128::from(DT::MIN) + 1;
+                start
+                    .iter()
+                    .zip(end.iter())
+                    .skip_while(|(lb, ub)| lb == ub)
+                    .try_fold(0i128, |num_cells, (lower, upper)| {
+                        if upper < lower && num_cells == 0 {
+                            // this is the first unequal value, upper must be greater
+                            unreachable!(
+                                "Invalid `MultiValueRange`: {:?}",
+                                self
+                            )
+                        }
+
+                        let num_cells = num_cells.checked_mul(iter_factor)?;
+                        let delta = i128::from(*upper) - i128::from(*lower);
+                        Some(num_cells + delta)
+                    })
+                    .map(|n| n as u128 + 1)
+            },
+            None
+        )
+    }
+
     /// Returns a `CellValNum` which matches the values in this range.
     pub fn cell_val_num(&self) -> CellValNum {
         CellValNum::Fixed(NonZeroU32::new(self.num_values() as u32).unwrap())
@@ -585,6 +660,14 @@ macro_rules! multi_value_range_try_from {
                     Ok(MultiValueRange::$V(value.1, value.2))
                 }
             }
+
+            impl TryFrom<(CellValNum, Vec<$U>, Vec<$U>)> for MultiValueRange {
+                type Error = <Self as TryFrom<(CellValNum, Box<[$U]>, Box<[$U]>)>>::Error;
+                fn try_from(value: (CellValNum, Vec<$U>, Vec<$U>)) -> TileDBResult<MultiValueRange> {
+                    let (cell_val_num, lb, ub) = value;
+                    Self::try_from((cell_val_num, lb.into_boxed_slice(), ub.into_boxed_slice()))
+                }
+            }
         )+
     }
 }
@@ -595,47 +678,70 @@ multi_value_range_try_from!(Float32: f32, Float64: f64);
 
 #[macro_export]
 macro_rules! multi_value_range_go {
-    ($expr:expr, $DT:ident, $start:pat, $end:pat, $then:expr) => {
+    ($expr:expr, $DT:ident, $start:pat, $end:pat, $then:expr) => {{
+        $crate::multi_value_range_go!($expr, $DT, $start, $end, $then, $then)
+    }};
+    ($expr:expr, $DT:ident, $start:pat, $end:pat, $if_integral:expr, $if_float:expr) => {
         match $expr {
+            #[allow(unused_variables)]
             MultiValueRange::UInt8($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = u8;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::UInt16($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = u16;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::UInt32($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = u32;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::UInt64($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = u64;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::Int8($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = i8;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::Int16($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = i16;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::Int32($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = i32;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::Int64($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = i64;
-                $then
+                $if_integral
             }
+            #[allow(unused_variables)]
             MultiValueRange::Float32($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = f32;
-                $then
+                $if_float
             }
+            #[allow(unused_variables)]
             MultiValueRange::Float64($start, $end) => {
+                #[allow(dead_code)]
                 type $DT = f64;
-                $then
+                $if_float
             }
         }
     };
@@ -1089,6 +1195,17 @@ impl Range {
             Self::Single(ref r) => r.cell_val_num(),
             Self::Multi(ref r) => r.cell_val_num(),
             Self::Var(ref r) => r.cell_val_num(),
+        }
+    }
+
+    /// Returns the number of cells spanned by this range if it is a discrete range.
+    /// See `SingleValueRange::num_cells()` and `MultiValueRange::num_cells()`.
+    /// `Range::Var` variants are not discrete ranges and will return `None`.
+    pub fn num_cells(&self) -> Option<u128> {
+        match self {
+            Self::Single(ref r) => r.num_cells(),
+            Self::Multi(ref r) => r.num_cells(),
+            Self::Var(_) => None,
         }
     }
 
@@ -1802,6 +1919,73 @@ mod tests {
             .is_err());
 
         let _ = format!("{:?}", range);
+    }
+
+    #[test]
+    fn multi_range_num_cells() {
+        let num_u32s = u32::MAX as u128 - u32::MIN as u128 + 1;
+
+        // not sure how to write a proptest for this without
+        // just re-implementing the function
+        let cvn_2 = CellValNum::try_from(2).unwrap();
+        let do_cvn_2 =
+            |expect, (lb0, lb1): (u32, u32), (ub0, ub1): (u32, u32)| {
+                assert_eq!(
+                    Some(expect),
+                    MultiValueRange::try_from((
+                        cvn_2,
+                        vec![lb0, lb1],
+                        vec![ub0, ub1]
+                    ))
+                    .unwrap()
+                    .num_cells()
+                );
+            };
+
+        do_cvn_2(1, (0, 0), (0, 0));
+        do_cvn_2(2, (0, 0), (0, 1));
+        do_cvn_2(num_u32s + 1, (0, 0), (1, 0));
+        do_cvn_2(num_u32s + 2, (0, 0), (1, 1));
+        do_cvn_2(3, (0, 8), (0, 10));
+        do_cvn_2(num_u32s * 2 + 1, (8, 0), (10, 0));
+        do_cvn_2(num_u32s * 2 + 3, (8, 8), (10, 10));
+        do_cvn_2(num_u32s, (0, 0), (0, u32::MAX));
+        do_cvn_2(2, (0, u32::MAX), (1, 0));
+
+        let cvn_3 = CellValNum::try_from(3).unwrap();
+        let do_cvn_3 =
+            |expect: u128,
+             (lb0, lb1, lb2): (u32, u32, u32),
+             (ub0, ub1, ub2): (u32, u32, u32)| {
+                assert_eq!(
+                    Some(expect),
+                    MultiValueRange::try_from((
+                        cvn_3,
+                        vec![lb0, lb1, lb2],
+                        vec![ub0, ub1, ub2]
+                    ))
+                    .unwrap()
+                    .num_cells()
+                );
+            };
+        do_cvn_3(1, (0, 0, 0), (0, 0, 0));
+        do_cvn_3(4, (0, 0, 0), (0, 0, 3));
+        do_cvn_3(num_u32s * 3 + 4, (0, 11, 0), (0, 14, 3));
+        do_cvn_3(
+            num_u32s * num_u32s * 3 + num_u32s * 3 + 4,
+            (11, 11, 0),
+            (14, 14, 3),
+        );
+        do_cvn_3(num_u32s, (0, 0, 0), (0, 0, u32::MAX));
+        do_cvn_3((num_u32s - 1) * num_u32s + 1, (0, 0, 0), (0, u32::MAX, 0));
+        do_cvn_3(
+            (num_u32s - 1) * num_u32s + num_u32s,
+            (0, 0, 0),
+            (0, u32::MAX, u32::MAX),
+        );
+        do_cvn_3(2, (0, 0, u32::MAX), (0, 1, 0));
+        do_cvn_3(2, (0, u32::MAX, u32::MAX), (1, 0, 0));
+        do_cvn_3(2, (0, 0, u32::MAX), (0, 1, 0));
     }
 
     fn assert_intersection_body<B>(
