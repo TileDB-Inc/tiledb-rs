@@ -352,8 +352,98 @@ where
     }
 }
 
+/// Encapsulates data for a subarray.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubarrayData {
+    /// List of requested ranges on each dimension.
+    /// The outer `Vec` is the list of dimensions and the inner `Vec`
+    /// is the list of requested ranges for that dimension.
+    /// If a list is empty for a dimension, then all the coordinates
+    /// are selected.
+    pub dimension_ranges: Vec<Vec<Range>>,
+}
+
+impl SubarrayData {
+    /// Returns a new `SubarrayData` which represents the intersection
+    /// of all the ranges of `self` with a new set of `ranges` on each dimension.
+    ///
+    /// If any dimension does not have any intersection with `ranges`, then
+    /// this returns `None` as the resulting subarray would select no coordinates.
+    pub fn intersect_ranges(&self, ranges: &Vec<Range>) -> Option<Self> {
+        let updated_ranges = self
+            .dimension_ranges
+            .iter()
+            .zip(ranges.iter())
+            .map(|(current_ranges, new_range)| {
+                current_ranges
+                    .iter()
+                    .filter_map(|current_range| {
+                        current_range.intersection(new_range)
+                    })
+                    .collect::<Vec<Range>>()
+            })
+            .collect::<Vec<Vec<Range>>>();
+
+        if updated_ranges.iter().any(|dim| dim.is_empty()) {
+            None
+        } else {
+            Some(SubarrayData {
+                dimension_ranges: updated_ranges,
+            })
+        }
+    }
+}
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy {
+    use std::rc::Rc;
+
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::array::SchemaData;
+
+    impl Arbitrary for SubarrayData {
+        type Parameters = Option<Rc<SchemaData>>;
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+            let strat_dimension_ranges = if let Some(schema) = params {
+                schema
+                    .domain
+                    .dimension
+                    .iter()
+                    .map(|d| d.subarray_strategy(None).unwrap())
+                    .collect::<Vec<BoxedStrategy<Range>>>()
+            } else {
+                todo!()
+            };
+
+            const DIMENSION_MIN_RANGES: usize = 0;
+            const DIMENSION_MAX_RANGES: usize = 4;
+
+            strat_dimension_ranges
+                .into_iter()
+                .map(|strat_range| {
+                    proptest::collection::vec(
+                        strat_range,
+                        DIMENSION_MIN_RANGES..=DIMENSION_MAX_RANGES,
+                    )
+                    .boxed()
+                })
+                .collect::<Vec<BoxedStrategy<Vec<Range>>>>()
+                .prop_map(|dimension_ranges| SubarrayData { dimension_ranges })
+                .boxed()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use itertools::izip;
+    use proptest::prelude::*;
     use tiledb_test_utils::{self, TestArrayUri};
 
     use super::*;
@@ -544,5 +634,85 @@ mod tests {
         Array::create(ctx, &array_uri, schema)?;
 
         Ok(array_uri)
+    }
+
+    fn do_subarray_intersect(subarray: &SubarrayData, ranges: &Vec<Range>) {
+        if let Some(intersection) = subarray.intersect_ranges(&ranges) {
+            assert_eq!(
+                subarray.dimension_ranges.len(),
+                intersection.dimension_ranges.len()
+            );
+            assert_eq!(subarray.dimension_ranges.len(), ranges.len());
+
+            for (before, after, update) in izip!(
+                subarray.dimension_ranges.iter(),
+                intersection.dimension_ranges.iter(),
+                ranges.iter()
+            ) {
+                assert!(after.len() <= before.len());
+
+                let mut r_after = after.iter();
+                for r_before in before.iter() {
+                    if let Some(r) = r_before.intersection(update) {
+                        assert_eq!(*r_after.next().unwrap(), r);
+                    }
+                }
+                assert_eq!(None, r_after.next());
+            }
+        } else {
+            // for at least one dimension, none of the ranges could have intersected
+            let found_empty_intersection =
+                subarray.dimension_ranges.iter().zip(ranges.iter()).any(
+                    |(current, new)| {
+                        current.iter().all(|r| r.intersection(new).is_none())
+                    },
+                );
+            assert!(
+                found_empty_intersection,
+                "dimensions: {:?}",
+                subarray
+                    .dimension_ranges
+                    .iter()
+                    .zip(ranges.iter())
+                    .map(|(d, r)| format!(
+                        "({:?} && {:?} = {:?}",
+                        d,
+                        r,
+                        d.iter()
+                            .map(|dr| dr.intersection(r))
+                            .collect::<Vec<Option<Range>>>()
+                    ))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    fn strat_subarray_intersect(
+    ) -> impl Strategy<Value = (SubarrayData, Vec<Range>)> {
+        use crate::array::domain::strategy::Requirements as DomainRequirements;
+        use crate::array::schema::strategy::Requirements as SchemaRequirements;
+
+        let req = Rc::new(SchemaRequirements {
+            domain: Some(Rc::new(DomainRequirements {
+                num_dimensions: 1..=1,
+                ..Default::default()
+            })),
+            ..Default::default()
+        });
+
+        any_with::<SchemaData>(req).prop_flat_map(|schema| {
+            let schema = Rc::new(schema);
+            (
+                any_with::<SubarrayData>(Some(Rc::clone(&schema))),
+                schema.domain.subarray_strategy(),
+            )
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn subarray_intersect((subarray, range) in strat_subarray_intersect()) {
+            do_subarray_intersect(&subarray, &range)
+        }
     }
 }
