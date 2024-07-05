@@ -356,7 +356,15 @@ impl Strategy for DenseWriteStrategy {
             .domain
             .dimension
             .iter()
-            .map(|d| d.subarray_strategy(Some(cell_limit)).unwrap())
+            .map(|d| {
+                d.subarray_strategy(Some(cell_limit)).expect("Dense dimension subarray not found")
+                    .prop_map(|r| {
+                        let Range::Single(s) = r else {
+                            unreachable!("Dense dimension subarray is not `Range::Single`: {:?}", r)
+                        };
+                        s
+                    }).boxed()
+            })
             .collect::<Vec<BoxedStrategy<SingleValueRange>>>();
 
         let bounding_subarray = strat_subarray_bounds
