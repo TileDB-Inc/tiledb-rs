@@ -55,6 +55,8 @@ where
 {
     if matches!(left_upper.bits_cmp(right_lower), Ordering::Less) {
         return None;
+    } else if matches!(right_upper.bits_cmp(left_lower), Ordering::Less) {
+        return None;
     }
 
     let lower = if matches!(left_lower.bits_cmp(right_lower), Ordering::Less) {
@@ -2024,6 +2026,24 @@ mod tests {
                 assert_eq!(Ordering::Equal, rend.bits_cmp(oend))
             }
         }
+
+        // also check against false positives
+        assert!(matches!(
+            lstart.bits_cmp(&rend),
+            Ordering::Less | Ordering::Equal
+        ));
+        assert!(matches!(
+            rstart.bits_cmp(&lend),
+            Ordering::Less | Ordering::Equal
+        ));
+        assert!(matches!(
+            lend.bits_cmp(&rstart),
+            Ordering::Equal | Ordering::Greater
+        ));
+        assert!(matches!(
+            rend.bits_cmp(&lstart),
+            Ordering::Equal | Ordering::Greater
+        ));
     }
 
     fn do_intersection_single(left: SingleValueRange, right: SingleValueRange) {
