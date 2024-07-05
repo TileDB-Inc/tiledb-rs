@@ -27,7 +27,9 @@ pub mod fragment_info;
 pub mod schema;
 
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
-pub use dimension::{Builder as DimensionBuilder, Dimension, DimensionData};
+pub use dimension::{
+    Builder as DimensionBuilder, Dimension, DimensionConstraints, DimensionData,
+};
 pub use domain::{Builder as DomainBuilder, Domain, DomainData};
 pub use enumeration::{
     Builder as EnumerationBuilder, Enumeration, EnumerationData,
