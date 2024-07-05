@@ -999,7 +999,9 @@ mod tests {
 
     use super::*;
     use crate::array::tests::create_quickstart_dense;
-    use crate::array::{AttributeBuilder, DimensionBuilder, DomainBuilder};
+    use crate::array::{
+        AttributeBuilder, DimensionBuilder, DimensionConstraints, DomainBuilder,
+    };
     use crate::filter::{
         CompressionData, CompressionType, FilterData, FilterListBuilder,
     };
@@ -1702,5 +1704,57 @@ mod tests {
         assert_eq!(CellOrder::RowMajor, sparse_schema.cell_order().unwrap());
         assert_eq!(TileOrder::RowMajor, sparse_schema.tile_order().unwrap());
         assert!(!sparse_schema.allows_duplicates().unwrap());
+    }
+
+    /// Test our assumptions about StringAscii dimensions,
+    /// if this fails then changes may be needed elsewhere.
+    /// Namely we assume that StringAscii is only allowed
+    /// in variable-length sparse dimensions.
+    #[test]
+    fn test_string_dimension() {
+        let mut spec = SchemaData {
+            array_type: ArrayType::Sparse,
+            domain: DomainData {
+                dimension: vec![DimensionData {
+                    name: "d".to_string(),
+                    datatype: Datatype::StringAscii,
+                    constraints: DimensionConstraints::StringAscii,
+                    cell_val_num: Some(CellValNum::Var),
+                    filters: None,
+                }],
+            },
+            attributes: vec![AttributeData {
+                name: "a".to_string(),
+                datatype: Datatype::Int32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let ctx = Context::new().unwrap();
+
+        // creation should succeed, StringAscii is allowed for sparse CellValNum::Var
+        let _ = spec.create(&ctx).expect("Error creating schema");
+
+        // creation should fail, StringAscii is not allowed for sparse CellValNum::single()
+        spec.domain.dimension[0].cell_val_num = Some(CellValNum::single());
+        {
+            let e = spec.create(&ctx).expect_err("Successfully created schema");
+            assert!(matches!(e, Error::LibTileDB(_)));
+        }
+
+        // creation should fail, StringAscii is not allowed for dense CellValNum::single()
+        spec.array_type = ArrayType::Dense;
+        {
+            let e = spec.create(&ctx).expect_err("Successfully created schema");
+            assert!(matches!(e, Error::LibTileDB(_)));
+        }
+
+        // creation should fail, StringAscii is not allowed for dense CellValNum::Var
+        spec.domain.dimension[0].cell_val_num = Some(CellValNum::Var);
+        {
+            let e = spec.create(&ctx).expect_err("Successfully created schema");
+            assert!(matches!(e, Error::LibTileDB(_)));
+        }
     }
 }
