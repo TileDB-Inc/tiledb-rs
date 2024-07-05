@@ -369,7 +369,7 @@ impl SubarrayData {
     ///
     /// If any dimension does not have any intersection with `ranges`, then
     /// this returns `None` as the resulting subarray would select no coordinates.
-    pub fn intersect_ranges(&self, ranges: &Vec<Range>) -> Option<Self> {
+    pub fn intersect_ranges(&self, ranges: &[Range]) -> Option<Self> {
         let updated_ranges = self
             .dimension_ranges
             .iter()
@@ -462,7 +462,7 @@ mod tests {
         let test_uri =
             crate::array::tests::create_quickstart_dense(&test_uri, &ctx)?;
 
-        let a = Array::open(&ctx, &test_uri, Mode::Read)?;
+        let a = Array::open(&ctx, test_uri, Mode::Read)?;
         let b = ReadBuilder::new(a)?;
 
         // inspect builder in-progress subarray
@@ -511,7 +511,7 @@ mod tests {
             &test_uri, &ctx,
         )?;
 
-        let a = Array::open(&ctx, &test_uri, Mode::Read)?;
+        let a = Array::open(&ctx, test_uri, Mode::Read)?;
         let b = ReadBuilder::new(a)?;
 
         // inspect builder in-progress subarray
@@ -636,8 +636,8 @@ mod tests {
         Ok(array_uri)
     }
 
-    fn do_subarray_intersect(subarray: &SubarrayData, ranges: &Vec<Range>) {
-        if let Some(intersection) = subarray.intersect_ranges(&ranges) {
+    fn do_subarray_intersect(subarray: &SubarrayData, ranges: &[Range]) {
+        if let Some(intersection) = subarray.intersect_ranges(ranges) {
             assert_eq!(
                 subarray.dimension_ranges.len(),
                 intersection.dimension_ranges.len()

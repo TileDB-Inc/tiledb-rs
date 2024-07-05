@@ -53,9 +53,9 @@ fn intersection<'a, B>(
 where
     B: BitsOrd + ?Sized,
 {
-    if matches!(left_upper.bits_cmp(right_lower), Ordering::Less) {
-        return None;
-    } else if matches!(right_upper.bits_cmp(left_lower), Ordering::Less) {
+    if matches!(left_upper.bits_cmp(right_lower), Ordering::Less)
+        || matches!(right_upper.bits_cmp(left_lower), Ordering::Less)
+    {
         return None;
     }
 
@@ -173,7 +173,7 @@ impl SingleValueRange {
             rend,
             {
                 let (lower, upper) =
-                    intersection::<DT>(&lstart, &lend, &rstart, &rend)?;
+                    intersection::<DT>(lstart, lend, rstart, rend)?;
                 Some(SingleValueRange::from(&[*lower, *upper]))
             },
             {
@@ -2029,19 +2029,19 @@ mod tests {
 
         // also check against false positives
         assert!(matches!(
-            lstart.bits_cmp(&rend),
+            lstart.bits_cmp(rend),
             Ordering::Less | Ordering::Equal
         ));
         assert!(matches!(
-            rstart.bits_cmp(&lend),
+            rstart.bits_cmp(lend),
             Ordering::Less | Ordering::Equal
         ));
         assert!(matches!(
-            lend.bits_cmp(&rstart),
+            lend.bits_cmp(rstart),
             Ordering::Equal | Ordering::Greater
         ));
         assert!(matches!(
-            rend.bits_cmp(&lstart),
+            rend.bits_cmp(lstart),
             Ordering::Equal | Ordering::Greater
         ));
     }
