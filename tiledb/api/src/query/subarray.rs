@@ -756,11 +756,11 @@ mod tests {
             h.finish() as i32
         };
 
+        let row_values = vec!["foo", "bar", "baz", "quux", "gub"];
+        let col_values = (1..=4).collect::<Vec<i32>>();
+
         // write some data
         {
-            let row_values = vec!["foo", "bar", "baz", "quux", "gub"];
-            let col_values = (1..=4).collect::<Vec<i32>>();
-
             let (rows, (cols, atts)) = row_values
                 .iter()
                 .flat_map(|r| {
@@ -811,6 +811,40 @@ mod tests {
             let (atts, (cols, (rows, _))) = q.execute()?;
             assert_eq!(rows.len(), cols.len());
             assert_eq!(rows.len(), atts.len());
+
+            // validate the number of results.
+            // this is hard to do with multi ranges which might be overlapping
+            // so skip for those cases. tiledb returns the union of subarray
+            // ranges by default, so to be accurate we would have to do the union
+            if subarray.dimension_ranges[0].len() <= 1
+                && subarray.dimension_ranges[1].len() <= 1
+            {
+                let num_cells_0 = if subarray.dimension_ranges[0].is_empty() {
+                    row_values.len()
+                } else {
+                    let Range::Var(VarValueRange::UInt8(ref lb, ref ub)) =
+                        subarray.dimension_ranges[0][0]
+                    else {
+                        unreachable!()
+                    };
+                    row_values
+                        .iter()
+                        .filter(|row| {
+                            lb.as_ref() <= row.as_bytes()
+                                && row.as_bytes() <= ub.as_ref()
+                        })
+                        .count()
+                };
+                let num_cells_1 = if subarray.dimension_ranges[1].is_empty() {
+                    col_values.len()
+                } else {
+                    subarray.dimension_ranges[1][0].num_cells().unwrap()
+                        as usize
+                };
+
+                let expect_num_cells = num_cells_0 * num_cells_1;
+                assert_eq!(expect_num_cells, rows.len());
+            }
 
             for (row, col, att) in izip!(rows, cols, atts) {
                 assert_eq!(att, derive_att(&row, &col));
