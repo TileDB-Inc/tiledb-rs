@@ -468,26 +468,50 @@ impl SubarrayData {
     /// let intersection = s1.intersect(&s2);
     /// assert_eq!(intersection, None);
     /// ```
+    ///
+    /// If a dimension in `self` (without loss of generality) has no ranges,
+    /// then it is a special case which means to select the all coordinates.
+    /// The intersection is equal to the ranges of `other`.
+    /// ```
+    /// use tiledb::query::subarray::SubarrayData;
+    /// use tiledb::range::Range;
+    ///
+    /// let s1 = SubarrayData {
+    ///     dimension_ranges: vec![
+    ///         vec![]
+    ///     ]
+    /// };
+    /// let s2 = SubarrayData {
+    ///     dimension_ranges: vec![
+    ///         vec![Range::from(&[150, 250]), Range::from(&[300, 350])],
+    ///     ]
+    /// };
+    /// let intersection = s1.intersect(&s2);
+    /// assert_eq!(intersection, Some(s2.clone()));
+    /// ```
     pub fn intersect(&self, other: &SubarrayData) -> Option<Self> {
         let updated_ranges = self
             .dimension_ranges
             .iter()
             .zip(other.dimension_ranges.iter())
             .map(|(my_dimension, their_dimension)| {
-                my_dimension
-                    .iter()
-                    .cartesian_product(their_dimension.iter())
-                    .filter_map(|(rm, rt)| rm.intersection(rt))
-                    .collect::<Vec<Range>>()
+                if my_dimension.is_empty() {
+                    // empty means select all coordinates
+                    their_dimension.clone()
+                } else if their_dimension.is_empty() {
+                    // empty means select all coordinates
+                    my_dimension.clone()
+                } else {
+                    my_dimension
+                        .iter()
+                        .cartesian_product(their_dimension.iter())
+                        .filter_map(|(rm, rt)| rm.intersection(rt))
+                        .collect::<Vec<Range>>()
+                }
             })
             .collect::<Vec<Vec<Range>>>();
 
-        if self
-            .dimension_ranges
-            .iter()
-            .zip(updated_ranges.iter())
-            .any(|(before, after)| after.is_empty() && !before.is_empty())
-        {
+        if updated_ranges.iter().any(|dim| dim.is_empty()) {
             None
         } else {
             Some(SubarrayData {
@@ -813,6 +837,13 @@ mod tests {
                 s1.dimension_ranges.iter(),
                 s2.dimension_ranges.iter(),
             ) {
+                if ds1.is_empty() {
+                    assert_eq!(di, ds2);
+                    continue;
+                } else if ds2.is_empty() {
+                    assert_eq!(di, ds1);
+                    continue;
+                }
                 // there must be some pair from (rs1, rs2) where di is the intersection
                 for ri in di.iter() {
                     let found_input = ds1
