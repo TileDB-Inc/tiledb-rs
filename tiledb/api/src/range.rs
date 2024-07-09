@@ -53,6 +53,16 @@ fn intersection<'a, B>(
 where
     B: BitsOrd + ?Sized,
 {
+    // input integrity check
+    assert!(matches!(
+        left_lower.bits_cmp(left_upper),
+        Ordering::Less | Ordering::Equal
+    ));
+    assert!(matches!(
+        right_lower.bits_cmp(right_upper),
+        Ordering::Less | Ordering::Equal
+    ));
+
     if matches!(left_upper.bits_cmp(right_lower), Ordering::Less)
         || matches!(right_upper.bits_cmp(left_lower), Ordering::Less)
     {
@@ -71,6 +81,12 @@ where
     } else {
         left_upper
     };
+
+    // output integrity check
+    assert!(matches!(
+        lower.bits_cmp(upper),
+        Ordering::Less | Ordering::Equal
+    ));
 
     Some((lower, upper))
 }
