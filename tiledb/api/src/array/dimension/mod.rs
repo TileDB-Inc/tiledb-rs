@@ -534,13 +534,19 @@ impl DimensionData {
 
     /// Returns a strategy for generating subarray ranges which fall within
     /// the domain of this dimension.
+    ///
+    /// `cell_bound` is an optional restriction on the number of possible values
+    /// which the strategy is allowed to return.
+    ///
+    /// If `cell_bound` is `None`, then this function always returns `Some`.
     pub fn subarray_strategy(
         &self,
         cell_bound: Option<usize>,
-    ) -> Option<proptest::strategy::BoxedStrategy<crate::range::SingleValueRange>>
-    {
+    ) -> Option<proptest::strategy::BoxedStrategy<crate::range::Range>> {
         use proptest::prelude::Just;
         use proptest::strategy::Strategy;
+
+        use crate::range::{Range, VarValueRange};
 
         dimension_constraints_go!(
             self.constraints,
@@ -561,13 +567,61 @@ impl DimensionData {
                             lb.checked_add(cell_bound).unwrap_or(DT::MAX),
                         );
                         (Just(lb), lb..=ub).prop_map(|(min, max)| {
-                            SingleValueRange::from(&[min, max])
+                            Range::Single(SingleValueRange::from(&[min, max]))
                         })
                     });
                 Some(strat.boxed())
             },
-            None,
-            None
+            {
+                if cell_bound.is_some() {
+                    /*
+                     * This can be implemented, but there's some ambiguity about
+                     * what it should mean when precision goes out the window,
+                     * so wait until there's a use case to decide.
+                     */
+                    return None;
+                }
+
+                let domain_lower = domain[0];
+                let domain_upper = domain[1];
+                let strat =
+                    (domain_lower..=domain_upper).prop_flat_map(move |lb| {
+                        (Just(lb), (lb..=domain_upper)).prop_map(
+                            |(min, max)| {
+                                Range::Single(SingleValueRange::from(&[
+                                    min, max,
+                                ]))
+                            },
+                        )
+                    });
+                Some(strat.boxed())
+            },
+            {
+                // DimensionConstraints::StringAscii
+                let strat_bound =
+                    proptest::string::string_regex("[ -~]*").unwrap().boxed();
+
+                if cell_bound.is_some() {
+                    /*
+                     * This is not tractible unless there is a bound on the string length.
+                     * There isn't one since `StringAscii` is only allowed as a dimension
+                     * type in sparse arrays.
+                     */
+                    return None;
+                }
+
+                let strat = (strat_bound.clone(), strat_bound).prop_map(
+                    |(ascii1, ascii2)| {
+                        let (lb, ub) = if ascii1 < ascii2 {
+                            (ascii1, ascii2)
+                        } else {
+                            (ascii2, ascii1)
+                        };
+                        Range::Var(VarValueRange::from((lb, ub)))
+                    },
+                );
+                Some(strat.boxed())
+            }
         )
     }
 }
@@ -897,7 +951,7 @@ mod tests {
     fn subarray_strategy_dense() {
         use super::strategy::Requirements;
         use crate::array::ArrayType;
-        use crate::range::SingleValueRange;
+        use crate::range::{Range, SingleValueRange};
         use proptest::prelude::*;
         use proptest::strategy::Strategy;
         use std::rc::Rc;
@@ -924,6 +978,9 @@ mod tests {
             if let Some(num_cells) = d.constraints.num_cells() {
                 assert!(s.num_cells().unwrap() <= num_cells);
             }
+            let Range::Single(s) = s else {
+                unreachable!("Unexpected range for dense dimension: {:?}", s)
+            };
             match s {
                 SingleValueRange::Int8(start, end) => {
                     let DimensionConstraints::Int8([lb, ub], _) = d.constraints else { unreachable!() };

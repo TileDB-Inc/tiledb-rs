@@ -59,6 +59,8 @@ impl<'query> Subarray<'query> {
     }
 
     /// Return all dimension ranges set on the query.
+    /// The outer `Vec` is indexed by the dimension number,
+    /// and the inner `Vec` is the set of ranges set for that dimension.
     pub fn ranges(&self) -> TileDBResult<Vec<Vec<Range>>> {
         let c_subarray = self.capi();
         let ndims = self.schema.domain()?.ndim()? as u32;
@@ -93,27 +95,42 @@ impl<'query> Subarray<'query> {
                         )
                     })?;
 
-                    let start =
-                        vec![0u8; start_size as usize].into_boxed_slice();
-                    let end = vec![0u8; end_size as usize].into_boxed_slice();
+                    /*
+                     * SC-48075: SIGABRT when calling this function if there is no range set
+                     * The SIGABRT should be fixed, but it's also fair that if no range is
+                     * set we don't really have a way to produce an upper bound which
+                     * must be arbitrarily long. Hence here we skip pushing a range.
+                     */
+                    if start_size > 0 || end_size > 0 {
+                        let start =
+                            vec![0u8; start_size as usize].into_boxed_slice();
+                        let end =
+                            vec![0u8; end_size as usize].into_boxed_slice();
 
-                    self.capi_call(|ctx| unsafe {
-                        ffi::tiledb_subarray_get_range_var(
-                            ctx,
-                            c_subarray,
-                            dim_idx,
-                            rng_idx,
-                            start.as_ptr() as *mut std::ffi::c_void,
-                            end.as_ptr() as *mut std::ffi::c_void,
-                        )
-                    })?;
+                        self.capi_call(|ctx| unsafe {
+                            ffi::tiledb_subarray_get_range_var(
+                                ctx,
+                                c_subarray,
+                                dim_idx,
+                                rng_idx,
+                                start.as_ptr() as *mut std::ffi::c_void,
+                                end.as_ptr() as *mut std::ffi::c_void,
+                            )
+                        })?;
 
-                    let dtype = dim.datatype()?;
-                    let cvn = dim.cell_val_num()?;
-                    let range =
-                        TypedRange::from_slices(dtype, cvn, &start, &end)?
-                            .range;
-                    dim_ranges.push(range);
+                        let dtype = dim.datatype()?;
+                        let cvn = dim.cell_val_num()?;
+                        let range =
+                            TypedRange::from_slices(dtype, cvn, &start, &end)?
+                                .range;
+                        dim_ranges.push(range);
+                    } else {
+                        /*
+                         * See SC-48075 above.
+                         * It's tempting to assert that `nranges == 1` but writing
+                         * down a range that's empty on both ends is valid
+                         */
+                    }
                 } else {
                     let dtype = dim.datatype()?;
 
@@ -323,6 +340,24 @@ where
         Ok(self)
     }
 
+    /// Adds a set of ranges on each dimension.
+    /// The outer `Vec` of `ranges` is the list of dimensions and the inner
+    /// `Vec` is the list of requested ranges for that dimension.
+    /// If a list is empty for a dimension, then all the coordinates of that
+    /// dimension are selected.
+    pub fn dimension_ranges(
+        self,
+        ranges: Vec<Vec<Range>>,
+    ) -> TileDBResult<Self> {
+        let mut b = self;
+        for (d, ranges) in ranges.into_iter().enumerate() {
+            for r in ranges.into_iter() {
+                b = b.add_range(d, r)?;
+            }
+        }
+        Ok(b)
+    }
+
     /// Apply the subarray to the query, returning the query builder.
     pub fn finish_subarray(self) -> TileDBResult<Q> {
         let c_query = **self.query.base().cquery();
@@ -335,14 +370,208 @@ where
     }
 }
 
+/// Encapsulates data for a subarray.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubarrayData {
+    /// List of requested ranges on each dimension.
+    /// The outer `Vec` is the list of dimensions and the inner `Vec`
+    /// is the list of requested ranges for that dimension.
+    /// If a list is empty for a dimension, then all the coordinates
+    /// of that dimension are selected.
+    pub dimension_ranges: Vec<Vec<Range>>,
+}
+
+impl SubarrayData {
+    /// Returns a new `SubarrayData` which represents the intersection
+    /// of all the ranges of `self` with a new set of `ranges` on each dimension.
+    ///
+    /// If any dimension does not have any intersection with `ranges`, then
+    /// this returns `None` as the resulting subarray would select no coordinates.
+    pub fn intersect_ranges(&self, ranges: &[Range]) -> Option<Self> {
+        let updated_ranges = self
+            .dimension_ranges
+            .iter()
+            .zip(ranges.iter())
+            .map(|(current_ranges, new_range)| {
+                current_ranges
+                    .iter()
+                    .filter_map(|current_range| {
+                        current_range.intersection(new_range)
+                    })
+                    .collect::<Vec<Range>>()
+            })
+            .collect::<Vec<Vec<Range>>>();
+
+        if updated_ranges.iter().any(|dim| dim.is_empty()) {
+            None
+        } else {
+            Some(SubarrayData {
+                dimension_ranges: updated_ranges,
+            })
+        }
+    }
+}
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy {
+    use std::rc::Rc;
+
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::array::SchemaData;
+
+    impl Arbitrary for SubarrayData {
+        type Parameters = Option<Rc<SchemaData>>;
+        type Strategy = BoxedStrategy<Self>;
+
+        fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+            let strat_dimension_ranges = if let Some(schema) = params {
+                schema
+                    .domain
+                    .dimension
+                    .iter()
+                    .map(|d| d.subarray_strategy(None).unwrap())
+                    .collect::<Vec<BoxedStrategy<Range>>>()
+            } else {
+                todo!()
+            };
+
+            const DIMENSION_MIN_RANGES: usize = 0;
+            const DIMENSION_MAX_RANGES: usize = 4;
+
+            strat_dimension_ranges
+                .into_iter()
+                .map(|strat_range| {
+                    proptest::collection::vec(
+                        strat_range,
+                        DIMENSION_MIN_RANGES..=DIMENSION_MAX_RANGES,
+                    )
+                    .boxed()
+                })
+                .collect::<Vec<BoxedStrategy<Vec<Range>>>>()
+                .prop_map(|dimension_ranges| SubarrayData { dimension_ranges })
+                .boxed()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    use std::rc::Rc;
+
+    use itertools::izip;
+    use proptest::prelude::*;
     use tiledb_test_utils::{self, TestArrayUri};
 
     use super::*;
     use crate::array::*;
-    use crate::query::{Query, QueryBuilder, ReadBuilder};
+    use crate::query::{
+        Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder,
+        WriteBuilder,
+    };
     use crate::Datatype;
+
+    /// The default subarray of a query with a constrained dimension
+    /// is whatever the dimension constraints are
+    #[test]
+    fn default_subarray_constrained() -> TileDBResult<()> {
+        let ctx = Context::new().unwrap();
+
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri =
+            crate::array::tests::create_quickstart_dense(&test_uri, &ctx)?;
+
+        let a = Array::open(&ctx, test_uri, Mode::Read)?;
+        let b = ReadBuilder::new(a)?;
+
+        // inspect builder in-progress subarray
+        {
+            let subarray = b.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(
+                vec![
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))],
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))]
+                ],
+                ranges
+            );
+        }
+
+        let q = b.build();
+
+        // inspect query subarray
+        {
+            let subarray = q.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(
+                vec![
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))],
+                    vec![Range::Single(SingleValueRange::Int32(1, 4))]
+                ],
+                ranges
+            );
+        }
+
+        Ok(())
+    }
+
+    /// The default subarray of a query with unconstrained dimension
+    /// is anything goes. The array used here has one unconstrained
+    /// string dimension and one constrained int dimension, so we
+    /// should expect empty ranges for one dimension and the
+    /// dimension domain for the other.
+    #[test]
+    fn default_subarray_unconstrained() -> TileDBResult<()> {
+        let ctx = Context::new().unwrap();
+
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+        let test_uri = crate::array::tests::create_quickstart_sparse_string(
+            &test_uri, &ctx,
+        )?;
+
+        let a = Array::open(&ctx, test_uri, Mode::Read)?;
+        let b = ReadBuilder::new(a)?;
+
+        // inspect builder in-progress subarray
+        {
+            let subarray = b.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(2, ranges.len());
+            assert!(
+                ranges[0].is_empty(),
+                "Expected empty ranges but found {:?}",
+                ranges[0]
+            );
+            assert_eq!(
+                ranges[1],
+                vec![Range::Single(SingleValueRange::Int32(1, 4))]
+            );
+        }
+
+        let q = b.build();
+
+        // inspect query subarray
+        {
+            let subarray = q.subarray()?;
+            let ranges = subarray.ranges()?;
+            assert_eq!(2, ranges.len());
+            assert!(
+                ranges[0].is_empty(),
+                "Expected empty ranges but found {:?}",
+                ranges[0]
+            );
+            assert_eq!(
+                ranges[1],
+                vec![Range::Single(SingleValueRange::Int32(1, 4))]
+            );
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn test_dense_ranges() -> TileDBResult<()> {
@@ -427,5 +656,227 @@ mod tests {
         Array::create(ctx, &array_uri, schema)?;
 
         Ok(array_uri)
+    }
+
+    fn do_subarray_intersect(subarray: &SubarrayData, ranges: &[Range]) {
+        if let Some(intersection) = subarray.intersect_ranges(ranges) {
+            assert_eq!(
+                subarray.dimension_ranges.len(),
+                intersection.dimension_ranges.len()
+            );
+            assert_eq!(subarray.dimension_ranges.len(), ranges.len());
+
+            for (before, after, update) in izip!(
+                subarray.dimension_ranges.iter(),
+                intersection.dimension_ranges.iter(),
+                ranges.iter()
+            ) {
+                assert!(after.len() <= before.len());
+
+                let mut r_after = after.iter();
+                for r_before in before.iter() {
+                    if let Some(r) = r_before.intersection(update) {
+                        assert_eq!(*r_after.next().unwrap(), r);
+                    }
+                }
+                assert_eq!(None, r_after.next());
+            }
+        } else {
+            // for at least one dimension, none of the ranges could have intersected
+            let found_empty_intersection =
+                subarray.dimension_ranges.iter().zip(ranges.iter()).any(
+                    |(current, new)| {
+                        current.iter().all(|r| r.intersection(new).is_none())
+                    },
+                );
+            assert!(
+                found_empty_intersection,
+                "dimensions: {:?}",
+                subarray
+                    .dimension_ranges
+                    .iter()
+                    .zip(ranges.iter())
+                    .map(|(d, r)| format!(
+                        "({:?} && {:?} = {:?}",
+                        d,
+                        r,
+                        d.iter()
+                            .map(|dr| dr.intersection(r))
+                            .collect::<Vec<Option<Range>>>()
+                    ))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    fn strat_subarray_intersect(
+    ) -> impl Strategy<Value = (SubarrayData, Vec<Range>)> {
+        use crate::array::domain::strategy::Requirements as DomainRequirements;
+        use crate::array::schema::strategy::Requirements as SchemaRequirements;
+
+        let req = Rc::new(SchemaRequirements {
+            domain: Some(Rc::new(DomainRequirements {
+                num_dimensions: 1..=1,
+                ..Default::default()
+            })),
+            ..Default::default()
+        });
+
+        any_with::<SchemaData>(req).prop_flat_map(|schema| {
+            let schema = Rc::new(schema);
+            (
+                any_with::<SubarrayData>(Some(Rc::clone(&schema))),
+                schema.domain.subarray_strategy(),
+            )
+        })
+    }
+
+    proptest! {
+        #[test]
+        fn subarray_intersect((subarray, range) in strat_subarray_intersect()) {
+            do_subarray_intersect(&subarray, &range)
+        }
+    }
+
+    #[test]
+    fn dimension_ranges() {
+        let ctx = Context::new().unwrap();
+
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))
+            .unwrap();
+        let test_uri = crate::array::tests::create_quickstart_sparse_string(
+            &test_uri, &ctx,
+        )
+        .unwrap();
+
+        let derive_att = |row: &str, col: &i32| -> i32 {
+            let mut h = DefaultHasher::new();
+            (row, col).hash(&mut h);
+            h.finish() as i32
+        };
+
+        let row_values = ["foo", "bar", "baz", "quux", "gub"];
+        let col_values = (1..=4).collect::<Vec<i32>>();
+
+        // write some data
+        {
+            let (rows, (cols, atts)) = row_values
+                .iter()
+                .flat_map(|r| {
+                    col_values.iter().map(move |c| {
+                        let att = derive_att(r, c);
+                        (r.to_string(), (*c, att))
+                    })
+                })
+                .collect::<(Vec<String>, (Vec<i32>, Vec<i32>))>();
+
+            let w = Array::open(&ctx, &test_uri, Mode::Write).unwrap();
+            let q = WriteBuilder::new(w)
+                .unwrap()
+                .data("rows", &rows)
+                .unwrap()
+                .data("cols", &cols)
+                .unwrap()
+                .data("a", &atts)
+                .unwrap()
+                .build();
+
+            q.submit().unwrap();
+            q.finalize().unwrap();
+        }
+
+        let schema = {
+            let array = Array::open(&ctx, &test_uri, Mode::Read).unwrap();
+            Rc::new(SchemaData::try_from(array.schema().unwrap()).unwrap())
+        };
+
+        let do_dimension_ranges = |subarray: SubarrayData| -> TileDBResult<()> {
+            let array = Array::open(&ctx, &test_uri, Mode::Read).unwrap();
+            let mut q = ReadBuilder::new(array)?
+                .start_subarray()?
+                .dimension_ranges(subarray.dimension_ranges.clone())?
+                .finish_subarray()?
+                .register_constructor::<_, Vec<String>>(
+                    "rows",
+                    Default::default(),
+                )?
+                .register_constructor::<_, Vec<i32>>(
+                    "cols",
+                    Default::default(),
+                )?
+                .register_constructor::<_, Vec<i32>>("a", Default::default())?
+                .build();
+
+            let (atts, (cols, (rows, _))) = q.execute()?;
+            assert_eq!(rows.len(), cols.len());
+            assert_eq!(rows.len(), atts.len());
+
+            // validate the number of results.
+            // this is hard to do with multi ranges which might be overlapping
+            // so skip for those cases. tiledb returns the union of subarray
+            // ranges by default, so to be accurate we would have to do the union
+            if subarray.dimension_ranges[0].len() <= 1
+                && subarray.dimension_ranges[1].len() <= 1
+            {
+                let num_cells_0 = if subarray.dimension_ranges[0].is_empty() {
+                    row_values.len()
+                } else {
+                    let Range::Var(VarValueRange::UInt8(ref lb, ref ub)) =
+                        subarray.dimension_ranges[0][0]
+                    else {
+                        unreachable!()
+                    };
+                    row_values
+                        .iter()
+                        .filter(|row| {
+                            lb.as_ref() <= row.as_bytes()
+                                && row.as_bytes() <= ub.as_ref()
+                        })
+                        .count()
+                };
+                let num_cells_1 = if subarray.dimension_ranges[1].is_empty() {
+                    col_values.len()
+                } else {
+                    subarray.dimension_ranges[1][0].num_cells().unwrap()
+                        as usize
+                };
+
+                let expect_num_cells = num_cells_0 * num_cells_1;
+                assert_eq!(expect_num_cells, rows.len());
+            }
+
+            for (row, col, att) in izip!(rows, cols, atts) {
+                assert_eq!(att, derive_att(&row, &col));
+
+                let row_in_bounds = subarray.dimension_ranges[0].is_empty()
+                    || subarray.dimension_ranges[0].iter().any(|r| {
+                        let Range::Var(VarValueRange::UInt8(ref lb, ref ub)) =
+                            r
+                        else {
+                            unreachable!()
+                        };
+                        lb.as_ref() <= row.as_bytes()
+                            && row.as_bytes() <= ub.as_ref()
+                    });
+                assert!(row_in_bounds);
+
+                let col_in_bounds = subarray.dimension_ranges[1].is_empty()
+                    || subarray.dimension_ranges[1].iter().any(|r| {
+                        let Range::Single(SingleValueRange::Int32(lb, ub)) = r
+                        else {
+                            unreachable!()
+                        };
+                        *lb <= col && col <= *ub
+                    });
+                assert!(col_in_bounds);
+            }
+
+            Ok(())
+        };
+
+        proptest!(move |(subarray in any_with::<SubarrayData>(Some(Rc::clone(&schema))))| {
+            do_dimension_ranges(subarray).expect("Read query error");
+        })
     }
 }

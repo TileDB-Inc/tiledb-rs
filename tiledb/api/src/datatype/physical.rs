@@ -83,6 +83,26 @@ pub trait BitsOrd {
             max
         }
     }
+
+    /// Returns `true` if `self` is less than `other` by `self.bits_cmp`.
+    fn bits_lt(&self, other: &Self) -> bool {
+        matches!(self.bits_cmp(other), Ordering::Less)
+    }
+
+    /// Returns `true` if `self` is less than or equal to `other` by `self.bits_cmp`.
+    fn bits_le(&self, other: &Self) -> bool {
+        matches!(self.bits_cmp(other), Ordering::Less | Ordering::Equal)
+    }
+
+    /// Returns `true` if `self` is greater than or equal to `other` by `self.bits_cmp`.
+    fn bits_ge(&self, other: &Self) -> bool {
+        matches!(self.bits_cmp(other), Ordering::Equal | Ordering::Greater)
+    }
+
+    /// Returns `true` if `self` is greater than `other` by `self.bits_cmp`.
+    fn bits_gt(&self, other: &Self) -> bool {
+        matches!(self.bits_cmp(other), Ordering::Greater)
+    }
 }
 
 impl<T> BitsOrd for &T

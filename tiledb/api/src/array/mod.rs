@@ -27,7 +27,9 @@ pub mod fragment_info;
 pub mod schema;
 
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
-pub use dimension::{Builder as DimensionBuilder, Dimension, DimensionData};
+pub use dimension::{
+    Builder as DimensionBuilder, Dimension, DimensionConstraints, DimensionData,
+};
 pub use domain::{Builder as DomainBuilder, Domain, DomainData};
 pub use enumeration::{
     Builder as EnumerationBuilder, Enumeration, EnumerationData,
@@ -774,10 +776,11 @@ pub mod strategy;
 pub mod tests {
     use tiledb_test_utils::{self, TestArrayUri};
 
-    use crate::array::*;
+    use super::*;
+    use crate::array::dimension::DimensionConstraints;
     use crate::metadata::Value;
     use crate::query::QueryType;
-    use crate::Datatype;
+    use crate::{Datatype, Factory};
 
     /// Create the array used in the "quickstart_dense" example
     pub fn create_quickstart_dense(
@@ -826,6 +829,52 @@ pub mod tests {
             .with_path("quickstart_dense")
             .map_err(|e| Error::Other(e.to_string()))?;
         Array::create(context, &uri, s)?;
+        Ok(uri)
+    }
+
+    /// Creates an array whose schema is used in the
+    /// `quickstart_sparse_string` example and returns the URI.
+    pub fn create_quickstart_sparse_string(
+        test_uri: &dyn TestArrayUri,
+        ctx: &Context,
+    ) -> TileDBResult<String> {
+        let schema = SchemaData {
+            array_type: ArrayType::Sparse,
+            domain: DomainData {
+                dimension: vec![
+                    DimensionData {
+                        name: "rows".to_owned(),
+                        datatype: Datatype::StringAscii,
+                        constraints: DimensionConstraints::StringAscii,
+                        cell_val_num: None,
+                        filters: None,
+                    },
+                    DimensionData {
+                        name: "cols".to_owned(),
+                        datatype: Datatype::Int32,
+                        constraints: ([1i32, 4], 4i32).into(),
+                        cell_val_num: None,
+                        filters: None,
+                    },
+                ],
+            },
+            attributes: vec![AttributeData {
+                name: "a".to_owned(),
+                datatype: Datatype::Int32,
+                ..Default::default()
+            }],
+            tile_order: Some(TileOrder::RowMajor),
+            cell_order: Some(CellOrder::RowMajor),
+
+            ..Default::default()
+        };
+
+        let schema = schema.create(ctx)?;
+
+        let uri = test_uri
+            .with_path("quickstart_dense")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        Array::create(ctx, &uri, schema)?;
         Ok(uri)
     }
 
