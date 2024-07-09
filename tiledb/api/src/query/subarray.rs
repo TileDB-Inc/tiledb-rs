@@ -394,12 +394,17 @@ impl SubarrayData {
             .iter()
             .zip(ranges.iter())
             .map(|(current_ranges, new_range)| {
-                current_ranges
-                    .iter()
-                    .filter_map(|current_range| {
-                        current_range.intersection(new_range)
-                    })
-                    .collect::<Vec<Range>>()
+                if current_ranges.is_empty() {
+                    // empty means select the whole thing
+                    vec![new_range.clone()]
+                } else {
+                    current_ranges
+                        .iter()
+                        .filter_map(|current_range| {
+                            current_range.intersection(new_range)
+                        })
+                        .collect::<Vec<Range>>()
+                }
             })
             .collect::<Vec<Vec<Range>>>();
 
@@ -751,6 +756,11 @@ mod tests {
                 intersection.dimension_ranges.iter(),
                 ranges.iter()
             ) {
+                if before.is_empty() {
+                    assert_eq!(vec![update.clone()], *after);
+                    continue;
+                }
+
                 assert!(after.len() <= before.len());
 
                 let mut r_after = after.iter();
@@ -763,12 +773,17 @@ mod tests {
             }
         } else {
             // for at least one dimension, none of the ranges could have intersected
-            let found_empty_intersection =
-                subarray.dimension_ranges.iter().zip(ranges.iter()).any(
-                    |(current, new)| {
+            let found_empty_intersection = subarray
+                .dimension_ranges
+                .iter()
+                .zip(ranges.iter())
+                .any(|(current, new)| {
+                    if current.is_empty() {
+                        false
+                    } else {
                         current.iter().all(|r| r.intersection(new).is_none())
-                    },
-                );
+                    }
+                });
             assert!(
                 found_empty_intersection,
                 "dimensions: {:?}",
