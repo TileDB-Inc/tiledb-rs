@@ -756,7 +756,7 @@ mod tests {
             h.finish() as i32
         };
 
-        let row_values = vec!["foo", "bar", "baz", "quux", "gub"];
+        let row_values = ["foo", "bar", "baz", "quux", "gub"];
         let col_values = (1..=4).collect::<Vec<i32>>();
 
         // write some data
