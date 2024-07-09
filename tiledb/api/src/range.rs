@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::num::NonZeroU32;
 use std::ops::Deref;
@@ -54,39 +53,27 @@ where
     B: BitsOrd + ?Sized,
 {
     // input integrity check
-    assert!(matches!(
-        left_lower.bits_cmp(left_upper),
-        Ordering::Less | Ordering::Equal
-    ));
-    assert!(matches!(
-        right_lower.bits_cmp(right_upper),
-        Ordering::Less | Ordering::Equal
-    ));
+    assert!(left_lower.bits_le(left_upper),);
+    assert!(right_lower.bits_le(right_upper),);
 
-    if matches!(left_upper.bits_cmp(right_lower), Ordering::Less)
-        || matches!(right_upper.bits_cmp(left_lower), Ordering::Less)
-    {
+    if left_upper.bits_lt(right_lower) || right_upper.bits_lt(left_lower) {
         return None;
     }
 
-    let lower = if matches!(left_lower.bits_cmp(right_lower), Ordering::Less) {
+    let lower = if left_lower.bits_lt(right_lower) {
         right_lower
     } else {
         left_lower
     };
 
-    let upper = if matches!(left_upper.bits_cmp(right_upper), Ordering::Greater)
-    {
+    let upper = if left_upper.bits_gt(right_upper) {
         right_upper
     } else {
         left_upper
     };
 
     // output integrity check
-    assert!(matches!(
-        lower.bits_cmp(upper),
-        Ordering::Less | Ordering::Equal
-    ));
+    assert!(lower.bits_le(upper),);
 
     Some((lower, upper))
 }
@@ -601,13 +588,13 @@ impl MultiValueRange {
 
         crate::multi_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
             {
-                let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
+                let min = if lstart.bits_lt(rstart) {
                     lstart.clone()
                 } else {
                     rstart.clone()
                 };
 
-                let max = if matches!(lend.bits_cmp(rend), Ordering::Greater) {
+                let max = if lend.bits_gt(rend) {
                     lend.clone()
                 } else {
                     rend.clone()
@@ -934,13 +921,13 @@ impl VarValueRange {
     pub fn union(&self, other: &Self) -> Self {
         crate::var_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
             {
-                let min = if matches!(lstart.bits_cmp(rstart), Ordering::Less) {
+                let min = if lstart.bits_lt(rstart) {
                     lstart.clone()
                 } else {
                     rstart.clone()
                 };
 
-                let max = if matches!(lend.bits_cmp(rend), Ordering::Greater) {
+                let max = if lend.bits_gt(rend) {
                     lend.clone()
                 } else {
                     rend.clone()
@@ -1619,9 +1606,7 @@ pub mod strategy {
                             ),
                         )
                             .prop_map(move |(left, right)| {
-                                let (min, max) = if left.bits_cmp(&right)
-                                    == Ordering::Less
-                                {
+                                let (min, max) = if left.bits_lt(&right) {
                                     (left, right)
                                 } else {
                                     (right, left)
@@ -1666,9 +1651,7 @@ pub mod strategy {
                             ),
                         )
                             .prop_map(move |(left, right)| {
-                                let (min, max) = if left.bits_cmp(&right)
-                                    == Ordering::Less
-                                {
+                                let (min, max) = if left.bits_lt(&right) {
                                     (left, right)
                                 } else {
                                     (right, left)
@@ -1688,6 +1671,8 @@ pub mod strategy {
 
 #[cfg(test)]
 mod tests {
+    use std::cmp::Ordering;
+
     use super::*;
     use crate::Result as TileDBResult;
     use proptest::collection::vec;
@@ -2020,10 +2005,7 @@ mod tests {
             Ordering::Less => {
                 assert_eq!(Ordering::Equal, rstart.bits_cmp(ostart))
             }
-            Ordering::Equal => assert!(matches!(
-                rstart.bits_cmp(ostart),
-                Ordering::Less | Ordering::Equal
-            )),
+            Ordering::Equal => assert!(rstart.bits_le(ostart)),
             Ordering::Greater => {
                 unreachable!(
                     "Intersection of intervals is not narrower than an input"
@@ -2034,32 +2016,17 @@ mod tests {
             Ordering::Less => unreachable!(
                 "Intersection of intervals is not narrower than an input"
             ),
-            Ordering::Equal => assert!(matches!(
-                rend.bits_cmp(oend),
-                Ordering::Equal | Ordering::Greater
-            )),
+            Ordering::Equal => assert!(rend.bits_ge(oend)),
             Ordering::Greater => {
                 assert_eq!(Ordering::Equal, rend.bits_cmp(oend))
             }
         }
 
         // also check against false positives
-        assert!(matches!(
-            lstart.bits_cmp(rend),
-            Ordering::Less | Ordering::Equal
-        ));
-        assert!(matches!(
-            rstart.bits_cmp(lend),
-            Ordering::Less | Ordering::Equal
-        ));
-        assert!(matches!(
-            lend.bits_cmp(rstart),
-            Ordering::Equal | Ordering::Greater
-        ));
-        assert!(matches!(
-            rend.bits_cmp(lstart),
-            Ordering::Equal | Ordering::Greater
-        ));
+        assert!(lstart.bits_le(rend));
+        assert!(rstart.bits_le(lend));
+        assert!(lend.bits_ge(rstart));
+        assert!(rend.bits_ge(lstart));
     }
 
     fn do_intersection_single(left: SingleValueRange, right: SingleValueRange) {
@@ -2099,9 +2066,9 @@ mod tests {
                 rstart,
                 rend,
                 {
-                    assert!(lstart <= lend);
-                    assert!(rstart <= rend);
-                    assert!(lend < rstart || rend < lstart);
+                    assert!(lstart.bits_le(&lend));
+                    assert!(rstart.bits_le(&rend));
+                    assert!(lend.bits_lt(&rstart) || rend.bits_lt(&lstart));
                 },
                 unreachable!()
             )
@@ -2145,9 +2112,9 @@ mod tests {
                 rstart,
                 rend,
                 {
-                    assert!(lstart <= lend);
-                    assert!(rstart <= rend);
-                    assert!(lend < rstart || rend < lstart);
+                    assert!(lstart.bits_le(&lend));
+                    assert!(rstart.bits_le(&rend));
+                    assert!(lend.bits_lt(&rstart) || rend.bits_lt(&lstart));
                 },
                 unreachable!()
             )
@@ -2191,9 +2158,9 @@ mod tests {
                 rstart,
                 rend,
                 {
-                    assert!(lstart <= lend);
-                    assert!(rstart <= rend);
-                    assert!(lend < rstart || rend < lstart);
+                    assert!(lstart.bits_le(&lend));
+                    assert!(rstart.bits_le(&rend));
+                    assert!(lend.bits_lt(&rstart) || rend.bits_lt(&lstart));
                 },
                 unreachable!()
             )
