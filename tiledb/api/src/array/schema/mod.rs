@@ -983,6 +983,11 @@ impl<'a> Iterator for FieldDataIter<'a> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = self.schema.num_fields() - self.cursor;
+        (exact, Some(exact))
+    }
 }
 
 impl std::iter::FusedIterator for FieldDataIter<'_> {}

@@ -1103,6 +1103,13 @@ impl Iterator for WriteSequenceIter {
             }
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::Dense(ref d) => d.size_hint(),
+            Self::Sparse(ref s) => s.size_hint(),
+        }
+    }
 }
 
 pub enum WriteSequenceRefIter<'a> {
@@ -1121,6 +1128,13 @@ impl<'a> Iterator for WriteSequenceRefIter<'a> {
             Self::Sparse(ref mut sparse) => {
                 sparse.next().map(WriteInputRef::Sparse)
             }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match self {
+            Self::Dense(ref d) => d.size_hint(),
+            Self::Sparse(ref s) => s.size_hint(),
         }
     }
 }

@@ -646,6 +646,11 @@ where
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = self.ncells - self.index;
+        (exact, Some(exact))
+    }
 }
 
 impl<'data, C> FusedIterator for CellStructureSingleIterator<'data, C> where
@@ -760,6 +765,11 @@ impl<'data, C> Iterator for FixedDataIterator<'data, C> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = self.ncells - self.index;
+        (exact, Some(exact))
+    }
 }
 
 impl<'data, C> FusedIterator for FixedDataIterator<'data, C> where C: Copy {}
@@ -867,6 +877,11 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
             None
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = self.ncells - self.offset_cursor;
+        (exact, Some(exact))
+    }
 }
 
 impl<'data, C> FusedIterator for VarDataIterator<'data, C> {}
@@ -897,6 +912,10 @@ impl<'data> Iterator for Utf8LossyIterator<'data> {
         self.var
             .next()
             .map(|s| String::from_utf8_lossy(s).to_string())
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.var.size_hint()
     }
 }
 

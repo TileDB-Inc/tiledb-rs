@@ -222,6 +222,11 @@ impl<'a> Iterator for Dimensions<'a> {
             Some(item)
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = self.bound - self.cursor;
+        (exact, Some(exact))
+    }
 }
 
 pub struct Builder {

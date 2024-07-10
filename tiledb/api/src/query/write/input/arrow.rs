@@ -624,6 +624,10 @@ impl<'data> Iterator for RecordBatchTileDBInputs<'data> {
             }
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.fields.size_hint()
+    }
 }
 
 #[cfg(test)]
