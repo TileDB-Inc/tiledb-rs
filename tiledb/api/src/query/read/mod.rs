@@ -396,11 +396,18 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum AggregateResultType {
+    Typed,
+    AggregateEnum
+}
+
 pub struct AggregateBuilder<B, T> {
     base: B,
     agg_str: CString,
     attr_str: Option<CString>,
     attr_type: PhantomData<T>,
+    result_type: AggregateResultType
 }
 
 pub struct AggregateReader<Q, T> {
@@ -455,7 +462,7 @@ where
     T: Copy,
 {
     type Intermediate = ();
-    type Final = T;
+    type Final = (T, Q::Final);
 
     fn step(
         &mut self,
@@ -489,7 +496,7 @@ where
             }
         };
 
-        Ok(ReadStepOutput::Final(return_val))
+        Ok(ReadStepOutput::Final((return_val, base_result)))
     }
 }
 
@@ -774,6 +781,7 @@ pub trait AggregateBuilderTrait: QueryBuilder {
             agg_str: agg_name,
             attr_str: attr_name,
             attr_type: PhantomData,
+            result_type: AggregateResultType::Typed
         })
     }
 }
