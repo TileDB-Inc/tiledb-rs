@@ -665,6 +665,11 @@ impl<'info> Iterator for FragmentInfoListIterator<'info> {
 
         Some(ret)
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let exact = (self.num_fragments - self.index) as usize;
+        (exact, Some(exact))
+    }
 }
 
 impl<'info> FusedIterator for FragmentInfoListIterator<'info> {}
