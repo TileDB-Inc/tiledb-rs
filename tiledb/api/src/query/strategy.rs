@@ -375,6 +375,12 @@ impl FieldData {
         })
     }
 
+    pub fn remove(&mut self, index: usize) {
+        typed_field_data_go!(self, ref mut data, {
+            data.remove(index);
+        })
+    }
+
     pub fn truncate(&mut self, len: usize) {
         typed_field_data_go!(self, ref mut data, data.truncate(len))
     }
@@ -762,6 +768,10 @@ impl Cells {
 
     pub fn fields(&self) -> &HashMap<String, FieldData> {
         &self.fields
+    }
+
+    pub fn fields_mut(&mut self) -> &mut HashMap<String, FieldData> {
+        &mut self.fields
     }
 
     pub fn attach_write<'data>(
