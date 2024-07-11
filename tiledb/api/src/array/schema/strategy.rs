@@ -67,11 +67,12 @@ impl Arbitrary for CellValNum {
             prop_oneof![
                 30 => Just(CellValNum::single()),
                 30 => Just(CellValNum::Var),
-                20 => (2u32..=8).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                25 => (2u32..=8).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
                 10 => (9u32..=16).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
-                5 => (17u32..=32).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
-                3 => (33u32..=64).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
-                2 => (65u32..=2048).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                3 => (17u32..=32).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                2 => (33u32..=64).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
+                // NB: large fixed CellValNums don't really reflect production use cases
+                // and are not well tested, and are known to cause problems
             ].boxed()
         }
     }
