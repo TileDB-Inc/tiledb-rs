@@ -13800,11 +13800,73 @@ mod tests {
             ])),
         };
 
-        let sequence = WriteSequence::Sparse(SparseWriteSequence {
-            writes: vec![write],
-        });
+        // try shrinking cell val num
+        {
+            let nz = 748;
+            let mut schema = schema.clone();
 
-        let ctx = Context::new().expect("Error creating context");
-        do_write_readback(&ctx, Rc::new(schema), sequence).unwrap();
+            schema.attributes[0].cell_val_num =
+                Some(CellValNum::try_from(nz as u32).unwrap());
+            crate::value_go!(
+                &mut schema.attributes[0].fill.as_mut().unwrap().data,
+                _DT,
+                ref mut v,
+                {
+                    v.truncate(nz);
+                }
+            );
+
+            let mut write = write.clone();
+
+            typed_field_data_go!(
+                write
+                    .data
+                    .fields_mut()
+                    .get_mut(&schema.attributes[0].name)
+                    .unwrap(),
+                _DT,
+                ref mut records,
+                unreachable!(),
+                {
+                    for r in records.iter_mut() {
+                        r.truncate(nz);
+                    }
+                }
+            );
+
+            println!(
+                "CellValNum = {:?}",
+                schema.attributes[0].cell_val_num.as_ref().unwrap()
+            );
+
+            let schema = Rc::new(schema);
+            let sequence = WriteSequence::Sparse(SparseWriteSequence {
+                writes: vec![write],
+            });
+
+            let ctx = Context::new().expect("Error creating context");
+            do_write_readback(&ctx, Rc::clone(&schema), sequence).unwrap();
+        }
+
+        /*
+        if false {
+            // try deleting records
+            for idx in 0..write.data.len() {
+                let mut write = write.clone();
+                for field in write.data.fields_mut().values_mut() {
+                    field.remove(idx);
+                }
+
+                let sequence = WriteSequence::Sparse(SparseWriteSequence {
+                    writes: vec![write],
+                });
+
+                println!("Removed record {}", idx);
+
+                let ctx = Context::new().expect("Error creating context");
+                do_write_readback(&ctx, Rc::clone(&schema), sequence).unwrap();
+            }
+        }
+        */
     }
 }
