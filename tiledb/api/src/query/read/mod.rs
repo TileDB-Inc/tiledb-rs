@@ -1,6 +1,5 @@
 use super::*;
 
-use std::any::TypeId;
 use std::cell::RefCell;
 use std::ffi::CString;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -396,21 +395,16 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum AggregateResultType {
-    Typed,
-    AggregateEnum
-}
-
-pub struct AggregateBuilder<B, T> {
+#[derive(Debug, PartialEq)]
+pub struct AggregateTypedBuilder<B, T> {
     base: B,
     agg_str: CString,
     attr_str: Option<CString>,
-    attr_type: PhantomData<T>,
-    result_type: AggregateResultType
+    attr_type: PhantomData<T>
 }
 
-pub struct AggregateReader<Q, T> {
+#[derive(Debug, PartialEq)]
+pub struct AggregateTypedReader<Q, T> {
     base: Q,
     agg_str: CString,
     _attr_str: Option<CString>, // Unused because the C API uses this memory to store the attribute name.
@@ -418,29 +412,278 @@ pub struct AggregateReader<Q, T> {
     data_size: u64,
 }
 
-impl<B, T> QueryBuilder for AggregateBuilder<B, T>
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum AggregateResultHandle {
+    UInt8(u8),
+    UInt16(u16),
+    UInt32(u32),
+    UInt64(u64),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+    Float32(f32),
+    Float64(f64),
+}
+
+macro_rules! agg_result_handle_go {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
+        match $expr {
+            AggregateResultHandle::UInt8($inner) => {
+                type $DT = u8;
+                $then
+            }
+            AggregateResultHandle::UInt16($inner) => {
+                type $DT = u16;
+                $then
+            }
+            AggregateResultHandle::UInt32($inner) => {
+                type $DT = u32;
+                $then
+            }
+            AggregateResultHandle::UInt64($inner) => {
+                type $DT = u64;
+                $then
+            }
+            AggregateResultHandle::Int8($inner) => {
+                type $DT = i8;
+                $then
+            }
+            AggregateResultHandle::Int16($inner) => {
+                type $DT = i16;
+                $then
+            }
+            AggregateResultHandle::Int32($inner) => {
+                type $DT = i32;
+                $then
+            }
+            AggregateResultHandle::Int64($inner) => {
+                type $DT = i64;
+                $then
+            }
+            AggregateResultHandle::Float32($inner) => {
+                type $DT = f32;
+                $then
+            }
+            AggregateResultHandle::Float64($inner) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    };
+}
+
+macro_rules! agg_handle_from_type_impl {
+    ($ty:ty, $constructor:expr) => {
+        impl From<$ty> for AggregateResultHandle {
+            fn from(val : $ty) -> Self {
+                $constructor(val)
+            }
+        }
+    };
+}
+
+agg_handle_from_type_impl!(i8, AggregateResultHandle::Int8);
+agg_handle_from_type_impl!(i16, AggregateResultHandle::Int16);
+agg_handle_from_type_impl!(i32, AggregateResultHandle::Int32);
+agg_handle_from_type_impl!(i64, AggregateResultHandle::Int64);
+agg_handle_from_type_impl!(u8, AggregateResultHandle::UInt8);
+agg_handle_from_type_impl!(u16, AggregateResultHandle::UInt16);
+agg_handle_from_type_impl!(u32, AggregateResultHandle::UInt32);
+agg_handle_from_type_impl!(u64, AggregateResultHandle::UInt64);
+agg_handle_from_type_impl!(f32, AggregateResultHandle::Float32);
+agg_handle_from_type_impl!(f64, AggregateResultHandle::Float64);
+
+#[derive(Debug, PartialEq)]
+pub enum AggregateEnumBuilder<B> {
+    UInt8(AggregateTypedBuilder<B, u8>),
+    UInt16(AggregateTypedBuilder<B, u16>),
+    UInt32(AggregateTypedBuilder<B, u32>),
+    UInt64(AggregateTypedBuilder<B, u64>),
+    Int8(AggregateTypedBuilder<B, i8>),
+    Int16(AggregateTypedBuilder<B, i16>),
+    Int32(AggregateTypedBuilder<B, i32>),
+    Int64(AggregateTypedBuilder<B, i64>),
+    Float32(AggregateTypedBuilder<B, f32>),
+    Float64(AggregateTypedBuilder<B, f64>)
+}
+
+macro_rules! agg_enum_builder_go {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
+        match $expr {
+            AggregateEnumBuilder::UInt8($inner) => {
+                type $DT = u8;
+                $then
+            }
+            AggregateEnumBuilder::UInt16($inner) => {
+                type $DT = u16;
+                $then
+            }
+            AggregateEnumBuilder::UInt32($inner) => {
+                type $DT = u32;
+                $then
+            }
+            AggregateEnumBuilder::UInt64($inner) => {
+                type $DT = u64;
+                $then
+            }
+            AggregateEnumBuilder::Int8($inner) => {
+                type $DT = i8;
+                $then
+            }
+            AggregateEnumBuilder::Int16($inner) => {
+                type $DT = i16;
+                $then
+            }
+            AggregateEnumBuilder::Int32($inner) => {
+                type $DT = i32;
+                $then
+            }
+            AggregateEnumBuilder::Int64($inner) => {
+                type $DT = i64;
+                $then
+            }
+            AggregateEnumBuilder::Float32($inner) => {
+                type $DT = f32;
+                $then
+            }
+            AggregateEnumBuilder::Float64($inner) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    };
+}
+
+#[derive(Debug, PartialEq)]
+pub enum AggregateEnumReader<Q> {
+    UInt8(AggregateTypedReader<Q, u8>),
+    UInt16(AggregateTypedReader<Q, u16>),
+    UInt32(AggregateTypedReader<Q, u32>),
+    UInt64(AggregateTypedReader<Q, u64>),
+    Int8(AggregateTypedReader<Q, i8>),
+    Int16(AggregateTypedReader<Q, i16>),
+    Int32(AggregateTypedReader<Q, i32>),
+    Int64(AggregateTypedReader<Q, i64>),
+    Float32(AggregateTypedReader<Q, f32>),
+    Float64(AggregateTypedReader<Q, f64>)
+}
+
+macro_rules! agg_enum_reader_go {
+    ($expr:expr, $DT:ident, $inner:pat, $then:expr) => {
+        match $expr {
+            AggregateEnumReader::UInt8($inner) => {
+                type $DT = u8;
+                $then
+            }
+            AggregateEnumReader::UInt16($inner) => {
+                type $DT = u16;
+                $then
+            }
+            AggregateEnumReader::UInt32($inner) => {
+                type $DT = u32;
+                $then
+            }
+            AggregateEnumReader::UInt64($inner) => {
+                type $DT = u64;
+                $then
+            }
+            AggregateEnumReader::Int8($inner) => {
+                type $DT = i8;
+                $then
+            }
+            AggregateEnumReader::Int16($inner) => {
+                type $DT = i16;
+                $then
+            }
+            AggregateEnumReader::Int32($inner) => {
+                type $DT = i32;
+                $then
+            }
+            AggregateEnumReader::Int64($inner) => {
+                type $DT = i64;
+                $then
+            }
+            AggregateEnumReader::Float32($inner) => {
+                type $DT = f32;
+                $then
+            }
+            AggregateEnumReader::Float64($inner) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    };
+}
+
+
+impl<B, T> QueryBuilder for AggregateTypedBuilder<B, T>
 where
     B: QueryBuilder,
     T: Default,
 {
-    type Query = AggregateReader<B::Query, T>;
+    type Query = AggregateTypedReader<B::Query, T>;
 
     fn base(&self) -> &BuilderBase {
         self.base.base()
     }
 
     fn build(self) -> Self::Query {
-        AggregateReader::<B::Query, T> {
+        AggregateTypedReader::<B::Query, T> {
             base: self.base.build(),
             agg_str: self.agg_str,
             _attr_str: self.attr_str,
             data: T::default(),
-            data_size: 8u64,
+            data_size: mem::size_of::<T>() as u64
         }
     }
 }
 
-impl<Q, T> Query for AggregateReader<Q, T>
+impl <B> QueryBuilder for AggregateEnumBuilder<B>
+where B: QueryBuilder {
+    type Query = AggregateEnumReader<B::Query>;
+
+    fn base(&self) -> &BuilderBase {
+        agg_enum_builder_go!(self, _DT, builder, builder.base.base())
+    }
+
+    fn build(self) -> Self::Query {
+        match self {
+            AggregateEnumBuilder::UInt8(agg_builder) => {
+                AggregateEnumReader::UInt8(agg_builder.build())
+            }
+            AggregateEnumBuilder::UInt16(agg_builder) => {
+                AggregateEnumReader::UInt16(agg_builder.build())
+            }
+            AggregateEnumBuilder::UInt32(agg_builder) => {
+                AggregateEnumReader::UInt32(agg_builder.build())
+            }
+            AggregateEnumBuilder::UInt64(agg_builder) => {
+                AggregateEnumReader::UInt64(agg_builder.build())
+            }
+            AggregateEnumBuilder::Int8(agg_builder) => {
+                AggregateEnumReader::Int8(agg_builder.build())
+            }
+            AggregateEnumBuilder::Int16(agg_builder) => {
+                AggregateEnumReader::Int16(agg_builder.build())
+            }
+            AggregateEnumBuilder::Int32(agg_builder) => {
+                AggregateEnumReader::Int32(agg_builder.build())
+            }
+            AggregateEnumBuilder::Int64(agg_builder) => {
+                AggregateEnumReader::Int64(agg_builder.build())
+            }
+            AggregateEnumBuilder::Float32(agg_builder) => {
+                AggregateEnumReader::Float32(agg_builder.build())
+            }
+            AggregateEnumBuilder::Float64(agg_builder) => {
+                AggregateEnumReader::Float64(agg_builder.build())
+            }
+        }
+    }
+}
+
+impl<Q, T> Query for AggregateTypedReader<Q, T>
 where
     Q: Query,
 {
@@ -456,7 +699,23 @@ where
     }
 }
 
-impl<Q, T> ReadQuery for AggregateReader<Q, T>
+impl<Q> Query for AggregateEnumReader<Q>
+where
+    Q: Query,
+{
+    fn base(&self) -> &QueryBase {
+        agg_enum_reader_go!(self, _DT, reader, reader.base.base())
+    }
+
+    fn finalize(self) -> TileDBResult<Array>
+    where
+        Self: Sized,
+    {
+        agg_enum_reader_go!(self, _DT, reader, reader.base.finalize())
+    }
+}
+
+impl<Q, T> ReadQuery for AggregateTypedReader<Q, T>
 where
     Q: ReadQuery,
     T: Copy,
@@ -486,8 +745,8 @@ where
 
         // There are no intermediate results for aggregates since the buffer size should be one
         // element (and therefore, no space constraints).
-        let return_val = match base_result {
-            ReadStepOutput::Final(_) => self.data,
+        let (return_val, base_q) = match base_result {
+            ReadStepOutput::Final(base_q) => (self.data, base_q),
             ReadStepOutput::Intermediate(_) => {
                 unreachable!("Aggregate step function.")
             }
@@ -496,7 +755,26 @@ where
             }
         };
 
-        Ok(ReadStepOutput::Final((return_val, base_result)))
+        Ok(ReadStepOutput::Final((return_val, base_q)))
+    }
+}
+
+impl<Q> ReadQuery for AggregateEnumReader<Q>
+where
+    Q: ReadQuery,
+{
+    type Intermediate = ();
+    type Final = (AggregateResultHandle, Q::Final);
+
+    fn step(&mut self) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
+        agg_enum_reader_go!(self, _DT, reader, {
+            let step_result = reader.step()?;
+            let enum_result = match step_result {
+                ReadStepOutput::Final((return_val, base_q)) => ReadStepOutput::Final((AggregateResultHandle::from(return_val), base_q)),
+                _ => unreachable!("Aggregate enum step function")
+            };
+            Ok(enum_result)
+        })
     }
 }
 
@@ -516,126 +794,83 @@ impl Display for AggregateType {
     }
 }
 
-fn aggregate_type_checker<T: 'static>(
+fn aggregate_type(
     agg_type: AggregateType,
     attr_type_option: Option<Datatype>,
-) -> TileDBResult<()> {
-    let tid = TypeId::of::<T>();
+) -> TileDBResult<Datatype> {
+    match agg_type {
+        AggregateType::Count | AggregateType::NullCount=> Ok(Datatype::UInt64),
+        AggregateType::Mean => Ok(Datatype::Float64),
+        AggregateType::Sum => {
+            if attr_type_option == None {
+                return Err(TileDBError::InvalidArgument(anyhow!("Aggregate type for sum should have argument for attribute.")));
+            }
 
-    if (agg_type == AggregateType::NullCount
-        || agg_type == AggregateType::Count)
-        && tid != TypeId::of::<u64>()
-    {
-        return Err(TileDBError::InvalidArgument(anyhow!(
-            "Count aggregates should have u64 result types."
-        )));
-    }
+            let attr_type = attr_type_option.as_ref().unwrap();
+            if *attr_type == Datatype::Int8
+                || *attr_type == Datatype::Int16
+                || *attr_type == Datatype::Int32
+                || *attr_type == Datatype::Int64
+            {
+                Ok(Datatype::Int64)
+            }
+            else if *attr_type == Datatype::UInt8
+                || *attr_type == Datatype::UInt16
+                || *attr_type == Datatype::UInt32
+                || *attr_type == Datatype::UInt64
+            {
+                Ok(Datatype::UInt64)
+            }
+            else if *attr_type == Datatype::Float32 || *attr_type == Datatype::Float64
+            {
+                Ok(Datatype::Float64)
+            }
+            else {
+                Err(TileDBError::InvalidArgument(anyhow!("Invalid attribute type.")))
+            }
+        }
+        AggregateType::Min | AggregateType::Max => {
+            if attr_type_option == None {
+                return Err(TileDBError::InvalidArgument(anyhow!("Aggregate type for min/max should have argument for attribute.")));
+            }
 
-    if agg_type == AggregateType::Mean && tid != TypeId::of::<f64>() {
-        return Err(TileDBError::InvalidArgument(anyhow!(
-            "Mean aggregates should have f64 result types."
-        )));
-    }
-
-    // Check if aggregate type is sum, then the size of the type should be 8, and
-    // the integral type should match.
-    if agg_type == AggregateType::Sum {
-        if mem::size_of::<T>() != 8 {
-            return Err(TileDBError::InvalidArgument(anyhow!(
-                "Sum aggregate should come with a value of size 8."
-            )));
-        }
-
-        let attr_type = attr_type_option.as_ref().unwrap();
-        if (*attr_type == Datatype::Int8
-            || *attr_type == Datatype::Int16
-            || *attr_type == Datatype::Int32
-            || *attr_type == Datatype::Int64)
-            && tid != TypeId::of::<i64>()
-        {
-            return Err(TileDBError::InvalidArgument(anyhow!(
-                "Signed integral sum aggregate type should be an i64."
-            )));
-        }
-
-        if (*attr_type == Datatype::UInt8
-            || *attr_type == Datatype::UInt16
-            || *attr_type == Datatype::UInt32
-            || *attr_type == Datatype::UInt64)
-            && tid != TypeId::of::<u64>()
-        {
-            return Err(TileDBError::InvalidArgument(anyhow!(
-                "Unsigned integral sum aggregate type should be an u64."
-            )));
-        }
-
-        if (*attr_type == Datatype::Float32 || *attr_type == Datatype::Float64)
-            && tid != TypeId::of::<f64>()
-        {
-            return Err(TileDBError::InvalidArgument(anyhow!(
-                "Floating point sum aggregate type should be an f64."
-            )));
-        }
-    } else if agg_type == AggregateType::Min || agg_type == AggregateType::Max {
-        let attr_type = attr_type_option.as_ref().unwrap();
-        if *attr_type == Datatype::Int8 && tid != TypeId::of::<i8>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int8: unmatched result type.")));
-        }
-        if *attr_type == Datatype::Int16 && tid != TypeId::of::<i16>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int16: unmatched result type.")));
-        }
-        if *attr_type == Datatype::Int32 && tid != TypeId::of::<i32>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int32: unmatched result type.")));
-        }
-        if *attr_type == Datatype::Int64 && tid != TypeId::of::<i64>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Int64: unmatched result type.")));
-        }
-        if *attr_type == Datatype::UInt8 && tid != TypeId::of::<u8>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt8: unmatched result type.")));
-        }
-        if *attr_type == Datatype::UInt16 && tid != TypeId::of::<u16>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt16: unmatched result type.")));
-        }
-        if *attr_type == Datatype::UInt32 && tid != TypeId::of::<u32>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt32: unmatched result type.")));
-        }
-        if *attr_type == Datatype::UInt64 && tid != TypeId::of::<u64>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == UInt64: unmatched result type.")));
-        }
-        if *attr_type == Datatype::Float32 && tid != TypeId::of::<f32>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Float32: unmatched result type.")));
-        }
-        if *attr_type == Datatype::Float64 && tid != TypeId::of::<f64>() {
-            return Err(TileDBError::InvalidArgument(anyhow!("Min/Max aggregates & attr_type == Float64: unmatched result type.")));
+            let attr_type = attr_type_option.as_ref().unwrap();
+            Ok(*attr_type)
         }
     }
-
-    Ok(())
 }
 
 /// Trait for query types which can have an aggregate channel placed on top of them.
 pub trait AggregateBuilderTrait: QueryBuilder {
-    fn apply_aggregate<T: 'static>(
+    fn apply_typed_aggregate<T: 'static>(
         self,
         agg_type: AggregateType,
         name: Option<String>,
-    ) -> TileDBResult<AggregateBuilder<Self, T>> {
-        if agg_type == AggregateType::Count {
-            aggregate_type_checker::<T>(agg_type, None)?;
-        } else {
-            // Checking that the attribute exists in the schema.
-            let schema = self.base().array().schema()?;
-            if name.is_none() {
-                return Err(TileDBError::InvalidArgument(anyhow!(
-                    agg_type.to_string()
-                        + " aggregate should have an attribute to sum over."
-                )));
-            }
+    ) -> TileDBResult<AggregateTypedBuilder<Self, T>> {
+        let attr_type_option = match agg_type {
+            AggregateType::Count => None,
+            _ => {
+                let schema = self.base().array().schema()?;
+                if name.is_none() {
+                    return Err(TileDBError::InvalidArgument(anyhow!(
+                        agg_type.to_string()
+                            + " aggregate should have an attribute to sum over."
+                    )));
+                }
 
-            let an: &String = name.as_ref().unwrap();
-            let attr = schema.field(an)?;
-            let attr_type = attr.datatype()?;
-            aggregate_type_checker::<T>(agg_type, Some(attr_type))?;
+                let an: &String = name.as_ref().unwrap();
+                let attr = schema.field(an)?;
+                let attr_type = attr.datatype()?;
+                Some(attr_type)
+            }
+        };
+
+        let expected_type = aggregate_type(agg_type, attr_type_option)?;
+        if !expected_type.is_compatible_type::<T>() {
+            return Err(TileDBError::InvalidArgument(anyhow!(
+                expected_type.to_string()
+                    + " result type is not equivalent to the passed in type."
+            )));
         }
 
         let (agg_name, attr_name) = match agg_type {
@@ -776,13 +1011,57 @@ pub trait AggregateBuilderTrait: QueryBuilder {
             )
         })?;
 
-        Ok(AggregateBuilder::<Self, T> {
+        Ok(AggregateTypedBuilder::<Self, T> {
             base: self,
             agg_str: agg_name,
             attr_str: attr_name,
-            attr_type: PhantomData,
-            result_type: AggregateResultType::Typed
+            attr_type: PhantomData
         })
+    }
+}
+
+pub trait AggregateEnumBuilderTrait : QueryBuilder {
+    fn apply_enum_aggregate(
+        self,
+        agg_type: AggregateType,
+        name: Option<String>,
+    ) -> TileDBResult<AggregateEnumBuilder<Self>> 
+    where Self : AggregateBuilderTrait
+    {
+    
+        let attr_type_option = match agg_type {
+            AggregateType::Count => None,
+            _ => {
+                let schema = self.base().array().schema()?;
+                if name.is_none() {
+                    return Err(TileDBError::InvalidArgument(anyhow!(
+                        agg_type.to_string()
+                            + " aggregate should have an attribute to sum over."
+                    )));
+                }
+
+                let an: &String = name.as_ref().unwrap();
+                let attr = schema.field(an)?;
+                let attr_type = attr.datatype()?;
+                Some(attr_type)
+            }
+        };
+
+        let aggregate_result_type = aggregate_type(agg_type, attr_type_option)?;
+        let agg_builder = match aggregate_result_type {
+            Datatype::UInt8 => AggregateEnumBuilder::UInt8(self.apply_typed_aggregate::<u8>(agg_type, name)?),
+            Datatype::UInt16 => AggregateEnumBuilder::UInt16(self.apply_typed_aggregate::<u16>(agg_type, name)?),
+            Datatype::UInt32 => AggregateEnumBuilder::UInt32(self.apply_typed_aggregate::<u32>(agg_type, name)?),
+            Datatype::UInt64 => AggregateEnumBuilder::UInt64(self.apply_typed_aggregate::<u64>(agg_type, name)?),
+            Datatype::Int8 => AggregateEnumBuilder::Int8(self.apply_typed_aggregate::<i8>(agg_type, name)?),
+            Datatype::Int16 => AggregateEnumBuilder::Int16(self.apply_typed_aggregate::<i16>(agg_type, name)?),
+            Datatype::Int32 => AggregateEnumBuilder::Int32(self.apply_typed_aggregate::<i32>(agg_type, name)?),
+            Datatype::Int64 => AggregateEnumBuilder::Int64(self.apply_typed_aggregate::<i64>(agg_type, name)?),
+            Datatype::Float32 => AggregateEnumBuilder::Float32(self.apply_typed_aggregate::<f32>(agg_type, name)?),
+            Datatype::Float64 => AggregateEnumBuilder::Float64(self.apply_typed_aggregate::<f64>(agg_type, name)?),
+            _ => unreachable!("aggregate_type function should return a numeric type.")
+        };
+        Ok(agg_builder)
     }
 }
 
@@ -856,14 +1135,16 @@ impl<I, F> Iterator for ReadQueryIterator<I, F> {
 
 impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}
 
-impl AggregateBuilder for ReadBuilder {}
 impl AggregateBuilderTrait for ReadBuilder {}
-impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> {}
-impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where
+impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateTypedBuilder<B, T> where
     T: Default
 {
 }
-impl<B: QueryBuilder, T> AggregateBuilderTrait for AggregateBuilder<B, T> where
-    T: Default
+impl <B : QueryBuilder> AggregateBuilderTrait for AggregateEnumBuilder<B> {}
+
+impl AggregateEnumBuilderTrait for ReadBuilder {}
+impl <B: QueryBuilder, T> AggregateEnumBuilderTrait for AggregateTypedBuilder<B, T> where
+T: Default
 {
 }
+impl <B : QueryBuilder> AggregateEnumBuilderTrait for AggregateEnumBuilder<B> {}

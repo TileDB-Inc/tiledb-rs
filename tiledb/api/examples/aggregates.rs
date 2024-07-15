@@ -1,7 +1,8 @@
 extern crate tiledb;
 
 use crate::tiledb::query::read::AggregateBuilderTrait;
-use tiledb::query::read::AggregateType;
+use crate::tiledb::query::read::AggregateEnumBuilderTrait;
+use tiledb::query::read::{AggregateResultHandle, AggregateType};
 use tiledb::query::{QueryBuilder, ReadQuery};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
@@ -115,14 +116,14 @@ fn get_count() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_aggregate::<u64>(AggregateType::Count, None)?
+        .apply_typed_aggregate::<u64>(AggregateType::Count, None)?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?
         .finish_subarray()?
         .build();
 
-    let results: u64 = query.execute()?;
+    let (results, _): (u64, ()) = query.execute()?;
     println!("{}", results);
 
     Ok(())
@@ -139,7 +140,7 @@ fn get_sum() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_aggregate::<i64>(
+        .apply_typed_aggregate::<i64>(
             AggregateType::Sum,
             Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
         )?
@@ -149,8 +150,119 @@ fn get_sum() -> TileDBResult<()> {
         .finish_subarray()?
         .build();
 
-    let results: i64 = query.execute()?;
+    let (results, _): (i64, ()) = query.execute()?;
     println!("{}", results);
+
+    Ok(())
+}
+
+fn get_min_max() -> TileDBResult<()> {
+    let tdb = tiledb::context::Context::new()?;
+
+    let array = tiledb::Array::open(
+        &tdb,
+        QUICKSTART_DENSE_ARRAY_URI,
+        tiledb::array::Mode::Read,
+    )?;
+
+    let mut query = tiledb::query::ReadBuilder::new(array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .apply_typed_aggregate::<i32>(
+            AggregateType::Max,
+            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+        )?
+        .apply_typed_aggregate::<i32>(
+            AggregateType::Min,
+            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+        )?
+        .start_subarray()?
+        .add_range("rows", &[1i32, 2])?
+        .add_range("columns", &[2i32, 4])?
+        .finish_subarray()?
+        .build();
+
+    let (min_res, (max_res, _)): (i32, (i32, ())) = query.execute()?;
+    println!("{}", min_res);
+    println!("{}", max_res);
+
+    Ok(())
+}
+
+fn get_min_max_enum() -> TileDBResult<()> {
+    let tdb = tiledb::context::Context::new()?;
+
+    let array = tiledb::Array::open(
+        &tdb,
+        QUICKSTART_DENSE_ARRAY_URI,
+        tiledb::array::Mode::Read,
+    )?;
+
+    let mut query = tiledb::query::ReadBuilder::new(array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .apply_enum_aggregate(
+            AggregateType::Max,
+            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+        )?
+        .apply_enum_aggregate(
+            AggregateType::Min,
+            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+        )?
+        .start_subarray()?
+        .add_range("rows", &[1i32, 2])?
+        .add_range("columns", &[2i32, 4])?
+        .finish_subarray()?
+        .build();
+
+    let (min_res_enum, (max_res_enum, _)) = query.execute()?;
+    let min_res = match min_res_enum {
+        AggregateResultHandle::Int32(res) => res,
+        _ => unreachable!("Wrong return type!")
+    };
+
+    let max_res = match max_res_enum {
+        AggregateResultHandle::Int32(res) => res,
+        _ => unreachable!("Wrong return type!")
+    };
+
+    println!("{}", min_res);
+    println!("{}", max_res);
+
+    Ok(())
+}
+
+fn get_min_max_half() -> TileDBResult<()> {
+    let tdb = tiledb::context::Context::new()?;
+
+    let array = tiledb::Array::open(
+        &tdb,
+        QUICKSTART_DENSE_ARRAY_URI,
+        tiledb::array::Mode::Read,
+    )?;
+
+    let mut query = tiledb::query::ReadBuilder::new(array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .apply_typed_aggregate::<i32>(
+            AggregateType::Max,
+            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+        )?
+        .apply_enum_aggregate(
+            AggregateType::Min,
+            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+        )?
+        .start_subarray()?
+        .add_range("rows", &[1i32, 2])?
+        .add_range("columns", &[2i32, 4])?
+        .finish_subarray()?
+        .build();
+
+    let (min_res_enum, (max_res, _)) = query.execute()?;
+    let min_res = match min_res_enum {
+        AggregateResultHandle::Int32(res) => res,
+        _ => unreachable!("Wrong return type!")
+    };
+
+    println!("{}", min_res);
+    println!("{}", max_res);
 
     Ok(())
 }
@@ -162,4 +274,7 @@ fn main() {
     write_array().expect("Failed to write array");
     get_count().expect("Failed to count array");
     get_sum().expect("Failed to sum array");
+    get_min_max().expect("Failed to min/max array");
+    get_min_max_enum().expect("Failed to min/max array");
+    get_min_max_half().expect("Failed to min/max array");
 }
