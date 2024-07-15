@@ -261,7 +261,7 @@ impl Group {
         .to_string();
         let uri = uri?;
 
-        let object_type = ObjectType::try_from(tiledb_type)?;
+        let object_type = ObjectType::from_capi(tiledb_type)?.unwrap();
         Ok(GroupInfo {
             uri,
             group_type: object_type,

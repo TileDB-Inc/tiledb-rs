@@ -1,6 +1,7 @@
 extern crate tiledb;
 
 use std::cell::{Ref, RefCell};
+use std::path::PathBuf;
 
 use itertools::izip;
 use tiledb::array::{CellOrder, TileOrder};
@@ -15,7 +16,7 @@ use tiledb::query::{
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
-const ARRAY_NAME: &str = "reading_incomplete_array";
+const ARRAY_NAME: &str = "reading_incomplete";
 
 const INT32_ATTRIBUTE_NAME: &str = "a1";
 const CHAR_ATTRIBUTE_NAME: &str = "a2";
@@ -367,6 +368,12 @@ fn read_array_callback() -> TileDBResult<()> {
 }
 
 fn main() -> TileDBResult<()> {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     if !array_exists() {
         create_array().expect("Failed to create array");
         write_array().expect("Failed to write array");

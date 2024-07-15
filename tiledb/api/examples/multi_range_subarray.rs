@@ -1,5 +1,7 @@
 extern crate tiledb;
 
+use std::path::PathBuf;
+
 use itertools::izip;
 
 use tiledb::array::{
@@ -40,6 +42,12 @@ const ARRAY_URI: &str = "multi_range_slicing";
 /// 4   3   15
 /// 4   4   16
 fn main() -> TileDBResult<()> {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     let ctx = Context::new()?;
     if !Array::exists(&ctx, ARRAY_URI)? {
         create_array(&ctx)?;
