@@ -116,7 +116,7 @@ fn get_count() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_typed_aggregate::<u64>(AggregateType::Count, None)?
+        .apply_typed_aggregate::<u64>(AggregateType::Count)?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?
@@ -141,8 +141,7 @@ fn get_sum() -> TileDBResult<()> {
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .apply_typed_aggregate::<i64>(
-            AggregateType::Sum,
-            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+            AggregateType::Sum(QUICKSTART_ATTRIBUTE_NAME.to_string())
         )?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
@@ -168,12 +167,10 @@ fn get_min_max() -> TileDBResult<()> {
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .apply_typed_aggregate::<i32>(
-            AggregateType::Max,
-            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+            AggregateType::Max(QUICKSTART_ATTRIBUTE_NAME.to_string())
         )?
         .apply_typed_aggregate::<i32>(
-            AggregateType::Min,
-            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+            AggregateType::Min(QUICKSTART_ATTRIBUTE_NAME.to_string())
         )?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
@@ -200,12 +197,10 @@ fn get_min_max_enum() -> TileDBResult<()> {
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .apply_enum_aggregate(
-            AggregateType::Max,
-            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+            AggregateType::Max(QUICKSTART_ATTRIBUTE_NAME.to_string())
         )?
         .apply_enum_aggregate(
-            AggregateType::Min,
-            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+            AggregateType::Min(QUICKSTART_ATTRIBUTE_NAME.to_string())
         )?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
@@ -242,12 +237,10 @@ fn get_min_max_half() -> TileDBResult<()> {
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .apply_typed_aggregate::<i32>(
-            AggregateType::Max,
-            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+            AggregateType::Max(QUICKSTART_ATTRIBUTE_NAME.to_string())
         )?
         .apply_enum_aggregate(
-            AggregateType::Min,
-            Some(QUICKSTART_ATTRIBUTE_NAME.to_string()),
+            AggregateType::Min(QUICKSTART_ATTRIBUTE_NAME.to_string())
         )?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
