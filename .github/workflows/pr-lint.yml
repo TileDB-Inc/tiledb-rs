@@ -1,9 +1,9 @@
-name: PR Build and Test
+name: PR Lint
 on:
   workflow_call:
 
 jobs:
-  build_and_test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tiledb-rs
@@ -14,10 +14,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Install TileDB
         uses: ./.github/actions/install-tiledb
-      - name: Build
-        run: cargo build --all-targets --all-features
-      - name: Test
-        run: |
-          cargo test --all-targets --all-features
-          status=$?
-          echo "Process exited with status ${status}"
+      - name: Check Formatting
+        run: cargo fmt --quiet --check
+      - name: Lint
+        run: cargo clippy --no-deps --all-targets --all-features -- -Dwarnings

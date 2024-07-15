@@ -18,5 +18,8 @@ jobs:
   build-and-test:
     uses: ./.github/workflows/pr-build-and-test.yml
 
+  lint:
+    uses: ./.github/workflows/pr-lint.yml
+
   check-api-coverage:
     uses: ./.github/workflows/pr-api-coverage.yml
