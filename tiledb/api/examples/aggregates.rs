@@ -140,9 +140,9 @@ fn get_sum() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_typed_aggregate::<i64>(
-            AggregateType::Sum(QUICKSTART_ATTRIBUTE_NAME.to_string())
-        )?
+        .apply_typed_aggregate::<i64>(AggregateType::Sum(
+            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+        ))?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?
@@ -166,12 +166,12 @@ fn get_min_max() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_typed_aggregate::<i32>(
-            AggregateType::Max(QUICKSTART_ATTRIBUTE_NAME.to_string())
-        )?
-        .apply_typed_aggregate::<i32>(
-            AggregateType::Min(QUICKSTART_ATTRIBUTE_NAME.to_string())
-        )?
+        .apply_typed_aggregate::<i32>(AggregateType::Max(
+            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+        ))?
+        .apply_typed_aggregate::<i32>(AggregateType::Min(
+            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+        ))?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?
@@ -196,12 +196,12 @@ fn get_min_max_enum() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_enum_aggregate(
-            AggregateType::Max(QUICKSTART_ATTRIBUTE_NAME.to_string())
-        )?
-        .apply_enum_aggregate(
-            AggregateType::Min(QUICKSTART_ATTRIBUTE_NAME.to_string())
-        )?
+        .apply_enum_aggregate(AggregateType::Max(
+            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+        ))?
+        .apply_enum_aggregate(AggregateType::Min(
+            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+        ))?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?
@@ -211,12 +211,12 @@ fn get_min_max_enum() -> TileDBResult<()> {
     let (min_res_enum, (max_res_enum, _)) = query.execute()?;
     let min_res = match min_res_enum {
         AggregateResultHandle::Int32(res) => res,
-        _ => unreachable!("Wrong return type!")
+        _ => unreachable!("Wrong return type!"),
     };
 
     let max_res = match max_res_enum {
         AggregateResultHandle::Int32(res) => res,
-        _ => unreachable!("Wrong return type!")
+        _ => unreachable!("Wrong return type!"),
     };
 
     println!("{}", min_res);
@@ -236,12 +236,12 @@ fn get_min_max_half() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_typed_aggregate::<i32>(
-            AggregateType::Max(QUICKSTART_ATTRIBUTE_NAME.to_string())
-        )?
-        .apply_enum_aggregate(
-            AggregateType::Min(QUICKSTART_ATTRIBUTE_NAME.to_string())
-        )?
+        .apply_typed_aggregate::<i32>(AggregateType::Max(
+            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+        ))?
+        .apply_enum_aggregate(AggregateType::Min(
+            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+        ))?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[2i32, 4])?
@@ -251,12 +251,35 @@ fn get_min_max_half() -> TileDBResult<()> {
     let (min_res_enum, (max_res, _)) = query.execute()?;
     let min_res = match min_res_enum {
         AggregateResultHandle::Int32(res) => res,
-        _ => unreachable!("Wrong return type!")
+        _ => unreachable!("Wrong return type!"),
     };
 
     println!("{}", min_res);
     println!("{}", max_res);
 
+    Ok(())
+}
+
+fn get_mean() -> TileDBResult<()> {
+    let tdb = tiledb::context::Context::new()?;
+
+    let array = tiledb::Array::open(
+        &tdb,
+        QUICKSTART_DENSE_ARRAY_URI,
+        tiledb::array::Mode::Read,
+    )?;
+
+    let mut query = tiledb::query::ReadBuilder::new(array)?
+        .layout(tiledb::query::QueryLayout::RowMajor)?
+        .mean(QUICKSTART_ATTRIBUTE_NAME.to_string())?
+        .start_subarray()?
+        .add_range("rows", &[1i32, 2])?
+        .add_range("columns", &[2i32, 4])?
+        .finish_subarray()?
+        .build();
+
+    let (mean, ()) = query.execute()?;
+    println!("{}", mean);
     Ok(())
 }
 
@@ -270,4 +293,5 @@ fn main() {
     get_min_max().expect("Failed to min/max array");
     get_min_max_enum().expect("Failed to min/max array");
     get_min_max_half().expect("Failed to min/max array");
+    get_mean().expect("Failed to get mean of array.");
 }
