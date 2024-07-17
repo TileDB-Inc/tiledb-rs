@@ -135,11 +135,7 @@ impl DenseWriteParameters {
         const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
 
         let env = "TILEDB_STRATEGY_DENSE_WRITE_PARAMETERS_MEMORY_LIMIT";
-        match std::env::var(env) {
-            Ok(limit) => usize::from_str(&limit)
-                .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
-            Err(_) => MEMORY_LIMIT_DEFAULT,
-        }
+        crate::tests::env::<usize>(env).unwrap_or(MEMORY_LIMIT_DEFAULT)
     }
 }
 
@@ -994,11 +990,7 @@ impl<W> WriteSequenceParametersImpl<W> {
         pub const DEFAULT_MIN_WRITES: usize = 1;
 
         let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MIN_WRITES";
-        match std::env::var(env) {
-            Ok(limit) => usize::from_str(&limit)
-                .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
-            Err(_) => DEFAULT_MIN_WRITES,
-        }
+        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MIN_WRITES)
     }
 
     pub fn max_writes_default() -> usize {
