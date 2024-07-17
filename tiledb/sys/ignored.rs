@@ -288,16 +288,6 @@ extern "C" {
         end_size: u64,
     ) -> i32;
 
-    pub fn tiledb_query_add_range_var_by_name(
-        ctx: *mut tiledb_ctx_t,
-        query: *mut tiledb_query_t,
-        dim_name: *const ::std::os::raw::c_char,
-        start: *const ::std::os::raw::c_void,
-        start_size: u64,
-        end: *const ::std::os::raw::c_void,
-        end_size: u64,
-    ) -> i32;
-
     pub fn tiledb_query_get_range_num(
         ctx: *mut tiledb_ctx_t,
         query: *const tiledb_query_t,
