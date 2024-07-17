@@ -1598,22 +1598,7 @@ impl CellsStrategy {
     fn nrecords_limit(&self) -> Option<usize> {
         if let Some(schema) = self.schema.array_schema() {
             if !schema.allow_duplicates.unwrap_or(true) {
-                /*
-                 * TODO: this is a much larger constraint than it needs to
-                 * be, we want all the rows to be unique but right now
-                 * too much of the strategy reasons about columns, so it's
-                 * going to be a big effort to restrict this down
-                 * to `DomainData::num_cells` instead
-                 */
-                return usize::try_from(
-                    schema
-                        .domain
-                        .dimension
-                        .iter()
-                        .filter_map(|d| d.constraints.num_cells())
-                        .min()?,
-                )
-                .ok();
+                return schema.domain.num_cells();
             }
         }
         None
@@ -1628,7 +1613,8 @@ impl Strategy for CellsStrategy {
         /* Choose the maximum number of records */
         let strat_nrecords = if let Some(limit) = self.nrecords_limit() {
             if limit < self.params.min_records {
-                todo!()
+                let r = format!("Schema and parameters are not satisfiable: schema.domain.num_cells() = {}, self.params.min_records = {}", limit, self.params.min_records);
+                return Err(proptest::test_runner::Reason::from(r));
             } else {
                 let max_records = std::cmp::min(self.params.max_records, limit);
                 self.params.min_records..=max_records
