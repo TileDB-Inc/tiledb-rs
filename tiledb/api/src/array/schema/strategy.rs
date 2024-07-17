@@ -40,7 +40,7 @@ impl Requirements {
     }
 
     pub fn max_attributes_default() -> usize {
-        const DEFAULT_MAX_ATTRIBUTES: usize = 32;
+        const DEFAULT_MAX_ATTRIBUTES: usize = 8;
 
         let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MAX";
         crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MAX_ATTRIBUTES)

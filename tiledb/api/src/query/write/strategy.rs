@@ -58,14 +58,12 @@ pub fn query_write_schema_requirements(
     crate::array::schema::strategy::Requirements {
         domain: Some(Rc::new(crate::array::domain::strategy::Requirements {
             array_type,
-            num_dimensions: 1..=1,
             dimension: Some(crate::array::dimension::strategy::Requirements {
                 filters: Some(Rc::new(query_write_filter_requirements())),
                 ..Default::default()
             }),
             ..Default::default()
         })),
-        num_attributes: 1..=1,
         attribute_filters: Some(Rc::new(query_write_filter_requirements())),
         coordinates_filters: Some(Rc::new(query_write_filter_requirements())),
         offsets_filters: Some(Rc::new(query_write_filter_requirements())),

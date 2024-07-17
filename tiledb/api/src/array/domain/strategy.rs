@@ -25,7 +25,7 @@ impl Requirements {
     }
 
     pub fn max_dimensions_default() -> usize {
-        const DEFAULT_MAX_DIMENSIONS: usize = 1;
+        const DEFAULT_MAX_DIMENSIONS: usize = 3;
 
         let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX";
         crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MAX_DIMENSIONS)
