@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::{Deref, RangeInclusive};
 use std::rc::Rc;
+use std::str::FromStr;
 
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
@@ -122,11 +123,34 @@ impl DenseWriteInput {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct DenseWriteParameters {
     pub schema: Option<Rc<SchemaData>>,
     pub layout: Option<CellOrder>,
-    pub memory_limit: Option<usize>,
+    pub memory_limit: usize,
+}
+
+impl DenseWriteParameters {
+    pub fn memory_limit_default() -> usize {
+        const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
+
+        let env = "DENSE_WRITE_PARAMETERS_MEMORY_LIMIT";
+        match std::env::var(env) {
+            Ok(limit) => usize::from_str(&limit)
+                .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
+            Err(_) => MEMORY_LIMIT_DEFAULT,
+        }
+    }
+}
+
+impl Default for DenseWriteParameters {
+    fn default() -> Self {
+        DenseWriteParameters {
+            schema: Default::default(),
+            layout: Default::default(),
+            memory_limit: Self::memory_limit_default(),
+        }
+    }
 }
 
 pub struct DenseWriteValueTree {
@@ -317,12 +341,8 @@ impl Strategy for DenseWriteStrategy {
          * For simplicity, we will bound the memory used at each dimension
          * rather than keeping a moving product of the accumulated memory
          */
-        let memory_limit: usize = {
-            const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
-            let memory_limit =
-                self.params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
-            memory_limit / self.schema.domain.dimension.len()
-        };
+        let memory_limit =
+            { self.params.memory_limit / self.schema.domain.dimension.len() };
 
         if matches!(self.layout, CellOrder::Global) {
             // necessary to align to tile boundaries
