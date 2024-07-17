@@ -1566,4 +1566,121 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn sc_51250() {
+        use std::collections::HashMap;
+
+        use crate::array::{
+            attribute::FillData, ArrayType, AttributeData, CellOrder,
+            DimensionConstraints, DimensionData, DomainData, SchemaData,
+            TileOrder,
+        };
+        use crate::filter::{
+            list::FilterListData, ChecksumType::*, CompressionData,
+            CompressionType::*, FilterData::*, WebPFilterInputFormat::*,
+        };
+        use crate::query::strategy::FieldData;
+        use crate::Datatype;
+
+        let schema = SchemaData {
+            array_type: ArrayType::Dense,
+            domain: DomainData {
+                dimension: vec![
+                    DimensionData {
+                        name: "2_VRSD4jCCb_K_ZA6".to_owned(),
+                        datatype: Datatype::UInt32,
+                        constraints: DimensionConstraints::UInt32(
+                            [14, 45],
+                            Some(17),
+                        ),
+                        cell_val_num: Some(CellValNum::single()),
+                        filters: Some(FilterListData::from([Checksum(Md5)])),
+                    },
+                    DimensionData {
+                        name: "9_b0CNC_S4j5T____eKab84x_F_i9dBR".to_owned(),
+                        datatype: Datatype::UInt32,
+                        constraints: DimensionConstraints::UInt32(
+                            [47, 136],
+                            Some(56),
+                        ),
+                        cell_val_num: Some(CellValNum::single()),
+                        filters: Some(FilterListData::from([
+                            Compression(CompressionData {
+                                kind: Bzip2,
+                                level: Some(9),
+                            }),
+                            BitShuffle,
+                            BitShuffle,
+                            Checksum(Sha256),
+                        ])),
+                    },
+                ],
+            },
+            capacity: Some(14159271),
+            cell_order: Some(CellOrder::RowMajor),
+            tile_order: Some(TileOrder::RowMajor),
+            allow_duplicates: Some(false),
+            attributes: vec![AttributeData {
+                name: "_".to_owned(),
+                datatype: Datatype::UInt8,
+                nullability: Some(true),
+                cell_val_num: Some(CellValNum::Var),
+                fill: Some(FillData {
+                    data: crate::metadata::Value::UInt8Value(vec![
+                        203, 182, 193, 86, 185, 64, 147, 171, 98, 49, 211, 128,
+                        24, 196, 28,
+                    ]),
+                    nullability: Some(true),
+                }),
+                filters: FilterListData::from([
+                    Checksum(Sha256),
+                    WebP {
+                        input_format: Bgra,
+                        lossless: Some(true),
+                        quality: Some(23.752424),
+                    },
+                ]),
+            }],
+            coordinate_filters: FilterListData::from([]),
+            offsets_filters: FilterListData::from([
+                BitShuffle,
+                Compression(CompressionData {
+                    kind: Zstd,
+                    level: Some(7),
+                }),
+            ]),
+            nullity_filters: FilterListData::from([]),
+        };
+
+        let writes = WriteSequence::Dense(DenseWriteSequence {
+            writes: vec![DenseWriteInput {
+                layout: CellOrder::ColumnMajor,
+                data: Cells::new(HashMap::from([(
+                    "_".to_owned(),
+                    FieldData::VecUInt8(vec![
+                        vec![143, 12, 203, 165],
+                        vec![178, 55, 11, 214],
+                        vec![31, 206, 97, 23, 132, 24, 59, 194],
+                        vec![205, 11],
+                        vec![128, 166, 49],
+                        vec![117],
+                        vec![203, 143, 78, 145, 35],
+                        vec![127, 98, 168, 102, 220, 125, 244, 119],
+                        vec![64, 3, 32, 30, 118, 0, 185],
+                        vec![109, 208, 115, 175, 44],
+                        vec![110, 209, 97, 217, 218],
+                        vec![238, 12, 57, 49],
+                    ]),
+                )])),
+                subarray: vec![
+                    SingleValueRange::UInt32(17, 19),
+                    SingleValueRange::UInt32(80, 83),
+                ],
+            }],
+        });
+
+        let ctx = Context::new().expect("Error creating context");
+        do_write_readback(&ctx, Rc::new(schema), writes).unwrap();
+    }
 }
