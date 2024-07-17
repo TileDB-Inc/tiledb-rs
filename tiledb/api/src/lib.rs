@@ -107,7 +107,7 @@ mod private {
     pub(crate) use sealed;
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub(crate) mod tests {
     use std::str::FromStr;
 
