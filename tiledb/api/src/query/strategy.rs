@@ -1561,24 +1561,47 @@ pub struct CellsParameters {
     pub schema: Option<CellsStrategySchema>,
     pub min_records: usize,
     pub max_records: usize,
-    pub value_min_var_size: usize,
-    pub value_max_var_size: usize,
+    pub cell_min_var_size: usize,
+    pub cell_max_var_size: usize,
+}
+
+impl CellsParameters {
+    pub fn min_records_default() -> usize {
+        const CELLS_MIN_RECORDS: usize = 0;
+        let env_min = "TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MIN";
+        crate::tests::env::<usize>(env_min).unwrap_or(CELLS_MIN_RECORDS)
+    }
+
+    pub fn max_records_default() -> usize {
+        let env_max = "TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MAX";
+        const CELLS_MAX_RECORDS: usize = 16;
+
+        crate::tests::env::<usize>(env_max).unwrap_or(CELLS_MAX_RECORDS)
+    }
+
+    pub fn cell_min_var_size_default() -> usize {
+        const CELLS_CELL_VAR_SIZE_MIN: usize = 0;
+
+        let env_min = "TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MIN";
+        crate::tests::env::<usize>(env_min).unwrap_or(CELLS_CELL_VAR_SIZE_MIN)
+    }
+
+    pub fn cell_max_var_size_default() -> usize {
+        const CELLS_CELL_VAR_SIZE_MAX: usize = 0;
+        let env_max = "TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MAX";
+
+        crate::tests::env::<usize>(env_max).unwrap_or(CELLS_CELL_VAR_SIZE_MAX)
+    }
 }
 
 impl Default for CellsParameters {
     fn default() -> Self {
-        const WRITE_QUERY_MIN_RECORDS: usize = 0;
-        const WRITE_QUERY_MAX_RECORDS: usize = 16;
-
-        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
-        const WRITE_QUERY_MAX_VAR_SIZE: usize = 8;
-
         CellsParameters {
             schema: None,
-            min_records: WRITE_QUERY_MIN_RECORDS,
-            max_records: WRITE_QUERY_MAX_RECORDS,
-            value_min_var_size: WRITE_QUERY_MIN_VAR_SIZE,
-            value_max_var_size: WRITE_QUERY_MAX_VAR_SIZE,
+            min_records: Self::min_records_default(),
+            max_records: Self::max_records_default(),
+            cell_min_var_size: Self::cell_min_var_size_default(),
+            cell_max_var_size: Self::cell_max_var_size_default(),
         }
     }
 }
