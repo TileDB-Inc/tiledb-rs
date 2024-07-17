@@ -134,7 +134,7 @@ impl DenseWriteParameters {
     pub fn memory_limit_default() -> usize {
         const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
 
-        let env = "DENSE_WRITE_PARAMETERS_MEMORY_LIMIT";
+        let env = "TILEDB_STRATEGY_DENSE_WRITE_PARAMETERS_MEMORY_LIMIT";
         match std::env::var(env) {
             Ok(limit) => usize::from_str(&limit)
                 .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
@@ -993,7 +993,7 @@ impl<W> WriteSequenceParametersImpl<W> {
     pub fn min_writes_default() -> usize {
         pub const DEFAULT_MIN_WRITES: usize = 1;
 
-        let env = "WRITE_SEQUENCE_PARAMETERS_MIN_WRITES";
+        let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MIN_WRITES";
         match std::env::var(env) {
             Ok(limit) => usize::from_str(&limit)
                 .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
@@ -1004,7 +1004,7 @@ impl<W> WriteSequenceParametersImpl<W> {
     pub fn max_writes_default() -> usize {
         pub const DEFAULT_MAX_WRITES: usize = 8;
 
-        let env = "WRITE_SEQUENCE_PARAMETERS_MAX_WRITES";
+        let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MAX_WRITES";
         match std::env::var(env) {
             Ok(limit) => usize::from_str(&limit)
                 .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
