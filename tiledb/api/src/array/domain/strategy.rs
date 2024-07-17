@@ -17,19 +17,35 @@ pub struct Requirements {
 }
 
 impl Requirements {
-    pub const DEFAULT_MIN_DIMENSIONS: usize = 1;
-    pub const DEFAULT_MAX_DIMENSIONS: usize = 8;
+    pub fn min_dimensions_default() -> usize {
+        const DEFAULT_MIN_DIMENSIONS: usize = 1;
 
-    pub const DEFAULT_CELLS_PER_TILE_LIMIT: usize = 1024 * 32;
+        let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MIN";
+        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MIN_DIMENSIONS)
+    }
+
+    pub fn max_dimensions_default() -> usize {
+        const DEFAULT_MAX_DIMENSIONS: usize = 1;
+
+        let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX";
+        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MAX_DIMENSIONS)
+    }
+
+    pub fn cells_per_tile_limit_default() -> usize {
+        const DEFAULT_CELLS_PER_TILE_LIMIT: usize = 1024 * 32;
+
+        let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_CELLS_PER_TILE_LIMIT";
+        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_CELLS_PER_TILE_LIMIT)
+    }
 }
 
 impl Default for Requirements {
     fn default() -> Self {
         Requirements {
             array_type: None,
-            num_dimensions: Self::DEFAULT_MIN_DIMENSIONS
-                ..=Self::DEFAULT_MAX_DIMENSIONS,
-            cells_per_tile_limit: Self::DEFAULT_CELLS_PER_TILE_LIMIT,
+            num_dimensions: Self::min_dimensions_default()
+                ..=Self::max_dimensions_default(),
+            cells_per_tile_limit: Self::cells_per_tile_limit_default(),
             dimension: None,
         }
     }
@@ -179,6 +195,6 @@ mod tests {
         }
         let last = value.current();
         assert_ne!(init, last);
-        assert_eq!(Requirements::DEFAULT_MIN_DIMENSIONS, last.dimension.len());
+        assert_eq!(1, last.dimension.len());
     }
 }
