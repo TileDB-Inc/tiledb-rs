@@ -990,8 +990,27 @@ pub type SparseWriteSequenceParameters =
     WriteSequenceParametersImpl<SparseWriteParameters>;
 
 impl<W> WriteSequenceParametersImpl<W> {
-    pub const DEFAULT_MIN_WRITES: usize = 1;
-    pub const DEFAULT_MAX_WRITES: usize = 8;
+    pub fn min_writes_default() -> usize {
+        pub const DEFAULT_MIN_WRITES: usize = 1;
+
+        let env = "WRITE_SEQUENCE_PARAMETERS_MIN_WRITES";
+        match std::env::var(env) {
+            Ok(limit) => usize::from_str(&limit)
+                .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
+            Err(_) => DEFAULT_MIN_WRITES,
+        }
+    }
+
+    pub fn max_writes_default() -> usize {
+        pub const DEFAULT_MAX_WRITES: usize = 8;
+
+        let env = "WRITE_SEQUENCE_PARAMETERS_MAX_WRITES";
+        match std::env::var(env) {
+            Ok(limit) => usize::from_str(&limit)
+                .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
+            Err(_) => DEFAULT_MAX_WRITES,
+        }
+    }
 }
 
 impl<W> Default for WriteSequenceParametersImpl<W>
@@ -1001,8 +1020,8 @@ where
     fn default() -> Self {
         WriteSequenceParametersImpl {
             write: Rc::new(Default::default()),
-            min_writes: Self::DEFAULT_MIN_WRITES,
-            max_writes: Self::DEFAULT_MAX_WRITES,
+            min_writes: Self::min_writes_default(),
+            max_writes: Self::max_writes_default(),
         }
     }
 }
@@ -1021,16 +1040,16 @@ impl WriteSequenceParameters {
                     schema: Some(schema),
                     ..Default::default()
                 }),
-                min_writes: DenseWriteSequenceParameters::DEFAULT_MIN_WRITES,
-                max_writes: DenseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+                min_writes: DenseWriteSequenceParameters::min_writes_default(),
+                max_writes: DenseWriteSequenceParameters::max_writes_default(),
             }),
             ArrayType::Sparse => Self::Sparse(SparseWriteSequenceParameters {
                 write: Rc::new(SparseWriteParameters {
                     schema: Some(schema),
                     ..Default::default()
                 }),
-                min_writes: SparseWriteSequenceParameters::DEFAULT_MIN_WRITES,
-                max_writes: SparseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+                min_writes: SparseWriteSequenceParameters::min_writes_default(),
+                max_writes: SparseWriteSequenceParameters::max_writes_default(),
             }),
         }
     }
