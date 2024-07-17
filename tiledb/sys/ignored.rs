@@ -322,15 +322,6 @@ extern "C" {
         end_size: *mut u64,
     ) -> i32;
 
-    pub fn tiledb_query_get_range_var(
-        ctx: *mut tiledb_ctx_t,
-        query: *const tiledb_query_t,
-        dim_idx: u32,
-        range_idx: u64,
-        start: *mut ::std::os::raw::c_void,
-        end: *mut ::std::os::raw::c_void,
-    ) -> i32;
-
     pub fn tiledb_query_get_range_var_from_name(
         ctx: *mut tiledb_ctx_t,
         query: *const tiledb_query_t,
