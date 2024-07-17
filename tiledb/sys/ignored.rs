@@ -217,15 +217,6 @@ extern "C" {
 
     pub fn tiledb_ctx_cancel_tasks(ctx: *mut tiledb_ctx_t) -> capi_return_t;
 
-    pub fn tiledb_query_submit_async(
-        ctx: *mut tiledb_ctx_t,
-        query: *mut tiledb_query_t,
-        callback: ::std::option::Option<
-            unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void),
-        >,
-        callback_data: *mut ::std::os::raw::c_void,
-    ) -> i32;
-
     // Filter types are not part of the public Rust API and the filter API's types
     // already have their Debug traits implemented.
 
