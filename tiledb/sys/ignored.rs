@@ -136,15 +136,6 @@ extern "C" {
         end: *mut ::std::os::raw::c_void,
     ) -> i32;
 
-    // We use get_fragment_name_v2
-
-    pub fn tiledb_fragment_info_get_fragment_name(
-        ctx: *mut tiledb_ctx_t,
-        fragment_info: *mut tiledb_fragment_info_t,
-        fid: u32,
-        name: *mut *const ::std::os::raw::c_char,
-    ) -> i32;
-
     // The tiledb_handle_* functions are for internal use. They should probably be
     // part of a library separate from libtiledb.{dylib,so,dll} but for now they're
     // just lumped in.
