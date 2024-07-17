@@ -36,3 +36,4 @@ pkg-config = { workspace = true }
 default = []
 proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:proptest-derive", "dep:tiledb-test-utils"]
 arrow = ["dep:arrow"]
+static = []

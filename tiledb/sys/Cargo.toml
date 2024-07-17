@@ -4,4 +4,10 @@ version = { workspace = true }
 edition = { workspace = true }
 
 [build-dependencies]
+cmake = { workspace = true, optional = true }
 pkg-config = { workspace = true }
+subprocess = { workspace = true, optional = true }
+
+[features]
+default = []
+static = ["dep:cmake", "dep:subprocess"]

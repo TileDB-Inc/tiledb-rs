@@ -4,6 +4,8 @@
 target
 test.config
 
+rustc_linker_args.txt
+
 .*.swp
 .*.swo
 
