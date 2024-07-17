@@ -2,13 +2,14 @@ extern crate tiledb;
 
 use crate::tiledb::query::read::AggregateBuilderTrait;
 use crate::tiledb::query::read::AggregateEnumBuilderTrait;
+use std::path::PathBuf;
 use tiledb::query::read::{AggregateResultHandle, AggregateType};
 use tiledb::query::{QueryBuilder, ReadQuery};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
-const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense_array";
-const QUICKSTART_ATTRIBUTE_NAME: &str = "a";
+const AGGREGATE_ARRAY_URI: &str = "aggregates";
+const AGGREGATE_ATTRIBUTE_NAME: &str = "a";
 
 /// Returns whether the example array already exists
 fn array_exists() -> bool {
@@ -17,11 +18,11 @@ fn array_exists() -> bool {
         Ok(tdb) => tdb,
     };
 
-    tiledb::array::Array::exists(&tdb, QUICKSTART_DENSE_ARRAY_URI)
+    tiledb::array::Array::exists(&tdb, AGGREGATE_ARRAY_URI)
         .expect("Error checking array existence")
 }
 
-/// Creates a dense array at URI `QUICKSTART_DENSE_ARRAY_URI()`.
+/// Creates a dense array at URI `AGGREGATE_ARRAY_URI()`.
 /// The array has two i32 dimensions ["rows", "columns"] with a single int32
 /// attribute "a" stored in each cell.
 /// Both "rows" and "columns" dimensions range from 1 to 4, and the tiles
@@ -56,7 +57,7 @@ fn create_array() -> TileDBResult<()> {
 
     let attribute_a = tiledb::array::AttributeBuilder::new(
         &tdb,
-        QUICKSTART_ATTRIBUTE_NAME,
+        AGGREGATE_ATTRIBUTE_NAME,
         tiledb::Datatype::Int32,
     )?
     .build();
@@ -69,7 +70,7 @@ fn create_array() -> TileDBResult<()> {
     .add_attribute(attribute_a)?
     .build()?;
 
-    tiledb::Array::create(&tdb, QUICKSTART_DENSE_ARRAY_URI, schema)
+    tiledb::Array::create(&tdb, AGGREGATE_ARRAY_URI, schema)
 }
 
 /// Writes data into the array in row-major order from a 1D-array buffer.
@@ -83,7 +84,7 @@ fn write_array() -> TileDBResult<()> {
 
     let array = tiledb::Array::open(
         &tdb,
-        QUICKSTART_DENSE_ARRAY_URI,
+        AGGREGATE_ARRAY_URI,
         tiledb::array::Mode::Write,
     )?;
 
@@ -91,7 +92,7 @@ fn write_array() -> TileDBResult<()> {
 
     let query = tiledb::query::WriteBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .data_typed(QUICKSTART_ATTRIBUTE_NAME, &data)?
+        .data_typed(AGGREGATE_ATTRIBUTE_NAME, &data)?
         .build();
 
     query.submit().map(|_| ())
@@ -110,7 +111,7 @@ fn get_count() -> TileDBResult<()> {
 
     let array = tiledb::Array::open(
         &tdb,
-        QUICKSTART_DENSE_ARRAY_URI,
+        AGGREGATE_ARRAY_URI,
         tiledb::array::Mode::Read,
     )?;
 
@@ -124,166 +125,133 @@ fn get_count() -> TileDBResult<()> {
         .build();
 
     let (results, _): (u64, ()) = query.execute()?;
-    println!("{}", results);
+    println!("Count is {}", results);
 
     Ok(())
 }
 
+/// Query back a slice of our array and print the results to stdout.
+/// The slice on "rows" is [1, 2] and on "columns" is [1, 4],
+/// so the returned data should look like:
+/// [[ 1,  2,  3,  4],
+///  [ 5,  6,  7,  8],
+///  [ _,  _,  _,  _],
+///  [ _,  _,  _,  _]]]
+/// This should print 36, which is the sum of elements in the slice.
 fn get_sum() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array = tiledb::Array::open(
         &tdb,
-        QUICKSTART_DENSE_ARRAY_URI,
+        AGGREGATE_ARRAY_URI,
         tiledb::array::Mode::Read,
     )?;
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .apply_typed_aggregate::<i64>(AggregateType::Sum(
-            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+            AGGREGATE_ATTRIBUTE_NAME.to_string(),
         ))?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
-        .add_range("columns", &[2i32, 4])?
+        .add_range("columns", &[1i32, 4])?
         .finish_subarray()?
         .build();
 
     let (results, _): (i64, ()) = query.execute()?;
-    println!("{}", results);
+    println!("Sum is {}", results);
 
     Ok(())
 }
 
+/// Query back a slice of our array and print the results to stdout.
+/// The slice on "rows" is [2, 3] and on "columns" is [2, 3],
+/// so the returned data should look like:
+/// [[ _,  _,  _,  _],
+///  [ _,  6,  7,  _],
+///  [ _,  10,  11,  _],
+///  [ _,  _,  _,  _]]]
+/// This should print 6 and 11, which are the min and max of the slice.
+/// This function also uses the AggregateResultHandle enum to pass the
+/// result back.
 fn get_min_max() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array = tiledb::Array::open(
         &tdb,
-        QUICKSTART_DENSE_ARRAY_URI,
-        tiledb::array::Mode::Read,
-    )?;
-
-    let mut query = tiledb::query::ReadBuilder::new(array)?
-        .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_typed_aggregate::<i32>(AggregateType::Max(
-            QUICKSTART_ATTRIBUTE_NAME.to_string(),
-        ))?
-        .apply_typed_aggregate::<i32>(AggregateType::Min(
-            QUICKSTART_ATTRIBUTE_NAME.to_string(),
-        ))?
-        .start_subarray()?
-        .add_range("rows", &[1i32, 2])?
-        .add_range("columns", &[2i32, 4])?
-        .finish_subarray()?
-        .build();
-
-    let (min_res, (max_res, _)): (i32, (i32, ())) = query.execute()?;
-    println!("{}", min_res);
-    println!("{}", max_res);
-
-    Ok(())
-}
-
-fn get_min_max_enum() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
-
-    let array = tiledb::Array::open(
-        &tdb,
-        QUICKSTART_DENSE_ARRAY_URI,
+        AGGREGATE_ARRAY_URI,
         tiledb::array::Mode::Read,
     )?;
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .apply_enum_aggregate(AggregateType::Max(
-            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+            AGGREGATE_ATTRIBUTE_NAME.to_string(),
         ))?
         .apply_enum_aggregate(AggregateType::Min(
-            QUICKSTART_ATTRIBUTE_NAME.to_string(),
+            AGGREGATE_ATTRIBUTE_NAME.to_string(),
         ))?
         .start_subarray()?
-        .add_range("rows", &[1i32, 2])?
-        .add_range("columns", &[2i32, 4])?
+        .add_range("rows", &[2i32, 3])?
+        .add_range("columns", &[2i32, 3])?
         .finish_subarray()?
         .build();
 
     let (min_res_enum, (max_res_enum, _)) = query.execute()?;
     let min_res = match min_res_enum {
         AggregateResultHandle::Int32(res) => res,
-        _ => unreachable!("Wrong return type!"),
+        _ => unreachable!("Expected Int32 but found {:?}", min_res_enum),
     };
 
     let max_res = match max_res_enum {
         AggregateResultHandle::Int32(res) => res,
-        _ => unreachable!("Wrong return type!"),
+        _ => unreachable!("Expected Int32 but found {:?}", max_res_enum),
     };
 
-    println!("{}", min_res);
-    println!("{}", max_res);
+    println!("Min is {}", min_res);
+    println!("Max is {}", max_res);
 
     Ok(())
 }
 
-fn get_min_max_half() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
-
-    let array = tiledb::Array::open(
-        &tdb,
-        QUICKSTART_DENSE_ARRAY_URI,
-        tiledb::array::Mode::Read,
-    )?;
-
-    let mut query = tiledb::query::ReadBuilder::new(array)?
-        .layout(tiledb::query::QueryLayout::RowMajor)?
-        .apply_typed_aggregate::<i32>(AggregateType::Max(
-            QUICKSTART_ATTRIBUTE_NAME.to_string(),
-        ))?
-        .apply_enum_aggregate(AggregateType::Min(
-            QUICKSTART_ATTRIBUTE_NAME.to_string(),
-        ))?
-        .start_subarray()?
-        .add_range("rows", &[1i32, 2])?
-        .add_range("columns", &[2i32, 4])?
-        .finish_subarray()?
-        .build();
-
-    let (min_res_enum, (max_res, _)) = query.execute()?;
-    let min_res = match min_res_enum {
-        AggregateResultHandle::Int32(res) => res,
-        _ => unreachable!("Wrong return type!"),
-    };
-
-    println!("{}", min_res);
-    println!("{}", max_res);
-
-    Ok(())
-}
-
+/// Query back a slice of our array and print the results to stdout.
+/// The slice on "rows" is [2, 3] and on "columns" is [1, 3],
+/// so the returned data should look like:
+/// [[ _,  _,  _,  _],
+///  [ 5,  6,  7,  _],
+///  [ 9,  10,  11,  _],
+///  [ _,  _,  _,  _]]]
+/// This should print 8, which is the mean of the slice.
 fn get_mean() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
     let array = tiledb::Array::open(
         &tdb,
-        QUICKSTART_DENSE_ARRAY_URI,
+        AGGREGATE_ARRAY_URI,
         tiledb::array::Mode::Read,
     )?;
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .mean(QUICKSTART_ATTRIBUTE_NAME.to_string())?
+        .mean(AGGREGATE_ATTRIBUTE_NAME.to_string())?
         .start_subarray()?
-        .add_range("rows", &[1i32, 2])?
-        .add_range("columns", &[2i32, 4])?
+        .add_range("rows", &[2i32, 3])?
+        .add_range("columns", &[1i32, 3])?
         .finish_subarray()?
         .build();
 
     let (mean, ()) = query.execute()?;
-    println!("{}", mean);
+    println!("Mean is {}", mean);
     Ok(())
 }
 
 fn main() {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
     if !array_exists() {
         create_array().expect("Failed to create array");
     }
@@ -291,7 +259,5 @@ fn main() {
     get_count().expect("Failed to count array");
     get_sum().expect("Failed to sum array");
     get_min_max().expect("Failed to min/max array");
-    get_min_max_enum().expect("Failed to min/max array");
-    get_min_max_half().expect("Failed to min/max array");
     get_mean().expect("Failed to get mean of array.");
 }

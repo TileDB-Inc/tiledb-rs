@@ -7,3 +7,4 @@ quickstart_dense
 quickstart_sparse_string
 reading_incomplete
 using_tiledb_stats
+aggregates
