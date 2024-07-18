@@ -6,3 +6,5 @@ test.config
 
 .*.swp
 .*.swo
+
+/.idea/*
