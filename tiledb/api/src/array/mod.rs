@@ -26,6 +26,7 @@ pub mod enumeration;
 pub mod fragment_info;
 pub mod schema;
 
+use crate::config::Config;
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
 pub use dimension::{
     Builder as DimensionBuilder, Dimension, DimensionConstraints, DimensionData,
@@ -378,6 +379,97 @@ impl Array {
 
         let datatype = Datatype::try_from(c_datatype)?;
         Ok(Some(datatype))
+    }
+
+    /// Cleans up the array, such as consolidated fragments and array metadata.
+    pub fn vacuum<S>(
+        ctx: &Context,
+        array_uri: S,
+        config: &Config,
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_array_uri = cstring!(array_uri.as_ref());
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_vacuum(ctx, c_array_uri.as_ptr(), config.capi())
+        })?;
+        Ok(())
+    }
+
+    /// Upgrades an array to the latest format version.
+    pub fn upgrade_version<S>(
+        ctx: &Context,
+        array_uri: S,
+        config: &Config,
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_array_uri = cstring!(array_uri.as_ref());
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_upgrade_version(
+                ctx,
+                c_array_uri.as_ptr(),
+                config.capi(),
+            )
+        })?;
+        Ok(())
+    }
+
+    /// Depending on the consolidation mode in the config, consolidates either the fragment files,
+    /// fragment metadata files, or array metadata files into a single file.
+    pub fn consolidate<S>(
+        ctx: &Context,
+        array_uri: S,
+        config: &Config,
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_array_uri = cstring!(array_uri.as_ref());
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_consolidate(
+                ctx,
+                c_array_uri.as_ptr(),
+                config.capi(),
+            )
+        })?;
+        Ok(())
+    }
+
+    /// Consolidates the given fragment URIs into a single fragment.
+    pub fn consolidate_fragments<S>(
+        ctx: &Context,
+        array_uri: S,
+        fragment_names: &[S],
+        config: &Config,
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_array_uri = cstring!(array_uri.as_ref());
+
+        // This array has to outlive the API call below.
+        let fragment_names_cstr = fragment_names
+            .iter()
+            .map(|fragment_name| Ok(cstring!(fragment_name.as_ref())))
+            .collect::<TileDBResult<Vec<_>>>()?;
+        let fragment_names_ptr = fragment_names_cstr
+            .iter()
+            .map(|fragment_name| fragment_name.as_ptr())
+            .collect::<Vec<_>>();
+
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_consolidate_fragments(
+                ctx,
+                c_array_uri.as_ptr(),
+                fragment_names_ptr.as_ptr(),
+                fragment_names_ptr.len() as u64,
+                config.capi(),
+            )
+        })?;
+        Ok(())
     }
 
     // Implements `dimension_nonempty_domain` for dimensions with CellValNum::Fixed
@@ -779,7 +871,9 @@ pub mod tests {
     use super::*;
     use crate::array::dimension::DimensionConstraints;
     use crate::metadata::Value;
-    use crate::query::QueryType;
+    use crate::query::{
+        Query, QueryBuilder, QueryLayout, QueryType, WriteBuilder,
+    };
     use crate::{Datatype, Factory};
 
     /// Create the array used in the "quickstart_dense" example
@@ -814,7 +908,7 @@ pub mod tests {
                 .build()
         };
 
-        let s: Schema = SchemaBuilder::new(context, ArrayType::Sparse, d)
+        let s: Schema = SchemaBuilder::new(context, ArrayType::Dense, d)
             .unwrap()
             .add_attribute(
                 AttributeBuilder::new(context, "a", Datatype::UInt64)
@@ -1018,5 +1112,112 @@ pub mod tests {
         }
 
         test_uri.close().map_err(|e| Error::Other(e.to_string()))
+    }
+
+    fn create_simple_dense(
+        test_uri: &dyn TestArrayUri,
+        ctx: &Context,
+    ) -> TileDBResult<String> {
+        let domain = {
+            let rows = DimensionBuilder::new(
+                ctx,
+                "id",
+                Datatype::Int32,
+                ([1, 410], 10),
+            )?
+            .build();
+
+            DomainBuilder::new(ctx)?.add_dimension(rows)?.build()
+        };
+
+        let schema = SchemaBuilder::new(ctx, ArrayType::Dense, domain)?
+            .add_attribute(
+                AttributeBuilder::new(ctx, "a", Datatype::Int32)?.build(),
+            )?
+            .build()?;
+
+        let array_uri = test_uri
+            .with_path("quickstart_dense")
+            .map_err(|e| Error::Other(e.to_string()))?;
+        Array::create(ctx, &array_uri, schema)?;
+        Ok(array_uri)
+    }
+
+    fn write_dense_vector_4_fragments(
+        ctx: &Context,
+        array_uri: &str,
+        timestamp: u64,
+    ) -> TileDBResult<()> {
+        // Subarray boundaries.
+        let boundaries = [0, 200, 250, 310, 410];
+
+        for i in 0..4 {
+            // Prepare cell buffer.
+            let low_bound = boundaries[i];
+            let high_bound = boundaries[i + 1];
+
+            let data = (low_bound..high_bound).collect::<Vec<i32>>();
+
+            let opener = ArrayOpener::new(ctx, array_uri, Mode::Write)?
+                .end_timestamp(timestamp + i as u64 + 1)?;
+            let array = opener.open()?;
+
+            let q1 = WriteBuilder::new(array)?
+                .layout(QueryLayout::RowMajor)?
+                .start_subarray()?
+                .set_subarray(&[low_bound + 1, boundaries[i + 1]])?
+                .finish_subarray()?
+                .data_typed("a", &data)?
+                .build();
+            q1.submit().and_then(|_| q1.finalize())?;
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_array_consolidation() -> TileDBResult<()> {
+        // Test advanced consolidation. Based on unit-capi-consolidation.cc.
+
+        let ctx: Context = Context::new().unwrap();
+        let array_uri = tiledb_test_utils::get_uri_generator().unwrap();
+        let array_uri = create_simple_dense(&array_uri, &ctx)?;
+        write_dense_vector_4_fragments(&ctx, &array_uri, 0).unwrap();
+
+        let mut config = Config::new()?;
+        config.set("sm.consolidation.steps", "1").unwrap();
+        config.set("sm.consolidation.step_min_frags", "2").unwrap();
+        config.set("sm.consolidation.step_max_frags", "2").unwrap();
+        config
+            .set("sm.consolidation.step_size_ratio", "0.0")
+            .unwrap();
+        config.set("sm.consolidation.buffer_size", "10000").unwrap();
+
+        let get_fragments_fn =
+            || FragmentInfoBuilder::new(&ctx, array_uri.clone())?.build();
+        let count_fragments_fn = || get_fragments_fn()?.num_fragments();
+        assert_eq!(4, count_fragments_fn()?);
+
+        // Consolidate and Vacuum.
+        Array::consolidate(&ctx, &array_uri, &config).unwrap();
+        Array::vacuum(&ctx, &array_uri, &config).unwrap();
+        // We have consolidated first two fragments.
+        assert_eq!(3, count_fragments_fn()?);
+
+        let fragment_names = get_fragments_fn()?
+            .iter()?
+            .map(|f| f.name())
+            .collect::<TileDBResult<Vec<_>>>()?;
+        // Consolidate second and third remaining fragments.
+        Array::consolidate_fragments(
+            &ctx,
+            array_uri.clone(),
+            &fragment_names[1..3],
+            &config,
+        )?;
+        Array::vacuum(&ctx, &array_uri, &config).unwrap();
+        assert_eq!(2, count_fragments_fn().unwrap());
+
+        Ok(())
     }
 }
