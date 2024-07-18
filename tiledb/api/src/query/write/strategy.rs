@@ -44,6 +44,7 @@ pub fn query_write_filter_requirements() -> FilterRequirements {
         allow_compression_rle: false, // probably can be enabled but nontrivial
         allow_compression_dict: false, // probably can be enabled but nontrivial
         allow_compression_delta: false, // SC-47328
+        allow_webp: false,            // SC-51250
         ..Default::default()
     }
 }

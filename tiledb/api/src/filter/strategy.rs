@@ -54,6 +54,7 @@ pub struct Requirements {
     pub allow_compression_rle: bool,
     pub allow_compression_dict: bool,
     pub allow_compression_delta: bool,
+    pub allow_webp: bool,
 }
 
 impl Requirements {
@@ -100,6 +101,7 @@ impl Default for Requirements {
             allow_compression_rle: true,
             allow_compression_dict: true,
             allow_compression_delta: true,
+            allow_webp: true,
         }
     }
 }
@@ -288,6 +290,10 @@ fn prop_scalefloat() -> impl Strategy<Value = FilterData> {
 fn prop_webp(
     requirements: &Rc<Requirements>,
 ) -> Option<impl Strategy<Value = FilterData>> {
+    if !requirements.allow_webp {
+        return None;
+    }
+
     if let Some(StrategyContext::SchemaAttribute(
         attribute_type,
         _,
