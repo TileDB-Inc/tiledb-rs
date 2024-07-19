@@ -15,6 +15,20 @@ use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
 use crate::{physical_type_go, Context, Datatype, Result as TileDBResult};
 
+// additional methods with arrow features
+impl Attribute {
+    pub fn to_arrow(&self) -> TileDBResult<FieldToArrowResult> {
+        crate::array::attribute::arrow::to_arrow(self)
+    }
+
+    pub fn from_arrow(
+        context: &Context,
+        field: &arrow::datatypes::Field,
+    ) -> TileDBResult<AttributeFromArrowResult> {
+        crate::array::attribute::arrow::from_arrow(context, field)
+    }
+}
+
 /// Encapsulates TileDB Attribute fill value data for storage in Arrow field metadata
 #[derive(Deserialize, Serialize)]
 pub struct FillValueMetadata {

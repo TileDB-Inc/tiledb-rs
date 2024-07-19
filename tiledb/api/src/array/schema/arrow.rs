@@ -27,6 +27,20 @@ pub type SchemaToArrowResult =
 pub type SchemaFromArrowResult =
     crate::arrow::ArrowConversionResult<SchemaBuilder, SchemaBuilder>;
 
+// additional methods with arrow features
+impl Schema {
+    pub fn to_arrow(&self) -> TileDBResult<SchemaToArrowResult> {
+        crate::array::schema::arrow::to_arrow(self)
+    }
+
+    pub fn from_arrow(
+        context: &Context,
+        schema: &arrow::datatypes::Schema,
+    ) -> TileDBResult<SchemaFromArrowResult> {
+        crate::array::schema::arrow::from_arrow(context, schema)
+    }
+}
+
 /// Represents required metadata to convert from an arrow schema
 /// to a TileDB schema.
 #[derive(Deserialize, Serialize)]
