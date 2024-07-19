@@ -535,7 +535,7 @@ impl Schema {
     }
 
     pub fn num_fields(&self) -> TileDBResult<usize> {
-        Ok(self.domain()?.ndim()? + self.num_attributes()?)
+        Ok(self.domain()?.num_dimensions()? + self.num_attributes()?)
     }
 
     /// Returns a reference to a field (dimension or attribute) in this schema.
@@ -546,7 +546,7 @@ impl Schema {
         let domain = self.domain()?;
         match key.into() {
             LookupKey::Index(idx) => {
-                let ndim = domain.ndim()?;
+                let ndim = domain.num_dimensions()?;
                 if idx < ndim {
                     Ok(Field::Dimension(domain.dimension(idx)?))
                 } else {

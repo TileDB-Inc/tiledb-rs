@@ -72,7 +72,7 @@ impl SchemaMetadata {
             )?,
             offsets_filters: FilterMetadata::new(&schema.offsets_filters()?)?,
             nullity_filters: FilterMetadata::new(&schema.nullity_filters()?)?,
-            ndim: schema.domain()?.ndim()?,
+            ndim: schema.domain()?.num_dimensions()?,
         })
     }
 }
@@ -84,7 +84,7 @@ pub fn to_arrow(tiledb: &Schema) -> TileDBResult<SchemaToArrowResult> {
 
     let mut inexact = false;
 
-    for d in 0..tiledb.domain()?.ndim()? {
+    for d in 0..tiledb.domain()?.num_dimensions()? {
         let dim = tiledb.domain()?.dimension(d)?;
         match crate::array::dimension::arrow::to_arrow(&dim)? {
             FieldToArrowResult::None => {

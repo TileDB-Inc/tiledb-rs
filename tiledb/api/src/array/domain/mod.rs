@@ -59,7 +59,8 @@ impl Domain {
         }
     }
 
-    pub fn ndim(&self) -> TileDBResult<usize> {
+    /// Returns the number of dimensions.
+    pub fn num_dimensions(&self) -> TileDBResult<usize> {
         let mut ndim: u32 = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_domain_get_ndim(ctx, *self.raw, &mut ndim)
@@ -73,7 +74,7 @@ impl Domain {
         key: K,
     ) -> TileDBResult<bool> {
         match key.into() {
-            LookupKey::Index(idx) => Ok(idx < self.ndim()?),
+            LookupKey::Index(idx) => Ok(idx < self.num_dimensions()?),
             LookupKey::Name(name) => {
                 let c_domain = *self.raw;
                 let c_name = cstring!(name);
@@ -143,7 +144,7 @@ impl Domain {
             LookupKey::Name(name) => name,
         };
 
-        for i in 0..self.ndim()? {
+        for i in 0..self.num_dimensions()? {
             let dim = self.dimension(i)?;
             if dim.name()? == name {
                 return Ok(i);
@@ -173,7 +174,7 @@ impl Debug for Domain {
 
 impl PartialEq<Domain> for Domain {
     fn eq(&self, other: &Domain) -> bool {
-        let ndim_match = match (self.ndim(), other.ndim()) {
+        let ndim_match = match (self.num_dimensions(), other.num_dimensions()) {
             (Ok(mine), Ok(theirs)) => mine == theirs,
             _ => false,
         };
@@ -181,7 +182,7 @@ impl PartialEq<Domain> for Domain {
             return false;
         }
 
-        for d in 0..self.ndim().unwrap() {
+        for d in 0..self.num_dimensions().unwrap() {
             let dim_match = match (self.dimension(d), other.dimension(d)) {
                 (Ok(mine), Ok(theirs)) => mine == theirs,
                 _ => false,
@@ -206,7 +207,7 @@ impl<'a> Dimensions<'a> {
         Ok(Dimensions {
             domain,
             cursor: 0,
-            bound: domain.ndim()?,
+            bound: domain.num_dimensions()?,
         })
     }
 }
@@ -341,7 +342,7 @@ impl TryFrom<&Domain> for DomainData {
 
     fn try_from(domain: &Domain) -> TileDBResult<Self> {
         Ok(DomainData {
-            dimension: (0..domain.ndim()?)
+            dimension: (0..domain.num_dimensions()?)
                 .map(|d| DimensionData::try_from(&domain.dimension(d)?))
                 .collect::<TileDBResult<Vec<DimensionData>>>()?,
         })
@@ -386,7 +387,7 @@ mod tests {
         // no dimensions
         {
             let domain = Builder::new(&context).unwrap().build();
-            assert_eq!(0, domain.ndim().unwrap());
+            assert_eq!(0, domain.num_dimensions().unwrap());
 
             assert!(!domain.has_dimension(0).unwrap());
             assert!(!domain.has_dimension("d1").unwrap());
@@ -418,7 +419,7 @@ mod tests {
                 .add_dimension(dim_in)
                 .unwrap()
                 .build();
-            assert_eq!(1, domain.ndim().unwrap());
+            assert_eq!(1, domain.num_dimensions().unwrap());
 
             assert!(domain.has_dimension(0).unwrap());
             assert!(domain.has_dimension(dim_cmp.name().unwrap()).unwrap());
@@ -483,7 +484,7 @@ mod tests {
                 .add_dimension(dim2_in)
                 .unwrap()
                 .build();
-            assert_eq!(2, domain.ndim().unwrap());
+            assert_eq!(2, domain.num_dimensions().unwrap());
 
             assert!(domain.has_dimension(0).unwrap());
             assert!(domain.has_dimension(1).unwrap());

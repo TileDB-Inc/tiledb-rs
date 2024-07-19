@@ -64,7 +64,7 @@ impl<'query> Subarray<'query> {
     /// and the inner `Vec` is the set of ranges set for that dimension.
     pub fn ranges(&self) -> TileDBResult<Vec<Vec<Range>>> {
         let c_subarray = self.capi();
-        let ndims = self.schema.domain()?.ndim()? as u32;
+        let ndims = self.schema.domain()?.num_dimensions()? as u32;
         let mut ranges: Vec<Vec<Range>> = Vec::new();
         for dim_idx in 0..ndims {
             let mut nranges: u64 = 0;

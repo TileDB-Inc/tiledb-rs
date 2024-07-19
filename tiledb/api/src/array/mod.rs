@@ -665,7 +665,7 @@ impl Array {
         // note to devs: calling `tiledb_array_get_non_empty_domain`
         // looks like a huge pain, if this is ever a performance bottleneck
         // then maybe we can look into it
-        (0..self.schema()?.domain()?.ndim()?)
+        (0..self.schema()?.domain()?.num_dimensions()?)
             .map(|d| self.dimension_nonempty_domain(d))
             .collect::<TileDBResult<Option<TypedNonEmptyDomain>>>()
     }

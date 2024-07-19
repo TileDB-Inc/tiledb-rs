@@ -545,7 +545,7 @@ impl<'info> FragmentInfo<'info> {
 
     pub fn non_empty_domain(&self) -> TileDBResult<TypedNonEmptyDomain> {
         let schema = self.info.schema(self.index)?;
-        let num_dims = schema.domain()?.ndim()? as u32;
+        let num_dims = schema.domain()?.num_dimensions()? as u32;
 
         let mut ret = Vec::<TypedRange>::new();
         for dimension in 0..num_dims {
@@ -562,7 +562,7 @@ impl<'info> FragmentInfo<'info> {
 
     pub fn mbr(&self, mbr_idx: u32) -> TileDBResult<MinimumBoundingRectangle> {
         let schema = self.info.schema(self.index)?;
-        let num_dims = schema.domain()?.ndim()? as u32;
+        let num_dims = schema.domain()?.num_dimensions()? as u32;
 
         let mut ret = Vec::<TypedRange>::new();
         for dimension in 0..num_dims {
