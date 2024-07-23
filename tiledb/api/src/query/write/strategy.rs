@@ -605,6 +605,12 @@ pub struct DenseWriteSequence {
     writes: Vec<DenseWriteInput>,
 }
 
+impl DenseWriteSequence {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut DenseWriteInput> {
+        self.writes.iter_mut()
+    }
+}
+
 impl Deref for DenseWriteSequence {
     type Target = Vec<DenseWriteInput>;
     fn deref(&self) -> &Self::Target {
@@ -679,6 +685,12 @@ impl FromIterator<DenseWriteInput> for DenseWriteSequence {
 #[derive(Debug)]
 pub struct SparseWriteSequence {
     writes: Vec<SparseWriteInput>,
+}
+
+impl SparseWriteSequence {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut SparseWriteInput> {
+        self.writes.iter_mut()
+    }
 }
 
 impl Deref for SparseWriteSequence {
