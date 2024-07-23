@@ -70,7 +70,7 @@ pub fn query_write_schema_requirements(
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DenseWriteInput {
     pub layout: CellOrder,
     pub data: Cells,
@@ -467,7 +467,7 @@ impl Arbitrary for DenseWriteInput {
 
 pub type SparseWriteParameters = DenseWriteParameters; // TODO: determine if this should be different
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SparseWriteInput {
     pub dimensions: Vec<(String, CellValNum)>,
     pub data: Cells,
@@ -763,7 +763,7 @@ impl FromIterator<SparseWriteInput> for SparseWriteSequence {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum WriteInput {
     Dense(DenseWriteInput),
     Sparse(SparseWriteInput),
