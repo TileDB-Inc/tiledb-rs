@@ -218,7 +218,7 @@ impl<'a> Iterator for Dimensions<'a> {
         if self.cursor >= self.bound {
             None
         } else {
-            let item = self.domain.dimension(self.bound);
+            let item = self.domain.dimension(self.cursor);
             self.cursor += 1;
             Some(item)
         }
@@ -376,9 +376,12 @@ pub mod strategy;
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+    use tiledb_utils::assert_option_subset;
+
     use crate::array::domain::Builder;
     use crate::array::*;
-    use crate::Datatype;
+    use crate::{Datatype, Factory};
 
     #[test]
     fn test_add_dimension() {
@@ -562,5 +565,30 @@ mod tests {
         assert_eq!(domain_d1_float64, domain_d1_float64);
         assert_ne!(domain_d0, domain_d1_float64);
         assert_ne!(domain_d1_int32, domain_d1_float64);
+    }
+
+    fn do_test_dimensions_iter(spec: DomainData) -> TileDBResult<()> {
+        let context = Context::new()?;
+        let domain = spec.create(&context)?;
+
+        let num_dimensions = domain.num_dimensions()?;
+        assert_eq!(num_dimensions, spec.dimension.len());
+        assert_eq!(num_dimensions, domain.dimensions()?.count());
+
+        for (dimension_spec, dimension) in
+            spec.dimension.iter().zip(domain.dimensions()?)
+        {
+            let dimension = DimensionData::try_from(dimension?)?;
+            assert_option_subset!(dimension_spec, dimension);
+        }
+
+        Ok(())
+    }
+
+    proptest! {
+        #[test]
+        fn test_dimensions_iter(spec in any::<DomainData>()) {
+            do_test_dimensions_iter(spec).expect("Error in do_test_dimensions_iter");
+        }
     }
 }
