@@ -1027,6 +1027,20 @@ impl Cells {
         self.filter(&preserve)
     }
 
+    /// Returns a copy of `self` with only the fields in `fields`,
+    /// or `None` if not all the requested fields are present.
+    pub fn projection(&self, fields: &[&str]) -> Option<Cells> {
+        let projection = fields
+            .iter()
+            .map(|f| {
+                self.fields
+                    .get(*f)
+                    .map(|data| (f.to_string(), data.clone()))
+            })
+            .collect::<Option<HashMap<String, FieldData>>>()?;
+        Some(Cells::new(projection))
+    }
+
     /// Adds an additional field to `self`. Returns `true` if successful,
     /// i.e. the field data is valid for the current set of cells
     /// and there is not already a field for the key.
