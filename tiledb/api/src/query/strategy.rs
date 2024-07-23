@@ -1026,6 +1026,22 @@ impl Cells {
 
         self.filter(&preserve)
     }
+
+    /// Adds an additional field to `self`. Returns `true` if successful,
+    /// i.e. the field data is valid for the current set of cells
+    /// and there is not already a field for the key.
+    pub fn add_field(&mut self, key: &str, values: FieldData) -> bool {
+        if self.len() != values.len() {
+            return false;
+        }
+
+        if self.fields.contains_key(key) {
+            false
+        } else {
+            self.fields.insert(key.to_owned(), values);
+            true
+        }
+    }
 }
 
 impl BitsEq for Cells {
