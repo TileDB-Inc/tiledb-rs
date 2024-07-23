@@ -666,7 +666,7 @@ impl Arbitrary for FieldData {
 pub struct RawReadQueryResult(pub HashMap<String, FieldData>);
 
 pub struct RawResultCallback {
-    field_order: Vec<String>,
+    pub field_order: Vec<String>,
 }
 
 impl ReadCallbackVarArg for RawResultCallback {
