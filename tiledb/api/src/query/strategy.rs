@@ -1963,6 +1963,26 @@ mod tests {
         assert_eq!(dedup.len(), out_cursor);
     }
 
+    fn do_cells_projection(cells: Cells, keys: Vec<String>) {
+        let proj = cells
+            .projection(&keys.iter().map(|s| s.as_ref()).collect::<Vec<&str>>())
+            .unwrap();
+
+        for key in keys.iter() {
+            let Some(field_in) = cells.fields().get(key) else {
+                unreachable!()
+            };
+            let Some(field_out) = proj.fields().get(key) else {
+                unreachable!()
+            };
+
+            assert_eq!(field_in, field_out);
+        }
+
+        // everything in `keys` is in the projection, there should be no other fields
+        assert_eq!(keys.len(), proj.fields().len());
+    }
+
     proptest! {
         #[test]
         fn field_data_extend((dst, src) in (any::<Datatype>(), any::<CellValNum>()).prop_flat_map(|(dt, cvn)| {
@@ -2080,6 +2100,15 @@ mod tests {
         }))
         {
             do_cells_dedup(cells, keys)
+        }
+
+        #[test]
+        fn cells_projection((cells, keys) in any::<Cells>().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nkeys = keys.len();
+            (Just(c), proptest::sample::subsequence(keys, 0..=nkeys).prop_shuffle())
+        })) {
+            do_cells_projection(cells, keys)
         }
     }
 }
