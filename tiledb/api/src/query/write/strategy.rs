@@ -70,7 +70,7 @@ pub fn query_write_schema_requirements(
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DenseWriteInput {
     pub layout: CellOrder,
     pub data: Cells,
@@ -467,7 +467,7 @@ impl Arbitrary for DenseWriteInput {
 
 pub type SparseWriteParameters = DenseWriteParameters; // TODO: determine if this should be different
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SparseWriteInput {
     pub dimensions: Vec<(String, CellValNum)>,
     pub data: Cells,
@@ -605,6 +605,12 @@ pub struct DenseWriteSequence {
     writes: Vec<DenseWriteInput>,
 }
 
+impl DenseWriteSequence {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut DenseWriteInput> {
+        self.writes.iter_mut()
+    }
+}
+
 impl Deref for DenseWriteSequence {
     type Target = Vec<DenseWriteInput>;
     fn deref(&self) -> &Self::Target {
@@ -681,6 +687,12 @@ pub struct SparseWriteSequence {
     writes: Vec<SparseWriteInput>,
 }
 
+impl SparseWriteSequence {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut SparseWriteInput> {
+        self.writes.iter_mut()
+    }
+}
+
 impl Deref for SparseWriteSequence {
     type Target = Vec<SparseWriteInput>;
     fn deref(&self) -> &Self::Target {
@@ -751,7 +763,7 @@ impl FromIterator<SparseWriteInput> for SparseWriteSequence {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum WriteInput {
     Dense(DenseWriteInput),
     Sparse(SparseWriteInput),

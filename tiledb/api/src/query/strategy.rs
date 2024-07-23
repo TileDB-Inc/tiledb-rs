@@ -666,7 +666,7 @@ impl Arbitrary for FieldData {
 pub struct RawReadQueryResult(pub HashMap<String, FieldData>);
 
 pub struct RawResultCallback {
-    field_order: Vec<String>,
+    pub field_order: Vec<String>,
 }
 
 impl ReadCallbackVarArg for RawResultCallback {
@@ -1025,6 +1025,36 @@ impl Cells {
         }
 
         self.filter(&preserve)
+    }
+
+    /// Returns a copy of `self` with only the fields in `fields`,
+    /// or `None` if not all the requested fields are present.
+    pub fn projection(&self, fields: &[&str]) -> Option<Cells> {
+        let projection = fields
+            .iter()
+            .map(|f| {
+                self.fields
+                    .get(*f)
+                    .map(|data| (f.to_string(), data.clone()))
+            })
+            .collect::<Option<HashMap<String, FieldData>>>()?;
+        Some(Cells::new(projection))
+    }
+
+    /// Adds an additional field to `self`. Returns `true` if successful,
+    /// i.e. the field data is valid for the current set of cells
+    /// and there is not already a field for the key.
+    pub fn add_field(&mut self, key: &str, values: FieldData) -> bool {
+        if self.len() != values.len() {
+            return false;
+        }
+
+        if self.fields.contains_key(key) {
+            false
+        } else {
+            self.fields.insert(key.to_owned(), values);
+            true
+        }
     }
 }
 
@@ -1933,6 +1963,26 @@ mod tests {
         assert_eq!(dedup.len(), out_cursor);
     }
 
+    fn do_cells_projection(cells: Cells, keys: Vec<String>) {
+        let proj = cells
+            .projection(&keys.iter().map(|s| s.as_ref()).collect::<Vec<&str>>())
+            .unwrap();
+
+        for key in keys.iter() {
+            let Some(field_in) = cells.fields().get(key) else {
+                unreachable!()
+            };
+            let Some(field_out) = proj.fields().get(key) else {
+                unreachable!()
+            };
+
+            assert_eq!(field_in, field_out);
+        }
+
+        // everything in `keys` is in the projection, there should be no other fields
+        assert_eq!(keys.len(), proj.fields().len());
+    }
+
     proptest! {
         #[test]
         fn field_data_extend((dst, src) in (any::<Datatype>(), any::<CellValNum>()).prop_flat_map(|(dt, cvn)| {
@@ -2050,6 +2100,15 @@ mod tests {
         }))
         {
             do_cells_dedup(cells, keys)
+        }
+
+        #[test]
+        fn cells_projection((cells, keys) in any::<Cells>().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nkeys = keys.len();
+            (Just(c), proptest::sample::subsequence(keys, 0..=nkeys).prop_shuffle())
+        })) {
+            do_cells_projection(cells, keys)
         }
     }
 }
