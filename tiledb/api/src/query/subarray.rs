@@ -359,37 +359,6 @@ where
         Ok(b)
     }
 
-    pub fn set_subarray<IntoRange: Into<Range>>(
-        self,
-        range: IntoRange,
-    ) -> TileDBResult<Self> {
-        let c_subarray = *self.raw;
-
-        let range = range.into();
-        // TODO: should we be checking dimensionality here?
-
-        match range {
-            Range::Single(range) => {
-                single_value_range_go!(range, _DT, start, end, {
-                    let start = start.to_le_bytes();
-                    let _end = end.to_le_bytes();
-
-                    self.query.base().capi_call(|ctx| unsafe {
-                        ffi::tiledb_subarray_set_subarray(
-                            ctx,
-                            c_subarray,
-                            start.as_ptr() as *const std::ffi::c_void,
-                        )
-                    })?;
-                })
-            }
-            Range::Multi(_) => unimplemented!(),
-            Range::Var(_) => unimplemented!(),
-        }
-
-        Ok(self)
-    }
-
     /// Apply the subarray to the query, returning the query builder.
     pub fn finish_subarray(self) -> TileDBResult<Q> {
         let c_query = **self.query.base().cquery();

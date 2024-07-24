@@ -1165,7 +1165,7 @@ pub mod tests {
             let q1 = WriteBuilder::new(array)?
                 .layout(QueryLayout::RowMajor)?
                 .start_subarray()?
-                .set_subarray(&[low_bound + 1, boundaries[i + 1]])?
+                .add_range(0, &[low_bound + 1, boundaries[i + 1]])?
                 .finish_subarray()?
                 .data_typed("a", &data)?
                 .build();
