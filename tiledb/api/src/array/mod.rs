@@ -405,8 +405,7 @@ impl Array {
                 c_array_uri.as_ptr(),
                 unwrap_config_to_ptr(config),
             )
-        })?;
-        Ok(())
+        })
     }
 
     /// Upgrades an array to the latest format version.
@@ -425,8 +424,7 @@ impl Array {
                 c_array_uri.as_ptr(),
                 unwrap_config_to_ptr(config),
             )
-        })?;
-        Ok(())
+        })
     }
 
     /// Depending on the consolidation mode in the config, consolidates either the fragment files,
@@ -446,8 +444,7 @@ impl Array {
                 c_array_uri.as_ptr(),
                 unwrap_config_to_ptr(config),
             )
-        })?;
-        Ok(())
+        })
     }
 
     /// Consolidates the given fragment URIs into a single fragment.
@@ -480,8 +477,7 @@ impl Array {
                 fragment_names_ptr.len() as u64,
                 unwrap_config_to_ptr(config),
             )
-        })?;
-        Ok(())
+        })
     }
 
     // Implements `dimension_nonempty_domain` for dimensions with CellValNum::Fixed
