@@ -35,6 +35,7 @@ pub use domain::{Builder as DomainBuilder, Domain, DomainData};
 pub use enumeration::{
     Builder as EnumerationBuilder, Enumeration, EnumerationData,
 };
+use ffi::tiledb_config_t;
 pub use fragment_info::{
     Builder as FragmentInfoBuilder, FragmentInfo, FragmentInfoList,
 };
@@ -196,6 +197,13 @@ impl ContextBound for Array {
     fn context(&self) -> Context {
         self.context.clone()
     }
+}
+
+fn unwrap_config_to_ptr(context: Option<&Config>) -> *mut tiledb_config_t {
+    context.map_or_else(
+        || std::ptr::null::<Config>() as *mut tiledb_config_t,
+        |ctx| ctx.capi(),
+    )
 }
 
 impl Array {
@@ -385,14 +393,18 @@ impl Array {
     pub fn vacuum<S>(
         ctx: &Context,
         array_uri: S,
-        config: &Config,
+        config: Option<&Config>,
     ) -> TileDBResult<()>
     where
         S: AsRef<str>,
     {
         let c_array_uri = cstring!(array_uri.as_ref());
         ctx.capi_call(|ctx| unsafe {
-            ffi::tiledb_array_vacuum(ctx, c_array_uri.as_ptr(), config.capi())
+            ffi::tiledb_array_vacuum(
+                ctx,
+                c_array_uri.as_ptr(),
+                unwrap_config_to_ptr(config),
+            )
         })?;
         Ok(())
     }
@@ -401,7 +413,7 @@ impl Array {
     pub fn upgrade_version<S>(
         ctx: &Context,
         array_uri: S,
-        config: &Config,
+        config: Option<&Config>,
     ) -> TileDBResult<()>
     where
         S: AsRef<str>,
@@ -411,7 +423,7 @@ impl Array {
             ffi::tiledb_array_upgrade_version(
                 ctx,
                 c_array_uri.as_ptr(),
-                config.capi(),
+                unwrap_config_to_ptr(config),
             )
         })?;
         Ok(())
@@ -422,7 +434,7 @@ impl Array {
     pub fn consolidate<S>(
         ctx: &Context,
         array_uri: S,
-        config: &Config,
+        config: Option<&Config>,
     ) -> TileDBResult<()>
     where
         S: AsRef<str>,
@@ -432,7 +444,7 @@ impl Array {
             ffi::tiledb_array_consolidate(
                 ctx,
                 c_array_uri.as_ptr(),
-                config.capi(),
+                unwrap_config_to_ptr(config),
             )
         })?;
         Ok(())
@@ -443,7 +455,7 @@ impl Array {
         ctx: &Context,
         array_uri: S,
         fragment_names: &[S],
-        config: &Config,
+        config: Option<&Config>,
     ) -> TileDBResult<()>
     where
         S: AsRef<str>,
@@ -466,7 +478,7 @@ impl Array {
                 c_array_uri.as_ptr(),
                 fragment_names_ptr.as_ptr(),
                 fragment_names_ptr.len() as u64,
-                config.capi(),
+                unwrap_config_to_ptr(config),
             )
         })?;
         Ok(())
@@ -1199,8 +1211,8 @@ pub mod tests {
         assert_eq!(4, count_fragments_fn()?);
 
         // Consolidate and Vacuum.
-        Array::consolidate(&ctx, &array_uri, &config).unwrap();
-        Array::vacuum(&ctx, &array_uri, &config).unwrap();
+        Array::consolidate(&ctx, &array_uri, Some(&config)).unwrap();
+        Array::vacuum(&ctx, &array_uri, Some(&config)).unwrap();
         // We have consolidated first two fragments.
         assert_eq!(3, count_fragments_fn()?);
 
@@ -1213,9 +1225,9 @@ pub mod tests {
             &ctx,
             array_uri.clone(),
             &fragment_names[1..3],
-            &config,
+            Some(&config),
         )?;
-        Array::vacuum(&ctx, &array_uri, &config).unwrap();
+        Array::vacuum(&ctx, &array_uri, Some(&config)).unwrap();
         assert_eq!(2, count_fragments_fn().unwrap());
 
         Ok(())
