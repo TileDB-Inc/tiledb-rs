@@ -212,7 +212,7 @@ extern "C" {
     pub fn tiledb_array_consolidate_fragments(
         ctx: *mut tiledb_ctx_t,
         array_uri: *const ::std::os::raw::c_char,
-        fragment_uris: *const *const ::std::os::raw::c_char,
+        fragment_uris: *mut *const ::std::os::raw::c_char,
         num_fragments: u64,
         config: *mut tiledb_config_t,
     ) -> i32;
