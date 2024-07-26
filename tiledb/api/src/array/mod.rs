@@ -464,7 +464,7 @@ impl Array {
             .iter()
             .map(|fragment_name| Ok(cstring!(fragment_name.as_ref())))
             .collect::<TileDBResult<Vec<_>>>()?;
-        let fragment_names_ptr = fragment_names_cstr
+        let mut fragment_names_ptr = fragment_names_cstr
             .iter()
             .map(|fragment_name| fragment_name.as_ptr())
             .collect::<Vec<_>>();
@@ -473,7 +473,7 @@ impl Array {
             ffi::tiledb_array_consolidate_fragments(
                 ctx,
                 c_array_uri.as_ptr(),
-                fragment_names_ptr.as_ptr(),
+                fragment_names_ptr.as_mut_ptr(),
                 fragment_names_ptr.len() as u64,
                 unwrap_config_to_ptr(config),
             )
