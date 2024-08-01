@@ -330,3 +330,52 @@ where
         self.0.bits_cmp(&other.0)
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum PhysicalValue {
+    UInt8(u8),
+    UInt16(u16),
+    UInt32(u32),
+    UInt64(u64),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+    Float32(f32),
+    Float64(f64),
+}
+
+pub struct PhysicalTypeMismatchError {}
+
+macro_rules! physical_value_traits {
+    ($ty:ty, $variant:ident) => {
+        impl From<$ty> for PhysicalValue {
+            fn from(val: $ty) -> Self {
+                PhysicalValue::$variant(val)
+            }
+        }
+
+        impl TryFrom<PhysicalValue> for $ty {
+            type Error = PhysicalTypeMismatchError;
+
+            fn try_from(value: PhysicalValue) -> Result<Self, Self::Error> {
+                if let PhysicalValue::$variant(val) = value {
+                    Ok(val)
+                } else {
+                    Err(PhysicalTypeMismatchError {})
+                }
+            }
+        }
+    };
+}
+
+physical_value_traits!(i8, Int8);
+physical_value_traits!(i16, Int16);
+physical_value_traits!(i32, Int32);
+physical_value_traits!(i64, Int64);
+physical_value_traits!(u8, UInt8);
+physical_value_traits!(u16, UInt16);
+physical_value_traits!(u32, UInt32);
+physical_value_traits!(u64, UInt64);
+physical_value_traits!(f32, Float32);
+physical_value_traits!(f64, Float64);

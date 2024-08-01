@@ -2,7 +2,7 @@ pub mod logical;
 pub mod physical;
 
 pub use logical::*;
-pub use physical::PhysicalType;
+pub use physical::{PhysicalType, PhysicalValue};
 
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 #[cfg(test)]

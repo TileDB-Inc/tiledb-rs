@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "tiledb/api",
   "tiledb/proc-macro",
+  "tiledb/queries",
   "tiledb/sys",
   "tiledb/test-utils",
   "tiledb/utils",
@@ -11,6 +12,7 @@ members = [
 default-members = [
   "tiledb/api",
   "tiledb/proc-macro",
+  "tiledb/queries",
   "tiledb/sys",
   "tiledb/utils",
 ]
