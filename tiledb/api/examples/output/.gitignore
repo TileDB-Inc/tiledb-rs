@@ -1,3 +1,4 @@
+aggregates
 fragment_info
 groups
 multi_range_slicing
@@ -7,4 +8,3 @@ quickstart_dense
 quickstart_sparse_string
 reading_incomplete
 using_tiledb_stats
-aggregates
