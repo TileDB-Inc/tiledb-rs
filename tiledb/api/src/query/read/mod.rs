@@ -1,6 +1,8 @@
 use super::*;
 
 use std::cell::RefCell;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::pin::Pin;
 
 use paste::paste;
@@ -10,11 +12,13 @@ use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::read::output::ScratchAllocator;
 use crate::Result as TileDBResult;
 
+pub mod aggregate;
 mod callback;
 pub mod output;
 mod raw;
 mod typed;
 
+pub use aggregate::*;
 pub use callback::*;
 pub use raw::*;
 pub use typed::*;
@@ -379,7 +383,7 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     {
         let r = <T::Constructor as Default>::default();
         Ok(TypedReadBuilder {
-            _marker: std::marker::PhantomData,
+            _marker: PhantomData,
             base: self.register_callback((field.as_ref(), scratch), r)?,
         })
     }

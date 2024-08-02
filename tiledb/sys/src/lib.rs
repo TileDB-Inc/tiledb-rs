@@ -2,6 +2,7 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+mod aggregate;
 mod array;
 mod array_type;
 mod attribute;
@@ -32,6 +33,7 @@ mod types;
 mod version;
 mod vfs;
 
+pub use aggregate::*;
 pub use array::*;
 pub use array_type::*;
 pub use attribute::*;
