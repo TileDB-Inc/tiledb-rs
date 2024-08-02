@@ -1168,9 +1168,9 @@ pub mod tests {
 
             let opener = ArrayOpener::new(ctx, array_uri, Mode::Write)?
                 .end_timestamp(timestamp + i as u64 + 1)?;
-            let array = opener.open()?;
+            let mut array = opener.open()?;
 
-            let q1 = WriteBuilder::new(array)?
+            let q1 = WriteBuilder::new(&mut array)?
                 .layout(QueryLayout::RowMajor)?
                 .start_subarray()?
                 .add_range(0, &[low_bound + 1, boundaries[i + 1]])?

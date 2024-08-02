@@ -764,10 +764,10 @@ impl Cells {
         &self.fields
     }
 
-    pub fn attach_write<'data>(
+    pub fn attach_write<'array, 'data>(
         &'data self,
-        b: WriteBuilder<'data>,
-    ) -> TileDBResult<WriteBuilder<'data>> {
+        b: WriteBuilder<'array, 'data>,
+    ) -> TileDBResult<WriteBuilder<'array, 'data>> {
         let mut b = b;
         for f in self.fields.iter() {
             b = typed_field_data_go!(f.1, data, b.data_typed(f.0, data))?;
@@ -775,12 +775,12 @@ impl Cells {
         Ok(b)
     }
 
-    pub fn attach_read<'data, B>(
+    pub fn attach_read<'array, 'data, B>(
         &self,
         b: B,
     ) -> TileDBResult<CallbackVarArgReadBuilder<'data, RawResultCallback, B>>
     where
-        B: ReadQueryBuilder<'data>,
+        B: ReadQueryBuilder<'array, 'data>,
     {
         let field_order = self.fields.keys().cloned().collect::<Vec<_>>();
         let handles = {

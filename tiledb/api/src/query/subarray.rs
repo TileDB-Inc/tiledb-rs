@@ -169,26 +169,23 @@ impl<'query> Subarray<'query> {
     }
 }
 
-pub struct Builder<Q>
-where
-    Q: QueryBuilder + Sized,
-{
+pub struct Builder<Q> {
     query: Q,
     raw: RawSubarray,
 }
 
-impl<Q> ContextBound for Builder<Q>
+impl<'array, Q> ContextBound for Builder<Q>
 where
-    Q: QueryBuilder,
+    Q: QueryBuilder<'array>,
 {
     fn context(&self) -> Context {
         self.query.base().context()
     }
 }
 
-impl<Q> Builder<Q>
+impl<'array, Q> Builder<Q>
 where
-    Q: QueryBuilder + Sized,
+    Q: QueryBuilder<'array> + Sized,
 {
     pub(crate) fn for_query(query: Q) -> TileDBResult<Self> {
         let context = query.base().context();
@@ -594,7 +591,7 @@ mod tests {
             crate::array::tests::create_quickstart_dense(&test_uri, &ctx)?;
 
         let a = Array::open(&ctx, test_uri, Mode::Read)?;
-        let b = ReadBuilder::new(a)?;
+        let b = ReadBuilder::new(&a)?;
 
         // inspect builder in-progress subarray
         {
@@ -643,7 +640,7 @@ mod tests {
         )?;
 
         let a = Array::open(&ctx, test_uri, Mode::Read)?;
-        let b = ReadBuilder::new(a)?;
+        let b = ReadBuilder::new(&a)?;
 
         // inspect builder in-progress subarray
         {
@@ -705,7 +702,7 @@ mod tests {
     ) -> TileDBResult<()> {
         let array_uri = create_array(ctx, atype, test_uri)?;
         let array = Array::open(ctx, array_uri, Mode::Read)?;
-        let query = ReadBuilder::new(array)?
+        let query = ReadBuilder::new(&array)?
             .start_subarray()?
             .add_range("id", &[1, 2])?
             .add_range("id", &[4, 6])?
@@ -973,8 +970,8 @@ mod tests {
                 })
                 .collect::<(Vec<String>, (Vec<i32>, Vec<i32>))>();
 
-            let w = Array::open(&ctx, &test_uri, Mode::Write).unwrap();
-            let q = WriteBuilder::new(w)
+            let mut w = Array::open(&ctx, &test_uri, Mode::Write).unwrap();
+            let q = WriteBuilder::new(&mut w)
                 .unwrap()
                 .data("rows", &rows)
                 .unwrap()
@@ -995,7 +992,7 @@ mod tests {
 
         let do_dimension_ranges = |subarray: SubarrayData| -> TileDBResult<()> {
             let array = Array::open(&ctx, &test_uri, Mode::Read).unwrap();
-            let mut q = ReadBuilder::new(array)?
+            let mut q = ReadBuilder::new(&array)?
                 .start_subarray()?
                 .dimension_ranges(subarray.dimension_ranges.clone())?
                 .finish_subarray()?

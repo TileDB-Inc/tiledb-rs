@@ -148,7 +148,7 @@ fn create_array() -> TileDBResult<()> {
 fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::context::Context::new()?;
 
-    let array = tiledb::Array::open(
+    let mut array = tiledb::Array::open(
         &tdb,
         FRAGMENT_INFO_ARRAY_URI,
         tiledb::array::Mode::Write,
@@ -156,7 +156,7 @@ fn write_array() -> TileDBResult<()> {
 
     let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-    let query = tiledb::query::WriteBuilder::new(array)?
+    let query = tiledb::query::WriteBuilder::new(&mut array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .data_typed(FRAGMENT_INFO_ATTRIBUTE_NAME, &data)?
         .build();

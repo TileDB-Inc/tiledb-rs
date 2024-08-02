@@ -66,7 +66,7 @@ fn main() -> TileDBResult<()> {
 /// to stdout.
 fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
     let array = tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
-    let mut query = ReadBuilder::new(array)?
+    let mut query = ReadBuilder::new(&array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .register_constructor::<_, Vec<i32>>("index", Default::default())?
         .register_constructor::<_, (Vec<i32>, Vec<u8>)>(
@@ -184,10 +184,10 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
     let c_input = vec![0i32, 0, 0, 0, 0, 0, 1, 2, 3, 4];
     let d_input = vec![4.1f32, 3.4, 5.6, 3.7, 2.3, 1.7, 3.8, 4.9, 3.2, 3.1];
 
-    let array =
+    let mut array =
         tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Write)?;
 
-    let query = WriteBuilder::new(array)?
+    let query = WriteBuilder::new(&mut array)?
         .layout(CellOrder::Unordered)?
         .data_typed("index", &index_input)?
         .data_typed("a", &a_input)?

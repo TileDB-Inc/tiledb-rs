@@ -26,24 +26,24 @@ where
     }
 }
 
-impl<'data, T, Q> Query for TypedReadQuery<'data, T, Q>
+impl<'array, 'data, T, Q> Query<'array> for TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
-    CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>: Query,
+    CallbackReadQuery<'data, <T as ReadResult>::Constructor, Q>: Query<'array>,
 {
-    fn base(&self) -> &QueryBase {
+    fn base(&self) -> &QueryBase<'array> {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array> {
+    fn finalize(self) -> TileDBResult<()> {
         self.base.finalize()
     }
 }
 
-impl<'data, T, Q> ReadQuery for TypedReadQuery<'data, T, Q>
+impl<'array, 'data, T, Q> ReadQuery<'array> for TypedReadQuery<'data, T, Q>
 where
     T: ReadResult,
-    Q: ReadQuery,
+    Q: ReadQuery<'array>,
 {
     type Intermediate = Q::Intermediate;
     type Final = (T, Q::Final);
@@ -82,14 +82,14 @@ where
     }
 }
 
-impl<'data, T, B> QueryBuilder for TypedReadBuilder<'data, T, B>
+impl<'array, 'data, T, B> QueryBuilder<'array> for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
-    B: QueryBuilder,
+    B: QueryBuilder<'array>,
 {
     type Query = TypedReadQuery<'data, T, B::Query>;
 
-    fn base(&self) -> &BuilderBase {
+    fn base(&self) -> &BuilderBase<'array> {
         self.base.base()
     }
 
@@ -101,10 +101,11 @@ where
     }
 }
 
-impl<'data, T, B> ReadQueryBuilder<'data> for TypedReadBuilder<'data, T, B>
+impl<'array, 'data, T, B> ReadQueryBuilder<'array, 'data>
+    for TypedReadBuilder<'data, T, B>
 where
     T: ReadResult,
-    B: ReadQueryBuilder<'data>,
+    B: ReadQueryBuilder<'array, 'data>,
 {
 }
 
