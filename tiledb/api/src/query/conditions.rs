@@ -880,7 +880,4 @@ mod tests {
             qc_tree.to_string()
         );
     }
-
-    #[test]
-    fn display_ambiguity() {}
 }
