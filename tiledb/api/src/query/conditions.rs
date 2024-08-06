@@ -166,7 +166,7 @@ impl Display for Literal {
             Self::Int64(value) => write!(f, "{}", value),
             Self::Float32(value) => write!(f, "{}", value),
             Self::Float64(value) => write!(f, "{}", value),
-            Self::String(value) => write!(f, "{}", value),
+            Self::String(value) => write!(f, "\"{}\"", value.escape_default()),
         }
     }
 }
@@ -878,6 +878,19 @@ mod tests {
         assert_eq!(
             "((x < 5) OR (x < 5)) AND ((NOT (x < 5)) OR (NOT ((x < 5) AND (x < 5))))",
             qc_tree.to_string()
+        );
+    }
+
+    #[test]
+    fn display_literal() {
+        assert_eq!("\"foo\"", Literal::String("foo".to_owned()).to_string());
+        assert_eq!(
+            "\"f\\\\o\"",
+            Literal::String("f\\o".to_owned()).to_string()
+        );
+        assert_eq!(
+            "\"f\\\"o\"",
+            Literal::String("f\"o".to_owned()).to_string()
         );
     }
 }
