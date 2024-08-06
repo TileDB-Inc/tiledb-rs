@@ -166,7 +166,9 @@ impl Display for Literal {
             Self::Int64(value) => write!(f, "{}", value),
             Self::Float32(value) => write!(f, "{}", value),
             Self::Float64(value) => write!(f, "{}", value),
-            Self::String(value) => write!(f, "\"{}\"", value.escape_default()),
+            Self::String(value) => {
+                write!(f, "'{}'", escape_string_literal(value))
+            }
         }
     }
 }
@@ -197,6 +199,10 @@ impl From<&str> for Literal {
     fn from(val: &str) -> Literal {
         Literal::String(val.to_string())
     }
+}
+
+fn escape_string_literal<'a>(s: &'a str) -> impl Display + 'a {
+    s.escape_default()
 }
 
 // N.B. I initially tried slices here, but that breaks the Deserialize trait.
@@ -300,7 +306,17 @@ impl Display for SetMembers {
             Self::Int64(ref members) => Self::display(f, members),
             Self::Float32(ref members) => Self::display(f, members),
             Self::Float64(ref members) => Self::display(f, members),
-            Self::String(ref members) => Self::display(f, members),
+            Self::String(ref members) => {
+                if let Some((first, rest)) = members.split_first() {
+                    write!(f, "('{}'", escape_string_literal(first))?;
+                    rest.iter().try_for_each(|value| {
+                        write!(f, ", '{}'", escape_string_literal(value))
+                    })?;
+                    write!(f, ")")
+                } else {
+                    write!(f, "()")
+                }
+            }
         }
     }
 }
@@ -856,7 +872,7 @@ mod tests {
 
         let qc_setmemb =
             QC::field("field").is_in(["one", "two", "three"].as_slice());
-        assert_eq!("field IN (one, two, three)", qc_setmemb.to_string());
+        assert_eq!("field IN ('one', 'two', 'three')", qc_setmemb.to_string());
 
         let qc_nullness = QC::field("field").not_null();
         assert_eq!("field IS NOT NULL", qc_nullness.to_string());
@@ -883,14 +899,9 @@ mod tests {
 
     #[test]
     fn display_literal() {
-        assert_eq!("\"foo\"", Literal::String("foo".to_owned()).to_string());
-        assert_eq!(
-            "\"f\\\\o\"",
-            Literal::String("f\\o".to_owned()).to_string()
-        );
-        assert_eq!(
-            "\"f\\\"o\"",
-            Literal::String("f\"o".to_owned()).to_string()
-        );
+        assert_eq!("'foo'", Literal::String("foo".to_owned()).to_string());
+        assert_eq!("'f\\\\o'", Literal::String("f\\o".to_owned()).to_string());
+        assert_eq!("'f\\\"o'", Literal::String("f\"o".to_owned()).to_string());
+        assert_eq!("'f\\'o'", Literal::String("f'o".to_owned()).to_string());
     }
 }
