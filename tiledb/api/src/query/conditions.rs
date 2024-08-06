@@ -201,7 +201,7 @@ impl From<&str> for Literal {
     }
 }
 
-fn escape_string_literal<'a>(s: &'a str) -> impl Display + 'a {
+fn escape_string_literal(s: &str) -> impl Display + '_ {
     s.escape_default()
 }
 
