@@ -1765,14 +1765,14 @@ mod tests {
 
                     let range = Range::from(&[start, end]);
                     test_clone(&range);
-                    test_dimension_compatibility(&range, *datatype)?;
+                    test_dimension_compatibility(&range, datatype)?;
                     test_serialization_roundtrip(&range);
 
                     let start_slice = start.to_le_bytes();
                     let end_slice = end.to_le_bytes();
                     test_from_slices(
                         &range,
-                        *datatype,
+                        datatype,
                         CellValNum::try_from(1)?,
                         &start_slice[..],
                         &end_slice[..]
@@ -1796,7 +1796,7 @@ mod tests {
                     let range = Range::try_from(
                         (cell_val_num, start.clone(), end.clone()))?;
                     test_clone(&range);
-                    test_dimension_compatibility(&range, *datatype)?;
+                    test_dimension_compatibility(&range, datatype)?;
                     test_serialization_roundtrip(&range);
 
                     let nbytes = (len as u64 * datatype.size()) as usize;
@@ -1819,7 +1819,7 @@ mod tests {
 
                     test_from_slices(
                         &range,
-                        *datatype,
+                        datatype,
                         CellValNum::try_from(len)?,
                         start_slice,
                         end_slice
@@ -1858,7 +1858,7 @@ mod tests {
 
                     let range = Range::from((start.clone(), end.clone()));
                     test_clone(&range);
-                    test_dimension_compatibility(&range, *datatype)?;
+                    test_dimension_compatibility(&range, datatype)?;
                     test_serialization_roundtrip(&range);
 
                     // Test from slices
@@ -1878,7 +1878,7 @@ mod tests {
 
                     test_from_slices(
                         &range,
-                        *datatype,
+                        datatype,
                         CellValNum::Var,
                         start_slice,
                         end_slice
