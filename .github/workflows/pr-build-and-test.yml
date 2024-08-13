@@ -14,6 +14,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Install TileDB
         uses: ./.github/actions/install-tiledb
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build
         run: cargo build --all-targets --all-features
       - name: Test
