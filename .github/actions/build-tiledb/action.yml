@@ -1,0 +1,74 @@
+name: Build TileDB
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Dependencies - Ubuntu
+      if: ${{ startsWith(matrix.os, 'ubuntu-') == true }}
+      shell: bash
+      run: |
+        set -e pipefail
+        sudo apt-get update
+        sudo apt-get -y install \
+          build-essential \
+          gdb \
+          ninja-build \
+          git \
+          curl \
+          zip \
+          unzip \
+          tar \
+          pkg-config
+    - name: Install Dependencies - macOS
+      if: ${{ startsWith(matrix.os, 'macos-') == true }}
+      shell: bash
+      run: |
+        set -e pipefail
+        brew install automake pkg-config
+    - name: Install Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Configure Vcpkg
+      uses: actions/github-script@v6
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+    - name: Build and Install TileDB
+      shell: bash
+      env:
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        VCPKG_BINARY_SOURCES: 'clear;x-gha,readwrite'
+      run: |
+        set -e pipefail
+
+        # Using git directly to avoid issues reported here:
+        # https://github.com/actions/checkout/issues/1498
+        mkdir -p ~/repos
+        git -C ~/repos clone https://github.com/TileDB-Inc/TileDB tiledb
+
+        # Build TileDB
+        mkdir -p ~/repos/tiledb/build
+        cd ~/repos/tiledb/build
+        cmake \
+          -DCMAKE_INSTALL_PREFIX=/opt/github-actions/ \
+          -DTILEDB_WERROR=OFF \
+          -DTILEDB_VCPKG=ON \
+          -DTILEDB_GCS=ON \
+          -DTILEDB_S3=ON \
+          -DTILEDB_AZURE=ON \
+          -DTILEDB_HDFS=OFF \
+          -DTILEDB_TESTS=OFF \
+          -DTILEDB_SERIALIZATION=ON \
+          -DTILEDB_VERBOSE=OFF \
+          ..
+
+        # Build TileDB
+        make -j4 && make -C tiledb -j4
+
+        # Install TileDB
+        sudo make -C tiledb -j4 install
+
+        # Setup pkg-config paths
+        echo "PKG_CONFIG_PATH=/opt/github-actions/lib/pkgconfig" >> $GITHUB_ENV

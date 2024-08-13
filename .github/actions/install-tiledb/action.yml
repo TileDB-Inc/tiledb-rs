@@ -2,23 +2,29 @@
 name: Install TileDB
 
 inputs:
-  version:
-   required: false
-   description: "The version of TileDB to Install"
-   default: "2.21.0/tiledb-linux-x86_64-2.21.0-0ea9c13"
+  token:
+    description: 'A Github PAT'
+    required: true
 
 runs:
   using: "composite"
   steps:
-    - name: Install Conda
-      uses: conda-incubator/setup-miniconda@v3
+    - name: Set Tarball Name
+      shell: bash
+      run: |
+        OS=$(uname -o | tr '[:upper:]' '[:lower:]' | tr '/' '-')
+        ARCH=$(uname -m)
+        echo "TDB_TARBALL_NAME=libtiledb-$OS-$ARCH.tar.gz" >> $GITHUB_ENV
+    - uses: robinraju/release-downloader@v1
+      with:
+        repository: 'davisp/tiledb-rs'
+        tag: nightly-libtiledb
+        fileName: ${{ env.TDB_TARBALL_NAME }}
+        extract: false
+        token: ${{ inputs.token }}
     - name: Install TileDB
       shell: bash
       run: |
-        set -e pipefail
-        # Add conda-forge for aws-crt-cpp
-        conda config --add channels conda-forge
-        # Install TileDB Nightly
-        conda install tiledb/label/nightlies::tiledb
-        # Setup pkg-config paths
-        echo "PKG_CONFIG_PATH=$CONDA/lib/pkgconfig" >> $GITHUB_ENV
+        mkdir -p /opt/github-actions
+        tar -C /opt/github-actions -xzf ${{ env.TDB_TARBALL_NAME }}
+        echo "PKG_CONFIG_PATH=/opt/github-actions/lib/pkgconfig" >> $GITHUB_ENV
