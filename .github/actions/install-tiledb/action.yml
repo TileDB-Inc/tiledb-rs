@@ -17,7 +17,7 @@ runs:
         echo "TDB_TARBALL_NAME=libtiledb-$OS-$ARCH.tar.gz" >> $GITHUB_ENV
     - uses: robinraju/release-downloader@v1
       with:
-        repository: 'davisp/tiledb-rs'
+        repository: 'TileDB-Inc/tiledb-rs'
         tag: nightly-libtiledb
         fileName: ${{ env.TDB_TARBALL_NAME }}
         extract: false
