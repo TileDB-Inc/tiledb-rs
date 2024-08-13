@@ -12,6 +12,8 @@ jobs:
         include:
           - os: ubuntu-latest
           - os: macos-latest
+    permissions:
+      contents: write
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout tiledb-rs
