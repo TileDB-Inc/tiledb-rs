@@ -12,13 +12,19 @@ runs:
   steps:
     - name: Install Conda
       uses: conda-incubator/setup-miniconda@v3
+      with:
+        activate-environment: citest
+        channels: conda-forge,tiledb
     - name: Install TileDB
       shell: bash
       run: |
         set -e pipefail
         # Add conda-forge for aws-crt-cpp
-        conda config --add channels conda-forge
+        conda config --prepend channels conda-forge
         # Install TileDB Nightly
-        conda install tiledb/label/nightlies::tiledb
+        #
+        # N.B. - Currently pinned to 2.26.0.2024_08_04 because of issues with
+        # the fmt version upgrade on conda-forge
+        conda install tiledb/label/nightlies::tiledb==2.26.0.2024_08_04
         # Setup pkg-config paths
         echo "PKG_CONFIG_PATH=$CONDA/lib/pkgconfig" >> $GITHUB_ENV
