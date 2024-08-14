@@ -22,6 +22,7 @@ version = "0.1.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
+pkg-config = "0.3.30"
 proptest = { version = "1.0.0" }
 proptest-derive = { version = "0.4.0" }
 serde_json = { version = "1.0.114", features = ["float_roundtrip"] }
@@ -30,4 +31,4 @@ tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
 tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }
 tiledb-utils = { path = "tiledb/utils", version = "0.1.0" }
-pkg-config = "0.3.30"
+trybuild = "1"

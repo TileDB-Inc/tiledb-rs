@@ -187,6 +187,19 @@ impl Drop for RawArray {
     }
 }
 
+/// A handle to a tiledb array object.
+///
+/// An array object represents array data at some URI.
+/// This structure provides methods for querying and managing
+/// the array location, schema, fragments, non-empty domain, and so on.
+/// See the `query` module for constructing queries to the array contents.
+//
+// NB: `query::ReadBuilder::new` takes `&Array` as its argument,
+// and that means that we must not add async query support AND we must
+// require that `Array` is not `Sync`. See test `compile_fail/array.rs`.
+// If either of the above requriements changes then we can make
+// `query::ReadBuilder::new` take `&mut Array` instead, but that feels
+// sort of wrong.
 pub struct Array {
     context: Context,
     uri: String,
