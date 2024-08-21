@@ -1321,6 +1321,7 @@ dependencies = [
  "thiserror",
  "tiledb-proc-macro",
  "tiledb-sys",
+ "tiledb-test-examples",
  "tiledb-test-utils",
  "tiledb-utils",
 ]
@@ -1340,6 +1341,13 @@ version = "0.1.0"
 dependencies = [
  "pkg-config",
  "tiledb-utils",
+]
+
+[[package]]
+name = "tiledb-test-examples"
+version = "0.1.0"
+dependencies = [
+ "tiledb",
 ]
 
 [[package]]
