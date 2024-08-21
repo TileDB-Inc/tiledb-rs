@@ -1,6 +1,7 @@
 use std::rc::Rc;
 
 use proptest::prelude::*;
+use proptest::sample::select;
 
 use crate::array::dimension::strategy::Requirements as DimensionRequirements;
 use crate::array::{ArrayType, DimensionData, DomainData};
@@ -112,6 +113,13 @@ impl Arbitrary for DomainData {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         prop_domain(args.clone()).boxed()
+    }
+}
+
+impl DomainData {
+    /// Returns a strategy which chooses any dimension from `self.`
+    pub fn strat_dimension(&self) -> impl Strategy<Value = DimensionData> {
+        select(self.dimension.clone())
     }
 }
 
