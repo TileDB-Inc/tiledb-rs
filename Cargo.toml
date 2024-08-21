@@ -5,7 +5,6 @@ members = [
   "tiledb/proc-macro",
   "tiledb/queries",
   "tiledb/sys",
-  "tiledb/test-examples",
   "tiledb/test-utils",
   "tiledb/utils",
   "tools/api-coverage"
@@ -29,7 +28,6 @@ proptest = { version = "1.0.0" }
 proptest-derive = { version = "0.4.0" }
 serde_json = { version = "1.0.114", features = ["float_roundtrip"] }
 tiledb = { path = "tiledb/api", version = "0.1.0" }
-tiledb-test-examples = { path = "tiledb/test-examples", version = "0.1.0" }
 tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
 tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }

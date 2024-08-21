@@ -1,8 +1,0 @@
-[package]
-name = "tiledb-test-examples"
-edition.workspace = true
-rust-version.workspace = true
-version.workspace = true
-
-[dependencies]
-tiledb = { workspace = true, features = ["arrow"] }

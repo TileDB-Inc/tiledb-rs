@@ -27,7 +27,6 @@ tiledb-utils = { workspace = true, features = ["serde_json"] }
 num-traits = { version = "0.2" }
 proptest = { workspace = true }
 proptest-derive = { workspace = true }
-tiledb-test-examples = { workspace = true }
 tiledb-test-utils = { workspace = true }
 
 [build-dependencies]
