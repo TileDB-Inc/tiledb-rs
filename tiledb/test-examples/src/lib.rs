@@ -1,3 +1,5 @@
 extern crate tiledb;
 
-pub mod sparse_all;
+mod sparse_all;
+
+pub use sparse_all::*;
