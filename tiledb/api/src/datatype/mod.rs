@@ -5,8 +5,6 @@ pub use logical::*;
 pub use physical::{PhysicalType, PhysicalValue};
 
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-#[cfg(test)]
-use std::slice::Iter;
 
 use serde::{Deserialize, Serialize};
 use util::option::OptionSubset;
@@ -393,8 +391,9 @@ impl Datatype {
         })
     }
 
-    #[cfg(test)]
-    pub fn iter() -> Iter<'static, Datatype> {
+    /// Returns an `Iterator` which yields each variant of `Datatype`
+    /// exactly once in an unspecified order.
+    pub fn iter() -> impl Iterator<Item = Datatype> {
         static DATATYPES: [Datatype; 43] = [
             Datatype::Int32,
             Datatype::Int64,
@@ -440,7 +439,7 @@ impl Datatype {
             Datatype::GeometryWkb,
             Datatype::GeometryWkt,
         ];
-        DATATYPES.iter()
+        DATATYPES.iter().copied()
     }
 }
 
@@ -804,9 +803,12 @@ pub mod strategy;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::collections::HashSet;
+
     use proptest::prelude::*;
     use util::{assert_not_option_subset, assert_option_subset};
+
+    use super::*;
 
     #[test]
     fn datatype_roundtrips() {
@@ -837,6 +839,15 @@ mod tests {
             } else {
                 assert!(Datatype::try_from(i as u32).is_err());
             }
+        }
+    }
+
+    #[test]
+    fn iter() {
+        let mut yielded = HashSet::<Datatype>::new();
+        for dt in Datatype::iter() {
+            let prev = yielded.insert(dt);
+            assert!(prev);
         }
     }
 

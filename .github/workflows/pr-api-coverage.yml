@@ -16,6 +16,8 @@ jobs:
         run: cargo install cargo-expand
       - name: Install TileDB
         uses: ./.github/actions/install-tiledb
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build API Coverage Tool
         run: cd tools/api-coverage && cargo build
       - name: Calculate Coverage

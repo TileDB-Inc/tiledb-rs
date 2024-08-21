@@ -190,4 +190,30 @@ extern "C" {
         array: *mut tiledb_array_t,
         timestamp_end: *mut u64,
     ) -> i32;
+
+    pub fn tiledb_array_vacuum(
+        ctx: *mut tiledb_ctx_t,
+        array_uri: *const ::std::os::raw::c_char,
+        config: *mut tiledb_config_t,
+    ) -> i32;
+
+    pub fn tiledb_array_upgrade_version(
+        ctx: *mut tiledb_ctx_t,
+        array_uri: *const ::std::os::raw::c_char,
+        config: *mut tiledb_config_t,
+    ) -> i32;
+
+    pub fn tiledb_array_consolidate(
+        ctx: *mut tiledb_ctx_t,
+        array_uri: *const ::std::os::raw::c_char,
+        config: *mut tiledb_config_t,
+    ) -> i32;
+
+    pub fn tiledb_array_consolidate_fragments(
+        ctx: *mut tiledb_ctx_t,
+        array_uri: *const ::std::os::raw::c_char,
+        fragment_uris: *mut *const ::std::os::raw::c_char,
+        num_fragments: u64,
+        config: *mut tiledb_config_t,
+    ) -> i32;
 }

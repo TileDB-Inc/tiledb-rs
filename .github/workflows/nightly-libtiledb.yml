@@ -1,0 +1,38 @@
+name: Libtiledb Nightlies
+on:
+  schedule:
+    # runs every day at 00:37 UTC
+    - cron: "37 00 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly_cli_release:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+          - os: macos-latest
+    permissions:
+      contents: write
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Build and Install TileDB
+        uses: ./.github/actions/build-tiledb
+      - name: Set Tarball Name
+        run: |
+          OS=$(uname -o | tr '[:upper:]' '[:lower:]' | tr '/' '-')
+          ARCH=$(uname -m)
+          echo "TDB_TARBALL_NAME=libtiledb-$OS-$ARCH.tar.gz" >> $GITHUB_ENV
+      - name: Create Release Artifact
+        run: |
+          tar -C /opt/github-actions/ -cvzf ${{ env.TDB_TARBALL_NAME }} include/ lib/
+      - name: Update Nightly CLI Release
+        uses: pyTooling/Actions/releaser/composite@main
+        with:
+          tag: nightly-libtiledb
+          rm: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            ${{ env.TDB_TARBALL_NAME }}

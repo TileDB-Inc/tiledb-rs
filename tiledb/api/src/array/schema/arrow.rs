@@ -27,6 +27,20 @@ pub type SchemaToArrowResult =
 pub type SchemaFromArrowResult =
     crate::arrow::ArrowConversionResult<SchemaBuilder, SchemaBuilder>;
 
+// additional methods with arrow features
+impl Schema {
+    pub fn to_arrow(&self) -> TileDBResult<SchemaToArrowResult> {
+        crate::array::schema::arrow::to_arrow(self)
+    }
+
+    pub fn from_arrow(
+        context: &Context,
+        schema: &arrow::datatypes::Schema,
+    ) -> TileDBResult<SchemaFromArrowResult> {
+        crate::array::schema::arrow::from_arrow(context, schema)
+    }
+}
+
 /// Represents required metadata to convert from an arrow schema
 /// to a TileDB schema.
 #[derive(Deserialize, Serialize)]
@@ -58,7 +72,7 @@ impl SchemaMetadata {
             )?,
             offsets_filters: FilterMetadata::new(&schema.offsets_filters()?)?,
             nullity_filters: FilterMetadata::new(&schema.nullity_filters()?)?,
-            ndim: schema.domain()?.ndim()?,
+            ndim: schema.domain()?.num_dimensions()?,
         })
     }
 }
@@ -70,7 +84,7 @@ pub fn to_arrow(tiledb: &Schema) -> TileDBResult<SchemaToArrowResult> {
 
     let mut inexact = false;
 
-    for d in 0..tiledb.domain()?.ndim()? {
+    for d in 0..tiledb.domain()?.num_dimensions()? {
         let dim = tiledb.domain()?.dimension(d)?;
         match crate::array::dimension::arrow::to_arrow(&dim)? {
             FieldToArrowResult::None => {

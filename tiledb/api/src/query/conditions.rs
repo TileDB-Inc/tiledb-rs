@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::{BitAnd, BitOr, Deref, Not};
 
 use anyhow::anyhow;
@@ -30,6 +31,19 @@ impl EqualityOp {
     }
 }
 
+impl Display for EqualityOp {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::Less => write!(f, "<"),
+            Self::LessEqual => write!(f, "<="),
+            Self::Equal => write!(f, "="),
+            Self::NotEqual => write!(f, "<>"),
+            Self::GreaterEqual => write!(f, ">="),
+            Self::Greater => write!(f, ">"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum SetMembershipOp {
     In,
@@ -41,6 +55,15 @@ impl SetMembershipOp {
         match self {
             Self::In => ffi::tiledb_query_condition_op_t_TILEDB_IN,
             Self::NotIn => ffi::tiledb_query_condition_op_t_TILEDB_NOT_IN,
+        }
+    }
+}
+
+impl Display for SetMembershipOp {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::In => write!(f, "IN"),
+            Self::NotIn => write!(f, "NOT IN"),
         }
     }
 }
@@ -60,6 +83,15 @@ impl NullnessOp {
     }
 }
 
+impl Display for NullnessOp {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::IsNull => write!(f, "IS NULL"),
+            Self::NotNull => write!(f, "IS NOT NULL"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum CombinationOp {
     And,
@@ -75,6 +107,15 @@ impl CombinationOp {
                 ffi::tiledb_query_condition_combination_op_t_TILEDB_AND
             }
             Self::Or => ffi::tiledb_query_condition_combination_op_t_TILEDB_OR,
+        }
+    }
+}
+
+impl Display for CombinationOp {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::And => write!(f, "AND"),
+            Self::Or => write!(f, "OR"),
         }
     }
 }
@@ -112,6 +153,26 @@ impl Literal {
     }
 }
 
+impl Display for Literal {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::UInt8(value) => write!(f, "{}", value),
+            Self::UInt16(value) => write!(f, "{}", value),
+            Self::UInt32(value) => write!(f, "{}", value),
+            Self::UInt64(value) => write!(f, "{}", value),
+            Self::Int8(value) => write!(f, "{}", value),
+            Self::Int16(value) => write!(f, "{}", value),
+            Self::Int32(value) => write!(f, "{}", value),
+            Self::Int64(value) => write!(f, "{}", value),
+            Self::Float32(value) => write!(f, "{}", value),
+            Self::Float64(value) => write!(f, "{}", value),
+            Self::String(value) => {
+                write!(f, "'{}'", escape_string_literal(value))
+            }
+        }
+    }
+}
+
 macro_rules! literal_from_impl {
     ($ty:ty, $constructor:expr) => {
         impl From<$ty> for Literal {
@@ -138,6 +199,10 @@ impl From<&str> for Literal {
     fn from(val: &str) -> Literal {
         Literal::String(val.to_string())
     }
+}
+
+fn escape_string_literal(s: &str) -> impl Display + '_ {
+    s.escape_default()
 }
 
 // N.B. I initially tried slices here, but that breaks the Deserialize trait.
@@ -213,6 +278,47 @@ impl SetMembers {
             Self::String(_) => None,
         }
     }
+
+    fn display<T>(f: &mut Formatter, members: &[T]) -> FmtResult
+    where
+        T: Display,
+    {
+        if let Some((first, rest)) = members.split_first() {
+            write!(f, "({}", first)?;
+            rest.iter().try_for_each(|value| write!(f, ", {}", value))?;
+            write!(f, ")")
+        } else {
+            write!(f, "()")
+        }
+    }
+}
+
+impl Display for SetMembers {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::UInt8(ref members) => Self::display(f, members),
+            Self::UInt16(ref members) => Self::display(f, members),
+            Self::UInt32(ref members) => Self::display(f, members),
+            Self::UInt64(ref members) => Self::display(f, members),
+            Self::Int8(ref members) => Self::display(f, members),
+            Self::Int16(ref members) => Self::display(f, members),
+            Self::Int32(ref members) => Self::display(f, members),
+            Self::Int64(ref members) => Self::display(f, members),
+            Self::Float32(ref members) => Self::display(f, members),
+            Self::Float64(ref members) => Self::display(f, members),
+            Self::String(ref members) => {
+                if let Some((first, rest)) = members.split_first() {
+                    write!(f, "('{}'", escape_string_literal(first))?;
+                    rest.iter().try_for_each(|value| {
+                        write!(f, ", '{}'", escape_string_literal(value))
+                    })?;
+                    write!(f, ")")
+                } else {
+                    write!(f, "()")
+                }
+            }
+        }
+    }
 }
 
 macro_rules! set_member_value_impl {
@@ -281,6 +387,12 @@ impl EqualityPredicate {
         })?;
 
         Ok(raw)
+    }
+}
+
+impl Display for EqualityPredicate {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{} {} {}", self.field, self.op, self.value)
     }
 }
 
@@ -389,6 +501,12 @@ impl SetMembershipPredicate {
     }
 }
 
+impl Display for SetMembershipPredicate {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{} {} {}", self.field, self.op, self.members)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct NullnessPredicate {
     field: String,
@@ -422,6 +540,12 @@ impl NullnessPredicate {
     }
 }
 
+impl Display for NullnessPredicate {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        write!(f, "{} {}", self.field, self.op)
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Predicate {
     Equality(EqualityPredicate),
@@ -435,6 +559,16 @@ impl Predicate {
             Self::Equality(pred) => pred.build(ctx),
             Self::SetMembership(pred) => pred.build(ctx),
             Self::Nullness(pred) => pred.build(ctx),
+        }
+    }
+}
+
+impl Display for Predicate {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::Equality(ref e) => write!(f, "{}", e),
+            Self::SetMembership(ref m) => write!(f, "{}", m),
+            Self::Nullness(ref n) => write!(f, "{}", n),
         }
     }
 }
@@ -620,6 +754,22 @@ impl Not for QueryConditionExpr {
     }
 }
 
+impl Display for QueryConditionExpr {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::Cond(ref pred) => write!(f, "{}", pred),
+            Self::Comb {
+                ref lhs,
+                ref rhs,
+                op,
+            } => {
+                write!(f, "({}) {} ({})", lhs, op, rhs)
+            }
+            Self::Negate(ref pred) => write!(f, "NOT ({})", pred),
+        }
+    }
+}
+
 pub(crate) enum RawQueryCondition {
     Owned(*mut ffi::tiledb_query_condition_t),
 }
@@ -713,5 +863,45 @@ mod tests {
         assert!(qc.build(&ctx).is_ok());
 
         Ok(())
+    }
+
+    #[test]
+    fn display() {
+        let qc_cmp = QC::field("field").lt(5);
+        assert_eq!("field < 5", qc_cmp.to_string());
+
+        let qc_setmemb =
+            QC::field("field").is_in(["one", "two", "three"].as_slice());
+        assert_eq!("field IN ('one', 'two', 'three')", qc_setmemb.to_string());
+
+        let qc_nullness = QC::field("field").not_null();
+        assert_eq!("field IS NOT NULL", qc_nullness.to_string());
+
+        let qc_comb = qc_cmp.clone() & qc_setmemb.clone();
+        assert_eq!(
+            format!("({}) AND ({})", qc_cmp, qc_setmemb),
+            qc_comb.to_string()
+        );
+
+        let qc_neg = !qc_nullness.clone();
+        assert_eq!(format!("NOT ({})", qc_nullness), qc_neg.to_string());
+
+        /* parentheses should leave no ambiguity */
+        let atom = QC::field("x").lt(5);
+        let qc_tree = (atom.clone() | atom.clone())
+            & (!atom.clone() | !(atom.clone() & atom.clone()));
+
+        assert_eq!(
+            "((x < 5) OR (x < 5)) AND ((NOT (x < 5)) OR (NOT ((x < 5) AND (x < 5))))",
+            qc_tree.to_string()
+        );
+    }
+
+    #[test]
+    fn display_literal() {
+        assert_eq!("'foo'", Literal::String("foo".to_owned()).to_string());
+        assert_eq!("'f\\\\o'", Literal::String("f\\o".to_owned()).to_string());
+        assert_eq!("'f\\\"o'", Literal::String("f\"o".to_owned()).to_string());
+        assert_eq!("'f\\'o'", Literal::String("f'o".to_owned()).to_string());
     }
 }

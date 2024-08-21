@@ -17,6 +17,20 @@ use crate::{
     error::Error as TileDBError, physical_type_go, Result as TileDBResult,
 };
 
+// additional methods with arrow features
+impl Dimension {
+    pub fn to_arrow(&self) -> TileDBResult<FieldToArrowResult> {
+        crate::array::dimension::arrow::to_arrow(self)
+    }
+
+    pub fn from_arrow(
+        context: &TileDBContext,
+        field: &arrow::datatypes::Field,
+    ) -> TileDBResult<DimensionFromArrowResult> {
+        crate::array::dimension::arrow::from_arrow(context, field)
+    }
+}
+
 /// Encapsulates fields of a TileDB dimension which are not part of an Arrow
 /// field
 #[derive(Deserialize, Serialize)]

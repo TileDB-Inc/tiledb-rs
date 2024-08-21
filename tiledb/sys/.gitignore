@@ -2,3 +2,6 @@ generated.rs
 generated-functions.txt
 covered-functions.txt
 todo.txt
+ignored-but-covered.txt
+ignored-functions.txt
+not-covered.txt
