@@ -35,48 +35,68 @@ pub enum AggregateFunction {
 }
 
 impl AggregateFunction {
+    pub fn argument_name(&self) -> Option<&str> {
+        match self {
+            Self::Count => None,
+            Self::NullCount(ref s)
+            | Self::Min(ref s)
+            | Self::Max(ref s)
+            | Self::Sum(ref s)
+            | Self::Mean(ref s) => Some(s.as_ref()),
+        }
+    }
+
+    pub(crate) fn result_type_impl(
+        &self,
+        argument_type: Option<Datatype>,
+    ) -> Option<Datatype> {
+        match self {
+            AggregateFunction::Count | AggregateFunction::NullCount(_) => {
+                Some(Datatype::UInt64)
+            }
+            AggregateFunction::Mean(_) => Some(Datatype::Float64),
+            AggregateFunction::Min(_) | AggregateFunction::Max(_) => {
+                Some(argument_type.unwrap())
+            }
+            AggregateFunction::Sum(_) => {
+                let argument_type = argument_type.unwrap();
+                match argument_type {
+                    Datatype::Int8
+                    | Datatype::Int16
+                    | Datatype::Int32
+                    | Datatype::Int64 => Some(Datatype::Int64),
+                    Datatype::UInt8
+                    | Datatype::UInt16
+                    | Datatype::UInt32
+                    | Datatype::UInt64 => Some(Datatype::UInt64),
+                    Datatype::Float32 | Datatype::Float64 => {
+                        Some(Datatype::Float64)
+                    }
+                    _ => None,
+                }
+            }
+        }
+    }
+
     /// Returns the result `Datatype` of this function when applied
     /// to an array described by `schema`.
     pub fn result_type(&self, schema: &Schema) -> TileDBResult<Datatype> {
         match self {
-            AggregateFunction::Count | AggregateFunction::NullCount(_) => {
-                Ok(Datatype::UInt64)
+            AggregateFunction::Count => {
+                Ok(self.result_type_impl(None).unwrap())
             }
-            AggregateFunction::Mean(_) => Ok(Datatype::Float64),
-            AggregateFunction::Sum(field_name) => {
+            AggregateFunction::NullCount(field_name)
+            | AggregateFunction::Min(field_name)
+            | AggregateFunction::Max(field_name)
+            | AggregateFunction::Mean(field_name)
+            | AggregateFunction::Sum(field_name) => {
                 let field_type = get_datatype_from_field(schema, field_name)?;
-                if matches!(
-                    field_type,
-                    Datatype::Int8
-                        | Datatype::Int16
-                        | Datatype::Int32
-                        | Datatype::Int64
-                ) {
-                    Ok(Datatype::Int64)
-                } else if matches!(
-                    field_type,
-                    Datatype::UInt8
-                        | Datatype::UInt16
-                        | Datatype::UInt32
-                        | Datatype::UInt64
-                ) {
-                    Ok(Datatype::UInt64)
-                } else if matches!(
-                    field_type,
-                    Datatype::Float32 | Datatype::Float64
-                ) {
-                    Ok(Datatype::Float64)
-                } else {
-                    Err(TileDBError::InvalidArgument(anyhow!(format!(
-                    "aggregate_type: field has invalid non-numeric datatype {}",
-                    field_type
-                ))))
+                match self.result_type_impl(Some(field_type)) {
+                    Some(dt) => Ok(dt),
+                    None => Err(TileDBError::InvalidArgument(anyhow!(format!(
+                    "aggregate_type: field '{}' has invalid non-numeric datatype {}",
+                    field_name, field_type))))
                 }
-            }
-            AggregateFunction::Min(field_name)
-            | AggregateFunction::Max(field_name) => {
-                let field_type = get_datatype_from_field(schema, field_name)?;
-                Ok(field_type)
             }
         }
     }
