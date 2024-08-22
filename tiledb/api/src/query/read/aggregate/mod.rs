@@ -122,9 +122,11 @@ pub struct AggregateBuilder<T, B> {
 pub struct AggregateQuery<T, Q> {
     base: Q,
     agg_str: CString,
-    _field_str: Option<CString>, // Unused because the C API uses this memory to store the attribute name.
+    // NB: C API uses this memory location to store the attribute name if any
+    field_name: Option<CString>,
     data: T,
     data_size: u64,
+    data_validity: Option<u8>,
 }
 
 impl<T, B> QueryBuilder for AggregateBuilder<T, B>
@@ -142,9 +144,10 @@ where
         AggregateQuery::<T, B::Query> {
             base: self.base.build(),
             agg_str: self.agg_str,
-            _field_str: self.field_str,
+            field_name: self.field_str,
             data: T::default(),
             data_size: mem::size_of::<T>() as u64,
+            data_validity: None,
         }
     }
 }
@@ -171,7 +174,7 @@ where
     T: Copy,
 {
     type Intermediate = ();
-    type Final = (T, Q::Final);
+    type Final = (Option<T>, Q::Final);
 
     fn step(
         &mut self,
@@ -192,6 +195,33 @@ where
             )
         })?;
 
+        if let Some(field_name) = self.field_name.as_ref() {
+            self.data_validity = Some(1);
+
+            if self
+                .base()
+                .array()
+                .schema()?
+                .field(field_name.clone().into_string().unwrap())?
+                .nullability()?
+            {
+                let c_field_name = field_name.as_ptr();
+                let c_validity =
+                    self.data_validity.as_mut().unwrap() as *mut u8;
+                let mut c_validity_size: u64 = std::mem::size_of::<u8>() as u64;
+
+                context.capi_call(|ctx| unsafe {
+                    ffi::tiledb_query_set_validity_buffer(
+                        ctx,
+                        c_query,
+                        c_field_name,
+                        c_validity,
+                        &mut c_validity_size as *mut u64,
+                    )
+                })?;
+            }
+        }
+
         let base_result = self.base.step()?;
 
         // There are no intermediate results for aggregates since the buffer size should be one
@@ -204,6 +234,12 @@ where
             ReadStepOutput::NotEnoughSpace => {
                 unreachable!("Expected ReadStepOutput::Final.")
             }
+        };
+
+        let return_val = if matches!(self.data_validity, Some(0)) {
+            None
+        } else {
+            Some(return_val)
         };
 
         Ok(ReadStepOutput::Final((return_val, base_q)))
