@@ -11,7 +11,7 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::marker::PhantomData;
 use std::mem;
 
-use crate::array::Schema;
+use crate::array::{CellValNum, Schema};
 use crate::datatype::PhysicalType;
 use crate::error::Error as TileDBError;
 use crate::{Datatype, Result as TileDBResult};
@@ -48,31 +48,50 @@ impl AggregateFunction {
 
     pub(crate) fn result_type_impl(
         &self,
-        argument_type: Option<Datatype>,
+        argument_type: Option<(Datatype, CellValNum)>,
     ) -> Option<Datatype> {
+        let is_unit = match argument_type.map(|(_, cvn)| cvn) {
+            Some(CellValNum::Fixed(nz)) if nz.get() == 1 => true,
+            _ => false,
+        };
+
         match self {
             AggregateFunction::Count | AggregateFunction::NullCount(_) => {
                 Some(Datatype::UInt64)
             }
-            AggregateFunction::Mean(_) => Some(Datatype::Float64),
+            AggregateFunction::Mean(_) => {
+                if is_unit {
+                    Some(Datatype::Float64)
+                } else {
+                    None
+                }
+            }
             AggregateFunction::Min(_) | AggregateFunction::Max(_) => {
-                Some(argument_type.unwrap())
+                if is_unit {
+                    Some(argument_type.unwrap().0)
+                } else {
+                    None
+                }
             }
             AggregateFunction::Sum(_) => {
-                let argument_type = argument_type.unwrap();
-                match argument_type {
-                    Datatype::Int8
-                    | Datatype::Int16
-                    | Datatype::Int32
-                    | Datatype::Int64 => Some(Datatype::Int64),
-                    Datatype::UInt8
-                    | Datatype::UInt16
-                    | Datatype::UInt32
-                    | Datatype::UInt64 => Some(Datatype::UInt64),
-                    Datatype::Float32 | Datatype::Float64 => {
-                        Some(Datatype::Float64)
+                if is_unit {
+                    let argument_type = argument_type.unwrap().0;
+                    match argument_type {
+                        Datatype::Int8
+                        | Datatype::Int16
+                        | Datatype::Int32
+                        | Datatype::Int64 => Some(Datatype::Int64),
+                        Datatype::UInt8
+                        | Datatype::UInt16
+                        | Datatype::UInt32
+                        | Datatype::UInt64 => Some(Datatype::UInt64),
+                        Datatype::Float32 | Datatype::Float64 => {
+                            Some(Datatype::Float64)
+                        }
+                        _ => None,
                     }
-                    _ => None,
+                } else {
+                    None
                 }
             }
         }
@@ -81,23 +100,20 @@ impl AggregateFunction {
     /// Returns the result `Datatype` of this function when applied
     /// to an array described by `schema`.
     pub fn result_type(&self, schema: &Schema) -> TileDBResult<Datatype> {
-        match self {
-            AggregateFunction::Count => {
-                Ok(self.result_type_impl(None).unwrap())
+        if let Some(arg) = self.argument_name() {
+            let f = schema.field(arg.to_owned())?;
+            let datatype = f.datatype()?;
+            let cell_val_num = f.cell_val_num()?;
+            match self.result_type_impl(Some((datatype, cell_val_num))) {
+                Some(datatype) => Ok(datatype),
+                None => Err(TileDBError::InvalidArgument(anyhow!(format!(
+                    "aggregate_type: field '{}' has invalid datatype and cell val num ({}, {})",
+                    self.argument_name().unwrap(),
+                    datatype, cell_val_num
+                )))),
             }
-            AggregateFunction::NullCount(field_name)
-            | AggregateFunction::Min(field_name)
-            | AggregateFunction::Max(field_name)
-            | AggregateFunction::Mean(field_name)
-            | AggregateFunction::Sum(field_name) => {
-                let field_type = get_datatype_from_field(schema, field_name)?;
-                match self.result_type_impl(Some(field_type)) {
-                    Some(dt) => Ok(dt),
-                    None => Err(TileDBError::InvalidArgument(anyhow!(format!(
-                    "aggregate_type: field '{}' has invalid non-numeric datatype {}",
-                    field_name, field_type))))
-                }
-            }
+        } else {
+            Ok(self.result_type_impl(None).unwrap())
         }
     }
 }
@@ -196,15 +212,16 @@ where
         })?;
 
         if let Some(field_name) = self.field_name.as_ref() {
-            self.data_validity = Some(1);
-
-            if self
-                .base()
-                .array()
-                .schema()?
-                .field(field_name.clone().into_string().unwrap())?
-                .nullability()?
+            if self.agg_str.to_str().unwrap() != "NullCount"
+                && self
+                    .base()
+                    .array()
+                    .schema()?
+                    .field(field_name.clone().into_string().unwrap())?
+                    .nullability()?
             {
+                self.data_validity = Some(1);
+
                 let c_field_name = field_name.as_ptr();
                 let c_validity =
                     self.data_validity.as_mut().unwrap() as *mut u8;
@@ -214,7 +231,7 @@ where
                     ffi::tiledb_query_set_validity_buffer(
                         ctx,
                         c_query,
-                        c_field_name,
+                        agg_c_ptr,
                         c_validity,
                         &mut c_validity_size as *mut u64,
                     )
@@ -244,15 +261,6 @@ where
 
         Ok(ReadStepOutput::Final((return_val, base_q)))
     }
-}
-
-fn get_datatype_from_field(
-    schema: &Schema,
-    field_name: &String,
-) -> TileDBResult<Datatype> {
-    let field = schema.field(field_name)?;
-    let field_type = field.datatype()?;
-    Ok(field_type)
 }
 
 /// Trait for query types which can have an aggregate channel placed on top of them.
@@ -405,17 +413,21 @@ pub trait AggregateQueryBuilder: QueryBuilder {
     /// Adds a request for the number of null values of a nullable attribute.
     fn null_count(
         self,
-        attr_name: String,
+        field_name: &str,
     ) -> TileDBResult<AggregateBuilder<u64, Self>> {
-        self.apply_aggregate::<u64>(AggregateFunction::NullCount(attr_name))
+        self.apply_aggregate::<u64>(AggregateFunction::NullCount(
+            field_name.to_owned(),
+        ))
     }
 
     /// Adds a request for the average of the data of an attribute or dimension.
     fn mean(
         self,
-        field_name: String,
+        field_name: &str,
     ) -> TileDBResult<AggregateBuilder<f64, Self>> {
-        self.apply_aggregate::<f64>(AggregateFunction::Mean(field_name))
+        self.apply_aggregate::<f64>(AggregateFunction::Mean(
+            field_name.to_owned(),
+        ))
     }
 
     /// Adds a request for the sum of the data of an attribute or dimension.
@@ -425,28 +437,22 @@ pub trait AggregateQueryBuilder: QueryBuilder {
     /// - `i8`, `i16`, `i32`, or `i64`, then `T` must be `i64`.
     /// - `u8`, `u16`, `u32`, or `u64`, then `T` must be `u64`.
     /// - `f32` or `f64`, then `T` must be `f64`.
-    fn sum<T>(
-        self,
-        field_name: String,
-    ) -> TileDBResult<AggregateBuilder<T, Self>>
+    fn sum<T>(self, field_name: &str) -> TileDBResult<AggregateBuilder<T, Self>>
     where
         T: PhysicalType,
     {
-        self.apply_aggregate::<T>(AggregateFunction::Sum(field_name))
+        self.apply_aggregate::<T>(AggregateFunction::Sum(field_name.to_owned()))
     }
 
     /// Adds a request for the minimum value of an attribute or dimension
     /// (within the cells satisfying query predicates, if any).
     /// The generic parameter `T` must be a type compatible with the
     /// attribute or dimension `Datatype`.
-    fn min<T>(
-        self,
-        field_name: String,
-    ) -> TileDBResult<AggregateBuilder<T, Self>>
+    fn min<T>(self, field_name: &str) -> TileDBResult<AggregateBuilder<T, Self>>
     where
         T: PhysicalType,
     {
-        self.apply_aggregate::<T>(AggregateFunction::Min(field_name))
+        self.apply_aggregate::<T>(AggregateFunction::Min(field_name.to_owned()))
     }
 
     /// Adds a request for the maximum value of an attribute or dimension
@@ -470,3 +476,6 @@ impl<T, B: QueryBuilder> AggregateQueryBuilder for AggregateBuilder<T, B> where
     T: PhysicalType
 {
 }
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
