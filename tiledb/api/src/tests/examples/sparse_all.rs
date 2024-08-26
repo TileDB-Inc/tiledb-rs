@@ -1,13 +1,16 @@
+use std::rc::Rc;
+
 use crate::array::{
     ArrayType, AttributeData, CellValNum, DimensionConstraints, DimensionData,
     DomainData, SchemaData,
 };
 use crate::{physical_type_go, Datatype};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub struct Parameters {
-    // TODO: this probably oughta be a function object to accept/reject datatype/CVN pairs
-    pub allow_var: bool,
+    pub fn_accept_dimension: Rc<dyn Fn(&Parameters, Datatype) -> bool>,
+    pub fn_accept_attribute:
+        Rc<dyn Fn(&Parameters, Datatype, CellValNum, bool) -> bool>,
 }
 
 impl Parameters {
@@ -20,22 +23,41 @@ impl Parameters {
         }
     }
 
-    fn try_attribute(&self, dt: Datatype, cell_val_num: CellValNum) -> bool {
+    fn try_attribute(
+        &self,
+        dt: Datatype,
+        _cell_val_num: CellValNum,
+        _is_nullable: bool,
+    ) -> bool {
         let is_supported_datatype = !matches!(dt, Datatype::StringUcs2);
 
         if !is_supported_datatype {
             false
-        } else if cell_val_num.is_var_sized() {
-            self.allow_var
         } else {
             true
         }
+    }
+
+    fn default_accept_dimension(params: &Self, dt: Datatype) -> bool {
+        params.try_dimension(dt)
+    }
+
+    fn default_accept_attribute(
+        params: &Self,
+        dt: Datatype,
+        cell_val_num: CellValNum,
+        is_nullable: bool,
+    ) -> bool {
+        params.try_attribute(dt, cell_val_num, is_nullable)
     }
 }
 
 impl Default for Parameters {
     fn default() -> Self {
-        Parameters { allow_var: true }
+        Parameters {
+            fn_accept_dimension: Rc::new(Self::default_accept_dimension),
+            fn_accept_attribute: Rc::new(Self::default_accept_attribute),
+        }
     }
 }
 
@@ -47,7 +69,7 @@ pub fn schema(params: Parameters) -> SchemaData {
     let mut dims = vec![];
     let mut atts = vec![];
     for dt in Datatype::iter() {
-        if params.try_dimension(dt) {
+        if (params.fn_accept_dimension)(&params, dt) {
             let constraints = if dt != Datatype::StringAscii {
                 physical_type_go!(dt, DT, {
                     DimensionConstraints::from((&[0 as DT, 100 as DT], None))
@@ -64,30 +86,45 @@ pub fn schema(params: Parameters) -> SchemaData {
             });
         }
 
-        let mut attfunc = |tag, cell_val_num| {
+        let mut attfunc = |cell_val_num, is_nullable| {
+            let tag_cvn = match cell_val_num {
+                CellValNum::Fixed(nz) if nz.get() == 1 => "single".to_owned(),
+                CellValNum::Fixed(nz) => format!("fixed@{}", nz),
+                CellValNum::Var => "var".to_owned(),
+            };
+            let tag_nullable = if is_nullable {
+                "nullable"
+            } else {
+                "not_nullable"
+            };
+
             atts.push(AttributeData {
-                name: format!("a_{}_{}", dt, tag),
+                name: format!("a_{}_{}_{}", dt, tag_cvn, tag_nullable),
                 datatype: dt,
-                nullability: Some(true),
-                cell_val_num: Some(cell_val_num),
-                fill: None,
-                filters: Default::default(),
-            });
-            atts.push(AttributeData {
-                name: format!("a_{}_{}_not_nullable", dt, tag),
-                datatype: dt,
-                nullability: Some(false),
+                nullability: Some(is_nullable),
                 cell_val_num: Some(cell_val_num),
                 fill: None,
                 filters: Default::default(),
             });
         };
 
-        if params.try_attribute(dt, CellValNum::single()) {
-            attfunc("single", CellValNum::single());
+        if (params.fn_accept_attribute)(
+            &params,
+            dt,
+            CellValNum::single(),
+            false,
+        ) {
+            attfunc(CellValNum::single(), false);
         }
-        if params.try_attribute(dt, CellValNum::Var) {
-            attfunc("var", CellValNum::Var);
+        if (params.fn_accept_attribute)(&params, dt, CellValNum::single(), true)
+        {
+            attfunc(CellValNum::single(), true);
+        }
+        if (params.fn_accept_attribute)(&params, dt, CellValNum::Var, false) {
+            attfunc(CellValNum::Var, false);
+        }
+        if (params.fn_accept_attribute)(&params, dt, CellValNum::Var, true) {
+            attfunc(CellValNum::Var, true);
         }
     }
 
