@@ -434,6 +434,7 @@ typed_read_handle!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 typed_read_handle!(Float32: f32, Float64: f64);
 
 /// Reads query results into a raw buffer.
+///
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
 /// the buffers between each step to process intermediate results.
@@ -557,6 +558,7 @@ where
 }
 
 /// Reads query results into raw buffers.
+///
 /// This is the most flexible way to read data but also the most cumbersome.
 /// Recommended usage is to run the query one step at a time, and borrow
 /// the buffers between each step to process intermediate results.

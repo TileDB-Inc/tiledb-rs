@@ -153,6 +153,7 @@ fn tiledb_metadata(schema: &ArrowSchema) -> TileDBResult<SchemaMetadata> {
 }
 
 /// Construct a TileDB schema from an Arrow schema.
+///
 /// A TileDB schema must have domain and dimension details.
 /// These are expected to be in the schema `metadata` beneath the key `tiledb`.
 /// This metadata is expected to be a JSON object with the following fields:
