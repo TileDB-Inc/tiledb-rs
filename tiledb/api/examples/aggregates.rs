@@ -149,8 +149,12 @@ fn example_count() -> TileDBResult<()> {
         .finish_subarray()?
         .build();
 
-    let (results, _): (u64, ()) = query.execute()?;
-    println!("Count is {}", results);
+    let (count, _): (Option<u64>, ()) = query.execute()?;
+
+    let Some(count) = count else {
+        unreachable!("Count result is never `None`");
+    };
+    println!("Count is {}", count);
 
     Ok(())
 }
@@ -174,15 +178,19 @@ fn example_sum() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .sum(AGGREGATE_ATTRIBUTE_NAME.to_string())?
+        .sum(AGGREGATE_ATTRIBUTE_NAME)?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
         .add_range("columns", &[1i32, 4])?
         .finish_subarray()?
         .build();
 
-    let (results, _): (i64, ()) = query.execute()?;
-    println!("Sum is {}", results);
+    let (results, _): (Option<i64>, ()) = query.execute()?;
+
+    let Some(sum) = results else {
+        unreachable!("Sum is `None` which cannot occur on example input");
+    };
+    println!("Sum is {}", sum);
 
     Ok(())
 }
@@ -208,8 +216,8 @@ fn example_min_max() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .max::<i32>(AGGREGATE_ATTRIBUTE_NAME.to_string())?
-        .min::<i32>(AGGREGATE_ATTRIBUTE_NAME.to_string())?
+        .max::<i32>(AGGREGATE_ATTRIBUTE_NAME)?
+        .min::<i32>(AGGREGATE_ATTRIBUTE_NAME)?
         .start_subarray()?
         .add_range("rows", &[2i32, 3])?
         .add_range("columns", &[2i32, 3])?
@@ -218,6 +226,9 @@ fn example_min_max() -> TileDBResult<()> {
 
     let (min_res, (max_res, _)) = query.execute()?;
 
+    let (Some(min_res), Some(max_res)) = (min_res, max_res) else {
+        unreachable!("Min or max is `None` which cannot occur on example input")
+    };
     println!("Min is {}", min_res);
     println!("Max is {}", max_res);
 
@@ -243,7 +254,7 @@ fn example_mean() -> TileDBResult<()> {
 
     let mut query = tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
-        .mean(AGGREGATE_ATTRIBUTE_NAME.to_string())?
+        .mean(AGGREGATE_ATTRIBUTE_NAME)?
         .start_subarray()?
         .add_range("rows", &[2i32, 3])?
         .add_range("columns", &[1i32, 3])?
@@ -251,6 +262,11 @@ fn example_mean() -> TileDBResult<()> {
         .build();
 
     let (mean, ()) = query.execute()?;
+
+    let Some(mean) = mean else {
+        unreachable!("Mean is `None` which cannot occur on example input")
+    };
     println!("Mean is {}", mean);
+
     Ok(())
 }

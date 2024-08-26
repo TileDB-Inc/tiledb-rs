@@ -191,7 +191,7 @@ where
     Q: ReadQuery,
 {
     type Intermediate = ();
-    type Final = (PhysicalValue, Q::Final);
+    type Final = (Option<PhysicalValue>, Q::Final);
 
     fn step(
         &mut self,
@@ -201,7 +201,7 @@ where
             let enum_result = match step_result {
                 ReadStepOutput::Final((return_val, base_q)) => {
                     ReadStepOutput::Final((
-                        PhysicalValue::from(return_val),
+                        return_val.map(PhysicalValue::from),
                         base_q,
                     ))
                 }

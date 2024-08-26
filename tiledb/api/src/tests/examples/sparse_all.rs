@@ -11,10 +11,6 @@ pub struct Parameters {
 }
 
 impl Parameters {
-    pub fn disallow_var(&self) -> Self {
-        Parameters { allow_var: false }
-    }
-
     fn try_dimension(&self, dt: Datatype) -> bool {
         if dt == Datatype::StringAscii {
             // FIXME: "Offsets buffer is not set" for some reason

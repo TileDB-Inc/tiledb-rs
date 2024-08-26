@@ -50,10 +50,7 @@ impl AggregateFunction {
         &self,
         argument_type: Option<(Datatype, CellValNum)>,
     ) -> Option<Datatype> {
-        let is_unit = match argument_type.map(|(_, cvn)| cvn) {
-            Some(CellValNum::Fixed(nz)) if nz.get() == 1 => true,
-            _ => false,
-        };
+        let is_unit = matches!(argument_type.map(|(_, cvn)| cvn), Some(CellValNum::Fixed(nz)) if nz.get() == 1);
 
         match self {
             AggregateFunction::Count | AggregateFunction::NullCount(_) => {
@@ -222,7 +219,6 @@ where
             {
                 self.data_validity = Some(1);
 
-                let c_field_name = field_name.as_ptr();
                 let c_validity =
                     self.data_validity.as_mut().unwrap() as *mut u8;
                 let mut c_validity_size: u64 = std::mem::size_of::<u8>() as u64;
@@ -459,14 +455,11 @@ pub trait AggregateQueryBuilder: QueryBuilder {
     /// (within the cells satisfying query predicates, if any).
     /// The generic parameter `T` must be a type compatible with the
     /// attribute or dimension `Datatype`.
-    fn max<T>(
-        self,
-        field_name: String,
-    ) -> TileDBResult<AggregateBuilder<T, Self>>
+    fn max<T>(self, field_name: &str) -> TileDBResult<AggregateBuilder<T, Self>>
     where
         T: PhysicalType,
     {
-        self.apply_aggregate::<T>(AggregateFunction::Max(field_name))
+        self.apply_aggregate::<T>(AggregateFunction::Max(field_name.to_owned()))
     }
 }
 

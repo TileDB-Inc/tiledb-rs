@@ -5,7 +5,6 @@ use proptest::prelude::*;
 use crate::array::schema::{FieldData as SchemaField, SchemaData};
 use crate::array::CellValNum;
 use crate::query::read::aggregate::AggregateFunction;
-use crate::query::QueryLayout;
 use crate::Datatype;
 
 pub enum AggregateFunctionContext {
@@ -32,9 +31,9 @@ impl Arbitrary for AggregateFunction {
                     f.cell_val_num().unwrap_or(CellValNum::single());
 
                 let mut try_agg = |agg: AggregateFunction| {
-                    if !agg
+                    if agg
                         .result_type_impl(Some((datatype, cell_val_num)))
-                        .is_some()
+                        .is_none()
                     {
                         return;
                     }
@@ -98,6 +97,7 @@ mod tests {
     use crate::query::write::strategy::{
         SparseWriteInput, SparseWriteParameters,
     };
+    use crate::query::QueryLayout;
     use crate::query::{Query, QueryBuilder, ReadQuery, WriteBuilder};
     use crate::{
         typed_field_data_go, Context, Factory, Result as TileDBResult,
@@ -169,7 +169,8 @@ mod tests {
 
         runner
             .run(&strat_agg, |agg| {
-                Ok(do_validate_agg(&c, &uri, &input.data, agg))
+                do_validate_agg(&c, &uri, &input.data, agg);
+                Ok(())
             })
             .unwrap_or_else(|e| panic!("{}\nWrite input = {:?}", e, input));
     }
