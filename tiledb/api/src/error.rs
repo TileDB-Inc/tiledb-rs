@@ -200,7 +200,6 @@ pub enum Error {
 }
 
 impl Error {
-    #[cfg(test)]
     pub(crate) fn physical_type_mismatch<T, U>() -> Self {
         Self::Datatype(DatatypeErrorKind::PhysicalTypeMismatch {
             requested_type: std::any::type_name::<T>().to_owned(),
