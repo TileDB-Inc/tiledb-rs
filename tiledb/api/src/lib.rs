@@ -60,6 +60,9 @@ pub mod vfs;
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
+#[cfg(test)]
+pub mod tests;
+
 pub fn version() -> (i32, i32, i32) {
     let mut major: i32 = 0;
     let mut minor: i32 = 0;
