@@ -6,9 +6,8 @@ use tiledb_test_utils::TestArrayUri;
 
 use crate::array::schema::SchemaData;
 use crate::error::Error;
-use crate::tests::prelude::array::*;
-use crate::tests::prelude::query::strategy::*;
-use crate::tests::prelude::query::*;
+use crate::tests::prelude::*;
+use crate::tests::strategy::prelude::*;
 use crate::{Context, Factory, Result as TileDBResult};
 
 /// Provides methods for creating a schema which can optionally have
