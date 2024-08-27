@@ -109,6 +109,11 @@ where
     }
 }
 
+impl<B> AggregateQueryBuilder for AggregatePhysicalValueBuilder<B> where
+    B: QueryBuilder
+{
+}
+
 #[derive(Debug, PartialEq)]
 pub enum AggregatePhysicalValueQuery<Q> {
     UInt8(AggregateQuery<u8, Q>),

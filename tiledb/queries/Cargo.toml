@@ -1,8 +1,12 @@
 [package]
-name = "queries"
+name = "tiledb-queries"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
 tiledb = { workspace = true }
+
+[build-dependencies]
+pkg-config = { workspace = true }
+tiledb-utils = { workspace = true }
