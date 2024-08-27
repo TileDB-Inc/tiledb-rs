@@ -1,6 +1,7 @@
 use std::num::*;
 
 /// Trait for comparing types which can express optional data.
+///
 /// The `option_subset` method should return true if it finds that all required data
 /// of two objects are equal, and the non-required data are either equal or not set
 /// for the method receiver.  For objects which only have required data, this should be

@@ -200,8 +200,6 @@ pub enum Error {
 }
 
 impl Error {
-    // note, the `cfg` here is just because that's the only way it's used so far
-    #[cfg(any(test, feature = "proptest-strategies"))]
     pub(crate) fn physical_type_mismatch<T, U>() -> Self {
         Self::Datatype(DatatypeErrorKind::PhysicalTypeMismatch {
             requested_type: std::any::type_name::<T>().to_owned(),
