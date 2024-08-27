@@ -33,6 +33,10 @@ pub enum DatatypeErrorKind {
         user_type: String,
         tiledb_type: Datatype,
     },
+    PhysicalTypeMismatch {
+        requested_type: String,
+        actual_type: String,
+    },
     UnexpectedCellStructure {
         context: Option<String>,
         found: CellValNum,
@@ -62,6 +66,16 @@ impl Display for DatatypeErrorKind {
                     f,
                     "Type mismatch: requested {}, but found {}",
                     user_type, tiledb_type
+                )
+            }
+            DatatypeErrorKind::PhysicalTypeMismatch {
+                requested_type,
+                actual_type,
+            } => {
+                write!(
+                    f,
+                    "Physical type mismatch: requested {}, but found {}",
+                    requested_type, actual_type
                 )
             }
             DatatypeErrorKind::UnexpectedCellStructure {
@@ -183,6 +197,15 @@ pub enum Error {
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),
+}
+
+impl Error {
+    pub(crate) fn physical_type_mismatch<T, U>() -> Self {
+        Self::Datatype(DatatypeErrorKind::PhysicalTypeMismatch {
+            requested_type: std::any::type_name::<T>().to_owned(),
+            actual_type: std::any::type_name::<U>().to_owned(),
+        })
+    }
 }
 
 impl From<RawError> for Error {

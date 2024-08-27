@@ -16,6 +16,7 @@ use tiledb_test_utils::strategy::records::{Records, RecordsValueTree};
 use crate::array::schema::FieldData as SchemaField;
 use crate::array::{ArrayType, CellValNum, SchemaData};
 use crate::datatype::physical::{BitsEq, BitsOrd, IntegralType};
+use crate::error::Error;
 use crate::query::read::output::{
     CellStructureSingleIterator, FixedDataIterator, RawReadOutput,
     TypedRawReadOutput, VarDataIterator,
@@ -73,6 +74,24 @@ macro_rules! typed_field_data {
                 fn from(value: Vec<Vec<$U>>) -> Self {
                     paste! {
                         FieldData::[< Vec $V >](value)
+                    }
+                }
+            }
+
+            impl TryFrom<FieldData> for Vec<$U> {
+                type Error = Error;
+
+                fn try_from(value: FieldData) -> Result<Self, Self::Error> {
+                    if let FieldData::$V(values) = value {
+                        Ok(values)
+                    } else {
+                        crate::typed_field_data_go!(value, DT, _,
+                            {
+                                Err(Error::physical_type_mismatch::<$U, DT>())
+                            },
+                            {
+                                Err(Error::physical_type_mismatch::<$U, Vec<DT>>())
+                            })
                     }
                 }
             }
@@ -159,10 +178,12 @@ impl Records for FieldData {
 #[macro_export]
 macro_rules! typed_field_data_go {
     ($field:expr, $data:pat, $then:expr) => {
-        typed_field_data_go!($field, _DT, $data, $then, $then)
+        $crate::typed_field_data_go!($field, _DT, $data, $then, $then)
     };
     ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {
-        typed_field_data_go!($field, $DT, $data, $fixed, $var, $fixed, $var)
+        $crate::typed_field_data_go!(
+            $field, $DT, $data, $fixed, $var, $fixed, $var
+        )
     };
     ($field:expr, $DT:ident, $data:pat, $integral_fixed:expr, $integral_var:expr, $float_fixed:expr, $float_var:expr) => {{
         use $crate::query::strategy::FieldData;

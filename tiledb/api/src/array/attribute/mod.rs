@@ -740,6 +740,9 @@ mod test {
             };
             let attr = spec.create(&ctx).unwrap();
             assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
+
+            // not nullable by default
+            assert!(!attr.is_nullable().unwrap());
         }
         {
             let spec = AttributeData {
@@ -749,6 +752,9 @@ mod test {
             };
             let attr = spec.create(&ctx).unwrap();
             assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
+
+            // not nullable by default
+            assert!(!attr.is_nullable().unwrap());
         }
     }
 

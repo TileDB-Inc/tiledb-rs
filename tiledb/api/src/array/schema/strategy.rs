@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use proptest::prelude::*;
+use proptest::sample::select;
 use proptest::strategy::ValueTree;
 
 use crate::array::attribute::strategy::{
@@ -11,7 +12,8 @@ use crate::array::attribute::strategy::{
 };
 use crate::array::domain::strategy::Requirements as DomainRequirements;
 use crate::array::{
-    ArrayType, CellOrder, CellValNum, DomainData, SchemaData, TileOrder,
+    schema::FieldData, ArrayType, AttributeData, CellOrder, CellValNum,
+    DimensionData, DomainData, SchemaData, TileOrder,
 };
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
@@ -288,6 +290,36 @@ impl Arbitrary for SchemaData {
 
     fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
         prop_schema(Rc::clone(&args)).boxed()
+    }
+}
+
+impl SchemaData {
+    /// Returns a strategy which chooses any dimension from `self`.
+    pub fn strat_dimension(&self) -> impl Strategy<Value = DimensionData> {
+        self.domain.strat_dimension()
+    }
+
+    /// Returns a strategy which chooses any attribute from `self`.
+    pub fn strat_attribute(&self) -> impl Strategy<Value = AttributeData> {
+        select(self.attributes.clone())
+    }
+
+    /// Returns a strategy which chooses any dimension or attribute from `self`.
+    pub fn strat_field(&self) -> impl Strategy<Value = FieldData> {
+        select(
+            self.domain
+                .dimension
+                .clone()
+                .into_iter()
+                .map(FieldData::Dimension)
+                .chain(
+                    self.attributes
+                        .clone()
+                        .into_iter()
+                        .map(FieldData::Attribute),
+                )
+                .collect::<Vec<FieldData>>(),
+        )
     }
 }
 
