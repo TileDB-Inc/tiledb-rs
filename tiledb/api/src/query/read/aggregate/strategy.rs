@@ -23,7 +23,15 @@ impl Arbitrary for AggregateFunction {
                 let arg = || f.name().to_string();
                 let mut strats = vec![Just(AggregateFunction::Count)];
                 if f.nullability().unwrap_or(true) {
-                    strats.push(Just(AggregateFunction::NullCount(arg())));
+                    // SC-52312: error on non-nullable fields
+                    // SC-53791: also error on Var attributes seemingly
+                    if !f
+                        .cell_val_num()
+                        .unwrap_or(CellValNum::single())
+                        .is_var_sized()
+                    {
+                        strats.push(Just(AggregateFunction::NullCount(arg())));
+                    }
                 }
 
                 let datatype = f.datatype();
@@ -102,14 +110,6 @@ mod tests {
     use crate::{
         typed_field_data_go, Context, Factory, Result as TileDBResult,
     };
-
-    /// This test should fail when SC-52312 is resolved.
-    /// When that happens we can update the strategies to
-    /// yield more function types per attribute/dimension.
-    #[test]
-    fn sc_52312() {
-        todo!()
-    }
 
     /// Test that all aggregate functions produced by
     /// the `Arbitrary` implementation do not result in errors in queries.

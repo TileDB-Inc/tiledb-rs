@@ -61,7 +61,7 @@ pub mod vfs;
 pub mod arrow;
 
 #[cfg(test)]
-pub(crate) mod tests;
+pub mod tests;
 
 pub fn version() -> (i32, i32, i32) {
     let mut major: i32 = 0;

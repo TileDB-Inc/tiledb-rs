@@ -472,3 +472,129 @@ impl<T, B: QueryBuilder> AggregateQueryBuilder for AggregateBuilder<T, B> where
 
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
+
+#[cfg(test)]
+mod tests {
+    use tiledb_test_utils::TestArrayUri;
+
+    use super::*;
+    use crate::tests::prelude::array::*;
+
+    /// When this test fails, update `impl Arbitrary for AggregateFunction`
+    #[test]
+    fn sc_52312_null_count_on_dimension() -> TileDBResult<()> {
+        let c = Context::new().unwrap();
+
+        let schema = {
+            let domain = {
+                let dimension = DimensionBuilder::new(
+                    &c,
+                    "d",
+                    Datatype::UInt64,
+                    [0u64, 100u64],
+                )?
+                .build();
+                DomainBuilder::new(&c)?.add_dimension(dimension)?.build()
+            };
+            let attribute = AttributeBuilder::new(&c, "a", Datatype::UInt64)?
+                .nullability(false)?
+                .build();
+
+            SchemaBuilder::new(&c, ArrayType::Sparse, domain)?
+                .add_attribute(attribute)?
+                .build()?
+        };
+
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        let uri = test_uri
+            .with_path("sc_52312")
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        Array::create(&c, &uri, schema)?;
+
+        // try dimension
+        {
+            let a = Array::open(&c, &uri, Mode::Read)?;
+            let r = ReadBuilder::new(a)?
+                .layout(QueryLayout::Unordered)?
+                .null_count("d");
+            assert!(matches!(r, Err(Error::LibTileDB(_))));
+        }
+
+        // try attribute
+        {
+            let a = Array::open(&c, &uri, Mode::Read)?;
+            let r = ReadBuilder::new(a)?
+                .layout(QueryLayout::Unordered)?
+                .null_count("a");
+            assert!(matches!(r, Err(Error::LibTileDB(_))));
+        }
+
+        Ok(())
+    }
+
+    /// When this test fails, update `impl Arbitrary for AggregateFunction`
+    #[test]
+    fn sc_53791_null_count_on_var_attribute() -> TileDBResult<()> {
+        let c = Context::new().unwrap();
+
+        let schema = {
+            let domain = {
+                let dimension = DimensionBuilder::new(
+                    &c,
+                    "d",
+                    Datatype::UInt64,
+                    [0u64, 100u64],
+                )?
+                .build();
+                DomainBuilder::new(&c)?.add_dimension(dimension)?.build()
+            };
+            let attribute = AttributeBuilder::new(&c, "a", Datatype::UInt64)?
+                .nullability(true)?
+                .cell_val_num(CellValNum::Var)?
+                .build();
+
+            SchemaBuilder::new(&c, ArrayType::Sparse, domain)?
+                .add_attribute(attribute)?
+                .build()?
+        };
+
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        let uri = test_uri
+            .with_path("sc_53791")
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        Array::create(&c, &uri, schema)?;
+
+        // insert a cell
+        {
+            let values_d = vec![0u64];
+            let values_a = vec![vec![0u64]];
+
+            let a = Array::open(&c, &uri, Mode::Write)?;
+            let q = WriteBuilder::new(a)?
+                .data("d", &values_d)?
+                .data("a", &values_a)?
+                .build();
+
+            q.submit()?;
+            q.finalize()?;
+        }
+
+        // try query
+        let a = Array::open(&c, &uri, Mode::Read)?;
+
+        let mut q = ReadBuilder::new(a)?
+            .layout(QueryLayout::Unordered)?
+            .null_count("a")?
+            .build();
+        let r = q.execute();
+        assert!(matches!(r, Err(Error::LibTileDB(_))));
+
+        Ok(())
+    }
+}
