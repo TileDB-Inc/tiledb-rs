@@ -14,8 +14,16 @@ pub mod prelude {
 
     pub mod query {
         pub use crate::query::{
-            Query, QueryLayout, ReadBuilder, ReadQuery, WriteBuilder,
-            WriteQuery,
+            Query, QueryBuilder, QueryLayout, ReadBuilder, ReadQuery,
+            WriteBuilder, WriteQuery,
         };
+
+        pub mod strategy {
+            pub use crate::query::strategy::{Cells, FieldData};
+            pub use crate::query::write::strategy::{
+                DenseWriteInput, DenseWriteParameters, SparseWriteInput,
+                SparseWriteParameters, WriteInput,
+            };
+        }
     }
 }
