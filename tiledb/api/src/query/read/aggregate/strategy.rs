@@ -22,16 +22,8 @@ impl Arbitrary for AggregateFunction {
             Some(AggregateFunctionContext::Field(f)) => {
                 let arg = || f.name().to_string();
                 let mut strats = vec![Just(AggregateFunction::Count)];
-                if f.nullability().unwrap_or(true) {
-                    // SC-52312: error on non-nullable fields
-                    // SC-53791: also error on Var attributes seemingly
-                    if !f
-                        .cell_val_num()
-                        .unwrap_or(CellValNum::single())
-                        .is_var_sized()
-                    {
-                        strats.push(Just(AggregateFunction::NullCount(arg())));
-                    }
+                if !is_unsupported_null_count_field(&f) {
+                    strats.push(Just(AggregateFunction::NullCount(arg())));
                 }
 
                 let datatype = f.datatype();
@@ -72,6 +64,37 @@ impl Arbitrary for AggregateFunction {
     }
 }
 
+/// Returns whether a field is supported for the null count aggregation.
+fn is_unsupported_null_count_field(f: &SchemaField) -> bool {
+    if !f.nullability().unwrap_or(false) {
+        // SC-52312: error on non-nullable fields
+        true
+    } else if f
+        .cell_val_num()
+        .unwrap_or(CellValNum::single())
+        .is_var_sized()
+    {
+        // SC-53791: also error on most Var attributes seemingly.
+        // Datatypes not in this list cannot have null count run on them when they are var sized.
+        !matches!(f.datatype(), Datatype::Char | Datatype::StringAscii)
+    } else {
+        // SC-53791: it's not just Var attributes
+        // Datatypes not in this list cannot have null count run on them when they are single-value
+        // cells.
+        matches!(
+            f.datatype(),
+            Datatype::StringUtf8
+                | Datatype::StringUtf16
+                | Datatype::StringUtf32
+                | Datatype::StringUcs2
+                | Datatype::StringUcs4
+                | Datatype::Blob
+                | Datatype::GeometryWkb
+                | Datatype::GeometryWkt
+        )
+    }
+}
+
 /// Returns whether a datatype is supported for the min/max aggregation.
 // See `apply_with_type` in the core library
 fn is_unsupported_min_max_datatype(dt: Datatype) -> bool {
@@ -94,7 +117,6 @@ fn is_unsupported_min_max_datatype(dt: Datatype) -> bool {
 #[cfg(test)]
 mod tests {
     use proptest::test_runner::TestRunner;
-    use tiledb_test_utils::TestArrayUri;
 
     use super::*;
     use crate::array::{Array, Mode};
@@ -102,13 +124,11 @@ mod tests {
     use crate::error::Error;
     use crate::query::read::{AggregateQueryBuilder, ReadBuilder};
     use crate::query::strategy::{Cells, FieldData};
-    use crate::query::write::strategy::{
-        SparseWriteInput, SparseWriteParameters,
-    };
     use crate::query::QueryLayout;
-    use crate::query::{Query, QueryBuilder, ReadQuery, WriteBuilder};
+    use crate::query::{QueryBuilder, ReadQuery};
+    use crate::tests::examples::TestArray;
     use crate::{
-        typed_field_data_go, Context, Factory, Result as TileDBResult,
+        physical_type_go, typed_field_data_go, Context, Result as TileDBResult,
     };
 
     /// Test that all aggregate functions produced by
@@ -119,48 +139,19 @@ mod tests {
         let schema = Rc::new(crate::tests::examples::sparse_all::schema(
             Default::default(),
         ));
-
-        let test_uri = tiledb_test_utils::get_uri_generator()
-            .map_err(|e| Error::Other(e.to_string()))
-            .unwrap();
-        let uri = test_uri
-            .with_path("aggregate_strategy_validity")
-            .map_err(|e| Error::Other(e.to_string()))
-            .unwrap();
-
-        let c: Context = Context::new().unwrap();
-        {
-            let s = schema.create(&c).unwrap();
-            Array::create(&c, &uri, s).unwrap()
-        }
+        let mut array = TestArray::new(
+            "is_unsupported_min_max_datatype",
+            Rc::clone(&schema),
+        )
+        .unwrap();
 
         let mut runner = TestRunner::new(Default::default());
 
         // generate test data
-        let input = {
-            let strat_input =
-                any_with::<SparseWriteInput>(SparseWriteParameters {
-                    schema: Some(Rc::clone(&schema)),
-                    ..Default::default()
-                });
-
-            strat_input.new_tree(&mut runner).unwrap().current()
-        };
+        let input = array.arbitrary_input(&mut runner);
 
         // insert to the array
-        {
-            let w = input
-                .attach_write(
-                    WriteBuilder::new(
-                        Array::open(&c, &uri, Mode::Write).unwrap(),
-                    )
-                    .unwrap(),
-                )
-                .unwrap()
-                .build();
-            w.submit().unwrap();
-            w.finalize().unwrap();
-        }
+        array.try_insert(&input).unwrap();
 
         let strat_agg = any_with::<AggregateFunction>(Some(
             AggregateFunctionContext::Schema(Rc::clone(&schema)),
@@ -169,7 +160,7 @@ mod tests {
 
         runner
             .run(&strat_agg, |agg| {
-                do_validate_agg(&c, &uri, &input.data, agg);
+                do_validate_agg(&array.context, &array.uri, input.cells(), agg);
                 Ok(())
             })
             .unwrap_or_else(|e| panic!("{}\nWrite input = {:?}", e, input));
@@ -430,5 +421,113 @@ mod tests {
             },
             unreachable!()
         );
+    }
+
+    /// Test that anything filtered out by `is_unsupported_null_count_field` actually does
+    /// get an error when the null count aggregate is run on it.
+    #[test]
+    fn is_unsupported_null_count_field() {
+        // schema with all datatypes used in attributes and dimensions
+        let schema = Rc::new(crate::tests::examples::sparse_all::schema(
+            Default::default(),
+        ));
+        let mut array = TestArray::new(
+            "is_unsupported_min_max_datatype",
+            Rc::clone(&schema),
+        )
+        .unwrap();
+
+        let mut runner = TestRunner::new(Default::default());
+
+        // generate test data
+        let input = array.arbitrary_input(&mut runner);
+
+        // insert to the array
+        array.try_insert(&input).unwrap();
+
+        for field in schema.fields() {
+            if super::is_unsupported_null_count_field(&field) {
+                let q = rstart(&array.context, &array.uri)
+                    .unwrap()
+                    .null_count(field.name())
+                    .map(|b| b.build());
+
+                let r = q.and_then(|mut q| q.execute());
+                assert!(
+                    matches!(r, Err(Error::LibTileDB(_))),
+                    "For field {}: Expected Err but found {:?}",
+                    field.name(),
+                    r
+                );
+            } else {
+                do_validate_agg_null_count(
+                    &array.context,
+                    &array.uri,
+                    field.name(),
+                    input.cells(),
+                )
+            }
+        }
+    }
+
+    /// Test that anything filtered out by `is_unsupported_min_max_datatype` actually does
+    /// get an error when min or max aggregate is run on it.
+    #[test]
+    fn is_unsupported_min_max_datatype() {
+        // schema with all datatypes used in attributes and dimensions
+        let schema = Rc::new(crate::tests::examples::sparse_all::schema(
+            Default::default(),
+        ));
+        let mut array = TestArray::new(
+            "is_unsupported_min_max_datatype",
+            Rc::clone(&schema),
+        )
+        .unwrap();
+
+        let mut runner = TestRunner::new(Default::default());
+
+        // generate test data
+        let input = array.arbitrary_input(&mut runner);
+
+        // insert to the array
+        array.try_insert(&input).unwrap();
+
+        for field in schema.fields() {
+            if field
+                .cell_val_num()
+                .unwrap_or(CellValNum::single())
+                .is_var_sized()
+            {
+                // not supported yet, result sizing prevents constructing query
+                // core *does* support this in some way,
+                // we're probably best off treating this as a follow-up story.
+                // See test-cppapi-aggregates.cc
+                continue;
+            }
+            if super::is_unsupported_min_max_datatype(field.datatype()) {
+                physical_type_go!(field.datatype(), DT, {
+                    let q = rstart(&array.context, &array.uri)
+                        .unwrap()
+                        .min::<DT>(field.name())
+                        .map(|b| b.build());
+
+                    let r = q.and_then(|mut q| q.execute());
+                    assert!(
+                        matches!(r, Err(Error::LibTileDB(_))),
+                        "For field {}: Expected Err but found {:?}",
+                        field.name(),
+                        r
+                    );
+                });
+            } else {
+                do_validate_agg_min_max(
+                    &array.context,
+                    &array.uri,
+                    field.name(),
+                    false,
+                    input.cells(),
+                )
+            }
+        }
     }
 }
