@@ -1,8 +1,6 @@
 use super::*;
 
 use std::cell::RefCell;
-use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::pin::Pin;
 
 use paste::paste;
@@ -383,7 +381,7 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     {
         let r = <T::Constructor as Default>::default();
         Ok(TypedReadBuilder {
-            _marker: PhantomData,
+            _marker: std::marker::PhantomData,
             base: self.register_callback((field.as_ref(), scratch), r)?,
         })
     }

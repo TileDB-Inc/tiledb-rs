@@ -8,6 +8,8 @@ use tiledb::{
     Array, Result as TileDBResult,
 };
 
+/// An `AggregateQueryBuilder` blanket implementation that provides extra adapters
+/// and methods for running aggregate queries.
 pub trait AggregateQueryBuilderExt: AggregateQueryBuilder {
     fn aggregate_physical_value(
         self,
@@ -28,6 +30,8 @@ pub trait AggregateQueryBuilderExt: AggregateQueryBuilder {
 
 impl<B> AggregateQueryBuilderExt for B where B: AggregateQueryBuilder {}
 
+/// Wraps an `AggregateBuilder` to transform the result of the query
+/// it will construct into a `PhysicalValue`.
 #[derive(Debug, PartialEq)]
 pub enum AggregatePhysicalValueBuilder<B> {
     UInt8(AggregateBuilder<u8, B>),
@@ -114,6 +118,7 @@ impl<B> AggregateQueryBuilder for AggregatePhysicalValueBuilder<B> where
 {
 }
 
+/// Wraps an `AggregateQuery` to transform its result into a `PhysicalValue`.
 #[derive(Debug, PartialEq)]
 pub enum AggregatePhysicalValueQuery<Q> {
     UInt8(AggregateQuery<u8, Q>),

@@ -35,6 +35,7 @@ pub enum AggregateFunction {
 }
 
 impl AggregateFunction {
+    /// Returns the name of the field which this function applies to.
     pub fn argument_name(&self) -> Option<&str> {
         match self {
             Self::Count => None,
@@ -46,6 +47,9 @@ impl AggregateFunction {
         }
     }
 
+    /// Returns the result type of the aggregate operation.
+    ///
+    /// This is used to determine if the user's requested result type is compatible
     pub(crate) fn result_type_impl(
         &self,
         argument_type: Option<(Datatype, CellValNum)>,

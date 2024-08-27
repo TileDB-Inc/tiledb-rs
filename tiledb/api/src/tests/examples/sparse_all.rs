@@ -6,9 +6,17 @@ use crate::array::{
 };
 use crate::{physical_type_go, Datatype};
 
+/// Configures construction of the `sparse_all` schema.
 #[derive(Clone)]
 pub struct Parameters {
+    /// Function which determines whether to add a dimension to the schema.
+    ///
+    /// By default, all types are added as dimensions except `Datatype::StringAscii`.
     pub fn_accept_dimension: Rc<dyn Fn(&Parameters, Datatype) -> bool>,
+
+    /// Function which determines whether to add an attribute to the schema.
+    ///
+    /// By default, all attributes are accepted.
     pub fn_accept_attribute:
         Rc<dyn Fn(&Parameters, Datatype, CellValNum, bool) -> bool>,
 }
@@ -61,9 +69,9 @@ impl Default for Parameters {
     }
 }
 
-/// Returns a schema which contains a dimension of all allowed types for a sparse array schema,
-/// and one attribute of all datatype/nullability combinations for `CellValNum::single()` and
-/// `CellValNum::Var`, depending on settings from `params`.
+/// Returns a sparse array schema which contains up to one dimension for each
+/// allowed datatype and up to one attribute for each allowed
+/// `Datatype`, `CellValNum`, and nullability.
 pub fn schema(params: Parameters) -> SchemaData {
     // build a schema with one dimension/attribute of all possible types
     let mut dims = vec![];
