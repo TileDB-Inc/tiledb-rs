@@ -177,10 +177,12 @@ impl Records for FieldData {
 #[macro_export]
 macro_rules! typed_field_data_go {
     ($field:expr, $data:pat, $then:expr) => {
-        typed_field_data_go!($field, _DT, $data, $then, $then)
+        $crate::typed_field_data_go!($field, _DT, $data, $then, $then)
     };
     ($field:expr, $DT:ident, $data:pat, $fixed:expr, $var:expr) => {
-        typed_field_data_go!($field, $DT, $data, $fixed, $var, $fixed, $var)
+        $crate::typed_field_data_go!(
+            $field, $DT, $data, $fixed, $var, $fixed, $var
+        )
     };
     ($field:expr, $DT:ident, $data:pat, $integral_fixed:expr, $integral_var:expr, $float_fixed:expr, $float_var:expr) => {{
         use $crate::query::strategy::FieldData;
