@@ -6,19 +6,22 @@ use crate::array::{
 };
 use crate::{physical_type_go, Datatype};
 
+pub type FnAcceptDimension = dyn Fn(&Parameters, Datatype) -> bool;
+pub type FnAcceptAttribute =
+    dyn Fn(&Parameters, Datatype, CellValNum, bool) -> bool;
+
 /// Configures construction of the `sparse_all` schema.
 #[derive(Clone)]
 pub struct Parameters {
     /// Function which determines whether to add a dimension to the schema.
     ///
     /// By default, all types are added as dimensions except `Datatype::StringAscii`.
-    pub fn_accept_dimension: Rc<dyn Fn(&Parameters, Datatype) -> bool>,
+    pub fn_accept_dimension: Rc<FnAcceptDimension>,
 
     /// Function which determines whether to add an attribute to the schema.
     ///
     /// By default, all attributes are accepted.
-    pub fn_accept_attribute:
-        Rc<dyn Fn(&Parameters, Datatype, CellValNum, bool) -> bool>,
+    pub fn_accept_attribute: Rc<FnAcceptAttribute>,
 }
 
 impl Parameters {
