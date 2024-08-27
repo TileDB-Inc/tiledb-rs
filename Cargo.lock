@@ -1026,13 +1026,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "queries"
-version = "0.1.0"
-dependencies = [
- "tiledb",
-]
-
-[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1332,6 +1325,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.58",
+]
+
+[[package]]
+name = "tiledb-queries"
+version = "0.1.0"
+dependencies = [
+ "pkg-config",
+ "tiledb",
+ "tiledb-utils",
 ]
 
 [[package]]

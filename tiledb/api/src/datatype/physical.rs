@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
@@ -379,3 +379,20 @@ physical_value_traits!(u32, UInt32);
 physical_value_traits!(u64, UInt64);
 physical_value_traits!(f32, Float32);
 physical_value_traits!(f64, Float64);
+
+impl Display for PhysicalValue {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::UInt8(value) => Display::fmt(value, f),
+            Self::UInt16(value) => Display::fmt(value, f),
+            Self::UInt32(value) => Display::fmt(value, f),
+            Self::UInt64(value) => Display::fmt(value, f),
+            Self::Int8(value) => Display::fmt(value, f),
+            Self::Int16(value) => Display::fmt(value, f),
+            Self::Int32(value) => Display::fmt(value, f),
+            Self::Int64(value) => Display::fmt(value, f),
+            Self::Float32(value) => Display::fmt(value, f),
+            Self::Float64(value) => Display::fmt(value, f),
+        }
+    }
+}
