@@ -482,7 +482,7 @@ mod tests {
     use tiledb_test_utils::TestArrayUri;
 
     use super::*;
-    use crate::tests::prelude::array::*;
+    use crate::tests::prelude::*;
 
     /// When this test fails, update `impl Arbitrary for AggregateFunction`
     #[test]
