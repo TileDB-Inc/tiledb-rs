@@ -11,7 +11,9 @@ use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 
 /// Create a strategy to generate `Vec`s containing elements drawn from `element` and with a size
-/// range given by `size`.  In contrast to `proptest::collection::vec`, value trees produced by
+/// range given by `size`.
+///
+/// In contrast to `proptest::collection::vec`, value trees produced by
 /// this strategy do not attempt to shrink any of the elements of the vector, instead shrinking
 /// by more rapidly searching for the minimum set of elements needed to produce a failure.
 pub fn vec_records_strategy<T>(

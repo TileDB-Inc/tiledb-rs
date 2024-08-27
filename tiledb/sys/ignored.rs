@@ -28,7 +28,7 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         array_schema: *const tiledb_array_schema_t,
         out: *mut FILE,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_as_built_dump(
         out: *mut *mut tiledb_string_t,

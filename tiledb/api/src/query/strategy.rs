@@ -31,6 +31,7 @@ use crate::{
 };
 
 /// Represents the write query input for a single field.
+///
 /// For each variant, the outer Vec is the collection of records, and the interior is value in the
 /// cell for the record. Fields with cell val num of 1 are flat, and other cell values use the
 /// inner Vec. For fixed-size attributes, the inner Vecs shall all have the same length; for

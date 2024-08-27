@@ -442,6 +442,7 @@ pub fn prop_filter(
 }
 
 /// Value tree to search through the complexity space of some filter pipeline.
+///
 /// A filter pipeline has a bit more structure than just a list of filters,
 /// because the output of each filter feeds into the next one.
 /// The input type is fixed, but the final output can be any data type.

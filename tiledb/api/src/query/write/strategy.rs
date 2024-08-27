@@ -24,7 +24,9 @@ use crate::{
 type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 
 /// Returns a base set of requirements for filters to be used
-/// in write queries. Requirements are chosen to either avoid
+/// in write queries.
+///
+/// Requirements are chosen to either avoid
 /// constraints on input (e.g. positive delta filtering requires
 /// sorted input, float scale filtering is not invertible)
 /// or to avoid issues in the tiledb core library in as
@@ -46,6 +48,7 @@ pub fn query_write_filter_requirements() -> FilterRequirements {
 }
 
 /// Returns a base set of schema requirements for running a query.
+///
 /// Requirements are chosen to either avoid constraints on write input
 /// or to avoid issues in the tiledb core library in as many scenarios as possible.
 pub fn query_write_schema_requirements(

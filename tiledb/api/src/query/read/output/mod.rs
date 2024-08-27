@@ -668,6 +668,7 @@ impl<'data, C> TryFrom<RawReadOutput<'data, C>>
 }
 
 /// A set of `QueryBuffers` which can be correctly used by `FixedDataIterator`.
+///
 /// A `QueryBuffers` instance can be wrapped this way if it has
 /// `cell_structure: CellStructure::Fixed(nz)` for some `1 < nz < u32::MAX`,
 /// and also does not own the `data` buffer.
@@ -681,6 +682,7 @@ impl<'data, C> QueryBuffersFixedDataIterable<'data, C> {
 }
 
 /// A set of `QueryBuffers` which can be correctly used by `VarDataIterator`.
+///
 /// A `QueryBuffers` instance can be wrapped this way if it has
 /// `cell_structure: CellStructure::Var(_)`
 /// and also does not own the `data` buffer.

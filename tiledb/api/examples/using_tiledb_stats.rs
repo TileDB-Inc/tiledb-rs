@@ -11,9 +11,10 @@ use tiledb::{Array, Result as TileDBResult};
 const ARRAY_NAME: &str = "using_tiledb_stats";
 const ATTRIBUTE_NAME: &str = "a";
 
-/// Function that takes a vector of tiledb::stats::Metrics struct and prints
-/// the data. The Metrics struct has two public fields: a HashMap<String, f64>
-/// with relevant timers, and a HashMap<String, u64> with relevant counters.
+/// Prints tiledb statistics.
+///
+/// The `Metrics` struct has two public fields: a `HashMap<String, f64>`
+/// with relevant timers, and a `HashMap<String, u64>` with relevant counters.
 pub fn print_metrics(metrics: &[tiledb::stats::Metrics]) {
     println!("Printing query metrics...");
     for metric in metrics.iter() {
@@ -28,6 +29,7 @@ pub fn print_metrics(metrics: &[tiledb::stats::Metrics]) {
 }
 
 /// Creates a dense array at URI `ARRAY_NAME()`.
+///
 /// The array has two i32 dimensions ["row", "col"] with a single int32
 /// attribute "a" stored in each cell.
 /// Both "row" and "col" dimensions range from 1 to 12000, and the tiles
@@ -92,6 +94,7 @@ pub fn create_array(
 }
 
 /// Writes data into the array in row-major order from a 1D-array buffer.
+///
 /// After the write, the contents of the array will be:
 /// [[ 0, 1 ... 11999],
 ///  [ 12000, 12001, ... 23999],
