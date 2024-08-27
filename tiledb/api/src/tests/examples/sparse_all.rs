@@ -33,17 +33,11 @@ impl Parameters {
 
     fn try_attribute(
         &self,
-        dt: Datatype,
+        _dt: Datatype,
         _cell_val_num: CellValNum,
         _is_nullable: bool,
     ) -> bool {
-        let is_supported_datatype = !matches!(dt, Datatype::StringUcs2);
-
-        if !is_supported_datatype {
-            false
-        } else {
-            true
-        }
+        true
     }
 
     fn default_accept_dimension(params: &Self, dt: Datatype) -> bool {
