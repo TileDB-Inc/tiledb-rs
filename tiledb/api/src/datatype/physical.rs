@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::Error;
 use crate::private::sealed;
 
 /// Trait for comparisons based on value bits.
@@ -345,7 +346,53 @@ pub enum PhysicalValue {
     Float64(f64),
 }
 
-pub struct PhysicalTypeMismatchError {}
+macro_rules! physical_value_go {
+    ($physical_value:expr, $DT:ident, $value:pat, $then:expr) => {{
+        use $crate::datatype::physical::PhysicalValue;
+        match $physical_value {
+            PhysicalValue::UInt8($value) => {
+                type $DT = u8;
+                $then
+            }
+            PhysicalValue::UInt16($value) => {
+                type $DT = u16;
+                $then
+            }
+            PhysicalValue::UInt32($value) => {
+                type $DT = u32;
+                $then
+            }
+            PhysicalValue::UInt64($value) => {
+                type $DT = u64;
+                $then
+            }
+            PhysicalValue::Int8($value) => {
+                type $DT = i8;
+                $then
+            }
+            PhysicalValue::Int16($value) => {
+                type $DT = i16;
+                $then
+            }
+            PhysicalValue::Int32($value) => {
+                type $DT = i32;
+                $then
+            }
+            PhysicalValue::Int64($value) => {
+                type $DT = i64;
+                $then
+            }
+            PhysicalValue::Float32($value) => {
+                type $DT = f32;
+                $then
+            }
+            PhysicalValue::Float64($value) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    }};
+}
 
 macro_rules! physical_value_traits {
     ($ty:ty, $variant:ident) => {
@@ -356,13 +403,18 @@ macro_rules! physical_value_traits {
         }
 
         impl TryFrom<PhysicalValue> for $ty {
-            type Error = PhysicalTypeMismatchError;
+            type Error = Error;
 
             fn try_from(value: PhysicalValue) -> Result<Self, Self::Error> {
                 if let PhysicalValue::$variant(val) = value {
                     Ok(val)
                 } else {
-                    Err(PhysicalTypeMismatchError {})
+                    physical_value_go!(
+                        value,
+                        DT,
+                        _,
+                        Err(Error::physical_type_mismatch::<$ty, DT>())
+                    )
                 }
             }
         }
