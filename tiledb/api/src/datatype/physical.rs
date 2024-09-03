@@ -332,6 +332,11 @@ where
     }
 }
 
+/// Represents a dynamically typed single physical value.
+///
+/// [PhysicalValue] holds the bits which correspond to a single value of a logical data type.
+/// For a given logical data type, [PhysicalValue] will always be constructed with the
+/// primitive numerical type of the same bit width, signed-ness, and precision.
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum PhysicalValue {
     UInt8(u8),

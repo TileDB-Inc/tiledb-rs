@@ -7,6 +7,9 @@ use crate::array::CellValNum;
 use crate::query::read::aggregate::AggregateFunction;
 use crate::Datatype;
 
+/// Context in which an aggregate function will be run,
+/// for [`AggregateFunction`]'s [`Arbitrary`] implementation.
+/// Function arguments will be selected from the fields available in the context.
 pub enum AggregateFunctionContext {
     Field(SchemaField),
     Schema(Rc<SchemaData>),
@@ -168,6 +171,7 @@ mod tests {
 
     /// Test that an aggregate function produced by the `Arbitrary`
     /// implementation is valid within the schema that parameterized it
+    /// (and returns correct results)
     fn do_validate_agg(
         context: &Context,
         uri: &str,

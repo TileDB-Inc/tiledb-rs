@@ -49,7 +49,8 @@ impl AggregateFunction {
 
     /// Returns the result type of the aggregate operation.
     ///
-    /// This is used to determine if the user's requested result type is compatible
+    /// This is used to determine if the user's requested programmatic data type
+    /// is compatible with the result type of the aggregate function.
     pub(crate) fn result_type_impl(
         &self,
         argument_type: Option<(Datatype, CellValNum)>,

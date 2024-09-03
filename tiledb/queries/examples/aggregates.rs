@@ -12,15 +12,18 @@ use tiledb_queries::AggregateQueryBuilderExt;
 const AGGREGATE_ARRAY_URI: &str = "aggregates";
 const AGGREGATE_ATTRIBUTE_NAME: &str = "a";
 
-/// This example creates a dense 4x4 array with the contents:
+/// This example is the same as `api/examples/aggregates.rs` except
+/// it uses the [`PhysicalValue`] adapter instead of querying
+/// programmatically-typed result.
+///
+/// This example runs over a dense 4x4 array with the contents:
 ///
 /// [[ 1,  2,  3,  4],
 ///  [ 5,  6,  7,  8],
 ///  [ 9, 10, 11, 12],
 ///  [13, 14, 15, 16]]
 ///
-/// and runs some aggregate functions over
-/// various subarrays within the data.
+/// and runs the same aggregate functions as in `api/examples/aggregates.rs`.
 fn main() {
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
         let _ = std::env::set_current_dir(
