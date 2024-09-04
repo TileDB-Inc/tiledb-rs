@@ -95,6 +95,10 @@ impl CellValNum {
         matches!(self, CellValNum::Var)
     }
 
+    pub fn is_single_valued(&self) -> bool {
+        matches!(self, CellValNum::Fixed(nz) if nz.get() == 1)
+    }
+
     /// Return the fixed number of values per cell, if not variable.
     pub fn fixed(&self) -> Option<NonZeroU32> {
         if let CellValNum::Fixed(nz) = self {
