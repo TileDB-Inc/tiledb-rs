@@ -444,13 +444,27 @@ mod tests {
         let mut runner = TestRunner::new(Default::default());
 
         // generate test data
-        let input = array.arbitrary_input(&mut runner);
+        let input = {
+            let mut input = array.arbitrary_input(&mut runner);
+            input.cells_mut().truncate(0);
+            input
+        };
 
         // insert to the array
         array.try_insert(&input).unwrap();
 
         for field in schema.fields() {
-            if super::is_unsupported_null_count_field(&field) {
+            if input.cells().is_empty() && field.nullability().unwrap_or(false)
+            {
+                let q = rstart(&array.context, &array.uri)
+                    .unwrap()
+                    .null_count(field.name())
+                    .map(|b| b.build());
+                let r = q.and_then(|mut q| q.execute());
+                assert!(matches!(r, Ok((Some(0), ()))),
+                "For field {}: Expected Ok(Some(0)) but found {:?} on empty array",
+                field.name(), r);
+            } else if super::is_unsupported_null_count_field(&field) {
                 let q = rstart(&array.context, &array.uri)
                     .unwrap()
                     .null_count(field.name())

@@ -781,6 +781,14 @@ impl WriteInput {
         }
     }
 
+    /// Returns a mutable reference to the cells of input of this write operation.
+    pub fn cells_mut(&mut self) -> &mut Cells {
+        match self {
+            Self::Dense(ref mut dense) => &mut dense.data,
+            Self::Sparse(ref mut sparse) => &mut sparse.data,
+        }
+    }
+
     /// Returns the minimum bounding rectangle containing
     /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
