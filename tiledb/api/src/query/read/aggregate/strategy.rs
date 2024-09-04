@@ -459,9 +459,10 @@ mod tests {
                 let r = q.and_then(|mut q| q.execute());
                 assert!(
                     matches!(r, Err(Error::LibTileDB(_))),
-                    "For field {}: Expected Err but found {:?}",
+                    "For field {}: Expected Err but found {:?} for input {:?}",
                     field.name(),
-                    r
+                    r,
+                    input
                 );
             } else {
                 do_validate_agg_null_count(
