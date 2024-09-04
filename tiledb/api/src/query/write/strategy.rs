@@ -477,6 +477,21 @@ pub struct SparseWriteInput {
 }
 
 impl SparseWriteInput {
+    pub fn from_schema_and_data(schema: &SchemaData, data: Cells) -> Self {
+        let dimensions = schema
+            .domain
+            .dimension
+            .iter()
+            .map(|d| {
+                (
+                    d.name.clone(),
+                    d.cell_val_num.unwrap_or(CellValNum::single()),
+                )
+            })
+            .collect::<Vec<_>>();
+        SparseWriteInput { dimensions, data }
+    }
+
     /// Returns the minimum bounding rectangle containing all
     /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
@@ -542,6 +557,16 @@ impl SparseWriteInput {
         B: ReadQueryBuilder<'data>,
     {
         Ok(self.data.attach_read(b)?.map(CellsConstructor::new()))
+    }
+
+    /// Sort the data cells using the dimensions as sort keys, in order.
+    pub fn sort_cells(&mut self) {
+        let keys = self
+            .dimensions
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect::<Vec<_>>();
+        self.data.sort(&keys)
     }
 }
 
