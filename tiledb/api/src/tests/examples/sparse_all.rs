@@ -85,7 +85,6 @@ pub fn schema(params: Parameters) -> SchemaData {
             dims.push(DimensionData {
                 name: format!("d_{}", dt),
                 datatype: dt,
-                cell_val_num: None,
                 filters: None,
                 constraints,
             });
