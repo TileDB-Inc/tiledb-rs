@@ -23,23 +23,19 @@ impl StrategyContext {
     /// (whereas `input_datatype` is the input to the current filter)
     pub fn pipeline_input_datatypes(
         &self,
-    ) -> Option<Vec<(Datatype, Option<CellValNum>)>> {
+    ) -> Option<Vec<(Datatype, CellValNum)>> {
         match self {
-            StrategyContext::Attribute(dt, cvn) => {
-                Some(vec![(*dt, Some(*cvn))])
-            }
-            StrategyContext::Dimension(dt, cvn) => {
-                Some(vec![(*dt, Some(*cvn))])
-            }
+            StrategyContext::Attribute(dt, cvn) => Some(vec![(*dt, *cvn)]),
+            StrategyContext::Dimension(dt, cvn) => Some(vec![(*dt, *cvn)]),
             StrategyContext::SchemaAttribute(dt, cvn, _, _) => {
-                Some(vec![(*dt, Some(*cvn))])
+                Some(vec![(*dt, *cvn)])
             }
             StrategyContext::SchemaCoordinates(domain) => Some(
                 domain
                     .dimension
                     .iter()
-                    .map(|d| (d.datatype, d.cell_val_num))
-                    .collect::<Vec<(Datatype, Option<CellValNum>)>>(),
+                    .map(|d| (d.datatype, d.cell_val_num()))
+                    .collect::<Vec<(Datatype, CellValNum)>>(),
             ),
         }
     }
@@ -83,9 +79,8 @@ impl Requirements {
             .as_ref()
             .and_then(|c| c.pipeline_input_datatypes())
         {
-            !dts.into_iter().any(|(dt, cvn)| {
-                cvn == Some(CellValNum::Var) && dt.is_string_type()
-            })
+            !dts.into_iter()
+                .any(|(dt, cvn)| cvn.is_var_sized() && dt.is_string_type())
         } else {
             true
         }

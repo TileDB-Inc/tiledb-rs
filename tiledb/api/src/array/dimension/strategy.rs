@@ -9,7 +9,7 @@ use tiledb_utils::numbers::{
 };
 
 use crate::array::dimension::DimensionConstraints;
-use crate::array::{ArrayType, CellValNum, DimensionData};
+use crate::array::{ArrayType, DimensionData};
 use crate::datatype::physical::BitsOrd;
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
@@ -187,23 +187,23 @@ fn prop_dimension_for_datatype(
     datatype: Datatype,
     params: Requirements,
 ) -> impl Strategy<Value = DimensionData> {
-    let cell_val_num = if datatype.is_string_type() {
-        CellValNum::Var
-    } else {
-        CellValNum::single()
-    };
-    physical_type_go!(datatype, DT, {
-        let name = prop_dimension_name();
-        let range_and_extent = if !datatype.is_string_type() {
+    let constraints = physical_type_go!(datatype, DT, {
+        if !datatype.is_string_type() {
             prop_range_and_extent::<DT>(params.extent_limit)
-                .prop_map(Some)
+                .prop_map(DimensionConstraints::from)
                 .boxed()
         } else {
-            Just(None).boxed()
-        };
+            Just(DimensionConstraints::StringAscii).boxed()
+        }
+    });
+
+    constraints.prop_flat_map(move |constraints| {
         let filter_req = FilterRequirements {
             input_datatype: Some(datatype),
-            context: Some(FilterContext::Dimension(datatype, cell_val_num)),
+            context: Some(FilterContext::Dimension(
+                datatype,
+                constraints.cell_val_num(),
+            )),
             ..params
                 .filters
                 .as_ref()
@@ -211,25 +211,16 @@ fn prop_dimension_for_datatype(
                 .unwrap_or_default()
         };
         let filters = any_with::<FilterListData>(Rc::new(filter_req));
-        (name, range_and_extent, filters)
-            .prop_map(move |(name, values, filters)| {
-                let constraints = match values {
-                    Some((dom, extent)) => {
-                        DimensionConstraints::from((dom, extent))
-                    }
-                    None => DimensionConstraints::StringAscii,
-                };
-                DimensionData {
-                    name,
-                    datatype,
-                    constraints,
-                    cell_val_num: Some(cell_val_num),
-                    filters: if filters.is_empty() {
-                        None
-                    } else {
-                        Some(filters)
-                    },
-                }
+        (prop_dimension_name(), Just(constraints), filters)
+            .prop_map(move |(name, constraints, filters)| DimensionData {
+                name,
+                datatype,
+                constraints,
+                filters: if filters.is_empty() {
+                    None
+                } else {
+                    Some(filters)
+                },
             })
             .boxed()
     })
