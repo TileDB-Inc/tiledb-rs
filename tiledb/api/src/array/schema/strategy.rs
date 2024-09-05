@@ -36,27 +36,27 @@ impl Requirements {
         const DEFAULT_MIN_ATTRIBUTES: usize = 1;
 
         let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MIN";
-        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MIN_ATTRIBUTES)
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MIN_ATTRIBUTES)
     }
 
     pub fn max_attributes_default() -> usize {
         const DEFAULT_MAX_ATTRIBUTES: usize = 8;
 
         let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MAX";
-        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MAX_ATTRIBUTES)
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MAX_ATTRIBUTES)
     }
 
     pub fn min_sparse_tile_capacity_default() -> u64 {
         pub const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
 
         let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN";
-        crate::tests::env::<u64>(env)
+        crate::env::parse::<u64>(env)
             .unwrap_or(DEFAULT_MIN_SPARSE_TILE_CAPACITY)
     }
 
     pub fn max_sparse_tile_capacity_default() -> u64 {
         let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN";
-        crate::tests::env::<u64>(env)
+        crate::env::parse::<u64>(env)
             .unwrap_or(DomainRequirements::cells_per_tile_limit_default() as u64)
     }
 }

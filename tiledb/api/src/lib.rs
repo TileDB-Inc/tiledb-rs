@@ -108,10 +108,10 @@ mod private {
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]
-pub(crate) mod tests {
+pub(crate) mod env {
     use std::str::FromStr;
 
-    pub fn env<T>(env: &str) -> Option<T>
+    pub fn parse<T>(env: &str) -> Option<T>
     where
         T: FromStr,
     {

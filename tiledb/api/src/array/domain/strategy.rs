@@ -21,21 +21,21 @@ impl Requirements {
         const DEFAULT_MIN_DIMENSIONS: usize = 1;
 
         let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MIN";
-        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MIN_DIMENSIONS)
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MIN_DIMENSIONS)
     }
 
     pub fn max_dimensions_default() -> usize {
-        const DEFAULT_MAX_DIMENSIONS: usize = 3;
+        const DEFAULT_MAX_DIMENSIONS: usize = 2;
 
         let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX";
-        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_MAX_DIMENSIONS)
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MAX_DIMENSIONS)
     }
 
     pub fn cells_per_tile_limit_default() -> usize {
         const DEFAULT_CELLS_PER_TILE_LIMIT: usize = 1024 * 32;
 
         let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_CELLS_PER_TILE_LIMIT";
-        crate::tests::env::<usize>(env).unwrap_or(DEFAULT_CELLS_PER_TILE_LIMIT)
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_CELLS_PER_TILE_LIMIT)
     }
 }
 
