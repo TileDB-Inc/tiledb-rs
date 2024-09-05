@@ -627,8 +627,7 @@ impl Arbitrary for FieldData {
                 SchemaField::Dimension(d),
             )) => {
                 let value_strat = d.value_strategy();
-                let cell_val_num =
-                    d.cell_val_num.unwrap_or(CellValNum::single());
+                let cell_val_num = d.cell_val_num();
 
                 dimension_constraints_go!(
                     d.constraints,

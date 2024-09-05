@@ -307,6 +307,13 @@ dimension_constraints_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 dimension_constraints_impl!(Float32: f32, Float64: f64);
 
 impl DimensionConstraints {
+    pub fn cell_val_num(&self) -> CellValNum {
+        match self {
+            DimensionConstraints::StringAscii => CellValNum::Var,
+            _ => CellValNum::single(),
+        }
+    }
+
     pub fn verify_type_compatible(
         &self,
         datatype: Datatype,
@@ -503,12 +510,17 @@ pub struct DimensionData {
     pub name: String,
     pub datatype: Datatype,
     pub constraints: DimensionConstraints,
-    pub cell_val_num: Option<CellValNum>,
 
     /// Optional filters to apply to the dimension. If None or Some(empty),
     /// then filters will be inherited from the schema's `coordinate_filters`
     /// field when the array is constructed.
     pub filters: Option<FilterListData>,
+}
+
+impl DimensionData {
+    pub fn cell_val_num(&self) -> CellValNum {
+        self.constraints.cell_val_num()
+    }
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]
@@ -652,7 +664,6 @@ impl TryFrom<&Dimension> for DimensionData {
             name: dim.name()?,
             datatype,
             constraints,
-            cell_val_num: Some(dim.cell_val_num()?),
             filters: {
                 let fl = FilterListData::try_from(&dim.filters()?)?;
                 if fl.is_empty() {
@@ -688,12 +699,7 @@ impl Factory for DimensionData {
             b = b.filters(fl.create(context)?)?;
         }
 
-        Ok(if let Some(c) = self.cell_val_num {
-            b.cell_val_num(c)?
-        } else {
-            b
-        }
-        .build())
+        Ok(b.cell_val_num(self.cell_val_num())?.build())
     }
 }
 

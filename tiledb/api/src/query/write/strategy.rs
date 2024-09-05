@@ -589,12 +589,7 @@ impl Arbitrary for SparseWriteInput {
                         .domain
                         .dimension
                         .iter()
-                        .map(|d| {
-                            (
-                                d.name.clone(),
-                                d.cell_val_num.unwrap_or(CellValNum::single()),
-                            )
-                        })
+                        .map(|d| (d.name.clone(), d.cell_val_num()))
                         .collect::<Vec<(String, CellValNum)>>();
                     SparseWriteInput { dimensions, data }
                 })

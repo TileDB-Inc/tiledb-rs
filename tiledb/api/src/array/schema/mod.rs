@@ -271,7 +271,7 @@ impl FieldData {
 
     pub fn cell_val_num(&self) -> Option<CellValNum> {
         match self {
-            Self::Dimension(d) => d.cell_val_num,
+            Self::Dimension(d) => Some(d.cell_val_num()),
             Self::Attribute(a) => a.cell_val_num,
         }
     }
@@ -1682,7 +1682,6 @@ mod tests {
                     name: "d".to_string(),
                     datatype: Datatype::Int32,
                     constraints: DimensionConstraints::Int32([0, 100], None),
-                    cell_val_num: None,
                     filters: None,
                 }],
             },
@@ -1711,7 +1710,6 @@ mod tests {
                     name: "d".to_string(),
                     datatype: Datatype::Int32,
                     constraints: DimensionConstraints::Int32([0, 100], None),
-                    cell_val_num: None,
                     filters: None,
                 }],
             },
@@ -1750,7 +1748,6 @@ mod tests {
                     name: "d".to_string(),
                     datatype: Datatype::StringAscii,
                     constraints: DimensionConstraints::StringAscii,
-                    cell_val_num: Some(CellValNum::Var),
                     filters: None,
                 }],
             },
@@ -1762,27 +1759,23 @@ mod tests {
             ..Default::default()
         };
 
+        assert_eq!(CellValNum::Var, spec.domain.dimension[0].cell_val_num());
+
         let ctx = Context::new().unwrap();
 
         // creation should succeed, StringAscii is allowed for sparse CellValNum::Var
-        let _ = spec.create(&ctx).expect("Error creating schema");
-
-        // creation should fail, StringAscii is not allowed for sparse CellValNum::single()
-        spec.domain.dimension[0].cell_val_num = Some(CellValNum::single());
         {
-            let e = spec.create(&ctx).expect_err("Successfully created schema");
-            assert!(matches!(e, Error::LibTileDB(_)));
+            let schema = spec.create(&ctx).expect("Error creating schema");
+            let cvn = schema
+                .domain()
+                .and_then(|d| d.dimension(0))
+                .and_then(|d| d.cell_val_num())
+                .unwrap();
+            assert_eq!(CellValNum::Var, cvn);
         }
 
         // creation should fail, StringAscii is not allowed for dense CellValNum::single()
         spec.array_type = ArrayType::Dense;
-        {
-            let e = spec.create(&ctx).expect_err("Successfully created schema");
-            assert!(matches!(e, Error::LibTileDB(_)));
-        }
-
-        // creation should fail, StringAscii is not allowed for dense CellValNum::Var
-        spec.domain.dimension[0].cell_val_num = Some(CellValNum::Var);
         {
             let e = spec.create(&ctx).expect_err("Successfully created schema");
             assert!(matches!(e, Error::LibTileDB(_)));
