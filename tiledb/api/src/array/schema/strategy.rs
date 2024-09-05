@@ -47,7 +47,7 @@ impl Requirements {
     }
 
     pub fn min_sparse_tile_capacity_default() -> u64 {
-        pub const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
+        const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
 
         let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN";
         crate::env::parse::<u64>(env)

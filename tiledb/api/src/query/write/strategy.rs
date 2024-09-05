@@ -1,7 +1,6 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::{Deref, RangeInclusive};
 use std::rc::Rc;
-use std::str::FromStr;
 
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
@@ -993,21 +992,17 @@ pub type SparseWriteSequenceParameters =
 
 impl<W> WriteSequenceParametersImpl<W> {
     pub fn min_writes_default() -> usize {
-        pub const DEFAULT_MIN_WRITES: usize = 1;
+        const DEFAULT_MIN_WRITES: usize = 1;
 
         let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MIN_WRITES";
         crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MIN_WRITES)
     }
 
     pub fn max_writes_default() -> usize {
-        pub const DEFAULT_MAX_WRITES: usize = 8;
+        const DEFAULT_MAX_WRITES: usize = 8;
 
         let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MAX_WRITES";
-        match std::env::var(env) {
-            Ok(limit) => usize::from_str(&limit)
-                .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
-            Err(_) => DEFAULT_MAX_WRITES,
-        }
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MAX_WRITES)
     }
 }
 
