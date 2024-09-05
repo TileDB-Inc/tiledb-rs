@@ -307,6 +307,23 @@ dimension_constraints_impl!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 dimension_constraints_impl!(Float32: f32, Float64: f64);
 
 impl DimensionConstraints {
+    /// Returns a [Datatype] which represents the physical type of this constraint.
+    pub fn physical_datatype(&self) -> Datatype {
+        match self {
+            Self::UInt8(_, _) => Datatype::UInt8,
+            Self::UInt16(_, _) => Datatype::UInt16,
+            Self::UInt32(_, _) => Datatype::UInt32,
+            Self::UInt64(_, _) => Datatype::UInt64,
+            Self::Int8(_, _) => Datatype::Int8,
+            Self::Int16(_, _) => Datatype::Int16,
+            Self::Int32(_, _) => Datatype::Int32,
+            Self::Int64(_, _) => Datatype::Int64,
+            Self::Float32(_, _) => Datatype::Float32,
+            Self::Float64(_, _) => Datatype::Float64,
+            Self::StringAscii => Datatype::StringAscii,
+        }
+    }
+
     pub fn cell_val_num(&self) -> CellValNum {
         match self {
             DimensionConstraints::StringAscii => CellValNum::Var,

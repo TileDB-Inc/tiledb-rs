@@ -10,9 +10,7 @@ use crate::tests::prelude::*;
 use crate::tests::strategy::prelude::*;
 use crate::{Context, Factory, Result as TileDBResult};
 
-/// Provides methods for creating a schema which can optionally have
-/// one dimension of each allowed datatype and one attribute of each
-/// allowed `(Datatype, CellValNum, Nullability)` tuple.
+pub mod quickstart;
 pub mod sparse_all;
 
 pub struct TestArray {
