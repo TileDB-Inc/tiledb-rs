@@ -55,9 +55,16 @@ pub fn query_write_filter_requirements() -> FilterRequirements {
 pub fn query_write_schema_requirements(
     array_type: Option<ArrayType>,
 ) -> crate::array::schema::strategy::Requirements {
+    // NB: 1 is the highest number that passes all cases (so don't use the value given by
+    // `DomainRequirements::default()`) but we want to enable environmental override.
+    use crate::array::domain::strategy::Requirements as DomainRequirements;
+    let env_max_dimensions =
+        DomainRequirements::env_max_dimensions().unwrap_or(1);
+
     crate::array::schema::strategy::Requirements {
         domain: Some(Rc::new(crate::array::domain::strategy::Requirements {
             array_type,
+            num_dimensions: 1..=env_max_dimensions,
             dimension: Some(crate::array::dimension::strategy::Requirements {
                 filters: Some(Rc::new(query_write_filter_requirements())),
                 ..Default::default()

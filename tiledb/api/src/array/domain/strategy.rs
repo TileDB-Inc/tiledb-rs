@@ -17,6 +17,11 @@ pub struct Requirements {
 }
 
 impl Requirements {
+    pub fn env_max_dimensions() -> Option<usize> {
+        let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX";
+        crate::env::parse::<usize>(env)
+    }
+
     pub fn min_dimensions_default() -> usize {
         const DEFAULT_MIN_DIMENSIONS: usize = 1;
 
@@ -25,10 +30,8 @@ impl Requirements {
     }
 
     pub fn max_dimensions_default() -> usize {
-        const DEFAULT_MAX_DIMENSIONS: usize = 2;
-
-        let env = "TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX";
-        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MAX_DIMENSIONS)
+        const DEFAULT_MAX_DIMENSIONS: usize = 8;
+        Self::env_max_dimensions().unwrap_or(DEFAULT_MAX_DIMENSIONS)
     }
 
     pub fn cells_per_tile_limit_default() -> usize {
