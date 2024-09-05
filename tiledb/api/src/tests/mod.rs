@@ -19,6 +19,8 @@ pub mod prelude {
         Query, QueryBuilder, QueryLayout, ReadBuilder, ReadQuery, WriteBuilder,
         WriteQuery,
     };
+
+    pub use super::examples::TestArray;
 }
 
 pub mod strategy {

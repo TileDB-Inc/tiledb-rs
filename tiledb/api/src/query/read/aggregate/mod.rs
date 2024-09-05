@@ -484,6 +484,7 @@ mod tests {
 
     use super::*;
     use crate::tests::prelude::*;
+    use crate::tests::strategy::prelude::*;
 
     /// When this test fails, update `impl Arbitrary for AggregateFunction`
     #[test]
@@ -599,6 +600,36 @@ mod tests {
             .build();
         let r = q.execute();
         assert!(matches!(r, Err(Error::LibTileDB(_))));
+
+        Ok(())
+    }
+
+    /// Test running min/max aggregates on empty input.
+    #[test]
+    fn min_max_empty_input() -> TileDBResult<()> {
+        let a = TestArray::new(
+            "sc_54468",
+            Rc::new(
+                crate::tests::examples::quickstart::Builder::new(
+                    ArrayType::Sparse,
+                )
+                .build(),
+            ),
+        )?;
+
+        let mut q = ReadBuilder::new(a.for_read()?)?
+            .min::<i32>("a")?
+            .max::<i32>("a")?
+            .build();
+        let (a_max, (a_min, _)) = q.execute()?;
+
+        // This is deliberately a wrong result.
+        // We capture it here to track SC-54468.
+        // When that issue is resolved this will begin to fail;
+        // then update these to `None` and update all code which
+        // references SC-54468.
+        assert_eq!(Some(0), a_min);
+        assert_eq!(Some(0), a_max);
 
         Ok(())
     }
