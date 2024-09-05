@@ -871,6 +871,13 @@ impl<'a> WriteInputRef<'a> {
         }
     }
 
+    pub fn cloned(&self) -> WriteInput {
+        match self {
+            Self::Dense(ref dense) => WriteInput::Dense((*dense).clone()),
+            Self::Sparse(ref sparse) => WriteInput::Sparse((*sparse).clone()),
+        }
+    }
+
     /// Returns the minimum bounding rectangle containing
     /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
