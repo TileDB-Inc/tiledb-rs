@@ -940,34 +940,10 @@ pub mod tests {
         test_uri: &dyn TestArrayUri,
         ctx: &Context,
     ) -> TileDBResult<String> {
-        let schema = SchemaData {
-            array_type: ArrayType::Sparse,
-            domain: DomainData {
-                dimension: vec![
-                    DimensionData {
-                        name: "rows".to_owned(),
-                        datatype: Datatype::StringAscii,
-                        constraints: DimensionConstraints::StringAscii,
-                        filters: None,
-                    },
-                    DimensionData {
-                        name: "cols".to_owned(),
-                        datatype: Datatype::Int32,
-                        constraints: ([1i32, 4], 4i32).into(),
-                        filters: None,
-                    },
-                ],
-            },
-            attributes: vec![AttributeData {
-                name: "a".to_owned(),
-                datatype: Datatype::Int32,
-                ..Default::default()
-            }],
-            tile_order: Some(TileOrder::RowMajor),
-            cell_order: Some(CellOrder::RowMajor),
-
-            ..Default::default()
-        };
+        let schema =
+            crate::tests::examples::quickstart::Builder::new(ArrayType::Sparse)
+                .with_rows(DimensionConstraints::StringAscii)
+                .build();
 
         let schema = schema.create(ctx)?;
 
