@@ -872,8 +872,8 @@ impl<'a> WriteInputRef<'a> {
 
     pub fn cloned(&self) -> WriteInput {
         match self {
-            Self::Dense(ref dense) => WriteInput::Dense((*dense).clone()),
-            Self::Sparse(ref sparse) => WriteInput::Sparse((*sparse).clone()),
+            Self::Dense(dense) => WriteInput::Dense((*dense).clone()),
+            Self::Sparse(sparse) => WriteInput::Sparse((*sparse).clone()),
         }
     }
 
