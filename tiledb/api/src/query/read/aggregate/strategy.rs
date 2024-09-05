@@ -23,38 +23,8 @@ impl Arbitrary for AggregateFunction {
         match params {
             None => unimplemented!(), /* not hard but not important */
             Some(AggregateFunctionContext::Field(f)) => {
-                let arg = || f.name().to_string();
-                let mut strats = vec![Just(AggregateFunction::Count)];
-                if !is_unsupported_null_count_field(&f) {
-                    strats.push(Just(AggregateFunction::NullCount(arg())));
-                }
-
-                let datatype = f.datatype();
-                let cell_val_num =
-                    f.cell_val_num().unwrap_or(CellValNum::single());
-
-                let mut try_agg = |agg: AggregateFunction| {
-                    if agg
-                        .result_type_impl(Some((datatype, cell_val_num)))
-                        .is_none()
-                    {
-                        return;
-                    }
-                    strats.push(Just(agg));
-                };
-                try_agg(AggregateFunction::Sum(arg()));
-
-                if !is_unsupported_min_max_datatype(datatype) {
-                    try_agg(AggregateFunction::Min(arg()));
-                    try_agg(AggregateFunction::Max(arg()));
-                }
-
-                if datatype != Datatype::Boolean
-                    && (datatype.is_integral_type() || datatype.is_real_type())
-                {
-                    try_agg(AggregateFunction::Mean(arg()));
-                }
-
+                let strats =
+                    supported_aggregate_functions(&f).into_iter().map(Just);
                 proptest::strategy::Union::new(strats).no_shrink().boxed()
             }
             Some(AggregateFunctionContext::Schema(s)) => s
@@ -65,6 +35,45 @@ impl Arbitrary for AggregateFunction {
                 .boxed(),
         }
     }
+}
+
+fn supported_aggregate_functions(
+    field: &SchemaField,
+) -> Vec<AggregateFunction> {
+    let arg = || field.name().to_string();
+
+    let mut aggs = Vec::new();
+
+    if !is_unsupported_null_count_field(field) {
+        aggs.push(AggregateFunction::NullCount(arg()));
+    }
+
+    let datatype = field.datatype();
+    let cell_val_num = field.cell_val_num().unwrap_or(CellValNum::single());
+
+    let mut try_agg = |agg: AggregateFunction| {
+        if agg
+            .result_type_impl(Some((datatype, cell_val_num)))
+            .is_none()
+        {
+            return;
+        }
+        aggs.push(agg);
+    };
+    try_agg(AggregateFunction::Sum(arg()));
+
+    if !is_unsupported_min_max_datatype(datatype) {
+        try_agg(AggregateFunction::Min(arg()));
+        try_agg(AggregateFunction::Max(arg()));
+    }
+
+    if datatype != Datatype::Boolean
+        && (datatype.is_integral_type() || datatype.is_real_type())
+    {
+        try_agg(AggregateFunction::Mean(arg()));
+    }
+
+    aggs
 }
 
 /// Returns whether a field is supported for the null count aggregation.
