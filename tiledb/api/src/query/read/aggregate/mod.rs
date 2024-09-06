@@ -502,6 +502,7 @@ mod tests {
     use tiledb_test_utils::TestArrayUri;
 
     use super::*;
+    use crate::error::DatatypeErrorKind;
     use crate::tests::examples::sparse_all::Parameters as SparseAllParameters;
     use crate::tests::prelude::*;
     use crate::tests::strategy::prelude::*;
@@ -811,6 +812,128 @@ mod tests {
                 .layout(QueryLayout::Unordered)?
                 .null_count("a");
             assert!(matches!(r, Err(Error::LibTileDB(_))));
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn quickstart_aggregate_wrong_result_type() -> TileDBResult<()> {
+        let array = quickstart_init("wrong_result_type")?;
+
+        macro_rules! try_apply {
+            ($function:expr, $datatype:ty) => {{
+                ReadBuilder::new(array.for_read()?)?
+                    .apply_aggregate::<$datatype>($function)
+                    .and_then(|b| b.build().execute())
+            }};
+        }
+
+        // Count: only u64
+        {
+            let e = try_apply!(AggregateFunction::Count, i64);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::UInt64,
+                    ..
+                }))
+            ));
+
+            let e = try_apply!(AggregateFunction::Count, u32);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::UInt64,
+                    ..
+                }))
+            ));
+        }
+
+        // Null count only u64
+        {
+            let e =
+                try_apply!(AggregateFunction::NullCount("a".to_owned()), i64);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::UInt64,
+                    ..
+                }))
+            ));
+
+            let e =
+                try_apply!(AggregateFunction::NullCount("a".to_owned()), u32);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::UInt64,
+                    ..
+                }))
+            ));
+        }
+
+        // Min/Max type must match
+        {
+            let e = try_apply!(AggregateFunction::Min("a".to_owned()), i64);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::Int32,
+                    ..
+                }))
+            ));
+
+            let e = try_apply!(AggregateFunction::Max("a".to_owned()), u32);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::Int32,
+                    ..
+                }))
+            ));
+        }
+
+        // Sum must be 64 bits with same sign
+        {
+            let e = try_apply!(AggregateFunction::Sum("a".to_owned()), u64);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::Int64,
+                    ..
+                }))
+            ));
+
+            let e = try_apply!(AggregateFunction::Sum("a".to_owned()), i32);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::Int64,
+                    ..
+                }))
+            ));
+        }
+
+        // Mean always must be f64
+        {
+            let e = try_apply!(AggregateFunction::Mean("a".to_owned()), i32);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::Float64,
+                    ..
+                }))
+            ));
+
+            let e = try_apply!(AggregateFunction::Mean("a".to_owned()), f32);
+            assert!(matches!(
+                e,
+                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
+                    tiledb_type: Datatype::Float64,
+                    ..
+                }))
+            ));
         }
 
         Ok(())
