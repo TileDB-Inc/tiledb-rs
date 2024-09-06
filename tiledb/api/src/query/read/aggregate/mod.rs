@@ -47,6 +47,18 @@ impl AggregateFunction {
         }
     }
 
+    /// Returns a unique name for this aggregate function.
+    pub fn aggregate_name(&self) -> String {
+        match self {
+            Self::Count => "Count".to_owned(),
+            Self::NullCount(ref s) => format!("NullCount({})", s),
+            Self::Min(ref s) => format!("Min({})", s),
+            Self::Max(ref s) => format!("Max({})", s),
+            Self::Sum(ref s) => format!("Sum({})", s),
+            Self::Mean(ref s) => format!("Mean({})", s),
+        }
+    }
+
     /// Returns the result type of the aggregate operation.
     ///
     /// This is used to determine if the user's requested programmatic data type
@@ -126,22 +138,45 @@ impl Display for AggregateFunction {
     }
 }
 
+/// Encapsulates data needed to run an aggregate function in the C API.
+#[derive(Debug)]
+struct AggregateFunctionHandle {
+    pub function: AggregateFunction,
+    // NB: C API uses this memory location to store the attribute name if any
+    pub agg_name: CString,
+    pub field_name: Option<CString>,
+}
+
+impl AggregateFunctionHandle {
+    pub fn new(function: AggregateFunction) -> TileDBResult<Self> {
+        let agg_name = cstring!(function.aggregate_name());
+        let field_name = if let Some(arg) = function.argument_name() {
+            Some(cstring!(arg))
+        } else {
+            None
+        };
+
+        Ok(AggregateFunctionHandle {
+            function,
+            agg_name,
+            field_name,
+        })
+    }
+}
+
 /// Query builder adapter for constructing queries with aggregate functions.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct AggregateBuilder<T, B> {
     base: B,
-    agg_str: CString,
-    field_str: Option<CString>,
+    handle: AggregateFunctionHandle,
     field_type: PhantomData<T>,
 }
 
 /// Query adapter for running queries with aggregate functions.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct AggregateQuery<T, Q> {
     base: Q,
-    agg_str: CString,
-    // NB: C API uses this memory location to store the attribute name if any
-    field_name: Option<CString>,
+    handle: AggregateFunctionHandle,
     data: T,
     data_size: u64,
     data_validity: Option<u8>,
@@ -161,8 +196,7 @@ where
     fn build(self) -> Self::Query {
         AggregateQuery::<T, B::Query> {
             base: self.base.build(),
-            agg_str: self.agg_str,
-            field_name: self.field_str,
+            handle: self.handle,
             data: T::default(),
             data_size: mem::size_of::<T>() as u64,
             data_validity: None,
@@ -204,7 +238,7 @@ where
         let c_query = **self.base().cquery();
         let c_bufptr = location_ptr as *mut std::ffi::c_void;
         let c_sizeptr = &mut self.data_size as *mut u64;
-        let agg_str: &CString = &self.agg_str;
+        let agg_str: &CString = &self.handle.agg_name;
         let agg_c_ptr = agg_str.as_c_str().as_ptr();
 
         context.capi_call(|ctx| unsafe {
@@ -213,8 +247,8 @@ where
             )
         })?;
 
-        if let Some(field_name) = self.field_name.as_ref() {
-            if self.agg_str.to_str().unwrap() != "NullCount"
+        if let Some(field_name) = self.handle.field_name.as_ref() {
+            if !matches!(self.handle.function, AggregateFunction::NullCount(_))
                 && self
                     .base()
                     .array()
@@ -287,24 +321,7 @@ pub trait AggregateQueryBuilder: QueryBuilder {
             ));
         }
 
-        let (agg_name, field_name) = match agg_function {
-            AggregateFunction::Count => (cstring!("Count"), None),
-            AggregateFunction::NullCount(ref name) => {
-                (cstring!("NullCount"), Some(cstring!(name.as_str())))
-            }
-            AggregateFunction::Sum(ref name) => {
-                (cstring!("Sum"), Some(cstring!(name.as_str())))
-            }
-            AggregateFunction::Max(ref name) => {
-                (cstring!("Max"), Some(cstring!(name.as_str())))
-            }
-            AggregateFunction::Min(ref name) => {
-                (cstring!("Min"), Some(cstring!(name.as_str())))
-            }
-            AggregateFunction::Mean(ref name) => {
-                (cstring!("Mean"), Some(cstring!(name.as_str())))
-            }
-        };
+        let handle = AggregateFunctionHandle::new(agg_function)?;
 
         let context = self.base().context();
         let c_query = **self.base().cquery();
@@ -317,11 +334,11 @@ pub trait AggregateQueryBuilder: QueryBuilder {
         // C API functionality
         let mut c_agg_operator: *const tiledb_channel_operator_t = out_ptr!();
         let mut c_agg_operation: *mut tiledb_channel_operation_t = out_ptr!();
-        let c_agg_name = agg_name.as_c_str().as_ptr();
+        let c_agg_name = handle.agg_name.as_c_str().as_ptr();
 
         // The if statement and match statement are in different arms because of the agg_operation
         // variable takes in different types in the respective functions.
-        if agg_function == AggregateFunction::Count {
+        if handle.function == AggregateFunction::Count {
             context.capi_call(|ctx| unsafe {
                 ffi::tiledb_aggregate_count_get(
                     ctx,
@@ -331,11 +348,11 @@ pub trait AggregateQueryBuilder: QueryBuilder {
             })?;
         } else {
             let c_field_name: *const i8 =
-                field_name.as_ref().unwrap().as_c_str().as_ptr();
-            match agg_function {
+                handle.field_name.as_ref().unwrap().as_c_str().as_ptr();
+            match handle.function {
                 AggregateFunction::Count => unreachable!(
                     "AggregateFunction::Count handled in above case, found {:?}",
-                    agg_function
+                    handle.function
                 ),
                 AggregateFunction::NullCount(_) => {
                     context.capi_call(|ctx| unsafe {
@@ -400,8 +417,7 @@ pub trait AggregateQueryBuilder: QueryBuilder {
 
         Ok(AggregateBuilder::<T, Self> {
             base: self,
-            agg_str: agg_name,
-            field_str: field_name,
+            handle,
             field_type: PhantomData,
         })
     }
@@ -691,7 +707,6 @@ mod tests {
         Ok(())
     }
 
-    #[ignore = "FIXME: put field name in the buffer key"]
     #[test]
     fn quickstart_aggregate_queries_same_function_different_args(
     ) -> TileDBResult<()> {
