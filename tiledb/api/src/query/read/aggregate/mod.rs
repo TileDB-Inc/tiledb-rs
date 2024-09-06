@@ -480,11 +480,271 @@ pub mod strategy;
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
     use tiledb_test_utils::TestArrayUri;
 
     use super::*;
+    use crate::tests::examples::sparse_all::Parameters as SparseAllParameters;
     use crate::tests::prelude::*;
     use crate::tests::strategy::prelude::*;
+
+    /// Initialize a quickstart array for aggregate testing.
+    ///
+    /// Overrides the attribute to be nullable.
+    /// TODO: also put some actual nulls in there!
+    fn quickstart_init(name: &str) -> TileDBResult<TestArray> {
+        let mut array = TestArray::new(
+            name,
+            Rc::new({
+                let mut b = crate::tests::examples::quickstart::Builder::new(
+                    ArrayType::Sparse,
+                )
+                .with_cols(DimensionConstraints::Int32([5, 8], Some(4)));
+                b.attribute().nullability = Some(true);
+                b.build()
+            }),
+        )?;
+
+        let rows = vec![1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4];
+        let cols = vec![5, 6, 7, 8, 5, 6, 7, 8, 5, 6, 7, 8, 5, 6, 7, 8];
+        let atts = vec![
+            16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+        ];
+        {
+            let a = array.for_write()?;
+            let query = WriteBuilder::new(a)?
+                .data_typed("rows", &rows)?
+                .data_typed("cols", &cols)?
+                .data_typed("a", &atts)?
+                .build();
+
+            query.submit()?;
+            query.finalize().and_then(|_| Ok(()))?;
+        }
+
+        Ok(array)
+    }
+
+    #[test]
+    fn quickstart_aggregate_queries_single_function() -> TileDBResult<()> {
+        let array = quickstart_init("single_function")?;
+
+        let mut a = array.for_read()?;
+
+        macro_rules! do_agg {
+            ($function:expr, $datatype:ty) => {{
+                let mut q = ReadBuilder::new(a)?
+                    .apply_aggregate::<$datatype>($function)?
+                    .build();
+                let (r, _) = q.execute()?;
+                #[allow(unused_assignments)]
+                {
+                    a = q.finalize()?;
+                }
+                r
+            }};
+        }
+
+        // count
+        {
+            let count = do_agg!(AggregateFunction::Count, u64);
+            assert_eq!(Some(16), count);
+        }
+
+        // NB: NullCount("rows") and NullCount("cols") are an error, see SC-52312
+
+        // NullCount("a")
+        {
+            let null_count =
+                do_agg!(AggregateFunction::NullCount("a".to_owned()), u64);
+            assert_eq!(Some(0), null_count);
+        }
+
+        // Min("rows")
+        {
+            let min_row =
+                do_agg!(AggregateFunction::Min("rows".to_owned()), i32);
+            assert_eq!(Some(1), min_row);
+        }
+        // Min("cols")
+        {
+            let min_col =
+                do_agg!(AggregateFunction::Min("cols".to_owned()), i32);
+            assert_eq!(Some(5), min_col);
+        }
+        // Min("a")
+        {
+            let min_a = do_agg!(AggregateFunction::Min("a".to_owned()), i32);
+            assert_eq!(Some(16), min_a);
+        }
+
+        // Max("rows")
+        {
+            let max_row =
+                do_agg!(AggregateFunction::Max("rows".to_owned()), i32);
+            assert_eq!(Some(4), max_row);
+        }
+        // Max("cols")
+        {
+            let max_col =
+                do_agg!(AggregateFunction::Max("cols".to_owned()), i32);
+            assert_eq!(Some(8), max_col);
+        }
+        // Max("a")
+        {
+            let max_a = do_agg!(AggregateFunction::Max("a".to_owned()), i32);
+            assert_eq!(Some(31), max_a);
+        }
+
+        // Sum("rows")
+        {
+            let sum_row =
+                do_agg!(AggregateFunction::Sum("rows".to_owned()), i64);
+            assert_eq!(Some(40), sum_row);
+        }
+        // Sum("cols")
+        {
+            let sum_col =
+                do_agg!(AggregateFunction::Sum("cols".to_owned()), i64);
+            assert_eq!(Some(104), sum_col);
+        }
+        // Sum("a")
+        {
+            let sum_a = do_agg!(AggregateFunction::Sum("a".to_owned()), i64);
+            assert_eq!(Some(376), sum_a);
+        }
+
+        // Mean("rows")
+        {
+            let mean_row =
+                do_agg!(AggregateFunction::Mean("rows".to_owned()), f64);
+            assert_eq!(Some(2.5), mean_row);
+        }
+        // Mean("cols")
+        {
+            let mean_col =
+                do_agg!(AggregateFunction::Mean("cols".to_owned()), f64);
+            assert_eq!(Some(6.5), mean_col);
+        }
+        // Mean("a")
+        {
+            let mean_a = do_agg!(AggregateFunction::Mean("a".to_owned()), f64);
+            assert_eq!(Some(23.5), mean_a);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn quickstart_aggregate_queries_multi_function() -> TileDBResult<()> {
+        let a = quickstart_init("multi_function")?;
+        let mut a = a.for_read()?;
+
+        let mut q_rows = ReadBuilder::new(a)?
+            .min::<i32>("rows")?
+            .max::<i32>("rows")?
+            .sum::<i64>("rows")?
+            .mean("rows")?
+            .build();
+        let (mean_rows, (sum_rows, (max_rows, (min_rows, _)))) =
+            q_rows.execute()?;
+        a = q_rows.finalize()?;
+
+        let mut q_cols = ReadBuilder::new(a)?
+            .min::<i32>("cols")?
+            .max::<i32>("cols")?
+            .sum::<i64>("cols")?
+            .mean("cols")?
+            .build();
+        let (mean_cols, (sum_cols, (max_cols, (min_cols, _)))) =
+            q_cols.execute()?;
+        a = q_cols.finalize()?;
+
+        let mut q_a = ReadBuilder::new(a)?
+            .count()?
+            .null_count("a")?
+            .min::<i32>("a")?
+            .max::<i32>("a")?
+            .sum::<i64>("a")?
+            .mean("a")?
+            .build();
+        let (mean_a, (sum_a, (max_a, (min_a, (null_count_a, (count, _)))))) =
+            q_a.execute()?;
+
+        assert_eq!(Some(16), count);
+        assert_eq!(Some(1), min_rows);
+        assert_eq!(Some(4), max_rows);
+        assert_eq!(Some(40), sum_rows);
+        assert_eq!(Some(2.5), mean_rows);
+        assert_eq!(Some(5), min_cols);
+        assert_eq!(Some(8), max_cols);
+        assert_eq!(Some(104), sum_cols);
+        assert_eq!(Some(6.5), mean_cols);
+        assert_eq!(Some(0), null_count_a);
+        assert_eq!(Some(16), min_a);
+        assert_eq!(Some(31), max_a);
+        assert_eq!(Some(376), sum_a);
+        assert_eq!(Some(23.5), mean_a);
+
+        Ok(())
+    }
+
+    #[ignore = "FIXME: put field name in the buffer key"]
+    #[test]
+    fn quickstart_aggregate_queries_same_function_different_args(
+    ) -> TileDBResult<()> {
+        let a = quickstart_init("same_function_different_args")?;
+
+        let mut a = a.for_read()?;
+
+        let mut q_min = ReadBuilder::new(a)?
+            .min::<i32>("rows")?
+            .min::<i32>("cols")?
+            .min::<i32>("a")?
+            .build();
+        let (min_a, (min_cols, (min_rows, _))) = q_min.execute()?;
+        a = q_min.finalize()?;
+
+        let mut q_max = ReadBuilder::new(a)?
+            .max::<i32>("rows")?
+            .max::<i32>("cols")?
+            .max::<i32>("a")?
+            .build();
+        let (max_a, (max_cols, (max_rows, _))) = q_max.execute()?;
+        a = q_max.finalize()?;
+
+        let mut q_sum = ReadBuilder::new(a)?
+            .sum::<i64>("rows")?
+            .sum::<i64>("cols")?
+            .sum::<i64>("a")?
+            .build();
+        let (sum_a, (sum_cols, (sum_rows, _))) = q_sum.execute()?;
+        a = q_sum.finalize()?;
+
+        let mut q_mean = ReadBuilder::new(a)?
+            .mean("rows")?
+            .mean("cols")?
+            .mean("a")?
+            .build();
+        let (mean_a, (mean_cols, (mean_rows, _))) = q_mean.execute()?;
+
+        assert_eq!(Some(1), min_rows);
+        assert_eq!(Some(4), max_rows);
+        assert_eq!(Some(40), sum_rows);
+        assert_eq!(Some(2.5), mean_rows);
+        assert_eq!(Some(5), min_cols);
+        assert_eq!(Some(8), max_cols);
+        assert_eq!(Some(104), sum_cols);
+        assert_eq!(Some(6.5), mean_cols);
+        assert_eq!(Some(16), min_a);
+        assert_eq!(Some(31), max_a);
+        assert_eq!(Some(376), sum_a);
+        assert_eq!(Some(23.5), mean_a);
+
+        Ok(())
+    }
 
     /// When this test fails, update `impl Arbitrary for AggregateFunction`
     #[test]
