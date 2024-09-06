@@ -1031,4 +1031,30 @@ mod tests {
 
         Ok(())
     }
+
+    /// Test running sum aggregate on empty input.
+    #[test]
+    fn sum_non_nullable_empty_input() -> TileDBResult<()> {
+        let a = TestArray::new(
+            "sum_empty_input",
+            Rc::new(
+                crate::tests::examples::quickstart::Builder::new(
+                    ArrayType::Sparse,
+                )
+                .build(),
+            ),
+        )?;
+
+        let mut q = ReadBuilder::new(a.for_read()?)?.sum::<i32>("a")?.build();
+        let (a_sum, _) = q.execute()?;
+
+        // This is deliberately a wrong result.
+        // We capture it here to track SC-54468.
+        // When that issue is resolved this will begin to fail;
+        // then update these to `None` and update all code which
+        // references SC-54468.
+        assert_eq!(Some(0), a_sum);
+
+        Ok(())
+    }
 }
