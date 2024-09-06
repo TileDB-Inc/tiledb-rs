@@ -480,6 +480,21 @@ impl Array {
         })
     }
 
+    /// Removes the array located at [array_uri].
+    ///
+    /// All of the array contents are deleted, including the values
+    /// in its cells, its metadata, and its schema.
+    pub fn delete<S>(context: &Context, array_uri: S) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        let c_array_uri = cstring!(array_uri.as_ref());
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_delete(ctx, c_array_uri.as_ptr())
+        })
+    }
+
     // Implements `dimension_nonempty_domain` for dimensions with CellValNum::Fixed
     fn dimension_nonempty_domain_impl_fixed<DT>(
         &self,
@@ -1199,6 +1214,27 @@ pub mod tests {
         )?;
         Array::vacuum(&ctx, &array_uri, Some(&config)).unwrap();
         assert_eq!(2, count_fragments_fn().unwrap());
+
+        Ok(())
+    }
+
+    #[test]
+    fn delete() -> TileDBResult<()> {
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        let c: Context = Context::new().unwrap();
+
+        let r = create_quickstart_dense(&test_uri, &c);
+        assert!(r.is_ok());
+        let uri = r.unwrap();
+
+        assert!(matches!(Array::exists(&c, &uri), Ok(true)));
+
+        let r = Array::delete(&c, &uri);
+        assert!(r.is_ok());
+
+        assert!(matches!(Array::exists(&c, &uri), Ok(false)));
 
         Ok(())
     }

@@ -216,4 +216,9 @@ extern "C" {
         num_fragments: u64,
         config: *mut tiledb_config_t,
     ) -> i32;
+
+    pub fn tiledb_array_delete(
+        ctx: *mut tiledb_ctx_t,
+        uri: *const ::std::os::raw::c_char,
+    ) -> i32;
 }
