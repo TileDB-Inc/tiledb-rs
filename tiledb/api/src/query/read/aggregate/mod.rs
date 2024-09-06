@@ -881,9 +881,9 @@ mod tests {
 
     /// Test running min/max aggregates on empty input.
     #[test]
-    fn min_max_empty_input() -> TileDBResult<()> {
+    fn min_max_non_nullable_empty_input() -> TileDBResult<()> {
         let a = TestArray::new(
-            "sc_54468",
+            "min_max_empty_input",
             Rc::new(
                 crate::tests::examples::quickstart::Builder::new(
                     ArrayType::Sparse,
