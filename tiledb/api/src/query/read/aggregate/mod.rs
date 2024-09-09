@@ -491,9 +491,6 @@ impl<T, B: QueryBuilder> AggregateQueryBuilder for AggregateBuilder<T, B> where
 {
 }
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
