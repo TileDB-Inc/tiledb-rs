@@ -1039,7 +1039,7 @@ mod tests {
             ),
         )?;
 
-        let mut q = ReadBuilder::new(a.for_read()?)?.sum::<i32>("a")?.build();
+        let mut q = ReadBuilder::new(a.for_read()?)?.sum::<i64>("a")?.build();
         let (a_sum, _) = q.execute()?;
 
         // This is deliberately a wrong result.
