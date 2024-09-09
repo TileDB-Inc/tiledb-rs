@@ -493,16 +493,13 @@ impl<T, B: QueryBuilder> AggregateQueryBuilder for AggregateBuilder<T, B> where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use std::rc::Rc;
 
     use tiledb_test_utils::TestArrayUri;
 
     use super::*;
     use crate::error::DatatypeErrorKind;
-    use crate::tests::examples::sparse_all::Parameters as SparseAllParameters;
     use crate::tests::prelude::*;
-    use crate::tests::strategy::prelude::*;
 
     /// Initialize a quickstart array for aggregate testing.
     ///
@@ -535,7 +532,7 @@ mod tests {
                 .build();
 
             query.submit()?;
-            query.finalize().and_then(|_| Ok(()))?;
+            query.finalize().map(|_| ())?;
         }
 
         Ok(array)

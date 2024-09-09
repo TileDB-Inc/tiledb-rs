@@ -29,7 +29,7 @@ impl<B> AggregateQueryBuilderExt for B where B: AggregateQueryBuilder {}
 
 /// Wraps an `AggregateBuilder` to transform the result of the query
 /// it will construct into a `PhysicalValue`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum AggregatePhysicalValueBuilder<B> {
     UInt8(AggregateBuilder<u8, B>),
     UInt16(AggregateBuilder<u16, B>),
@@ -116,7 +116,7 @@ impl<B> AggregateQueryBuilder for AggregatePhysicalValueBuilder<B> where
 }
 
 /// Wraps an `AggregateQuery` to transform its result into a `PhysicalValue`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum AggregatePhysicalValueQuery<Q> {
     UInt8(AggregateQuery<u8, Q>),
     UInt16(AggregateQuery<u16, Q>),
