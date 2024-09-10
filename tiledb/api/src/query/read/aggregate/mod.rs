@@ -18,7 +18,7 @@ use crate::{Datatype, Result as TileDBResult};
 
 /// Describes an aggregate function to apply to an array
 /// or field (dimension or attribute) of an array.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum AggregateFunction {
     /// Counts the number of cells.
     Count,
