@@ -1,14 +1,16 @@
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::hash::{Hash, Hasher};
 use std::ops::{BitAnd, BitOr, Deref, Not};
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 
 use crate::context::Context;
+use crate::datatype::physical::{BitsEq, BitsHash};
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum EqualityOp {
     Less,
     LessEqual,
@@ -44,7 +46,7 @@ impl Display for EqualityOp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum SetMembershipOp {
     In,
     NotIn,
@@ -68,7 +70,7 @@ impl Display for SetMembershipOp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum NullnessOp {
     IsNull,
     NotNull,
@@ -92,7 +94,7 @@ impl Display for NullnessOp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum CombinationOp {
     And,
     Or,
@@ -120,7 +122,7 @@ impl Display for CombinationOp {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum Literal {
     UInt8(u8),
     UInt16(u16),
@@ -173,6 +175,51 @@ impl Display for Literal {
     }
 }
 
+impl Hash for Literal {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        use self::Literal::*;
+
+        match self {
+            UInt8(ref v) => v.hash(state),
+            UInt16(ref v) => v.hash(state),
+            UInt32(ref v) => v.hash(state),
+            UInt64(ref v) => v.hash(state),
+            Int8(ref v) => v.hash(state),
+            Int16(ref v) => v.hash(state),
+            Int32(ref v) => v.hash(state),
+            Int64(ref v) => v.hash(state),
+            Float32(ref v) => v.to_bits().hash(state),
+            Float64(ref v) => v.to_bits().hash(state),
+            String(ref v) => v.hash(state),
+        }
+    }
+}
+
+impl PartialEq for Literal {
+    fn eq(&self, other: &Self) -> bool {
+        use self::Literal::*;
+        match (self, other) {
+            (UInt8(ref mine), UInt8(ref theirs)) => mine == theirs,
+            (UInt16(ref mine), UInt16(ref theirs)) => mine == theirs,
+            (UInt32(ref mine), UInt32(ref theirs)) => mine == theirs,
+            (UInt64(ref mine), UInt64(ref theirs)) => mine == theirs,
+            (Int8(ref mine), Int8(ref theirs)) => mine == theirs,
+            (Int16(ref mine), Int16(ref theirs)) => mine == theirs,
+            (Int32(ref mine), Int32(ref theirs)) => mine == theirs,
+            (Int64(ref mine), Int64(ref theirs)) => mine == theirs,
+            (Float32(ref mine), Float32(ref theirs)) => mine.bits_eq(theirs),
+            (Float64(ref mine), Float64(ref theirs)) => mine.bits_eq(theirs),
+            (String(ref mine), String(ref theirs)) => mine == theirs,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Literal {}
+
 macro_rules! literal_from_impl {
     ($ty:ty, $constructor:expr) => {
         impl From<$ty> for Literal {
@@ -206,7 +253,7 @@ fn escape_string_literal(s: &str) -> impl Display + '_ {
 }
 
 // N.B. I initially tried slices here, but that breaks the Deserialize trait.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum SetMembers {
     UInt8(Vec<u8>),
     UInt16(Vec<u16>),
@@ -321,6 +368,52 @@ impl Display for SetMembers {
     }
 }
 
+impl Hash for SetMembers {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        use self::SetMembers::*;
+
+        match self {
+            UInt8(ref v) => v.hash(state),
+            UInt16(ref v) => v.hash(state),
+            UInt32(ref v) => v.hash(state),
+            UInt64(ref v) => v.hash(state),
+            Int8(ref v) => v.hash(state),
+            Int16(ref v) => v.hash(state),
+            Int32(ref v) => v.hash(state),
+            Int64(ref v) => v.hash(state),
+            Float32(ref v) => v.bits_hash(state),
+            Float64(ref v) => v.bits_hash(state),
+            String(ref v) => v.hash(state),
+        }
+    }
+}
+
+impl PartialEq for SetMembers {
+    fn eq(&self, other: &Self) -> bool {
+        use self::SetMembers::*;
+
+        match (self, other) {
+            (UInt8(ref mine), UInt8(ref theirs)) => mine == theirs,
+            (UInt16(ref mine), UInt16(ref theirs)) => mine == theirs,
+            (UInt32(ref mine), UInt32(ref theirs)) => mine == theirs,
+            (UInt64(ref mine), UInt64(ref theirs)) => mine == theirs,
+            (Int8(ref mine), Int8(ref theirs)) => mine == theirs,
+            (Int16(ref mine), Int16(ref theirs)) => mine == theirs,
+            (Int32(ref mine), Int32(ref theirs)) => mine == theirs,
+            (Int64(ref mine), Int64(ref theirs)) => mine == theirs,
+            (Float32(ref mine), Float32(ref theirs)) => mine.bits_eq(theirs),
+            (Float64(ref mine), Float64(ref theirs)) => mine.bits_eq(theirs),
+            (String(ref mine), String(ref theirs)) => mine == theirs,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for SetMembers {}
+
 macro_rules! set_member_value_impl {
     ($ty:ty, $constructor:expr) => {
         impl From<&[$ty]> for SetMembers {
@@ -353,7 +446,7 @@ impl From<&[&str]> for SetMembers {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct EqualityPredicate {
     field: String,
     op: EqualityOp,
@@ -396,7 +489,7 @@ impl Display for EqualityPredicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct SetMembershipPredicate {
     field: String,
     op: SetMembershipOp,
@@ -507,7 +600,7 @@ impl Display for SetMembershipPredicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct NullnessPredicate {
     field: String,
     op: NullnessOp,
@@ -546,7 +639,7 @@ impl Display for NullnessPredicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum Predicate {
     Equality(EqualityPredicate),
     SetMembership(SetMembershipPredicate),
@@ -573,7 +666,7 @@ impl Display for Predicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct Field {
     field: String,
 }
@@ -662,7 +755,7 @@ impl Field {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum QueryConditionExpr {
     Cond(Predicate),
     Comb {
