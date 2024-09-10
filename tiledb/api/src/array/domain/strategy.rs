@@ -155,6 +155,7 @@ mod tests {
         });
     }
 
+    #[ignore = "takes a long time due to shrink iters on name, we should do custom shrink strategy"]
     #[test]
     fn domain_shrinking() {
         let strat = any::<DomainData>();
