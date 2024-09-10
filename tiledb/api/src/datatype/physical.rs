@@ -400,42 +400,37 @@ macro_rules! physical_value_go {
 }
 
 macro_rules! physical_value_traits {
-    ($ty:ty, $variant:ident) => {
-        impl From<$ty> for PhysicalValue {
-            fn from(val: $ty) -> Self {
-                PhysicalValue::$variant(val)
-            }
-        }
-
-        impl TryFrom<PhysicalValue> for $ty {
-            type Error = Error;
-
-            fn try_from(value: PhysicalValue) -> Result<Self, Self::Error> {
-                if let PhysicalValue::$variant(val) = value {
-                    Ok(val)
-                } else {
-                    physical_value_go!(
-                        value,
-                        DT,
-                        _,
-                        Err(Error::physical_type_mismatch::<$ty, DT>())
-                    )
+    ($($ty:ty: $variant:ident),+) => {
+        $(
+            impl From<$ty> for PhysicalValue {
+                fn from(val: $ty) -> Self {
+                    PhysicalValue::$variant(val)
                 }
             }
-        }
+
+            impl TryFrom<PhysicalValue> for $ty {
+                type Error = Error;
+
+                fn try_from(value: PhysicalValue) -> Result<Self, Self::Error> {
+                    if let PhysicalValue::$variant(val) = value {
+                        Ok(val)
+                    } else {
+                        physical_value_go!(
+                            value,
+                            DT,
+                            _,
+                            Err(Error::physical_type_mismatch::<$ty, DT>())
+                        )
+                    }
+                }
+            }
+        )+
     };
 }
 
-physical_value_traits!(i8, Int8);
-physical_value_traits!(i16, Int16);
-physical_value_traits!(i32, Int32);
-physical_value_traits!(i64, Int64);
-physical_value_traits!(u8, UInt8);
-physical_value_traits!(u16, UInt16);
-physical_value_traits!(u32, UInt32);
-physical_value_traits!(u64, UInt64);
-physical_value_traits!(f32, Float32);
-physical_value_traits!(f64, Float64);
+physical_value_traits!(u8: UInt8, u16: UInt16, u32: UInt32, u64: UInt64);
+physical_value_traits!(i8: Int8, i16: Int16, i32: Int32, i64: Int64);
+physical_value_traits!(f32: Float32, f64: Float64);
 
 impl Display for PhysicalValue {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
