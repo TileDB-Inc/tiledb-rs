@@ -175,6 +175,7 @@ impl Display for Literal {
     }
 }
 
+/// Uses the [BitsHash] implementation of the wrapped value.
 impl Hash for Literal {
     fn hash<H>(&self, state: &mut H)
     where
@@ -218,6 +219,9 @@ impl PartialEq for Literal {
     }
 }
 
+/// The [PartialEq] implementation of [Literal] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
 impl Eq for Literal {}
 
 macro_rules! literal_from_impl {
@@ -368,6 +372,7 @@ impl Display for SetMembers {
     }
 }
 
+/// Uses the [BitsHash] implementation of the wrapped values.
 impl Hash for SetMembers {
     fn hash<H>(&self, state: &mut H)
     where
@@ -412,6 +417,9 @@ impl PartialEq for SetMembers {
     }
 }
 
+/// The [PartialEq] implementation of [SetMembers] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
 impl Eq for SetMembers {}
 
 macro_rules! set_member_value_impl {

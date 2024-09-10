@@ -203,8 +203,12 @@ impl PartialEq for SingleValueRange {
     }
 }
 
+/// The [PartialEq] implementation of [SingleValueRange] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
 impl Eq for SingleValueRange {}
 
+/// Uses the [BitsHash] implementation of the wrapped values.
 impl Hash for SingleValueRange {
     fn hash<H>(&self, state: &mut H)
     where
@@ -675,8 +679,12 @@ impl PartialEq for MultiValueRange {
     }
 }
 
+/// The [PartialEq] implementation of [MultiValueRange] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
 impl Eq for MultiValueRange {}
 
+/// Uses the [BitsHash] implementation of the wrapped values.
 impl Hash for MultiValueRange {
     fn hash<H>(&self, state: &mut H)
     where
@@ -1031,8 +1039,12 @@ impl PartialEq for VarValueRange {
     }
 }
 
+/// The [PartialEq] implementation of [VarValueRange] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
 impl Eq for VarValueRange {}
 
+/// Uses the [BitsHash] implementation of the wrapped values.
 impl Hash for VarValueRange {
     fn hash<H>(&self, state: &mut H)
     where
