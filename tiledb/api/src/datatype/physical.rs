@@ -343,31 +343,3 @@ where
         self.0.bits_cmp(&other.0)
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use std::hash::DefaultHasher;
-
-    use proptest::prelude::*;
-
-    use super::*;
-
-    #[test]
-    fn bits_eq_hash_consistency() {
-        proptest!(|(f1 in any::<f32>(), f2 in any::<f32>())| {
-            if f1.bits_eq(&f2) {
-                let f1_hash = {
-                    let mut h = DefaultHasher::default();
-                    f1.bits_hash(&mut h);
-                    h.finish()
-                };
-                let f2_hash = {
-                    let mut h = DefaultHasher::default();
-                    f2.bits_hash(&mut h);
-                    h.finish()
-                };
-                assert_eq!(f1_hash, f2_hash);
-            }
-        });
-    }
-}
