@@ -372,7 +372,7 @@ where
 }
 
 /// Encapsulates data for a subarray.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct SubarrayData {
     /// List of requested ranges on each dimension.
     /// The outer `Vec` is the list of dimensions and the inner `Vec`

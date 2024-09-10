@@ -167,6 +167,19 @@ where
     }
 }
 
+impl<T> BitsHash for [T]
+where
+    T: BitsHash,
+{
+    fn bits_hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        let adapted = self.iter().map(BitsKeyAdapter).collect::<Vec<_>>();
+        adapted.hash(state)
+    }
+}
+
 impl<T> BitsHash for Vec<T>
 where
     T: BitsHash,

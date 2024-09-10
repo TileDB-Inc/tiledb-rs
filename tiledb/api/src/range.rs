@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Formatter, Result as FmtResult};
+use std::hash::{Hash, Hasher};
 use std::num::NonZeroU32;
 use std::ops::Deref;
 
@@ -7,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::array::CellValNum;
-use crate::datatype::physical::BitsOrd;
+use crate::datatype::physical::{BitsEq, BitsHash, BitsOrd};
 use crate::datatype::Datatype;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::physical_type_go;
@@ -78,7 +79,7 @@ where
     Some((lower, upper))
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum SingleValueRange {
     UInt8(u8, u8),
     UInt16(u16, u16),
@@ -183,6 +184,40 @@ impl SingleValueRange {
                 panic!("`SingleValueRange::intersection` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other)
             }
         )
+    }
+}
+
+impl PartialEq for SingleValueRange {
+    fn eq(&self, other: &Self) -> bool {
+        crate::single_value_range_cmp!(
+            self,
+            other,
+            _DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
+            lstart.bits_eq(rstart) && lend.bits_eq(rend),
+            false
+        )
+    }
+}
+
+/// The [PartialEq] implementation of [SingleValueRange] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
+impl Eq for SingleValueRange {}
+
+/// Uses the [BitsHash] implementation of the wrapped values.
+impl Hash for SingleValueRange {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        crate::single_value_range_go!(self, _DT, start, end, {
+            start.bits_hash(state);
+            end.bits_hash(state);
+        })
     }
 }
 
@@ -476,7 +511,7 @@ impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum MultiValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -625,6 +660,40 @@ impl MultiValueRange {
                     upper.to_vec().into_boxed_slice())).unwrap())
             },
             panic!("`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+    }
+}
+
+impl PartialEq for MultiValueRange {
+    fn eq(&self, other: &Self) -> bool {
+        crate::multi_value_range_cmp!(
+            self,
+            other,
+            _DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
+            lstart.bits_eq(rstart) && lend.bits_eq(rend),
+            false
+        )
+    }
+}
+
+/// The [PartialEq] implementation of [MultiValueRange] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
+impl Eq for MultiValueRange {}
+
+/// Uses the [BitsHash] implementation of the wrapped values.
+impl Hash for MultiValueRange {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        crate::multi_value_range_go!(self, _DT, start, end, {
+            start.bits_hash(state);
+            end.bits_hash(state);
+        })
     }
 }
 
@@ -888,7 +957,7 @@ macro_rules! multi_value_range_cmp {
     }};
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum VarValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -951,6 +1020,40 @@ impl VarValueRange {
                 Some(VarValueRange::from((lower.to_vec().into_boxed_slice(), upper.to_vec().into_boxed_slice())))
             },
             panic!("`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+    }
+}
+
+impl PartialEq for VarValueRange {
+    fn eq(&self, other: &Self) -> bool {
+        crate::var_value_range_cmp!(
+            self,
+            other,
+            _DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
+            lstart.bits_eq(rstart) && lend.bits_eq(rend),
+            false
+        )
+    }
+}
+
+/// The [PartialEq] implementation of [VarValueRange] compares the
+/// floating-point variants using [BitsEq],
+/// and as such is an equivalence relation.
+impl Eq for VarValueRange {}
+
+/// Uses the [BitsHash] implementation of the wrapped values.
+impl Hash for VarValueRange {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        crate::var_value_range_go!(self, _DT, start, end, {
+            start.bits_hash(state);
+            end.bits_hash(state);
+        })
     }
 }
 
@@ -1187,7 +1290,7 @@ macro_rules! var_value_range_cmp {
     }};
 }
 
-#[derive(Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Deserialize, Serialize, Eq, Hash, PartialEq)]
 pub enum Range {
     Single(SingleValueRange),
     Multi(MultiValueRange),
