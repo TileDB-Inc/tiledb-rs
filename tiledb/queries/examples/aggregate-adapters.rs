@@ -1,5 +1,5 @@
 extern crate tiledb;
-extern crate tiledb_queries;
+extern crate tiledb_query_adapters;
 
 use std::path::PathBuf;
 use tiledb::datatype::PhysicalValue;
@@ -7,7 +7,7 @@ use tiledb::query::read::AggregateFunction;
 use tiledb::query::{QueryBuilder, ReadQuery};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
-use tiledb_queries::AggregateQueryBuilderExt;
+use tiledb_query_adapters::AggregateQueryBuilderExt;
 
 const AGGREGATE_ARRAY_URI: &str = "aggregates";
 const AGGREGATE_ATTRIBUTE_NAME: &str = "a";

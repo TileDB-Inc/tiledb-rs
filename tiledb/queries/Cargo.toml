@@ -1,5 +1,5 @@
 [package]
-name = "tiledb-queries"
+name = "tiledb-query-adapters"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
