@@ -1328,6 +1328,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiledb-query-adapters"
+version = "0.1.0"
+dependencies = [
+ "pkg-config",
+ "tiledb",
+ "tiledb-utils",
+]
+
+[[package]]
 name = "tiledb-sys"
 version = "0.1.0"
 dependencies = [

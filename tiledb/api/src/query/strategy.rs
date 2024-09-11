@@ -373,6 +373,13 @@ impl FieldData {
         typed_field_data_go!(self, v, v.len())
     }
 
+    /// Returns the number of null values.
+    ///
+    /// At this time, values in `FieldData` are not nullable, so this is always zero.
+    pub fn null_count(&self) -> usize {
+        0
+    }
+
     pub fn is_cell_single(&self) -> bool {
         typed_field_data_go!(self, _DT, _, true, false)
     }

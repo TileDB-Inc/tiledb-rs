@@ -1,9 +1,10 @@
 use std::cmp::Ordering;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::Error;
 use crate::private::sealed;
 
 /// Trait for comparisons based on value bits.
@@ -341,5 +342,122 @@ where
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.0.bits_cmp(&other.0)
+    }
+}
+
+/// Represents a dynamically typed single physical value.
+///
+/// [PhysicalValue] holds the bits which correspond to a single value of a logical data type.
+/// For a given logical data type, [PhysicalValue] will always be constructed with the
+/// primitive numerical type of the same bit width, signed-ness, and precision.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum PhysicalValue {
+    UInt8(u8),
+    UInt16(u16),
+    UInt32(u32),
+    UInt64(u64),
+    Int8(i8),
+    Int16(i16),
+    Int32(i32),
+    Int64(i64),
+    Float32(f32),
+    Float64(f64),
+}
+
+macro_rules! physical_value_go {
+    ($physical_value:expr, $DT:ident, $value:pat, $then:expr) => {{
+        use $crate::datatype::physical::PhysicalValue;
+        match $physical_value {
+            PhysicalValue::UInt8($value) => {
+                type $DT = u8;
+                $then
+            }
+            PhysicalValue::UInt16($value) => {
+                type $DT = u16;
+                $then
+            }
+            PhysicalValue::UInt32($value) => {
+                type $DT = u32;
+                $then
+            }
+            PhysicalValue::UInt64($value) => {
+                type $DT = u64;
+                $then
+            }
+            PhysicalValue::Int8($value) => {
+                type $DT = i8;
+                $then
+            }
+            PhysicalValue::Int16($value) => {
+                type $DT = i16;
+                $then
+            }
+            PhysicalValue::Int32($value) => {
+                type $DT = i32;
+                $then
+            }
+            PhysicalValue::Int64($value) => {
+                type $DT = i64;
+                $then
+            }
+            PhysicalValue::Float32($value) => {
+                type $DT = f32;
+                $then
+            }
+            PhysicalValue::Float64($value) => {
+                type $DT = f64;
+                $then
+            }
+        }
+    }};
+}
+
+macro_rules! physical_value_traits {
+    ($($ty:ty: $variant:ident),+) => {
+        $(
+            impl From<$ty> for PhysicalValue {
+                fn from(val: $ty) -> Self {
+                    PhysicalValue::$variant(val)
+                }
+            }
+
+            impl TryFrom<PhysicalValue> for $ty {
+                type Error = Error;
+
+                fn try_from(value: PhysicalValue) -> Result<Self, Self::Error> {
+                    if let PhysicalValue::$variant(val) = value {
+                        Ok(val)
+                    } else {
+                        physical_value_go!(
+                            value,
+                            DT,
+                            _,
+                            Err(Error::physical_type_mismatch::<$ty, DT>())
+                        )
+                    }
+                }
+            }
+        )+
+    };
+}
+
+physical_value_traits!(u8: UInt8, u16: UInt16, u32: UInt32, u64: UInt64);
+physical_value_traits!(i8: Int8, i16: Int16, i32: Int32, i64: Int64);
+physical_value_traits!(f32: Float32, f64: Float64);
+
+impl Display for PhysicalValue {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self {
+            Self::UInt8(value) => Display::fmt(value, f),
+            Self::UInt16(value) => Display::fmt(value, f),
+            Self::UInt32(value) => Display::fmt(value, f),
+            Self::UInt64(value) => Display::fmt(value, f),
+            Self::Int8(value) => Display::fmt(value, f),
+            Self::Int16(value) => Display::fmt(value, f),
+            Self::Int32(value) => Display::fmt(value, f),
+            Self::Int64(value) => Display::fmt(value, f),
+            Self::Float32(value) => Display::fmt(value, f),
+            Self::Float64(value) => Display::fmt(value, f),
+        }
     }
 }

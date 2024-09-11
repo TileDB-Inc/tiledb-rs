@@ -10,11 +10,13 @@ use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::read::output::ScratchAllocator;
 use crate::Result as TileDBResult;
 
+pub mod aggregate;
 mod callback;
 pub mod output;
 mod raw;
 mod typed;
 
+pub use aggregate::*;
 pub use callback::*;
 pub use raw::*;
 pub use typed::*;
