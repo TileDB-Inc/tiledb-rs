@@ -998,7 +998,7 @@ mod tests {
 
     /// Test running min/max aggregates on empty input.
     #[test]
-    fn min_max_non_nullable_empty_input() -> TileDBResult<()> {
+    fn sc_54468_min_max_non_nullable_empty_input() -> TileDBResult<()> {
         let a = TestArray::new(
             "min_max_empty_input",
             Rc::new(
@@ -1028,7 +1028,7 @@ mod tests {
 
     /// Test running sum aggregate on empty input.
     #[test]
-    fn sum_non_nullable_empty_input() -> TileDBResult<()> {
+    fn sc_54468_sum_non_nullable_empty_input() -> TileDBResult<()> {
         let a = TestArray::new(
             "sum_empty_input",
             Rc::new(
