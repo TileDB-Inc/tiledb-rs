@@ -108,6 +108,9 @@ mod private {
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
+
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub(crate) mod env {
     use std::str::FromStr;
 
