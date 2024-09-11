@@ -1574,33 +1574,19 @@ pub struct CellsParameters {
 
 impl CellsParameters {
     pub fn min_records_default() -> usize {
-        const DEFAULT_CELLS_MIN_RECORDS: usize = 0;
-
-        let env_min = "TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MIN";
-        crate::env::parse::<usize>(env_min).unwrap_or(DEFAULT_CELLS_MIN_RECORDS)
+        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MIN
     }
 
     pub fn max_records_default() -> usize {
-        const DEFAULT_CELLS_MAX_RECORDS: usize = 16;
-
-        let env_max = "TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MAX";
-        crate::env::parse::<usize>(env_max).unwrap_or(DEFAULT_CELLS_MAX_RECORDS)
+        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MAX
     }
 
     pub fn cell_min_var_size_default() -> usize {
-        const DEFAULT_CELLS_CELL_VAR_SIZE_MIN: usize = 0;
-
-        let env_min = "TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MIN";
-        crate::env::parse::<usize>(env_min)
-            .unwrap_or(DEFAULT_CELLS_CELL_VAR_SIZE_MIN)
+        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MIN
     }
 
     pub fn cell_max_var_size_default() -> usize {
-        const DEFAULT_CELLS_CELL_VAR_SIZE_MAX: usize = 0;
-        let env_max = "TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MAX";
-
-        crate::env::parse::<usize>(env_max)
-            .unwrap_or(DEFAULT_CELLS_CELL_VAR_SIZE_MAX)
+        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MAX
     }
 }
 
