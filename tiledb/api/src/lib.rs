@@ -108,19 +108,4 @@ mod private {
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]
-pub(crate) mod env {
-    use std::str::FromStr;
-
-    pub fn parse<T>(env: &str) -> Option<T>
-    where
-        T: FromStr,
-    {
-        match std::env::var(env) {
-            Ok(value) => Some(
-                T::from_str(&value)
-                    .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
-            ),
-            Err(_) => None,
-        }
-    }
-}
+pub mod strategy;

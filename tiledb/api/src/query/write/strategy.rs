@@ -137,10 +137,7 @@ pub struct DenseWriteParameters {
 
 impl DenseWriteParameters {
     pub fn memory_limit_default() -> usize {
-        const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
-
-        let env = "TILEDB_STRATEGY_DENSE_WRITE_PARAMETERS_MEMORY_LIMIT";
-        crate::env::parse::<usize>(env).unwrap_or(MEMORY_LIMIT_DEFAULT)
+        **crate::strategy::config::TILEDB_STRATEGY_DENSE_WRITE_PARAMETERS_MEMORY_LIMIT
     }
 }
 
@@ -1027,17 +1024,11 @@ pub type SparseWriteSequenceParameters =
 
 impl<W> WriteSequenceParametersImpl<W> {
     pub fn min_writes_default() -> usize {
-        const DEFAULT_MIN_WRITES: usize = 1;
-
-        let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MIN_WRITES";
-        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MIN_WRITES)
+        **crate::strategy::config::TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MIN_WRITES
     }
 
     pub fn max_writes_default() -> usize {
-        const DEFAULT_MAX_WRITES: usize = 8;
-
-        let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MAX_WRITES";
-        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MAX_WRITES)
+        **crate::strategy::config::TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MAX_WRITES
     }
 }
 

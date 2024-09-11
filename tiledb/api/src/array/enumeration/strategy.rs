@@ -76,19 +76,11 @@ pub struct Parameters {
 
 impl Parameters {
     fn min_variants_default() -> usize {
-        const DEFAULT_MIN_ENUMERATION_VALUES: usize = 1;
-
-        let env = "TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MIN";
-        crate::env::parse::<usize>(env)
-            .unwrap_or(DEFAULT_MIN_ENUMERATION_VALUES)
+        **crate::strategy::config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MIN
     }
 
     fn max_variants_default() -> usize {
-        const DEFAULT_MAX_ENUMERATION_VALUES: usize = 1024;
-
-        let env = "TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MAX";
-        crate::env::parse::<usize>(env)
-            .unwrap_or(DEFAULT_MAX_ENUMERATION_VALUES)
+        **crate::strategy::config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MAX
     }
 }
 

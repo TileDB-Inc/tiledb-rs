@@ -19,7 +19,7 @@ default-members = [
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.72"
+rust-version = "1.80"
 version = "0.1.0"
 
 [workspace.dependencies]
