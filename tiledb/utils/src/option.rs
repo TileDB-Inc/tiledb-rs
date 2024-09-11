@@ -114,6 +114,24 @@ where
     }
 }
 
+impl<T> OptionSubset for Box<T>
+where
+    T: OptionSubset,
+{
+    fn option_subset(&self, other: &Self) -> bool {
+        self.as_ref().option_subset(other.as_ref())
+    }
+}
+
+impl<T> OptionSubset for Box<[T]>
+where
+    T: OptionSubset,
+{
+    fn option_subset(&self, other: &Self) -> bool {
+        self.as_ref().option_subset(other.as_ref())
+    }
+}
+
 #[cfg(feature = "serde_json")]
 mod serde_json {
     use super::*;

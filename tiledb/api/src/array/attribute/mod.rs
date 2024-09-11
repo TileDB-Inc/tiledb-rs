@@ -17,6 +17,7 @@ use crate::datatype::PhysicalType;
 use crate::error::{DatatypeErrorKind, Error};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::physical_type_go;
+use crate::string::{RawTDBString, TDBString};
 use crate::{Datatype, Factory, Result as TileDBResult};
 
 pub(crate) enum RawAttribute {
@@ -195,6 +196,25 @@ impl Attribute {
         let is_valid = c_validity != 0;
         Ok((F::from_raw(slice)?, is_valid))
     }
+
+    /// Get the enumeration name
+    pub fn enumeration_name(&self) -> TileDBResult<Option<String>> {
+        let c_enmr = self.capi();
+        let mut c_str: *mut ffi::tiledb_string_t = out_ptr!();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_get_enumeration_name(ctx, c_enmr, &mut c_str)
+        })?;
+
+        if c_str.is_null() {
+            return Ok(None);
+        }
+
+        TDBString {
+            raw: RawTDBString::Owned(c_str),
+        }
+        .to_string()
+        .map(Some)
+    }
 }
 
 impl Debug for Attribute {
@@ -341,6 +361,25 @@ impl Builder {
         let c_nullable: u8 = if nullable { 1 } else { 0 };
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_set_nullable(ctx, *self.attr.raw, c_nullable)
+        })?;
+        Ok(self)
+    }
+
+    /// Set the name of the enumeration to use.
+    ///
+    /// Note that when building schemas, the enumeration must have been added
+    /// to the schema for adding an attribute that references it.
+    pub fn enumeration_name<S>(self, name: S) -> TileDBResult<Self>
+    where
+        S: AsRef<str>,
+    {
+        let c_name = cstring!(name.as_ref());
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_attribute_set_enumeration_name(
+                ctx,
+                *self.attr.raw,
+                c_name.as_c_str().as_ptr(),
+            )
         })?;
         Ok(self)
     }

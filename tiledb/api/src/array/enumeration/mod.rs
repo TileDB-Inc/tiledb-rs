@@ -4,6 +4,8 @@ use std::ops::Deref;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use util::option::OptionSubset;
+
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::string::{RawTDBString, TDBString};
 use crate::{Datatype, Factory, Result as TileDBResult};
@@ -46,6 +48,10 @@ impl ContextBound for Enumeration {
 impl Enumeration {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_enumeration_t {
         *self.raw
+    }
+
+    pub(crate) fn new(context: Context, raw: RawEnumeration) -> Self {
+        Self { context, raw }
     }
 
     pub fn name(&self) -> TileDBResult<String> {
@@ -351,7 +357,7 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
 }
 
 /// Encapsulation of data needed to construct an Enumeration
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, OptionSubset)]
 pub struct EnumerationData {
     pub name: String,
     pub datatype: Datatype,

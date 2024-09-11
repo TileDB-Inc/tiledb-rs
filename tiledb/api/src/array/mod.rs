@@ -7,6 +7,7 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use util::option::OptionSubset;
 
+use crate::array::enumeration::RawEnumeration;
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
@@ -387,6 +388,33 @@ impl Array {
 
         let datatype = Datatype::try_from(c_datatype)?;
         Ok(Some(datatype))
+    }
+
+    /// Get the enumeration with the given name.
+    ///
+    /// Note that the name is not the name of the attribute, but of the
+    /// enumeration as enumerations can be shared by multiple attributes.
+    pub fn get_enumeration<S: AsRef<str>>(
+        &self,
+        name: S,
+    ) -> TileDBResult<Enumeration> {
+        let c_array = *self.raw;
+        let mut c_enmr: *mut ffi::tiledb_enumeration_t = out_ptr!();
+        let c_name = cstring!(name.as_ref());
+
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_get_enumeration(
+                ctx,
+                c_array,
+                c_name.as_c_str().as_ptr(),
+                &mut c_enmr,
+            )
+        })?;
+
+        Ok(Enumeration::new(
+            self.context.clone(),
+            RawEnumeration::Owned(c_enmr),
+        ))
     }
 
     /// Cleans up the array, such as consolidated fragments and array metadata.
@@ -1235,6 +1263,94 @@ pub mod tests {
         assert!(r.is_ok());
 
         assert!(matches!(Array::exists(&c, &uri), Ok(false)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn create_enumeration() -> TileDBResult<()> {
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        let uri = test_uri
+            .with_path("enumeration_test")
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        let ctx = Context::new().unwrap();
+        let domain = {
+            let dim = DimensionBuilder::new(
+                &ctx,
+                "dim",
+                Datatype::Int32,
+                ([0, 16], 4),
+            )?
+            .build();
+
+            DomainBuilder::new(&ctx)?.add_dimension(dim)?.build()
+        };
+
+        let enmr = EnumerationBuilder::new(
+            &ctx,
+            "flintstones",
+            Datatype::StringUtf8,
+            "fredwilmageorgebetty".as_bytes(),
+            Some(&[0u64, 4, 8, 14]),
+        )
+        .var_sized()
+        .build()?;
+
+        let enmr_before_write = EnumerationData::try_from(&enmr)?;
+
+        let attr1 = AttributeBuilder::new(&ctx, "attr1", Datatype::Int32)?
+            .nullability(true)?
+            .enumeration_name("flintstones")?
+            .build();
+
+        let attr2 =
+            AttributeBuilder::new(&ctx, "attr2", Datatype::Int32)?.build();
+
+        let schema = SchemaBuilder::new(&ctx, ArrayType::Sparse, domain)?
+            .add_enumeration(enmr)?
+            .add_attribute(attr1)?
+            .add_attribute(attr2)?
+            .build()?;
+
+        Array::create(&ctx, &uri, schema)?;
+
+        let array = Array::open(&ctx, &uri, Mode::Read)?;
+
+        let enmr = array.get_enumeration("flintstones")?;
+        let enmr_after_write = EnumerationData::try_from(&enmr)?;
+
+        assert!(enmr_before_write.option_subset(&enmr_after_write));
+
+        assert_eq!(
+            enmr_after_write.data,
+            "fredwilmageorgebetty"
+                .as_bytes()
+                .to_vec()
+                .into_boxed_slice()
+        );
+
+        assert_eq!(
+            enmr_after_write.offsets,
+            Some(vec![0u64, 4, 8, 14].into_boxed_slice())
+        );
+
+        assert!(
+            array
+                .schema()?
+                .attribute("attr1")?
+                .enumeration_name()?
+                .unwrap()
+                == "flintstones"
+        );
+
+        assert!(array
+            .schema()?
+            .attribute("attr2")?
+            .enumeration_name()?
+            .is_none());
 
         Ok(())
     }
