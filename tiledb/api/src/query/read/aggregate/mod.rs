@@ -71,9 +71,13 @@ impl AggregateFunction {
 
         match self {
             AggregateFunction::Count | AggregateFunction::NullCount(_) => {
+                // see `CountAggregatorBase<ValidityPolicy>::copy_to_user_buffer`
+                // in tiledb/sm/query/readers/aggregates/count_aggregator.cc
                 Some(Datatype::UInt64)
             }
             AggregateFunction::Mean(_) => {
+                // see `MeanAggregator<T>::copy_to_user_buffer` in
+                // tiledb/sm/query/readers/aggregates/sum_aggregator.cc
                 if is_unit {
                     Some(Datatype::Float64)
                 } else {
@@ -84,10 +88,12 @@ impl AggregateFunction {
                 if is_unit {
                     Some(argument_type.unwrap().0)
                 } else {
+                    // TODO: SC-54898
                     None
                 }
             }
             AggregateFunction::Sum(_) => {
+                // see tiledb/sm/query/readers/aggregates/sum_type.h
                 if is_unit {
                     let argument_type = argument_type.unwrap().0;
                     match argument_type {
