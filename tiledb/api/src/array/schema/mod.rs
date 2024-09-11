@@ -11,6 +11,7 @@ use util::option::OptionSubset;
 use crate::array::attribute::{AttributeData, RawAttribute};
 use crate::array::dimension::{Dimension, DimensionData};
 use crate::array::domain::{DomainData, RawDomain};
+use crate::array::enumeration::Enumeration;
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
@@ -770,6 +771,18 @@ impl Builder {
         let c_schema = self.schema.capi();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_add_attribute(ctx, c_schema, attr.capi())
+        })?;
+        Ok(self)
+    }
+
+    /// Add an enumeration to the schema for use by attributes.
+    ///
+    /// Note that enumerations must be added to the schema before any
+    /// attributes that reference them.
+    pub fn add_enumeration(self, enmr: Enumeration) -> TileDBResult<Self> {
+        let c_schema = self.schema.capi();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_add_enumeration(ctx, c_schema, enmr.capi())
         })?;
         Ok(self)
     }

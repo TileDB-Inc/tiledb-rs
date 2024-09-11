@@ -1,5 +1,8 @@
 use crate::capi_enum::tiledb_datatype_t;
-use crate::types::{tiledb_attribute_t, tiledb_ctx_t, tiledb_filter_list_t};
+use crate::types::{
+    capi_return_t, tiledb_attribute_t, tiledb_ctx_t, tiledb_filter_list_t,
+    tiledb_string_t,
+};
 
 extern "C" {
     pub fn tiledb_attribute_alloc(
@@ -94,4 +97,16 @@ extern "C" {
         size: *mut u64,
         valid: *mut u8,
     ) -> i32;
+
+    pub fn tiledb_attribute_set_enumeration_name(
+        ctx: *mut tiledb_ctx_t,
+        attr: *mut tiledb_attribute_t,
+        enumeration_name: *const ::std::os::raw::c_char,
+    ) -> capi_return_t;
+
+    pub fn tiledb_attribute_get_enumeration_name(
+        ctx: *mut tiledb_ctx_t,
+        attr: *mut tiledb_attribute_t,
+        name: *mut *mut tiledb_string_t,
+    ) -> capi_return_t;
 }

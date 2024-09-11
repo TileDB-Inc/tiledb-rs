@@ -3,7 +3,7 @@ use crate::capi_enum::{
 };
 use crate::types::{
     capi_return_t, tiledb_array_schema_t, tiledb_attribute_t, tiledb_ctx_t,
-    tiledb_domain_t, tiledb_filter_list_t,
+    tiledb_domain_t, tiledb_enumeration_t, tiledb_filter_list_t,
 };
 
 extern "C" {
@@ -63,6 +63,12 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         array_schema: *mut tiledb_array_schema_t,
         tile_order: tiledb_layout_t,
+    ) -> capi_return_t;
+
+    pub fn tiledb_array_schema_add_enumeration(
+        ctx: *mut tiledb_ctx_t,
+        array_schema: *mut tiledb_array_schema_t,
+        enumeration: *mut tiledb_enumeration_t,
     ) -> capi_return_t;
 
     pub fn tiledb_array_schema_set_coords_filter_list(

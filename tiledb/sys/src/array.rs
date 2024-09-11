@@ -1,7 +1,8 @@
 use crate::capi_enum::tiledb_query_type_t;
 use crate::tiledb_datatype_t;
 use crate::types::{
-    tiledb_array_schema_t, tiledb_array_t, tiledb_config_t, tiledb_ctx_t,
+    capi_return_t, tiledb_array_schema_t, tiledb_array_t, tiledb_config_t,
+    tiledb_ctx_t, tiledb_enumeration_t,
 };
 
 extern "C" {
@@ -221,4 +222,11 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         uri: *const ::std::os::raw::c_char,
     ) -> i32;
+
+    pub fn tiledb_array_get_enumeration(
+        ctx: *mut tiledb_ctx_t,
+        array: *const tiledb_array_t,
+        name: *const ::std::os::raw::c_char,
+        enumeration: *mut *mut tiledb_enumeration_t,
+    ) -> capi_return_t;
 }
