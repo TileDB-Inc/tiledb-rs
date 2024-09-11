@@ -1568,24 +1568,50 @@ pub struct CellsParameters {
     pub schema: Option<CellsStrategySchema>,
     pub min_records: usize,
     pub max_records: usize,
-    pub value_min_var_size: usize,
-    pub value_max_var_size: usize,
+    pub cell_min_var_size: usize,
+    pub cell_max_var_size: usize,
+}
+
+impl CellsParameters {
+    pub fn min_records_default() -> usize {
+        const DEFAULT_CELLS_MIN_RECORDS: usize = 0;
+
+        let env_min = "TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MIN";
+        crate::env::parse::<usize>(env_min).unwrap_or(DEFAULT_CELLS_MIN_RECORDS)
+    }
+
+    pub fn max_records_default() -> usize {
+        const DEFAULT_CELLS_MAX_RECORDS: usize = 16;
+
+        let env_max = "TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MAX";
+        crate::env::parse::<usize>(env_max).unwrap_or(DEFAULT_CELLS_MAX_RECORDS)
+    }
+
+    pub fn cell_min_var_size_default() -> usize {
+        const DEFAULT_CELLS_CELL_VAR_SIZE_MIN: usize = 0;
+
+        let env_min = "TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MIN";
+        crate::env::parse::<usize>(env_min)
+            .unwrap_or(DEFAULT_CELLS_CELL_VAR_SIZE_MIN)
+    }
+
+    pub fn cell_max_var_size_default() -> usize {
+        const DEFAULT_CELLS_CELL_VAR_SIZE_MAX: usize = 0;
+        let env_max = "TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MAX";
+
+        crate::env::parse::<usize>(env_max)
+            .unwrap_or(DEFAULT_CELLS_CELL_VAR_SIZE_MAX)
+    }
 }
 
 impl Default for CellsParameters {
     fn default() -> Self {
-        const WRITE_QUERY_MIN_RECORDS: usize = 0;
-        const WRITE_QUERY_MAX_RECORDS: usize = 16;
-
-        const WRITE_QUERY_MIN_VAR_SIZE: usize = 0;
-        const WRITE_QUERY_MAX_VAR_SIZE: usize = 8;
-
         CellsParameters {
             schema: None,
-            min_records: WRITE_QUERY_MIN_RECORDS,
-            max_records: WRITE_QUERY_MAX_RECORDS,
-            value_min_var_size: WRITE_QUERY_MIN_VAR_SIZE,
-            value_max_var_size: WRITE_QUERY_MAX_VAR_SIZE,
+            min_records: Self::min_records_default(),
+            max_records: Self::max_records_default(),
+            cell_min_var_size: Self::cell_min_var_size_default(),
+            cell_max_var_size: Self::cell_max_var_size_default(),
         }
     }
 }
@@ -1605,22 +1631,7 @@ impl CellsStrategy {
     fn nrecords_limit(&self) -> Option<usize> {
         if let Some(schema) = self.schema.array_schema() {
             if !schema.allow_duplicates.unwrap_or(true) {
-                /*
-                 * TODO: this is a much larger constraint than it needs to
-                 * be, we want all the rows to be unique but right now
-                 * too much of the strategy reasons about columns, so it's
-                 * going to be a big effort to restrict this down
-                 * to `DomainData::num_cells` instead
-                 */
-                return usize::try_from(
-                    schema
-                        .domain
-                        .dimension
-                        .iter()
-                        .filter_map(|d| d.constraints.num_cells())
-                        .min()?,
-                )
-                .ok();
+                return schema.domain.num_cells();
             }
         }
         None
@@ -1635,7 +1646,8 @@ impl Strategy for CellsStrategy {
         /* Choose the maximum number of records */
         let strat_nrecords = if let Some(limit) = self.nrecords_limit() {
             if limit < self.params.min_records {
-                todo!()
+                let r = format!("Schema and parameters are not satisfiable: schema.domain.num_cells() = {}, self.params.min_records = {}", limit, self.params.min_records);
+                return Err(proptest::test_runner::Reason::from(r));
             } else {
                 let max_records = std::cmp::min(self.params.max_records, limit);
                 self.params.min_records..=max_records

@@ -32,26 +32,47 @@ pub struct Requirements {
 }
 
 impl Requirements {
-    pub const DEFAULT_MIN_ATTRIBUTES: usize = 1;
-    pub const DEFAULT_MAX_ATTRIBUTES: usize = 32;
+    pub fn min_attributes_default() -> usize {
+        const DEFAULT_MIN_ATTRIBUTES: usize = 1;
 
-    pub const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
-    pub const DEFAULT_MAX_SPARSE_TILE_CAPACITY: u64 =
-        DomainRequirements::DEFAULT_CELLS_PER_TILE_LIMIT as u64;
+        let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MIN";
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MIN_ATTRIBUTES)
+    }
+
+    pub fn max_attributes_default() -> usize {
+        const DEFAULT_MAX_ATTRIBUTES: usize = 8;
+
+        let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MAX";
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MAX_ATTRIBUTES)
+    }
+
+    pub fn min_sparse_tile_capacity_default() -> u64 {
+        const DEFAULT_MIN_SPARSE_TILE_CAPACITY: u64 = 1;
+
+        let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN";
+        crate::env::parse::<u64>(env)
+            .unwrap_or(DEFAULT_MIN_SPARSE_TILE_CAPACITY)
+    }
+
+    pub fn max_sparse_tile_capacity_default() -> u64 {
+        let env = "TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN";
+        crate::env::parse::<u64>(env)
+            .unwrap_or(DomainRequirements::cells_per_tile_limit_default() as u64)
+    }
 }
 
 impl Default for Requirements {
     fn default() -> Self {
         Requirements {
             domain: None,
-            num_attributes: Self::DEFAULT_MIN_ATTRIBUTES
-                ..=Self::DEFAULT_MAX_ATTRIBUTES,
+            num_attributes: Self::min_attributes_default()
+                ..=Self::max_attributes_default(),
             attribute_filters: None,
             coordinates_filters: None,
             offsets_filters: None,
             validity_filters: None,
-            sparse_tile_capacity: Self::DEFAULT_MIN_SPARSE_TILE_CAPACITY
-                ..=Self::DEFAULT_MAX_SPARSE_TILE_CAPACITY,
+            sparse_tile_capacity: Self::min_sparse_tile_capacity_default()
+                ..=Self::max_sparse_tile_capacity_default(),
         }
     }
 }

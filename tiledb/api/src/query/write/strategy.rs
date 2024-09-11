@@ -43,6 +43,7 @@ pub fn query_write_filter_requirements() -> FilterRequirements {
         allow_compression_rle: false, // probably can be enabled but nontrivial
         allow_compression_dict: false, // probably can be enabled but nontrivial
         allow_compression_delta: false, // SC-47328
+        allow_webp: false,            // SC-51250
         ..Default::default()
     }
 }
@@ -54,17 +55,22 @@ pub fn query_write_filter_requirements() -> FilterRequirements {
 pub fn query_write_schema_requirements(
     array_type: Option<ArrayType>,
 ) -> crate::array::schema::strategy::Requirements {
+    // NB: 1 is the highest number that passes all cases (so don't use the value given by
+    // `DomainRequirements::default()`) but we want to enable environmental override.
+    use crate::array::domain::strategy::Requirements as DomainRequirements;
+    let env_max_dimensions =
+        DomainRequirements::env_max_dimensions().unwrap_or(1);
+
     crate::array::schema::strategy::Requirements {
         domain: Some(Rc::new(crate::array::domain::strategy::Requirements {
             array_type,
-            num_dimensions: 1..=1,
+            num_dimensions: 1..=env_max_dimensions,
             dimension: Some(crate::array::dimension::strategy::Requirements {
                 filters: Some(Rc::new(query_write_filter_requirements())),
                 ..Default::default()
             }),
             ..Default::default()
         })),
-        num_attributes: 1..=1,
         attribute_filters: Some(Rc::new(query_write_filter_requirements())),
         coordinates_filters: Some(Rc::new(query_write_filter_requirements())),
         offsets_filters: Some(Rc::new(query_write_filter_requirements())),
@@ -122,11 +128,30 @@ impl DenseWriteInput {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct DenseWriteParameters {
     pub schema: Option<Rc<SchemaData>>,
     pub layout: Option<CellOrder>,
-    pub memory_limit: Option<usize>,
+    pub memory_limit: usize,
+}
+
+impl DenseWriteParameters {
+    pub fn memory_limit_default() -> usize {
+        const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
+
+        let env = "TILEDB_STRATEGY_DENSE_WRITE_PARAMETERS_MEMORY_LIMIT";
+        crate::env::parse::<usize>(env).unwrap_or(MEMORY_LIMIT_DEFAULT)
+    }
+}
+
+impl Default for DenseWriteParameters {
+    fn default() -> Self {
+        DenseWriteParameters {
+            schema: Default::default(),
+            layout: Default::default(),
+            memory_limit: Self::memory_limit_default(),
+        }
+    }
 }
 
 pub struct DenseWriteValueTree {
@@ -317,12 +342,8 @@ impl Strategy for DenseWriteStrategy {
          * For simplicity, we will bound the memory used at each dimension
          * rather than keeping a moving product of the accumulated memory
          */
-        let memory_limit: usize = {
-            const MEMORY_LIMIT_DEFAULT: usize = 16 * 1024; // chosen arbitrarily
-            let memory_limit =
-                self.params.memory_limit.unwrap_or(MEMORY_LIMIT_DEFAULT);
-            memory_limit / self.schema.domain.dimension.len()
-        };
+        let memory_limit =
+            { self.params.memory_limit / self.schema.domain.dimension.len() };
 
         if matches!(self.layout, CellOrder::Global) {
             // necessary to align to tile boundaries
@@ -884,6 +905,13 @@ impl<'a> WriteInputRef<'a> {
         }
     }
 
+    pub fn cloned(&self) -> WriteInput {
+        match self {
+            Self::Dense(dense) => WriteInput::Dense((*dense).clone()),
+            Self::Sparse(sparse) => WriteInput::Sparse((*sparse).clone()),
+        }
+    }
+
     /// Returns the minimum bounding rectangle containing
     /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
@@ -998,8 +1026,19 @@ pub type SparseWriteSequenceParameters =
     WriteSequenceParametersImpl<SparseWriteParameters>;
 
 impl<W> WriteSequenceParametersImpl<W> {
-    pub const DEFAULT_MIN_WRITES: usize = 1;
-    pub const DEFAULT_MAX_WRITES: usize = 8;
+    pub fn min_writes_default() -> usize {
+        const DEFAULT_MIN_WRITES: usize = 1;
+
+        let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MIN_WRITES";
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MIN_WRITES)
+    }
+
+    pub fn max_writes_default() -> usize {
+        const DEFAULT_MAX_WRITES: usize = 8;
+
+        let env = "TILEDB_STRATEGY_WRITE_SEQUENCE_PARAMETERS_MAX_WRITES";
+        crate::env::parse::<usize>(env).unwrap_or(DEFAULT_MAX_WRITES)
+    }
 }
 
 impl<W> Default for WriteSequenceParametersImpl<W>
@@ -1009,8 +1048,8 @@ where
     fn default() -> Self {
         WriteSequenceParametersImpl {
             write: Rc::new(Default::default()),
-            min_writes: Self::DEFAULT_MIN_WRITES,
-            max_writes: Self::DEFAULT_MAX_WRITES,
+            min_writes: Self::min_writes_default(),
+            max_writes: Self::max_writes_default(),
         }
     }
 }
@@ -1029,16 +1068,16 @@ impl WriteSequenceParameters {
                     schema: Some(schema),
                     ..Default::default()
                 }),
-                min_writes: DenseWriteSequenceParameters::DEFAULT_MIN_WRITES,
-                max_writes: DenseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+                min_writes: DenseWriteSequenceParameters::min_writes_default(),
+                max_writes: DenseWriteSequenceParameters::max_writes_default(),
             }),
             ArrayType::Sparse => Self::Sparse(SparseWriteSequenceParameters {
                 write: Rc::new(SparseWriteParameters {
                     schema: Some(schema),
                     ..Default::default()
                 }),
-                min_writes: SparseWriteSequenceParameters::DEFAULT_MIN_WRITES,
-                max_writes: SparseWriteSequenceParameters::DEFAULT_MAX_WRITES,
+                min_writes: SparseWriteSequenceParameters::min_writes_default(),
+                max_writes: SparseWriteSequenceParameters::max_writes_default(),
             }),
         }
     }
