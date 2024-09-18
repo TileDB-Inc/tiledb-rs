@@ -270,5 +270,5 @@ extern "C" {
         array: *mut tiledb_array_t,
         domain: *mut ::std::os::raw::c_void,
         is_empty: *mut i32,
-    ) -> i32;
+    ) -> capi_return_t;
 }
