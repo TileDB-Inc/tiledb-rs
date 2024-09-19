@@ -427,6 +427,7 @@ impl Processor {
                     util::unparse_signature(sys_def.unwrap())
                 );
                 println!("</table>");
+                println!();
             }
 
             if wrapped {

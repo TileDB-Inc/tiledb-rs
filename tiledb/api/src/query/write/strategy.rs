@@ -37,6 +37,8 @@ type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
 pub fn query_write_filter_requirements() -> FilterRequirements {
     FilterRequirements {
         allow_bit_reduction: false,     // SC-47560
+        allow_bit_shuffle: false,       // SC-48409
+        allow_byte_shuffle: false,      // SC-48409
         allow_positive_delta: false,    // nothing yet to ensure sort order
         allow_scale_float: false,       // not invertible due to precision loss
         allow_xor: false,               // SC-47328

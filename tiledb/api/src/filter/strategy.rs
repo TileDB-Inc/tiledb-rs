@@ -48,6 +48,8 @@ pub struct Requirements {
     pub context: Option<StrategyContext>,
     pub pipeline_position: Option<usize>,
     pub allow_bit_reduction: bool,
+    pub allow_bit_shuffle: bool,
+    pub allow_byte_shuffle: bool,
     pub allow_positive_delta: bool,
     pub allow_scale_float: bool,
     pub allow_xor: bool,
@@ -95,6 +97,8 @@ impl Default for Requirements {
             context: None,
             pipeline_position: None,
             allow_bit_reduction: true,
+            allow_bit_shuffle: true,
+            allow_byte_shuffle: true,
             allow_positive_delta: true,
             allow_scale_float: true,
             allow_xor: true,
@@ -375,8 +379,6 @@ pub fn prop_filter(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = FilterData> {
     let mut filter_strategies = vec![
-        Just(FilterData::BitShuffle).boxed(),
-        Just(FilterData::ByteShuffle).boxed(),
         Just(FilterData::Checksum(ChecksumType::Md5)).boxed(),
         Just(FilterData::Checksum(ChecksumType::Sha256)).boxed(),
     ];
@@ -393,6 +395,14 @@ pub fn prop_filter(
         };
     if ok_bit_reduction {
         filter_strategies.push(prop_bitwidthreduction().boxed());
+    }
+
+    if requirements.allow_bit_shuffle {
+        filter_strategies.push(Just(FilterData::BitShuffle).boxed())
+    }
+
+    if requirements.allow_byte_shuffle {
+        filter_strategies.push(Just(FilterData::ByteShuffle).boxed())
     }
 
     let ok_positive_delta = requirements.allow_positive_delta
