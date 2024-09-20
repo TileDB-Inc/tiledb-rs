@@ -795,7 +795,6 @@ macro_rules! physical_type_go {
     }};
 }
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[cfg(any(test, feature = "proptest-strategies"))]

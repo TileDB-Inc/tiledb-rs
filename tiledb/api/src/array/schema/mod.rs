@@ -32,10 +32,6 @@ use crate::{Factory, Result as TileDBResult};
     PartialEq,
     Serialize,
 )]
-#[cfg_attr(
-    any(test, feature = "proptest-strategies"),
-    derive(proptest_derive::Arbitrary)
-)]
 pub enum ArrayType {
     #[default]
     Dense,
@@ -1031,7 +1027,6 @@ impl<'a> Iterator for FieldDataIter<'a> {
 
 impl std::iter::FusedIterator for FieldDataIter<'_> {}
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[cfg(any(test, feature = "proptest-strategies"))]

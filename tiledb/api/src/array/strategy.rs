@@ -1,6 +1,19 @@
-#[cfg(test)]
+use proptest::prelude::*;
+
+use super::TileOrder;
+
+impl Arbitrary for TileOrder {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<TileOrder>;
+
+    fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
+        prop_oneof![Just(TileOrder::RowMajor), Just(TileOrder::ColumnMajor),]
+            .boxed()
+    }
+}
+
 mod tests {
-    use proptest::prelude::*;
+    use super::*;
     use util::assert_option_subset;
     use util::option::OptionSubset;
 
