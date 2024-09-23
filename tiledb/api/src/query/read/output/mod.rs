@@ -936,7 +936,10 @@ where
     C: PhysicalType,
 {
     type Unit = C;
-    type Iterator<'data> = CellStructureSingleIterator<'data, Self::Unit> where C: 'data;
+    type Iterator<'data>
+        = CellStructureSingleIterator<'data, Self::Unit>
+    where
+        C: 'data;
 }
 
 impl FromQueryOutput for String {
