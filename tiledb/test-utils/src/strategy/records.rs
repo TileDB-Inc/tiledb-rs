@@ -177,6 +177,7 @@ where
 /// after O(P * log_P N) iterations.  In the worst case, where there is exactly
 /// one record in each of the initial P chunks, we will be very sad and not
 /// shrink at all.
+#[derive(Clone, Debug)]
 pub struct RecordsValueTree<R> {
     min_records: usize,
     init: R,
@@ -211,15 +212,16 @@ where
         }
     }
 
+    pub fn num_chunks(&self) -> usize {
+        std::cmp::min(self.records_included.len(), self.explore_results.len())
+    }
+
     /// Computes the bit mask for which records to include in the next iteration
     fn record_mask(&self) -> VarBitSet {
         match self.search {
             None => VarBitSet::saturated(self.init.len()),
             Some(ShrinkStep::Explore(c)) => {
-                let nchunks = self
-                    .records_included
-                    .len()
-                    .clamp(1, self.explore_results.len());
+                let nchunks = std::cmp::max(1, self.num_chunks());
 
                 let approx_chunk_len = self.records_included.len() / nchunks;
 
@@ -277,10 +279,7 @@ where
                 }
             }
             Some(ShrinkStep::Explore(c)) => {
-                let nchunks = std::cmp::min(
-                    self.records_included.len(),
-                    self.explore_results.len(),
-                );
+                let nchunks = self.num_chunks();
 
                 self.explore_results[c] = Some(failed);
 
@@ -333,7 +332,7 @@ where
     /// Called after exploring each of P chunks to choose the set
     /// of records for the next level of exploration.
     fn explore_level_finished(&mut self) -> bool {
-        let nchunks = self.explore_results.len();
+        let nchunks = self.num_chunks();
         let approx_chunk_len = self.records_included.len() / nchunks;
 
         let new_records_included = {
@@ -406,6 +405,7 @@ where
 }
 
 /// Tracks the last step taken for the container shrinking.
+#[derive(Clone, Debug)]
 enum ShrinkStep {
     Explore(usize),
     Recur,
@@ -415,6 +415,9 @@ enum ShrinkStep {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::strategy::meta::*;
+    use crate::strategy::StrategyExt;
 
     #[test]
     fn shrink_convergence_u64() {
@@ -459,6 +462,20 @@ mod tests {
                 "Value tree converged to: {:?}",
                 convergence
             );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn arbitrary_shrink_search(
+            mut rvt in vec_records_strategy(any::<u64>().no_shrink(), 0..=1024).prop_indirect(),
+            sequence in ShrinkSequenceStrategy {
+                max_length: 1024
+            },
+        ) {
+            for step in sequence {
+                step.apply(&mut rvt);
+            }
         }
     }
 }
