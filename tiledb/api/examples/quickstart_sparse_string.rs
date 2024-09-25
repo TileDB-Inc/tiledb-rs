@@ -32,7 +32,7 @@ fn main() -> TileDBResult<()> {
     }
 
     let array = Array::open(&ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
-    let mut query = ReadBuilder::new(array)?
+    let mut query = ReadBuilder::new(&array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .register_constructor::<_, Vec<String>>("rows", Default::default())?
         .register_constructor::<_, Vec<i32>>("cols", Default::default())?
@@ -93,10 +93,10 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
     let col_data = vec![1, 4, 3];
     let a_data = vec![1, 2, 3];
 
-    let array =
+    let mut array =
         tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Write)?;
 
-    let query = WriteBuilder::new(array)?
+    let query = WriteBuilder::new(&mut array)?
         .layout(CellOrder::Unordered)?
         .data_typed("rows", &row_data)?
         .data_typed("cols", &col_data)?

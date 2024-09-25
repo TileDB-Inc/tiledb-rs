@@ -452,22 +452,22 @@ where
     }
 }
 
-impl<'data, Q> Query for RawReadQuery<'data, Q>
+impl<'array, 'data, Q> Query<'array> for RawReadQuery<'data, Q>
 where
-    Q: Query,
+    Q: Query<'array>,
 {
-    fn base(&self) -> &QueryBase {
+    fn base(&self) -> &QueryBase<'array> {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array> {
+    fn finalize(self) -> TileDBResult<()> {
         self.base.finalize()
     }
 }
 
-impl<'data, Q> ReadQuery for RawReadQuery<'data, Q>
+impl<'array, 'data, Q> ReadQuery<'array> for RawReadQuery<'data, Q>
 where
-    Q: ReadQuery + ContextBound,
+    Q: ReadQuery<'array> + ContextBound,
 {
     type Intermediate = (usize, Q::Intermediate);
     type Final = (usize, Q::Final);
@@ -522,23 +522,23 @@ pub struct RawReadBuilder<'data, B> {
     pub(crate) base: B,
 }
 
-impl<'data, B> ContextBound for RawReadBuilder<'data, B>
+impl<'array, 'data, B> ContextBound for RawReadBuilder<'data, B>
 where
-    B: QueryBuilder,
+    B: QueryBuilder<'array>,
 {
     fn context(&self) -> Context {
         self.base.base().context()
     }
 }
 
-impl<'data, B> QueryBuilder for RawReadBuilder<'data, B>
+impl<'array, 'data, B> QueryBuilder<'array> for RawReadBuilder<'data, B>
 where
-    B: QueryBuilder,
-    <B as QueryBuilder>::Query: ContextBound,
+    B: QueryBuilder<'array>,
+    <B as QueryBuilder<'array>>::Query: ContextBound,
 {
     type Query = RawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase {
+    fn base(&self) -> &BuilderBase<'array> {
         self.base.base()
     }
 
@@ -550,10 +550,11 @@ where
     }
 }
 
-impl<'data, B> ReadQueryBuilder<'data> for RawReadBuilder<'data, B>
+impl<'array, 'data, B> ReadQueryBuilder<'array, 'data>
+    for RawReadBuilder<'data, B>
 where
-    B: ReadQueryBuilder<'data>,
-    <B as QueryBuilder>::Query: ContextBound,
+    B: ReadQueryBuilder<'array, 'data>,
+    <B as QueryBuilder<'array>>::Query: ContextBound,
 {
 }
 
@@ -576,22 +577,22 @@ where
     }
 }
 
-impl<'data, Q> Query for VarRawReadQuery<'data, Q>
+impl<'array, 'data, Q> Query<'array> for VarRawReadQuery<'data, Q>
 where
-    Q: Query,
+    Q: Query<'array>,
 {
-    fn base(&self) -> &QueryBase {
+    fn base(&self) -> &QueryBase<'array> {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array> {
+    fn finalize(self) -> TileDBResult<()> {
         self.base.finalize()
     }
 }
 
-impl<'data, Q> ReadQuery for VarRawReadQuery<'data, Q>
+impl<'array, 'data, Q> ReadQuery<'array> for VarRawReadQuery<'data, Q>
 where
-    Q: ReadQuery,
+    Q: ReadQuery<'array>,
 {
     type Intermediate = (Vec<usize>, Q::Intermediate);
     type Final = (Vec<usize>, Q::Final);
@@ -671,13 +672,13 @@ where
     }
 }
 
-impl<'data, B> QueryBuilder for VarRawReadBuilder<'data, B>
+impl<'array, 'data, B> QueryBuilder<'array> for VarRawReadBuilder<'data, B>
 where
-    B: QueryBuilder,
+    B: QueryBuilder<'array>,
 {
     type Query = VarRawReadQuery<'data, B::Query>;
 
-    fn base(&self) -> &BuilderBase {
+    fn base(&self) -> &BuilderBase<'array> {
         self.base.base()
     }
 
@@ -689,7 +690,9 @@ where
     }
 }
 
-impl<'data, B> ReadQueryBuilder<'data> for VarRawReadBuilder<'data, B> where
-    B: ReadQueryBuilder<'data>
+impl<'array, 'data, B> ReadQueryBuilder<'array, 'data>
+    for VarRawReadBuilder<'data, B>
+where
+    B: ReadQueryBuilder<'array, 'data>,
 {
 }

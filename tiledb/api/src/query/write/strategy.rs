@@ -90,10 +90,10 @@ pub struct DenseWriteInput {
 
 impl DenseWriteInput {
     /// Prepares a write query to insert data from this write.
-    pub fn attach_write<'data>(
+    pub fn attach_write<'array, 'data>(
         &'data self,
-        b: WriteBuilder<'data>,
-    ) -> TileDBResult<WriteBuilder<'data>> {
+        b: WriteBuilder<'array, 'data>,
+    ) -> TileDBResult<WriteBuilder<'array, 'data>> {
         let mut subarray = self.data.attach_write(b)?.start_subarray()?;
 
         for i in 0..self.subarray.len() {
@@ -105,7 +105,7 @@ impl DenseWriteInput {
 
     /// Prepares a read query to read the fields written by this operation
     /// restricted to the subarray represented by this write.
-    pub fn attach_read<'data, B>(
+    pub fn attach_read<'array, 'data, B>(
         &'data self,
         b: B,
     ) -> TileDBResult<
@@ -116,7 +116,7 @@ impl DenseWriteInput {
         >,
     >
     where
-        B: ReadQueryBuilder<'data>,
+        B: ReadQueryBuilder<'array, 'data>,
     {
         let mut subarray = b.start_subarray()?;
 
@@ -550,15 +550,15 @@ impl SparseWriteInput {
     }
 
     /// Prepares a write query to insert data from this write operation.
-    pub fn attach_write<'data>(
+    pub fn attach_write<'array, 'data>(
         &'data self,
-        b: WriteBuilder<'data>,
-    ) -> TileDBResult<WriteBuilder<'data>> {
+        b: WriteBuilder<'array, 'data>,
+    ) -> TileDBResult<WriteBuilder<'array, 'data>> {
         self.data.attach_write(b)
     }
 
     /// Prepares a read query to read the fields written by this operation.
-    pub fn attach_read<'data, B>(
+    pub fn attach_read<'array, 'data, B>(
         &'data self,
         b: B,
     ) -> TileDBResult<
@@ -569,7 +569,7 @@ impl SparseWriteInput {
         >,
     >
     where
-        B: ReadQueryBuilder<'data>,
+        B: ReadQueryBuilder<'array, 'data>,
     {
         Ok(self.data.attach_read(b)?.map(CellsConstructor::new()))
     }
@@ -859,10 +859,10 @@ impl WriteInput {
     }
 
     /// Prepares a write queryto insert data from this write operation.
-    pub fn attach_write<'data>(
+    pub fn attach_write<'array, 'data>(
         &'data self,
-        b: WriteBuilder<'data>,
-    ) -> TileDBResult<WriteBuilder<'data>> {
+        b: WriteBuilder<'array, 'data>,
+    ) -> TileDBResult<WriteBuilder<'array, 'data>> {
         match self {
             Self::Dense(ref d) => d.attach_write(b),
             Self::Sparse(ref s) => s.attach_write(b),
@@ -870,7 +870,7 @@ impl WriteInput {
     }
 
     /// Prepares a read query to read the fields written by this operation.
-    pub fn attach_read<'data, B>(
+    pub fn attach_read<'array, 'data, B>(
         &'data self,
         b: B,
     ) -> TileDBResult<
@@ -881,7 +881,7 @@ impl WriteInput {
         >,
     >
     where
-        B: ReadQueryBuilder<'data>,
+        B: ReadQueryBuilder<'array, 'data>,
     {
         match self {
             Self::Dense(ref d) => d.attach_read(b),
@@ -938,10 +938,10 @@ impl<'a> WriteInputRef<'a> {
     }
 
     /// Prepares a write queryto insert data from this write operation.
-    pub fn attach_write<'data>(
+    pub fn attach_write<'array, 'data>(
         &'data self,
-        b: WriteBuilder<'data>,
-    ) -> TileDBResult<WriteBuilder<'data>> {
+        b: WriteBuilder<'array, 'data>,
+    ) -> TileDBResult<WriteBuilder<'array, 'data>> {
         match self {
             Self::Dense(d) => d.attach_write(b),
             Self::Sparse(s) => s.attach_write(b),
@@ -949,7 +949,7 @@ impl<'a> WriteInputRef<'a> {
     }
 
     /// Prepares a read query to read the fields written by this operation.
-    pub fn attach_read<'data, B>(
+    pub fn attach_read<'array, 'data, B>(
         &'data self,
         b: B,
     ) -> TileDBResult<
@@ -960,7 +960,7 @@ impl<'a> WriteInputRef<'a> {
         >,
     >
     where
-        B: ReadQueryBuilder<'data>,
+        B: ReadQueryBuilder<'array, 'data>,
     {
         match self {
             Self::Dense(d) => d.attach_read(b),
@@ -1243,7 +1243,7 @@ mod tests {
             self.write = Some(write)
         }
 
-        pub fn attach_read<'data, B>(
+        pub fn attach_read<'array, 'data, B>(
             &'data self,
             b: B,
         ) -> TileDBResult<
@@ -1254,7 +1254,7 @@ mod tests {
             >,
         >
         where
-            B: ReadQueryBuilder<'data>,
+            B: ReadQueryBuilder<'array, 'data>,
         {
             // TODO: this is not correct as we accumulate multiple writes
             self.write.as_ref().unwrap().attach_read(b)
@@ -1307,7 +1307,7 @@ mod tests {
             }
         }
 
-        pub fn attach_read<'data, B>(
+        pub fn attach_read<'array, 'data, B>(
             &'data self,
             b: B,
         ) -> TileDBResult<
@@ -1318,7 +1318,7 @@ mod tests {
             >,
         >
         where
-            B: ReadQueryBuilder<'data>,
+            B: ReadQueryBuilder<'array, 'data>,
         {
             Ok(self.cells().attach_read(b)?.map(CellsConstructor::new()))
         }
@@ -1365,7 +1365,7 @@ mod tests {
             }
         }
 
-        pub fn attach_read<'data, B>(
+        pub fn attach_read<'array, 'data, B>(
             &'data self,
             b: B,
         ) -> TileDBResult<
@@ -1376,7 +1376,7 @@ mod tests {
             >,
         >
         where
-            B: ReadQueryBuilder<'data>,
+            B: ReadQueryBuilder<'array, 'data>,
         {
             match self {
                 Self::Dense(ref d) => d.attach_read(b),
@@ -1423,12 +1423,12 @@ mod tests {
         for write in write_sequence {
             /* write data and preserve ranges for sanity check */
             let write_ranges = {
-                let array = Array::open(ctx, &uri, Mode::Write)
+                let mut array = Array::open(ctx, &uri, Mode::Write)
                     .expect("Error opening array");
 
                 let write_query = write
                     .attach_write(
-                        WriteBuilder::new(array)
+                        WriteBuilder::new(&mut array)
                             .expect("Error building write query"),
                     )
                     .expect("Error building write query")
@@ -1450,7 +1450,7 @@ mod tests {
                     None
                 };
 
-                let _ = write_query
+                write_query
                     .finalize()
                     .expect("Error finalizing write query");
 
@@ -1510,7 +1510,7 @@ mod tests {
                     .unwrap();
 
                 let mut read = write
-                    .attach_read(ReadBuilder::new(array).unwrap())
+                    .attach_read(ReadBuilder::new(&array).unwrap())
                     .unwrap()
                     .build();
 
@@ -1529,7 +1529,7 @@ mod tests {
                     assert_eq!(write_sorted, cells);
                 }
 
-                array = read.finalize().unwrap();
+                read.finalize().expect("Error finalizing query");
             }
 
             /* finally, check that everything written up until now is correct */
@@ -1560,7 +1560,7 @@ mod tests {
 
                 let cells = {
                     let mut read = accumulated_write
-                        .attach_read(ReadBuilder::new(array).unwrap())
+                        .attach_read(ReadBuilder::new(&array).unwrap())
                         .unwrap()
                         .build();
 

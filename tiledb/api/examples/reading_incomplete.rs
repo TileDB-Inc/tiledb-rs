@@ -4,7 +4,7 @@ use std::cell::{Ref, RefCell};
 use std::path::PathBuf;
 
 use itertools::izip;
-use tiledb::array::{CellOrder, TileOrder};
+use tiledb::array::{Array, CellOrder, TileOrder};
 use tiledb::query::buffer::{
     BufferMut, CellStructureMut, QueryBuffers, QueryBuffersMut,
 };
@@ -103,7 +103,7 @@ fn create_array() -> TileDBResult<()> {
 fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::Context::new()?;
 
-    let array =
+    let mut array =
         tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
 
     let coords_rows = vec![1, 2, 2];
@@ -112,7 +112,7 @@ fn write_array() -> TileDBResult<()> {
     let int32_data = vec![1, 2, 3];
     let char_data = vec!["a", "bb", "ccc"];
 
-    let query = tiledb::query::WriteBuilder::new(array)?
+    let query = tiledb::query::WriteBuilder::new(&mut array)?
         .layout(tiledb::query::QueryLayout::Global)?
         .data_typed("rows", &coords_rows)?
         .data_typed("columns", &coords_cols)?
@@ -128,11 +128,8 @@ fn write_array() -> TileDBResult<()> {
 /// from a query.  The example wants to print out the query result set.
 /// Below are several different ways to implement this functionality.
 
-fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
-    let array =
-        tiledb::Array::open(tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
-
-    tiledb::query::ReadBuilder::new(array)?
+fn query_builder_start(array: &Array) -> TileDBResult<ReadBuilder> {
+    tiledb::query::ReadBuilder::new(&array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?
         .start_subarray()?
         .add_range(0, &[1i32, 4])?
@@ -187,7 +184,10 @@ fn read_array_step() -> TileDBResult<()> {
         validity: None,
     });
 
-    let mut qq = query_builder_start(&tdb)?
+    let array =
+        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
+
+    let mut qq = query_builder_start(&array)?
         .register_raw("rows", &rows_output)?
         .register_raw("columns", &cols_output)?
         .register_raw(INT32_ATTRIBUTE_NAME, &int32_output)?
@@ -249,7 +249,10 @@ fn read_array_collect() -> TileDBResult<()> {
 
     let tdb = tiledb::context::Context::new()?;
 
-    let mut qq = query_builder_start(&tdb)?
+    let array =
+        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
+
+    let mut qq = query_builder_start(&array)?
         .register_constructor::<_, Vec<i32>>(
             "rows",
             ScratchStrategy::CustomAllocator(Box::new(NonVarSized {
@@ -326,7 +329,11 @@ fn read_array_callback() -> TileDBResult<()> {
         )),
         validity: None,
     });
-    let mut qq = query_builder_start(&tdb)?
+
+    let array =
+        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
+
+    let mut qq = query_builder_start(&array)?
         .register_callback4::<FnMutAdapter<(i32, i32, i32, String), _>>(
             ("rows", ScratchStrategy::RawBuffers(&rows_output)),
             ("columns", ScratchStrategy::RawBuffers(&cols_output)),

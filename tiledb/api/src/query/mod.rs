@@ -44,10 +44,10 @@ impl Drop for RawQuery {
     }
 }
 
-pub trait Query {
-    fn base(&self) -> &QueryBase;
+pub trait Query<'a> {
+    fn base(&self) -> &QueryBase<'a>;
 
-    fn finalize(self) -> TileDBResult<Array>
+    fn finalize(self) -> TileDBResult<()>
     where
         Self: Sized;
 
@@ -79,18 +79,18 @@ pub trait Query {
     }
 }
 
-pub struct QueryBase {
-    array: Array,
+pub struct QueryBase<'a> {
+    array: &'a Array,
     raw: RawQuery,
 }
 
-impl ContextBound for QueryBase {
+impl<'a> ContextBound for QueryBase<'a> {
     fn context(&self) -> Context {
         self.array.context()
     }
 }
 
-impl QueryBase {
+impl<'a> QueryBase<'a> {
     fn cquery(&self) -> &RawQuery {
         &self.raw
     }
@@ -119,22 +119,20 @@ impl QueryBase {
     }
 }
 
-impl Query for QueryBase {
-    fn base(&self) -> &QueryBase {
+impl<'a> Query<'a> for QueryBase<'a> {
+    fn base(&self) -> &QueryBase<'a> {
         self
     }
 
-    fn finalize(self) -> TileDBResult<Array> {
+    fn finalize(self) -> TileDBResult<()> {
         let c_query = **self.base().cquery();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_finalize(ctx, c_query)
-        })?;
-
-        Ok(self.array)
+        })
     }
 }
 
-impl ReadQuery for QueryBase {
+impl<'a> ReadQuery<'a> for QueryBase<'a> {
     type Intermediate = ();
     type Final = ();
 
@@ -177,10 +175,10 @@ impl ReadQuery for QueryBase {
     }
 }
 
-pub trait QueryBuilder: Sized {
-    type Query: Query;
+pub trait QueryBuilder<'a>: Sized {
+    type Query: Query<'a>;
 
-    fn base(&self) -> &BuilderBase;
+    fn base(&self) -> &BuilderBase<'a>;
 
     fn layout(self, layout: QueryLayout) -> TileDBResult<Self>
     where
@@ -231,17 +229,17 @@ pub trait QueryBuilder: Sized {
     fn build(self) -> Self::Query;
 }
 
-pub struct BuilderBase {
-    query: QueryBase,
+pub struct BuilderBase<'a> {
+    query: QueryBase<'a>,
 }
 
-impl ContextBound for BuilderBase {
+impl<'a> ContextBound for BuilderBase<'a> {
     fn context(&self) -> Context {
         self.query.context()
     }
 }
 
-impl BuilderBase {
+impl<'a> BuilderBase<'a> {
     fn carray(&self) -> &RawArray {
         self.query.array.capi()
     }
@@ -254,10 +252,10 @@ impl BuilderBase {
     }
 }
 
-impl QueryBuilder for BuilderBase {
-    type Query = QueryBase;
+impl<'a> QueryBuilder<'a> for BuilderBase<'a> {
+    type Query = QueryBase<'a>;
 
-    fn base(&self) -> &BuilderBase {
+    fn base(&self) -> &BuilderBase<'a> {
         self
     }
 
@@ -266,8 +264,8 @@ impl QueryBuilder for BuilderBase {
     }
 }
 
-impl BuilderBase {
-    fn new(array: Array, query_type: QueryType) -> TileDBResult<Self> {
+impl<'a> BuilderBase<'a> {
+    fn new(array: &'a Array, query_type: QueryType) -> TileDBResult<Self> {
         let c_array = **array.capi();
         let c_query_type = query_type.capi_enum();
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();

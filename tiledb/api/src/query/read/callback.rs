@@ -643,7 +643,7 @@ macro_rules! query_read_callback {
                 }
             }
 
-            impl<'data, T, Q> ContextBound for $query<'data, T, Q>
+            impl<'array, 'data, T, Q> ContextBound for $query<'data, T, Q>
             where
                 T: $callback,
                 Q: ContextBound,
@@ -653,22 +653,22 @@ macro_rules! query_read_callback {
                 }
             }
 
-            impl<'data, T, Q> Query for $query<'data, T, Q>
+            impl<'array, 'data, T, Q> Query<'array> for $query<'data, T, Q>
             where
                 T: $callback,
-                Q: Query,
+                Q: Query<'array>,
             {
-                fn base(&self) -> &QueryBase {
+                fn base(&self) -> &QueryBase<'array> {
                     self.base.base()
                 }
 
-                fn finalize(self) -> TileDBResult<Array> {
+                fn finalize(self) -> TileDBResult<()> {
                     self.base.finalize()
                 }
             }
         }
 
-        impl<'data, T, Q> $query<'data, T, Q> where T: $callback {
+        impl<'array, 'data, T, Q> $query<'data, T, Q> where T: $callback {
             fn realloc_managed_buffers(&mut self) {
                 paste! {
                     $(
@@ -678,9 +678,9 @@ macro_rules! query_read_callback {
             }
         }
 
-        impl<'data, T, Q> ReadQuery for $query <'data, T, Q>
+        impl<'array, 'data, T, Q> ReadQuery<'array> for $query<'data, T, Q>
             where T: $callback,
-                  Q: ReadQuery
+                  Q: ReadQuery<'array>
         {
             type Intermediate = (T::Intermediate, Q::Intermediate);
             type Final = (T::Final, Q::Final);
@@ -836,13 +836,13 @@ macro_rules! query_read_callback {
                 }
             }
 
-            impl<'data, T, B> QueryBuilder for $Builder <'data, T, B>
+            impl<'array, 'data, T, B> QueryBuilder<'array> for $Builder<'data, T, B>
             where T: $callback,
-                  B: QueryBuilder,
+                  B: QueryBuilder<'array>,
             {
                 type Query = $query<'data, T, B::Query>;
 
-                fn base(&self) -> &BuilderBase {
+                fn base(&self) -> &BuilderBase<'array> {
                     self.base.base()
                 }
 
@@ -857,10 +857,10 @@ macro_rules! query_read_callback {
                 }
             }
 
-            impl<'data, T, B> ReadQueryBuilder<'data> for $Builder<'data, T, B>
+            impl<'array, 'data, T, B> ReadQueryBuilder<'array, 'data> for $Builder<'data, T, B>
             where
                 T: $callback,
-                B: ReadQueryBuilder<'data>,
+                B: ReadQueryBuilder<'array, 'data>,
             {
             }
         }
@@ -968,23 +968,24 @@ where
     }
 }
 
-impl<'data, T, Q> Query for CallbackVarArgReadQuery<'data, T, Q>
+impl<'array, 'data, T, Q> Query<'array> for CallbackVarArgReadQuery<'data, T, Q>
 where
-    VarRawReadQuery<'data, Q>: Query,
+    VarRawReadQuery<'data, Q>: Query<'array>,
 {
-    fn base(&self) -> &QueryBase {
+    fn base(&self) -> &QueryBase<'array> {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array> {
+    fn finalize(self) -> TileDBResult<()> {
         self.base.finalize()
     }
 }
 
-impl<'data, T, Q> ReadQuery for CallbackVarArgReadQuery<'data, T, Q>
+impl<'array, 'data, T, Q> ReadQuery<'array>
+    for CallbackVarArgReadQuery<'data, T, Q>
 where
     T: ReadCallbackVarArg,
-    Q: ReadQuery,
+    Q: ReadQuery<'array>,
 {
     type Intermediate = (T::Intermediate, Q::Intermediate);
     type Final = (T::Final, Q::Final);
@@ -1140,13 +1141,14 @@ where
     }
 }
 
-impl<'data, T, B> QueryBuilder for CallbackVarArgReadBuilder<'data, T, B>
+impl<'array, 'data, T, B> QueryBuilder<'array>
+    for CallbackVarArgReadBuilder<'data, T, B>
 where
-    B: QueryBuilder,
+    B: QueryBuilder<'array>,
 {
     type Query = CallbackVarArgReadQuery<'data, T, B::Query>;
 
-    fn base(&self) -> &BuilderBase {
+    fn base(&self) -> &BuilderBase<'array> {
         self.base.base()
     }
 
@@ -1158,10 +1160,10 @@ where
     }
 }
 
-impl<'data, T, B> ReadQueryBuilder<'data>
+impl<'array, 'data, T, B> ReadQueryBuilder<'array, 'data>
     for CallbackVarArgReadBuilder<'data, T, B>
 where
-    B: QueryBuilder,
+    B: QueryBuilder<'array>,
 {
 }
 

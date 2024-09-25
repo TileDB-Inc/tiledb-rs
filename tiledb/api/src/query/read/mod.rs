@@ -184,7 +184,7 @@ impl<'data, C> From<&'data RefCell<QueryBuffersMut<'data, C>>>
 }
 
 /// Trait for runnable read queries.
-pub trait ReadQuery: Query {
+pub trait ReadQuery<'a>: Query<'a> {
     type Intermediate;
     type Final;
 
@@ -206,7 +206,7 @@ pub trait ReadQuery: Query {
 
     /// Convert this query into an iterator which yields an item
     /// for each step of the query.
-    fn into_iter(self) -> ReadQueryIterator<Self::Intermediate, Self::Final>
+    fn into_iter(self) -> ReadQueryIterator<'a, Self::Intermediate, Self::Final>
     where
         Self: Sized + 'static,
     {
@@ -274,7 +274,7 @@ macro_rules! fn_register_callback {
 /// Trait for constructing a read query.
 /// Provides methods for flexibly adapting requested attributes into raw results,
 /// callbacks, or strongly-typed objects.
-pub trait ReadQueryBuilder<'data>: QueryBuilder {
+pub trait ReadQueryBuilder<'array, 'data>: QueryBuilder<'array> {
     /// Register a raw memory location to read query results into.
     fn register_raw<S, C>(
         self,
@@ -387,18 +387,18 @@ pub trait ReadQueryBuilder<'data>: QueryBuilder {
     }
 }
 
-pub struct ReadBuilder {
-    base: BuilderBase,
+pub struct ReadBuilder<'a> {
+    base: BuilderBase<'a>,
 }
 
-impl ContextBound for ReadBuilder {
+impl<'a> ContextBound for ReadBuilder<'a> {
     fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl ReadBuilder {
-    pub fn new(array: Array) -> TileDBResult<Self> {
+impl<'a> ReadBuilder<'a> {
+    pub fn new(array: &'a Array) -> TileDBResult<Self> {
         let base = BuilderBase::new(array, QueryType::Read)?;
 
         /* configure the query to always use arrow-like output */
@@ -423,10 +423,10 @@ impl ReadBuilder {
     }
 }
 
-impl QueryBuilder for ReadBuilder {
-    type Query = QueryBase;
+impl<'a> QueryBuilder<'a> for ReadBuilder<'a> {
+    type Query = QueryBase<'a>;
 
-    fn base(&self) -> &BuilderBase {
+    fn base(&self) -> &BuilderBase<'a> {
         &self.base
     }
 
@@ -435,13 +435,13 @@ impl QueryBuilder for ReadBuilder {
     }
 }
 
-impl<'data> ReadQueryBuilder<'data> for ReadBuilder {}
+impl<'array, 'data> ReadQueryBuilder<'array, 'data> for ReadBuilder<'array> {}
 
-pub struct ReadQueryIterator<I, F> {
-    query: Option<Box<dyn ReadQuery<Intermediate = I, Final = F>>>,
+pub struct ReadQueryIterator<'array, I, F> {
+    query: Option<Box<dyn ReadQuery<'array, Intermediate = I, Final = F>>>,
 }
 
-impl<I, F> Iterator for ReadQueryIterator<I, F> {
+impl<'a, I, F> Iterator for ReadQueryIterator<'a, I, F> {
     type Item = TileDBResult<ReadStepOutput<I, F>>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -455,4 +455,4 @@ impl<I, F> Iterator for ReadQueryIterator<I, F> {
     }
 }
 
-impl<I, F> std::iter::FusedIterator for ReadQueryIterator<I, F> {}
+impl<'a, I, F> std::iter::FusedIterator for ReadQueryIterator<'a, I, F> {}

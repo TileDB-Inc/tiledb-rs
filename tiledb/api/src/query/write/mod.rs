@@ -22,50 +22,50 @@ struct RawWriteInput<'data> {
 
 type InputMap<'data> = HashMap<String, RawWriteInput<'data>>;
 
-pub struct WriteQuery<'data> {
-    base: QueryBase,
+pub struct WriteQuery<'array, 'data> {
+    base: QueryBase<'array>,
 
     /// Hold on to query inputs to ensure they live long enough
     _inputs: InputMap<'data>,
 }
 
-impl<'data> ContextBound for WriteQuery<'data> {
+impl<'array, 'data> ContextBound for WriteQuery<'array, 'data> {
     fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'data> Query for WriteQuery<'data> {
-    fn base(&self) -> &QueryBase {
+impl<'array, 'data> Query<'array> for WriteQuery<'array, 'data> {
+    fn base(&self) -> &QueryBase<'array> {
         self.base.base()
     }
 
-    fn finalize(self) -> TileDBResult<Array> {
+    fn finalize(self) -> TileDBResult<()> {
         self.base.finalize()
     }
 }
 
-impl<'data> WriteQuery<'data> {
+impl<'array, 'data> WriteQuery<'array, 'data> {
     pub fn submit(&self) -> TileDBResult<()> {
         self.base.do_submit()
     }
 }
 
-pub struct WriteBuilder<'data> {
-    base: BuilderBase,
+pub struct WriteBuilder<'array, 'data> {
+    base: BuilderBase<'array>,
     inputs: InputMap<'data>,
 }
 
-impl<'data> ContextBound for WriteBuilder<'data> {
+impl<'array, 'data> ContextBound for WriteBuilder<'array, 'data> {
     fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'data> QueryBuilder for WriteBuilder<'data> {
-    type Query = WriteQuery<'data>;
+impl<'array, 'data> QueryBuilder<'array> for WriteBuilder<'array, 'data> {
+    type Query = WriteQuery<'array, 'data>;
 
-    fn base(&self) -> &BuilderBase {
+    fn base(&self) -> &BuilderBase<'array> {
         &self.base
     }
 
@@ -77,8 +77,8 @@ impl<'data> QueryBuilder for WriteBuilder<'data> {
     }
 }
 
-impl<'data> WriteBuilder<'data> {
-    pub fn new(array: Array) -> TileDBResult<Self> {
+impl<'array, 'data> WriteBuilder<'array, 'data> {
+    pub fn new(array: &'array mut Array) -> TileDBResult<Self> {
         let base = BuilderBase::new(array, QueryType::Write)?;
 
         {

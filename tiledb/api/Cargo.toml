@@ -28,6 +28,7 @@ num-traits = { version = "0.2" }
 proptest = { workspace = true }
 proptest-derive = { workspace = true }
 tiledb-test-utils = { workspace = true }
+trybuild = { workspace = true }
 
 [build-dependencies]
 pkg-config = { workspace = true }

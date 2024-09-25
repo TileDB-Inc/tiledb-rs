@@ -1,0 +1,51 @@
+error[E0277]: `Rc<context::RawContext>` cannot be shared between threads safely
+  --> tests/array/sync.rs:31:20
+   |
+31 |     require_sync::<Array>();
+   |                    ^^^^^ `Rc<context::RawContext>` cannot be shared between threads safely
+   |
+   = help: within `tiledb::Array`, the trait `Sync` is not implemented for `Rc<context::RawContext>`, which is required by `tiledb::Array: Sync`
+note: required because it appears within the type `tiledb::Context`
+  --> src/context.rs
+   |
+   | pub struct Context {
+   |            ^^^^^^^
+note: required because it appears within the type `tiledb::Array`
+  --> src/array/mod.rs
+   |
+   | pub struct Array {
+   |            ^^^^^
+note: required by a bound in `require_sync`
+  --> tests/array/sync.rs:8:8
+   |
+6  | fn require_sync<T>()
+   |    ------------ required by a bound in this function
+7  | where
+8  |     T: Sync,
+   |        ^^^^ required by this bound in `require_sync`
+
+error[E0277]: `*mut tiledb_sys::types::tiledb_array_t` cannot be shared between threads safely
+  --> tests/array/sync.rs:31:20
+   |
+31 |     require_sync::<Array>();
+   |                    ^^^^^ `*mut tiledb_sys::types::tiledb_array_t` cannot be shared between threads safely
+   |
+   = help: within `tiledb::Array`, the trait `Sync` is not implemented for `*mut tiledb_sys::types::tiledb_array_t`, which is required by `tiledb::Array: Sync`
+note: required because it appears within the type `RawArray`
+  --> src/array/mod.rs
+   |
+   | pub enum RawArray {
+   |          ^^^^^^^^
+note: required because it appears within the type `tiledb::Array`
+  --> src/array/mod.rs
+   |
+   | pub struct Array {
+   |            ^^^^^
+note: required by a bound in `require_sync`
+  --> tests/array/sync.rs:8:8
+   |
+6  | fn require_sync<T>()
+   |    ------------ required by a bound in this function
+7  | where
+8  |     T: Sync,
+   |        ^^^^ required by this bound in `require_sync`
