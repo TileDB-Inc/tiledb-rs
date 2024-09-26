@@ -188,8 +188,8 @@ impl ValueTree for AttributeValueTree {
     fn current(&self) -> Self::Value {
         AttributeData {
             name: self.name.clone(),
-            datatype: self.datatype.clone(),
-            nullability: self.nullability.clone(),
+            datatype: self.datatype,
+            nullability: self.nullability,
             cell_val_num: self.cell_val_num.current(),
             fill: self.fill.current(),
             filters: self.filters.current(),

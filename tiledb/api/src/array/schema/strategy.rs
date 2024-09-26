@@ -367,7 +367,7 @@ impl SchemaValueTree {
             all_attributes: schema
                 .attributes
                 .into_iter()
-                .map(|a| AttributeValueTree::new(a))
+                .map(AttributeValueTree::new)
                 .collect::<Vec<_>>(),
             selected_attributes: RecordsValueTree::new(
                 1,
@@ -391,7 +391,7 @@ impl ValueTree for SchemaValueTree {
 
     fn current(&self) -> Self::Value {
         SchemaData {
-            array_type: self.array_type.clone(),
+            array_type: self.array_type,
             domain: self.domain.current(),
             capacity: self.capacity.current(),
             cell_order: self.cell_order.current(),

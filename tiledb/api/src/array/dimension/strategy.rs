@@ -281,7 +281,7 @@ impl DimensionValueTree {
             name: dimension.name,
             datatype: dimension.datatype,
             constraints: Just(dimension.constraints),
-            filters: dimension.filters.map(|p| FilterPipelineValueTree::new(p)),
+            filters: dimension.filters.map(FilterPipelineValueTree::new),
         }
     }
 }
@@ -292,7 +292,7 @@ impl ValueTree for DimensionValueTree {
     fn current(&self) -> Self::Value {
         DimensionData {
             name: self.name.clone(),
-            datatype: self.datatype.clone(),
+            datatype: self.datatype,
             constraints: self.constraints.current(),
             filters: self.filters.as_ref().map(|p| p.current()),
         }

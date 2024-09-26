@@ -154,7 +154,7 @@ impl DomainValueTree {
             all_dimensions: domain
                 .dimension
                 .into_iter()
-                .map(|d| DimensionValueTree::new(d))
+                .map(DimensionValueTree::new)
                 .collect::<Vec<_>>(),
             selected_dimensions: RecordsValueTree::new(
                 1,
