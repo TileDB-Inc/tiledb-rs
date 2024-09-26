@@ -127,7 +127,6 @@ fn write_array() -> TileDBResult<()> {
 /// The goal of this is example is to demonstrate handling incomplete results
 /// from a query.  The example wants to print out the query result set.
 /// Below are several different ways to implement this functionality.
-
 fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
     let array =
         tiledb::Array::open(tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
