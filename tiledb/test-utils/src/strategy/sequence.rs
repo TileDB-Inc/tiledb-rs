@@ -9,6 +9,7 @@ use proptest::strategy::ValueTree;
 #[derive(Clone, Debug)]
 pub struct SequenceValueTree<Element> {
     initial_sequence: Vec<Element>,
+    bound_length: usize,
     current_length: usize,
 }
 
@@ -18,6 +19,7 @@ impl<Element> SequenceValueTree<Element> {
         let init_len = collected.len();
         SequenceValueTree {
             initial_sequence: collected,
+            bound_length: init_len,
             current_length: init_len,
         }
     }
@@ -34,6 +36,7 @@ where
     }
 
     fn simplify(&mut self) -> bool {
+        self.bound_length = self.current_length;
         if self.current_length > 0 {
             self.current_length /= 2;
             true
@@ -43,7 +46,7 @@ where
     }
 
     fn complicate(&mut self) -> bool {
-        if self.current_length < self.initial_sequence.len() {
+        if self.current_length < self.bound_length {
             self.current_length += 1;
             true
         } else {
@@ -58,7 +61,7 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::strategy::meta::ShrinkSequenceStrategy;
+    use crate::strategy::meta::{ShrinkAction, ShrinkSequenceStrategy};
     use crate::strategy::StrategyExt;
 
     proptest! {
@@ -74,9 +77,38 @@ mod tests {
             let init = vt.current();
             let mut vt = vt;
 
+            let mut converged = false;
+            let mut high_bound_len = init.len();
+
             for action in shrinks {
-                action.apply(&mut vt);
-                assert_eq!(&init[0.. vt.current_length], vt.current());
+                let prev = vt.current();
+
+                let step = action.apply(&mut vt);
+
+                let current = vt.current();
+
+                assert_eq!(&init[0.. vt.current_length], current);
+                assert!(current.len() <= high_bound_len);
+
+                if step {
+                    match action {
+                        ShrinkAction::Simplify => {
+                            assert!(current.len() < prev.len());
+                            high_bound_len = prev.len();
+                        },
+                        ShrinkAction::Complicate => {
+                            assert!(current.len() > prev.len());
+                        }
+                    }
+                } else {
+                    assert_eq!(prev.len(), current.len());
+                }
+
+                if converged {
+                    assert!(!step);
+                } else {
+                    converged = !step;
+                }
             }
         }
     }
