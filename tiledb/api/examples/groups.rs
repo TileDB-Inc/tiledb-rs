@@ -18,7 +18,6 @@ use tiledb::{Datatype, Result as TileDBResult};
 ///     └── array_D
 ///
 /// The program then shows how to group these together using the TileDB Group API.
-
 fn create_array<S>(
     array_uri: S,
     array_type: tiledb::array::ArrayType,
