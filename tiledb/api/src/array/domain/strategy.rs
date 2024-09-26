@@ -2,8 +2,13 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 use proptest::sample::select;
+use proptest::strategy::ValueTree;
+use tiledb_test_utils::strategy::records::RecordsValueTree;
+use tiledb_test_utils::strategy::StrategyExt;
 
-use crate::array::dimension::strategy::Requirements as DimensionRequirements;
+use crate::array::dimension::strategy::{
+    DimensionValueTree, Requirements as DimensionRequirements,
+};
 use crate::array::{ArrayType, DimensionData, DomainData};
 use crate::datatype::strategy::*;
 use crate::Datatype;
@@ -116,6 +121,7 @@ fn prop_domain(
             })
             .boxed()
     }
+    .value_tree_map(|vt| DomainValueTree::new(vt.current()))
 }
 
 impl Arbitrary for DomainData {
@@ -131,6 +137,55 @@ impl DomainData {
     /// Returns a strategy which chooses any dimension from `self.`
     pub fn strat_dimension(&self) -> impl Strategy<Value = DimensionData> {
         select(self.dimension.clone())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DomainValueTree {
+    all_dimensions: Vec<DimensionValueTree>,
+    selected_dimensions: RecordsValueTree<Vec<usize>>,
+}
+
+impl DomainValueTree {
+    pub fn new(domain: DomainData) -> Self {
+        let num_dimension = domain.dimension.len();
+
+        Self {
+            all_dimensions: domain
+                .dimension
+                .into_iter()
+                .map(|d| DimensionValueTree::new(d))
+                .collect::<Vec<_>>(),
+            selected_dimensions: RecordsValueTree::new(
+                1,
+                (0..num_dimension).collect::<Vec<_>>(),
+            ),
+        }
+    }
+}
+
+impl ValueTree for DomainValueTree {
+    type Value = DomainData;
+
+    fn current(&self) -> Self::Value {
+        DomainData {
+            dimension: self
+                .selected_dimensions
+                .current()
+                .into_iter()
+                .map(|i| self.all_dimensions[i].current())
+                .collect::<Vec<DimensionData>>(),
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        self.selected_dimensions.simplify()
+            || self.all_dimensions.iter_mut().any(|d| d.simplify())
+    }
+
+    fn complicate(&mut self) -> bool {
+        self.selected_dimensions.complicate()
+            || self.all_dimensions.iter_mut().any(|d| d.complicate())
     }
 }
 

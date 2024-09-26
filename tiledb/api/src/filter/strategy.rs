@@ -462,7 +462,7 @@ pub fn prop_filter(
 /// 1) the filters themselves are basically scalars, so we don't need to shrink them
 /// 2) we must preserve the soundness of the pipeline with contiguous elements,
 ///    so our only option is to delete from (or restore) the back of the pipeline
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FilterPipelineValueTree {
     initial_pipeline: FilterListData,
     sublen: usize,

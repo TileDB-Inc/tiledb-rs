@@ -2,6 +2,8 @@ pub mod meta;
 pub mod records;
 pub mod sequence;
 
+use std::fmt::Debug;
+
 use proptest::strategy::{Strategy, ValueTree};
 
 pub trait StrategyExt: Strategy {
@@ -12,6 +14,7 @@ pub trait StrategyExt: Strategy {
     fn prop_indirect(self) -> meta::ValueTreeStrategy<Self>
     where
         Self: Sized,
+        Self::Tree: Clone + Debug,
     {
         meta::ValueTreeStrategy(self)
     }

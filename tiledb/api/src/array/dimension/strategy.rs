@@ -3,7 +3,9 @@ use std::rc::Rc;
 
 use num_traits::{Bounded, FromPrimitive, Num};
 use proptest::prelude::*;
+use proptest::strategy::ValueTree;
 
+use tiledb_test_utils::strategy::StrategyExt;
 use tiledb_utils::numbers::{
     NextDirection, NextNumericValue, SmallestPositiveValue,
 };
@@ -14,7 +16,8 @@ use crate::datatype::physical::BitsOrd;
 use crate::datatype::strategy::*;
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
-    Requirements as FilterRequirements, StrategyContext as FilterContext,
+    FilterPipelineValueTree, Requirements as FilterRequirements,
+    StrategyContext as FilterContext,
 };
 use crate::{physical_type_go, Datatype};
 
@@ -259,6 +262,54 @@ impl Arbitrary for DimensionData {
                 })
                 .boxed()
         }
+        .value_tree_map(|vt| DimensionValueTree::new(vt.current()))
+        .boxed()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DimensionValueTree {
+    name: String,
+    datatype: Datatype,
+    constraints: Just<DimensionConstraints>, // TODO: this should be shrinkable
+    filters: Option<FilterPipelineValueTree>,
+}
+
+impl DimensionValueTree {
+    pub fn new(dimension: DimensionData) -> Self {
+        Self {
+            name: dimension.name,
+            datatype: dimension.datatype,
+            constraints: Just(dimension.constraints),
+            filters: dimension.filters.map(|p| FilterPipelineValueTree::new(p)),
+        }
+    }
+}
+
+impl ValueTree for DimensionValueTree {
+    type Value = DimensionData;
+
+    fn current(&self) -> Self::Value {
+        DimensionData {
+            name: self.name.clone(),
+            datatype: self.datatype.clone(),
+            constraints: self.constraints.current(),
+            filters: self.filters.as_ref().map(|p| p.current()),
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        self.constraints.simplify()
+            || self.filters.as_mut().map(|p| p.simplify()).unwrap_or(false)
+    }
+
+    fn complicate(&mut self) -> bool {
+        self.constraints.complicate()
+            || self
+                .filters
+                .as_mut()
+                .map(|p| p.complicate())
+                .unwrap_or(false)
     }
 }
 

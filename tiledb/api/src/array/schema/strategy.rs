@@ -5,19 +5,24 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
+use tiledb_test_utils::strategy::records::RecordsValueTree;
+use tiledb_test_utils::strategy::StrategyExt;
 
 use crate::array::attribute::strategy::{
-    prop_attribute, Requirements as AttributeRequirements,
+    prop_attribute, AttributeValueTree, Requirements as AttributeRequirements,
     StrategyContext as AttributeContext,
 };
-use crate::array::domain::strategy::Requirements as DomainRequirements;
+use crate::array::domain::strategy::{
+    DomainValueTree, Requirements as DomainRequirements,
+};
 use crate::array::{
     schema::FieldData, ArrayType, AttributeData, CellOrder, CellValNum,
     DimensionData, DomainData, SchemaData, TileOrder,
 };
 use crate::filter::list::FilterListData;
 use crate::filter::strategy::{
-    Requirements as FilterRequirements, StrategyContext as FilterContext,
+    FilterPipelineValueTree, Requirements as FilterRequirements,
+    StrategyContext as FilterContext,
 };
 
 #[derive(Clone)]
@@ -291,6 +296,7 @@ fn prop_schema(
             })
             .boxed()
     }
+    .value_tree_map(|vt| SchemaValueTree::new(vt.current()))
 }
 
 impl Arbitrary for SchemaData {
@@ -332,6 +338,108 @@ impl SchemaData {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct SchemaValueTree {
+    array_type: ArrayType,
+    domain: DomainValueTree,
+    capacity: Just<Option<u64>>, // TODO: make shrinkable
+    cell_order: Just<Option<CellOrder>>, // TODO: make shrinkable
+    tile_order: Just<Option<TileOrder>>, // TODO: make shrinkable
+    allow_duplicates: Just<Option<bool>>, // TODO: make shrinkable
+    all_attributes: Vec<AttributeValueTree>,
+    selected_attributes: RecordsValueTree<Vec<usize>>,
+    coordinate_filters: FilterPipelineValueTree,
+    offsets_filters: FilterPipelineValueTree,
+    nullity_filters: FilterPipelineValueTree,
+}
+
+impl SchemaValueTree {
+    pub fn new(schema: SchemaData) -> Self {
+        let num_attributes = schema.attributes.len();
+
+        Self {
+            array_type: schema.array_type,
+            domain: DomainValueTree::new(schema.domain),
+            capacity: Just(schema.capacity),
+            cell_order: Just(schema.cell_order),
+            tile_order: Just(schema.tile_order),
+            allow_duplicates: Just(schema.allow_duplicates),
+            all_attributes: schema
+                .attributes
+                .into_iter()
+                .map(|a| AttributeValueTree::new(a))
+                .collect::<Vec<_>>(),
+            selected_attributes: RecordsValueTree::new(
+                1,
+                (0..num_attributes).collect::<Vec<_>>(),
+            ),
+            coordinate_filters: FilterPipelineValueTree::new(
+                schema.coordinate_filters,
+            ),
+            offsets_filters: FilterPipelineValueTree::new(
+                schema.offsets_filters,
+            ),
+            nullity_filters: FilterPipelineValueTree::new(
+                schema.nullity_filters,
+            ),
+        }
+    }
+}
+
+impl ValueTree for SchemaValueTree {
+    type Value = SchemaData;
+
+    fn current(&self) -> Self::Value {
+        SchemaData {
+            array_type: self.array_type.clone(),
+            domain: self.domain.current(),
+            capacity: self.capacity.current(),
+            cell_order: self.cell_order.current(),
+            tile_order: self.tile_order.current(),
+            allow_duplicates: self.allow_duplicates.current(),
+            attributes: self
+                .selected_attributes
+                .current()
+                .into_iter()
+                .map(|a| self.all_attributes[a].current())
+                .collect::<Vec<_>>(),
+            coordinate_filters: self.coordinate_filters.current(),
+            offsets_filters: self.offsets_filters.current(),
+            nullity_filters: self.nullity_filters.current(),
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        self.selected_attributes.simplify()
+            || self.domain.simplify()
+            || self
+                .selected_attributes
+                .current()
+                .into_iter()
+                .any(|a| self.all_attributes[a].simplify())
+            || self.cell_order.simplify()
+            || self.tile_order.simplify()
+            || self.coordinate_filters.simplify()
+            || self.offsets_filters.simplify()
+            || self.nullity_filters.simplify()
+    }
+
+    fn complicate(&mut self) -> bool {
+        self.selected_attributes.complicate()
+            || self.domain.complicate()
+            || self
+                .selected_attributes
+                .current()
+                .into_iter()
+                .any(|a| self.all_attributes[a].complicate())
+            || self.cell_order.complicate()
+            || self.tile_order.complicate()
+            || self.coordinate_filters.complicate()
+            || self.offsets_filters.complicate()
+            || self.nullity_filters.complicate()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -361,5 +469,38 @@ mod tests {
                 .expect("Error constructing arbitrary schema");
             assert_eq!(schema, schema);
         });
+    }
+
+    /// Runs one instance of [schema_value_tree]
+    fn test_schema_value_tree(mut vt: SchemaValueTree) {
+        let base = vt.current();
+        assert!(!base.attributes.is_empty());
+
+        // first shrink should reduce the number of attributes if possible
+        if base.attributes.len() > 1 {
+            assert!(vt.simplify());
+            assert!(vt.current().attributes.len() < base.attributes.len());
+        }
+
+        // if we continue shrinking after finding the minimal attribute set
+        // we should not thrash the attribute set
+        while vt.selected_attributes.simplify() {}
+        // (this may not be generally true but it is true for RecordsStrategy)
+        assert!(!vt.selected_attributes.complicate());
+
+        while vt.simplify() {}
+
+        let minimal = vt.current();
+        assert_eq!(1, minimal.attributes.len());
+        assert_eq!(1, minimal.domain.dimension.len());
+    }
+
+    proptest! {
+        /// Test that [SchemaValueTree] shrinks in the expected way
+        #[test]
+        fn schema_value_tree(schema in any::<SchemaData>()) {
+            let vt = SchemaValueTree::new(schema);
+            test_schema_value_tree(vt)
+        }
     }
 }
