@@ -3,6 +3,7 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
+use tiledb_test_utils::strategy::sequence::SequenceValueTree;
 
 use crate::array::{ArrayType, CellValNum, DomainData};
 use crate::datatype::strategy::DatatypeContext;
@@ -464,16 +465,13 @@ pub fn prop_filter(
 ///    so our only option is to delete from (or restore) the back of the pipeline
 #[derive(Clone, Debug)]
 pub struct FilterPipelineValueTree {
-    initial_pipeline: FilterListData,
-    sublen: usize,
+    inner: SequenceValueTree<FilterData>,
 }
 
 impl FilterPipelineValueTree {
     pub fn new(init: FilterListData) -> Self {
-        let sublen = init.len();
         FilterPipelineValueTree {
-            initial_pipeline: init,
-            sublen,
+            inner: SequenceValueTree::new(init.into_inner()),
         }
     }
 }
@@ -482,29 +480,15 @@ impl ValueTree for FilterPipelineValueTree {
     type Value = FilterListData;
 
     fn current(&self) -> Self::Value {
-        self.initial_pipeline
-            .iter()
-            .take(self.sublen)
-            .cloned()
-            .collect::<FilterListData>()
+        FilterListData::from(self.inner.current())
     }
 
     fn simplify(&mut self) -> bool {
-        if self.sublen > 0 {
-            self.sublen -= 1;
-            true
-        } else {
-            false
-        }
+        self.inner.simplify()
     }
 
     fn complicate(&mut self) -> bool {
-        if self.sublen < self.initial_pipeline.len() {
-            self.sublen += 1;
-            true
-        } else {
-            false
-        }
+        self.inner.complicate()
     }
 }
 

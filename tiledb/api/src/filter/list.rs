@@ -188,6 +188,12 @@ impl Builder {
 )]
 pub struct FilterListData(Vec<FilterData>);
 
+impl FilterListData {
+    pub fn into_inner(self) -> Vec<FilterData> {
+        self.0
+    }
+}
+
 impl Deref for FilterListData {
     type Target = Vec<FilterData>;
 
