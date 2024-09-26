@@ -493,6 +493,9 @@ mod tests {
         let minimal = vt.current();
         assert_eq!(1, minimal.attributes.len());
         assert_eq!(1, minimal.domain.dimension.len());
+
+        // check contract of ValueTree
+        assert!(!vt.complicate());
     }
 
     proptest! {
