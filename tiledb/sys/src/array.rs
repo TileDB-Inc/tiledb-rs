@@ -64,7 +64,7 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         array_uri: *const ::std::os::raw::c_char,
         encryption_type: *mut tiledb_encryption_type_t,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_array_put_metadata(
         ctx: *mut tiledb_ctx_t,
