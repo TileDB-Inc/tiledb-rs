@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::num::NonZeroU32;
 use std::ops::Deref;
+use std::str::FromStr;
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
@@ -169,6 +170,89 @@ impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
     }
 }
 
+/// Method of encryption.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Encryption {
+    Unencrypted,
+    Aes256Gcm,
+}
+
+impl Encryption {
+    /// Returns the corresponding C API constant.
+    pub(crate) fn capi_enum(&self) -> ffi::tiledb_encryption_type_t {
+        match *self {
+            Self::Unencrypted => {
+                ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION
+            }
+            Self::Aes256Gcm => ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM,
+        }
+    }
+}
+
+impl Display for Encryption {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let c_encryption = self.capi_enum();
+        let mut c_str = out_ptr!();
+
+        let c_ret = unsafe {
+            ffi::tiledb_encryption_type_to_str(
+                c_encryption,
+                &mut c_str as *mut *const ::std::os::raw::c_char,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            let s =
+                unsafe { std::ffi::CStr::from_ptr(c_str) }.to_string_lossy();
+            write!(f, "{}", s)
+        } else {
+            write!(f, "<Internal error>")
+        }
+    }
+}
+
+impl FromStr for Encryption {
+    type Err = crate::error::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let c_value = cstring!(s);
+        let mut c_encryption = out_ptr!();
+
+        let c_ret = unsafe {
+            ffi::tiledb_encryption_type_from_str(
+                c_value.as_ptr(),
+                &mut c_encryption as *mut ffi::tiledb_encryption_type_t,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Self::try_from(c_encryption)
+        } else {
+            Err(Error::InvalidArgument(anyhow!(format!(
+                "Invalid encryption type: {}",
+                s
+            ))))
+        }
+    }
+}
+
+impl TryFrom<ffi::tiledb_encryption_type_t> for Encryption {
+    type Error = crate::error::Error;
+
+    fn try_from(value: ffi::tiledb_encryption_type_t) -> TileDBResult<Self> {
+        match value {
+            ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION => {
+                Ok(Self::Unencrypted)
+            }
+            ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM => {
+                Ok(Self::Aes256Gcm)
+            }
+            _ => Err(Self::Error::LibTileDB(format!(
+                "Invalid encryption type: {}",
+                value
+            ))),
+        }
+    }
+}
+
 pub enum RawArray {
     Owned(*mut ffi::tiledb_array_t),
 }
@@ -236,6 +320,25 @@ impl Array {
             context.object_type(uri)?,
             Some(crate::context::ObjectType::Array)
         ))
+    }
+
+    /// Returns the manner in which the array located at `uri` is encrypted.
+    pub fn encryption<S>(context: &Context, uri: S) -> TileDBResult<Encryption>
+    where
+        S: AsRef<str>,
+    {
+        let c_uri = cstring!(uri.as_ref());
+        let mut c_encryption_type: ffi::tiledb_encryption_type_t = out_ptr!();
+
+        context.capi_call(|c_ctx| unsafe {
+            ffi::tiledb_array_encryption_type(
+                c_ctx,
+                c_uri.as_ptr(),
+                &mut c_encryption_type as *mut ffi::tiledb_encryption_type_t,
+            )
+        })?;
+
+        Encryption::try_from(c_encryption_type)
     }
 
     /// Opens the array located at `uri` for queries of type `mode` using default configurations.
@@ -867,6 +970,17 @@ impl ArrayOpener {
         })
     }
 
+    /// Sets configuration options for this array.
+    pub fn config(self, config: &Config) -> TileDBResult<Self> {
+        let c_array = **self.array.capi();
+        let c_config = config.capi();
+
+        self.array.capi_call(|c_context| unsafe {
+            ffi::tiledb_array_set_config(c_context, c_array, c_config)
+        })?;
+        Ok(self)
+    }
+
     /// Configures the start timestamp for an array.
     /// The start and end timestamps determine the set of fragments
     /// which will be loaded and used for queries.
@@ -921,6 +1035,7 @@ pub mod tests {
 
     use super::*;
     use crate::array::dimension::DimensionConstraints;
+    use crate::config::CommonOption;
     use crate::metadata::Value;
     use crate::query::{
         Query, QueryBuilder, QueryLayout, QueryType, WriteBuilder,
@@ -1351,6 +1466,90 @@ pub mod tests {
             .attribute("attr2")?
             .enumeration_name()?
             .is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn encryption_type_str() {
+        assert_eq!(
+            Encryption::Unencrypted,
+            Encryption::from_str(&Encryption::Unencrypted.to_string()).unwrap()
+        );
+        assert_eq!(
+            Encryption::Aes256Gcm,
+            Encryption::from_str(&Encryption::Aes256Gcm.to_string()).unwrap()
+        );
+    }
+
+    #[test]
+    fn encryption_type_capi() {
+        assert_eq!(
+            Encryption::Unencrypted,
+            Encryption::try_from(Encryption::Unencrypted.capi_enum()).unwrap()
+        );
+        assert_eq!(
+            Encryption::Aes256Gcm,
+            Encryption::try_from(Encryption::Aes256Gcm.capi_enum()).unwrap()
+        );
+    }
+
+    #[test]
+    fn encrypted_array() -> TileDBResult<()> {
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        let key = "0123456789abcdeF0123456789abcdeF";
+        let key_config =
+            CommonOption::Aes256GcmEncryptionKey(key.as_bytes().to_vec());
+
+        // create array and try opening array using the same configured context
+        let uri = {
+            let context = {
+                let mut config = Config::new()?;
+                config.set_common_option(key_config.clone())?;
+
+                Context::from_config(&config)
+            }?;
+
+            let uri = create_quickstart_dense(&test_uri, &context)?;
+
+            assert_eq!(
+                Encryption::Aes256Gcm,
+                Array::encryption(&context, &uri)?
+            );
+
+            // re-using the configured context should be fine
+            let _ = ArrayOpener::new(&context, &uri, Mode::Read)?.open()?;
+            let _ = ArrayOpener::new(&context, &uri, Mode::Write)?.open()?;
+
+            uri
+        };
+
+        // try opening from an un-configured context and it should fail
+        {
+            let context = Context::new()?;
+
+            let open_read = Array::open(&context, &uri, Mode::Read);
+            assert!(matches!(open_read, Err(Error::LibTileDB(_))));
+
+            let open_write = Array::open(&context, &uri, Mode::Read);
+            assert!(matches!(open_write, Err(Error::LibTileDB(_))));
+        }
+
+        // try opening from an un-configured context with the right array config should succeed
+        {
+            let context = Context::new()?;
+            let array_config =
+                Config::new()?.with_common_option(key_config.clone())?;
+
+            let _ = ArrayOpener::new(&context, &uri, Mode::Read)?
+                .config(&array_config)?
+                .open()?;
+            let _ = ArrayOpener::new(&context, &uri, Mode::Write)?
+                .config(&array_config)?
+                .open()?;
+        }
 
         Ok(())
     }
