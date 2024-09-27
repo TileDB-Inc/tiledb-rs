@@ -76,11 +76,13 @@ impl Config {
         Self { raw }
     }
 
-    pub fn set(&mut self, key: &str, val: &str) -> TileDBResult<()> {
-        let c_key =
-            std::ffi::CString::new(key).expect("Error creating CString");
-        let c_val =
-            std::ffi::CString::new(val).expect("Error creating CString");
+    pub fn set<B>(&mut self, key: &str, val: B) -> TileDBResult<()>
+    where
+        B: AsRef<[u8]>,
+    {
+        let c_key = cstring!(key);
+        let c_val = cstring!(val.as_ref());
+
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe {
             ffi::tiledb_config_set(
@@ -96,6 +98,15 @@ impl Config {
         } else {
             Err(Error::from(RawError::Owned(c_err)))
         }
+    }
+
+    pub fn with<B>(self, key: &str, val: B) -> TileDBResult<Self>
+    where
+        B: AsRef<[u8]>,
+    {
+        let mut s = self;
+        s.set(key, val)?;
+        Ok(s)
     }
 
     pub fn get(&self, key: &str) -> TileDBResult<Option<String>> {
@@ -119,6 +130,16 @@ impl Config {
         } else {
             Err(Error::from(RawError::Owned(c_err)))
         }
+    }
+
+    pub fn set_common_option(&mut self, opt: CommonOption) -> TileDBResult<()> {
+        opt.apply(self)
+    }
+
+    pub fn with_common_option(self, opt: CommonOption) -> TileDBResult<Self> {
+        let mut s = self;
+        s.set_common_option(opt)?;
+        Ok(s)
     }
 
     pub fn unset(&mut self, key: &str) -> TileDBResult<()> {
@@ -261,6 +282,24 @@ impl<'cfg> Iterator for ConfigIterator<'cfg> {
             Some((key, val))
         } else {
             None
+        }
+    }
+}
+
+/// Convenience for setting some of the more commonly-used configuration options.
+#[derive(Clone, Debug)]
+pub enum CommonOption {
+    /// Sets an AES256GCM encryption key.
+    Aes256GcmEncryptionKey(Vec<u8>),
+}
+
+impl CommonOption {
+    fn apply(&self, config: &mut Config) -> TileDBResult<()> {
+        match self {
+            Self::Aes256GcmEncryptionKey(ref key) => {
+                config.set("sm.encryption_type", "AES_256_GCM")?;
+                config.set("sm.encryption_key", &key)
+            }
         }
     }
 }

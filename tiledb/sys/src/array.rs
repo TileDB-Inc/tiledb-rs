@@ -1,4 +1,4 @@
-use crate::capi_enum::tiledb_query_type_t;
+use crate::capi_enum::{tiledb_encryption_type_t, tiledb_query_type_t};
 use crate::tiledb_datatype_t;
 use crate::types::{
     capi_return_t, tiledb_array_schema_t, tiledb_array_t, tiledb_config_t,
@@ -59,6 +59,12 @@ extern "C" {
         array: *mut tiledb_array_t,
         array_schema: *mut *mut tiledb_array_schema_t,
     ) -> capi_return_t;
+
+    pub fn tiledb_array_encryption_type(
+        ctx: *mut tiledb_ctx_t,
+        array_uri: *const ::std::os::raw::c_char,
+        encryption_type: *mut tiledb_encryption_type_t,
+    ) -> i32;
 
     pub fn tiledb_array_put_metadata(
         ctx: *mut tiledb_ctx_t,

@@ -28,7 +28,7 @@ pub mod enumeration;
 pub mod fragment_info;
 pub mod schema;
 
-use crate::config::Config;
+use crate::config::{CommonOption, Config};
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
 pub use dimension::{
     Builder as DimensionBuilder, Dimension, DimensionConstraints, DimensionData,
@@ -318,6 +318,25 @@ impl Array {
             context.object_type(uri)?,
             Some(crate::context::ObjectType::Array)
         ))
+    }
+
+    /// Returns the manner in which the array located at `uri` is encrypted.
+    pub fn encryption<S>(context: &Context, uri: S) -> TileDBResult<Encryption>
+    where
+        S: AsRef<str>,
+    {
+        let c_uri = cstring!(uri.as_ref());
+        let mut c_encryption_type: ffi::tiledb_encryption_type_t = out_ptr!();
+
+        context.capi_call(|c_ctx| unsafe {
+            ffi::tiledb_array_encryption_type(
+                c_ctx,
+                c_uri.as_ptr(),
+                &mut c_encryption_type as *mut ffi::tiledb_encryption_type_t,
+            )
+        })?;
+
+        Encryption::try_from(c_encryption_type)
     }
 
     /// Opens the array located at `uri` for queries of type `mode` using default configurations.
@@ -949,6 +968,17 @@ impl ArrayOpener {
         })
     }
 
+    /// Sets configuration options for this array.
+    pub fn config(self, config: &Config) -> TileDBResult<Self> {
+        let c_array = **self.array.capi();
+        let c_config = config.capi();
+
+        self.array.capi_call(|c_context| unsafe {
+            ffi::tiledb_array_set_config(c_context, c_array, c_config)
+        })?;
+        Ok(self)
+    }
+
     /// Configures the start timestamp for an array.
     /// The start and end timestamps determine the set of fragments
     /// which will be loaded and used for queries.
@@ -1459,5 +1489,65 @@ pub mod tests {
             Encryption::Aes256Gcm,
             Encryption::try_from(Encryption::Aes256Gcm.capi_enum()).unwrap()
         );
+    }
+
+    #[test]
+    fn encrypted_array() -> TileDBResult<()> {
+        let test_uri = tiledb_test_utils::get_uri_generator()
+            .map_err(|e| Error::Other(e.to_string()))?;
+
+        let key = "0123456789abcdeF0123456789abcdeF";
+        let key_config =
+            CommonOption::Aes256GcmEncryptionKey(key.as_bytes().to_vec());
+
+        // create array and try opening array using the same configured context
+        let uri = {
+            let context = {
+                let mut config = Config::new()?;
+                config.set_common_option(key_config.clone())?;
+
+                Context::from_config(&config)
+            }?;
+
+            let uri = create_quickstart_dense(&test_uri, &context)?;
+
+            assert_eq!(
+                Encryption::Aes256Gcm,
+                Array::encryption(&context, &uri)?
+            );
+
+            // re-using the configured context should be fine
+            let _ = ArrayOpener::new(&context, &uri, Mode::Read)?.open()?;
+            let _ = ArrayOpener::new(&context, &uri, Mode::Write)?.open()?;
+
+            uri
+        };
+
+        // try opening from an un-configured context and it should fail
+        {
+            let context = Context::new()?;
+
+            let open_read = Array::open(&context, &uri, Mode::Read);
+            assert!(matches!(open_read, Err(Error::LibTileDB(_))));
+
+            let open_write = Array::open(&context, &uri, Mode::Read);
+            assert!(matches!(open_write, Err(Error::LibTileDB(_))));
+        }
+
+        // try opening from an un-configured context with the right array config should succeed
+        {
+            let context = Context::new()?;
+            let array_config =
+                Config::new()?.with_common_option(key_config.clone())?;
+
+            let _ = ArrayOpener::new(&context, &uri, Mode::Read)?
+                .config(&array_config)?
+                .open()?;
+            let _ = ArrayOpener::new(&context, &uri, Mode::Write)?
+                .config(&array_config)?
+                .open()?;
+        }
+
+        Ok(())
     }
 }
