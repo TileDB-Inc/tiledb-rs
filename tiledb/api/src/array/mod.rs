@@ -170,6 +170,7 @@ impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
     }
 }
 
+/// Method of encryption.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Encryption {
     Unencrypted,
@@ -177,6 +178,7 @@ pub enum Encryption {
 }
 
 impl Encryption {
+    /// Returns the corresponding C API constant.
     pub(crate) fn capi_enum(&self) -> ffi::tiledb_encryption_type_t {
         match *self {
             Self::Unencrypted => {
