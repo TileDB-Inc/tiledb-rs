@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::num::NonZeroU32;
 use std::ops::Deref;
+use std::str::FromStr;
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
@@ -163,6 +164,87 @@ impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
             ffi::tiledb_layout_t_TILEDB_HILBERT => Ok(CellOrder::Hilbert),
             _ => Err(Self::Error::LibTileDB(format!(
                 "Invalid cell order: {}",
+                value
+            ))),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Encryption {
+    Unencrypted,
+    Aes256Gcm,
+}
+
+impl Encryption {
+    pub(crate) fn capi_enum(&self) -> ffi::tiledb_encryption_type_t {
+        match *self {
+            Self::Unencrypted => {
+                ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION
+            }
+            Self::Aes256Gcm => ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM,
+        }
+    }
+}
+
+impl Display for Encryption {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        let c_encryption = self.capi_enum();
+        let mut c_str = out_ptr!();
+
+        let c_ret = unsafe {
+            ffi::tiledb_encryption_type_to_str(
+                c_encryption,
+                &mut c_str as *mut *const ::std::os::raw::c_char,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            let s =
+                unsafe { std::ffi::CStr::from_ptr(c_str) }.to_string_lossy();
+            write!(f, "{}", s)
+        } else {
+            write!(f, "<Internal error>")
+        }
+    }
+}
+
+impl FromStr for Encryption {
+    type Err = crate::error::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let c_value = cstring!(s);
+        let mut c_encryption = out_ptr!();
+
+        let c_ret = unsafe {
+            ffi::tiledb_encryption_type_from_str(
+                c_value.as_ptr(),
+                &mut c_encryption as *mut ffi::tiledb_encryption_type_t,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK {
+            Self::try_from(c_encryption)
+        } else {
+            Err(Error::InvalidArgument(anyhow!(format!(
+                "Invalid encryption type: {}",
+                s
+            ))))
+        }
+    }
+}
+
+impl TryFrom<ffi::tiledb_encryption_type_t> for Encryption {
+    type Error = crate::error::Error;
+
+    fn try_from(value: ffi::tiledb_encryption_type_t) -> TileDBResult<Self> {
+        match value {
+            ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION => {
+                Ok(Self::Unencrypted)
+            }
+            ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM => {
+                Ok(Self::Aes256Gcm)
+            }
+            _ => Err(Self::Error::LibTileDB(format!(
+                "Invalid encryption type: {}",
                 value
             ))),
         }
@@ -1353,5 +1435,29 @@ pub mod tests {
             .is_none());
 
         Ok(())
+    }
+
+    #[test]
+    fn encryption_type_str() {
+        assert_eq!(
+            Encryption::Unencrypted,
+            Encryption::from_str(&Encryption::Unencrypted.to_string()).unwrap()
+        );
+        assert_eq!(
+            Encryption::Aes256Gcm,
+            Encryption::from_str(&Encryption::Aes256Gcm.to_string()).unwrap()
+        );
+    }
+
+    #[test]
+    fn encryption_type_capi() {
+        assert_eq!(
+            Encryption::Unencrypted,
+            Encryption::try_from(Encryption::Unencrypted.capi_enum()).unwrap()
+        );
+        assert_eq!(
+            Encryption::Aes256Gcm,
+            Encryption::try_from(Encryption::Aes256Gcm.capi_enum()).unwrap()
+        );
     }
 }
