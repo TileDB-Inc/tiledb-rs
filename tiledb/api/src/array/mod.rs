@@ -28,7 +28,7 @@ pub mod enumeration;
 pub mod fragment_info;
 pub mod schema;
 
-use crate::config::{CommonOption, Config};
+use crate::config::Config;
 pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
 pub use dimension::{
     Builder as DimensionBuilder, Dimension, DimensionConstraints, DimensionData,
@@ -1033,6 +1033,7 @@ pub mod tests {
 
     use super::*;
     use crate::array::dimension::DimensionConstraints;
+    use crate::config::CommonOption;
     use crate::metadata::Value;
     use crate::query::{
         Query, QueryBuilder, QueryLayout, QueryType, WriteBuilder,

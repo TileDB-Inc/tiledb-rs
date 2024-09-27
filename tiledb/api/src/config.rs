@@ -298,7 +298,7 @@ impl CommonOption {
         match self {
             Self::Aes256GcmEncryptionKey(ref key) => {
                 config.set("sm.encryption_type", "AES_256_GCM")?;
-                config.set("sm.encryption_key", &key)
+                config.set("sm.encryption_key", key)
             }
         }
     }
