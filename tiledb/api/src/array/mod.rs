@@ -1507,7 +1507,7 @@ pub mod tests {
         let uri = {
             let context = {
                 let mut config = Config::new()?;
-                config.set_common_option(key_config.clone())?;
+                config.set_common_option(&key_config)?;
 
                 Context::from_config(&config)
             }?;
@@ -1541,7 +1541,7 @@ pub mod tests {
         {
             let context = Context::new()?;
             let array_config =
-                Config::new()?.with_common_option(key_config.clone())?;
+                Config::new()?.with_common_option(&key_config)?;
 
             let _ = ArrayOpener::new(&context, &uri, Mode::Read)?
                 .config(&array_config)?
