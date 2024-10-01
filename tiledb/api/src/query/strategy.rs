@@ -975,6 +975,8 @@ impl Cells {
     /// Returns the list of offsets beginning each group, i.e. run of contiguous values on `keys`.
     ///
     /// This is best used with sorted cells, but that is not required.
+    /// For each pair of offsets in the output, all cells in that index range are equal;
+    /// and the adjacent cells outside of the range are not equal.
     pub fn identify_groups(&self, keys: &[String]) -> Option<Vec<usize>> {
         if self.is_empty() {
             return None;
@@ -1916,6 +1918,8 @@ mod tests {
         }
     }
 
+    /// Assert that the output of [Cells::identify_groups] produces
+    /// correct output for the given `keys`.
     fn do_cells_identify_groups(cells: Cells, keys: &[String]) {
         let Some(actual) = cells.identify_groups(keys) else {
             assert!(cells.is_empty());
