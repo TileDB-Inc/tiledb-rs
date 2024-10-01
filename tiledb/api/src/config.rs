@@ -132,11 +132,14 @@ impl Config {
         }
     }
 
-    pub fn set_common_option(&mut self, opt: CommonOption) -> TileDBResult<()> {
+    pub fn set_common_option(
+        &mut self,
+        opt: &CommonOption,
+    ) -> TileDBResult<()> {
         opt.apply(self)
     }
 
-    pub fn with_common_option(self, opt: CommonOption) -> TileDBResult<Self> {
+    pub fn with_common_option(self, opt: &CommonOption) -> TileDBResult<Self> {
         let mut s = self;
         s.set_common_option(opt)?;
         Ok(s)

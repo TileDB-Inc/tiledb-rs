@@ -972,6 +972,35 @@ impl Cells {
         sorted
     }
 
+    /// Returns the list of offsets beginning each group, i.e. run of contiguous values on `keys`.
+    ///
+    /// This is best used with sorted cells, but that is not required.
+    /// For each pair of offsets in the output, all cells in that index range are equal;
+    /// and the adjacent cells outside of the range are not equal.
+    pub fn identify_groups(&self, keys: &[String]) -> Option<Vec<usize>> {
+        if self.is_empty() {
+            return None;
+        }
+        let mut groups = vec![0];
+        let mut icmp = 0;
+        for i in 1..self.len() {
+            let distinct = keys.iter().any(|k| {
+                let v = self.fields().get(k).unwrap();
+                typed_field_data_go!(
+                    v,
+                    ref cells,
+                    cells[i].bits_ne(&cells[icmp])
+                )
+            });
+            if distinct {
+                groups.push(i);
+                icmp = i;
+            }
+        }
+        groups.push(self.len());
+        Some(groups)
+    }
+
     /// Returns the number of distinct values grouped on `keys`
     pub fn count_distinct(&self, keys: &[String]) -> usize {
         if self.len() <= 1 {
@@ -1889,6 +1918,43 @@ mod tests {
         }
     }
 
+    /// Assert that the output of [Cells::identify_groups] produces
+    /// correct output for the given `keys`.
+    fn do_cells_identify_groups(cells: Cells, keys: &[String]) {
+        let Some(actual) = cells.identify_groups(keys) else {
+            assert!(cells.is_empty());
+            return;
+        };
+
+        for w in actual.windows(2) {
+            let (start, end) = (w[0], w[1]);
+            assert!(start < end);
+        }
+
+        for w in actual.windows(2) {
+            let (start, end) = (w[0], w[1]);
+            for k in keys.iter() {
+                let f = cells.fields().get(k).unwrap();
+                typed_field_data_go!(f, ref field_cells, {
+                    for i in start..end {
+                        assert!(field_cells[start].bits_eq(&field_cells[i]));
+                    }
+                })
+            }
+            if end < cells.len() {
+                let some_ne = keys.iter().any(|k| {
+                    let f = cells.fields().get(k).unwrap();
+                    typed_field_data_go!(f, ref field_cells, {
+                        field_cells[start].bits_ne(&field_cells[end])
+                    })
+                });
+                assert!(some_ne);
+            }
+        }
+
+        assert_eq!(Some(cells.len()), actual.last().copied());
+    }
+
     fn do_cells_count_distinct_1d(cells: Cells) {
         for (key, field_cells) in cells.fields().iter() {
             let expect_count =
@@ -2105,6 +2171,16 @@ mod tests {
             let s2 = std::cmp::min(b21, b22).. std::cmp::max(b21, b22);
             let s3 = std::cmp::min(b31, b32).. std::cmp::max(b31, b32);
             do_cells_slice_3d(cells, d1, d2, d3, s1, s2, s3)
+        }
+
+        #[test]
+        fn cells_identify_groups((cells, keys) in any::<Cells>().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nkeys = keys.len();
+            (Just(c), proptest::sample::subsequence(keys, 0..=nkeys))
+        }))
+        {
+            do_cells_identify_groups(cells, &keys)
         }
 
         #[test]
