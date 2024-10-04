@@ -224,6 +224,12 @@ impl Hash for SingleValueRange {
 macro_rules! single_value_range_from {
     ($($V:ident : $U:ty),+) => {
         $(
+            impl From<[$U; 2]> for SingleValueRange {
+                fn from(value: [$U; 2]) -> SingleValueRange {
+                    SingleValueRange::$V(value[0], value[1])
+                }
+            }
+
             impl From<&[$U; 2]> for SingleValueRange {
                 fn from(value: &[$U; 2]) -> SingleValueRange {
                     SingleValueRange::$V(value[0], value[1])

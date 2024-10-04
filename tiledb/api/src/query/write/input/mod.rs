@@ -9,7 +9,6 @@ use crate::query::buffer::{
 };
 use crate::Result as TileDBResult;
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 pub trait DataProvider {

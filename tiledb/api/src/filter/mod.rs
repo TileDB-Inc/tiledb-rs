@@ -631,7 +631,6 @@ impl PartialEq<Filter> for Filter {
     }
 }
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[cfg(any(test, feature = "proptest-strategies"))]

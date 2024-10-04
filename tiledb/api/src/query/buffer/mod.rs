@@ -4,7 +4,6 @@ use std::ops::{Deref, DerefMut};
 
 use crate::array::CellValNum;
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[derive(Debug)]

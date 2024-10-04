@@ -720,7 +720,6 @@ impl Factory for DimensionData {
     }
 }
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[cfg(any(test, feature = "proptest-strategies"))]

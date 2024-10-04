@@ -51,13 +51,13 @@ pub mod group;
 pub mod key;
 pub mod metadata;
 pub mod query;
+pub mod query_arrow;
 #[macro_use]
 pub mod range;
 pub mod stats;
 pub mod string;
 pub mod vfs;
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[cfg(test)]
