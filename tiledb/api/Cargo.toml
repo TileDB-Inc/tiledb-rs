@@ -14,7 +14,6 @@ itertools = "0"
 num-traits = { version = "0.2", optional = true }
 paste = "1.0"
 proptest = { workspace = true, optional = true }
-proptest-derive = { workspace = true, optional = true }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_json = { workspace = true }
 thiserror = "1.0.58"
@@ -26,7 +25,6 @@ tiledb-utils = { workspace = true, features = ["serde_json"] }
 [dev-dependencies]
 num-traits = { version = "0.2" }
 proptest = { workspace = true }
-proptest-derive = { workspace = true }
 tiledb-test-utils = { workspace = true }
 
 [build-dependencies]
@@ -35,5 +33,5 @@ tiledb-utils = { workspace = true }
 
 [features]
 default = []
-proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:proptest-derive", "dep:tiledb-test-utils"]
+proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:tiledb-test-utils"]
 arrow = ["dep:arrow"]
