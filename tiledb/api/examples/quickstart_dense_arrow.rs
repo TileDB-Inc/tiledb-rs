@@ -9,8 +9,7 @@ use tiledb::array::{
     DomainBuilder, Mode as ArrayMode, SchemaBuilder,
 };
 use tiledb::context::Context;
-use tiledb::error::Error as TileDBError;
-use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryStatus, QueryType};
+use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
 
@@ -95,18 +94,11 @@ fn write_array() -> TileDBResult<()> {
         .start_fields()
         .field_with_buffer(QUICKSTART_ATTRIBUTE_NAME, data)
         .end_fields()
-        .build()
-        // TODO: Make this not suck
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
+        .build()?;
 
-    let status = query
-        .submit()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
-    if matches!(status, QueryStatus::Completed) {
-        return Ok(());
-    } else {
-        return Err(TileDBError::Other("Something better here.".to_string()));
-    }
+    query.submit().and_then(|_| query.finalize())?;
+
+    Ok(())
 }
 
 /// Query back a slice of our array and print the results to stdout.
@@ -133,20 +125,12 @@ fn read_array() -> TileDBResult<()> {
         .add_range("rows", &[1i32, 2])
         .add_range("columns", &[2i32, 4])
         .end_subarray()
-        .build()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
+        .build()?;
 
-    let status = query
-        .submit()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
+    let status = query.submit()?;
+    assert!(status.is_complete());
 
-    if !matches!(status, QueryStatus::Completed) {
-        return Err(TileDBError::Other("Make this better.".to_string()));
-    }
-
-    let buffers = query
-        .buffers()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
+    let buffers = query.buffers()?;
     let rows = buffers.get::<Int32Array>("rows").unwrap();
     let cols = buffers.get::<Int32Array>("columns").unwrap();
     let attrs = buffers

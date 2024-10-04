@@ -8,7 +8,6 @@ use tiledb::array::{
     Array, ArrayType, AttributeBuilder, DimensionBuilder, DomainBuilder,
     SchemaBuilder,
 };
-use tiledb::error::Error as TileDBError;
 use tiledb::query::conditions::QueryConditionExpr as QC;
 use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
 use tiledb::{Context, Datatype, Result as TileDBResult};
@@ -86,22 +85,12 @@ fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
         query
     };
 
-    let mut query = query
-        .build()
-        .map_err(|e| TileDBError::Other(format!("{e}")))?;
+    let mut query = query.build()?;
 
-    let status = query
-        .submit()
-        .map_err(|e| TileDBError::Other(format!("{e}")))?;
+    let status = query.submit()?;
+    assert!(status.is_complete());
 
-    if !status.is_complete() {
-        return Err(TileDBError::Other("Query incomplete.".to_string()));
-    }
-
-    let buffers = query.buffers().map_err(|e| {
-        TileDBError::Other(format!("Error getting buffers: {e}"))
-    })?;
-
+    let buffers = query.buffers()?;
     let index = buffers.get::<aa::Int32Array>("index").unwrap();
     let a = buffers.get::<aa::Int32Array>("a").unwrap();
     let b = buffers.get::<aa::LargeStringArray>("b").unwrap();
@@ -230,13 +219,9 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
         .start_subarray()
         .add_range("index", &[0i32, NUM_ELEMS - 1])
         .end_subarray()
-        .build()
-        .map_err(|e| TileDBError::Other(format!("{e}")))?;
+        .build()?;
 
-    query
-        .submit()
-        .and_then(|_| query.finalize())
-        .map_err(|e| TileDBError::Other(format!("{e}")))?;
+    query.submit().and_then(|_| query.finalize())?;
 
     Ok(())
 }

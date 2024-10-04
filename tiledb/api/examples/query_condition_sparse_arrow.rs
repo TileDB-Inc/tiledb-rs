@@ -8,7 +8,6 @@ use tiledb::array::{
     Array, ArrayType, AttributeBuilder, CellOrder, DimensionBuilder,
     DomainBuilder, SchemaBuilder,
 };
-use tiledb::error::Error as TileDBError;
 use tiledb::query::conditions::QueryConditionExpr as QC;
 use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
 use tiledb::{Context, Datatype, Result as TileDBResult};
@@ -88,13 +87,9 @@ fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
 
     let mut query = query.build()?;
     let status = query.submit()?;
-
-    if !status.is_complete() {
-        return Err(TileDBError::Other("Query did not complete.".to_string()));
-    }
+    assert!(status.is_complete());
 
     let buffers = query.buffers()?;
-
     let index = buffers.get::<aa::Int32Array>("index").unwrap();
     let a = buffers.get::<aa::Int32Array>("a").unwrap();
     let b = buffers.get::<aa::LargeStringArray>("b").unwrap();

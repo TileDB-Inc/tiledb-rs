@@ -10,8 +10,7 @@ use tiledb::array::{
     SchemaData, TileOrder,
 };
 use tiledb::context::Context;
-use tiledb::error::Error as TileDBError;
-use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryStatus, QueryType};
+use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
 use tiledb::Result as TileDBResult;
 use tiledb::{Datatype, Factory};
 
@@ -44,21 +43,12 @@ fn main() -> TileDBResult<()> {
         .add_range("rows", &["a", "c"])
         .add_range("cols", &[2, 4])
         .end_subarray()
-        .build()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
+        .build()?;
 
-    let status = query
-        .submit()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
+    let status = query.submit()?;
+    assert!(status.is_complete());
 
-    if !matches!(status, QueryStatus::Completed) {
-        return Err(TileDBError::Other("Make this better.".to_string()));
-    }
-
-    let buffers = query
-        .buffers()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
-
+    let buffers = query.buffers()?;
     let rows = buffers.get::<aa::LargeStringArray>("rows").unwrap();
     let cols = buffers.get::<aa::Int32Array>("cols").unwrap();
     let attr = buffers.get::<aa::Int32Array>("a").unwrap();
@@ -120,20 +110,9 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
         .field_with_buffer("cols", col_data)
         .field_with_buffer("a", a_data)
         .end_fields()
-        .build()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
+        .build()?;
 
-    let status = query
-        .submit()
-        .map_err(|e| TileDBError::Other(format!("{}", e)))?;
-
-    if !matches!(status, QueryStatus::Completed) {
-        return Err(TileDBError::Other("Make this better.".to_string()));
-    }
-
-    let (_, _) = query
-        .finalize()
-        .map_err(|e| TileDBError::Other(format!("{e}")))?;
+    query.submit().and_then(|_| query.finalize())?;
 
     Ok(())
 }
