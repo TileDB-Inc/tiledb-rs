@@ -242,7 +242,7 @@ impl<'cfg> IntoIterator for &'cfg Config {
     }
 }
 
-impl<'cfg> Iterator for ConfigIterator<'cfg> {
+impl Iterator for ConfigIterator<'_> {
     type Item = (String, String);
     fn next(&mut self) -> Option<Self::Item> {
         let mut c_key = std::ptr::null::<std::os::raw::c_char>();

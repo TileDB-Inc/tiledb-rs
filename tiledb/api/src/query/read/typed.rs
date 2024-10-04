@@ -40,7 +40,7 @@ where
     }
 }
 
-impl<'data, T, Q> ReadQuery for TypedReadQuery<'data, T, Q>
+impl<T, Q> ReadQuery for TypedReadQuery<'_, T, Q>
 where
     T: ReadResult,
     Q: ReadQuery,

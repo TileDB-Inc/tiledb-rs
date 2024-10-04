@@ -1,11 +1,25 @@
+use proptest::prelude::*;
+
+use crate::array::TileOrder;
+
+impl Arbitrary for TileOrder {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        prop_oneof![Just(TileOrder::RowMajor), Just(TileOrder::ColumnMajor)]
+            .boxed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
     use util::assert_option_subset;
     use util::option::OptionSubset;
 
     use tiledb_test_utils::{self, TestArrayUri};
 
+    use super::*;
     use crate::array::schema::SchemaData;
     use crate::array::{Array, Schema};
     use crate::context::Context;

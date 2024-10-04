@@ -1222,7 +1222,7 @@ impl StructuredCells {
             }
         }
 
-        impl<'a> Iterator for NextIndex<'a> {
+        impl Iterator for NextIndex<'_> {
             type Item = usize;
             fn next(&mut self) -> Option<Self::Item> {
                 if self.cursors.is_some() {
@@ -1254,7 +1254,7 @@ pub struct CellsView<'a> {
     slice: Range<usize>,
 }
 
-impl<'a, 'b> PartialEq<CellsView<'b>> for CellsView<'a> {
+impl<'b> PartialEq<CellsView<'b>> for CellsView<'_> {
     fn eq(&self, other: &CellsView<'b>) -> bool {
         // must have same number of values
         if self.slice.len() != other.slice.len() {

@@ -116,7 +116,7 @@ impl<'a> SignalCallback<'a> {
     }
 }
 
-impl<'a> Drop for SignalCallback<'a> {
+impl Drop for SignalCallback<'_> {
     fn drop(&mut self) {
         // probably should mask off the signal around the non-atomic
         // operations including this and dropping the guard

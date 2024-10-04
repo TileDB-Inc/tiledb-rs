@@ -50,7 +50,7 @@ where
     }
 }
 
-impl<'data, C> DataProvider for QueryBuffers<'data, C>
+impl<C> DataProvider for QueryBuffers<'_, C>
 where
     C: PhysicalType,
 {
@@ -74,7 +74,7 @@ where
     }
 }
 
-impl<'data, C> DataProvider for QueryBuffersMut<'data, C>
+impl<C> DataProvider for QueryBuffersMut<'_, C>
 where
     C: PhysicalType,
 {

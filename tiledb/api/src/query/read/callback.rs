@@ -981,7 +981,7 @@ where
     }
 }
 
-impl<'data, T, Q> ReadQuery for CallbackVarArgReadQuery<'data, T, Q>
+impl<T, Q> ReadQuery for CallbackVarArgReadQuery<'_, T, Q>
 where
     T: ReadCallbackVarArg,
     Q: ReadQuery,

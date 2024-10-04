@@ -250,7 +250,7 @@ pub struct Builder<'data, 'offsets> {
     offsets: Option<&'offsets [u64]>,
 }
 
-impl<'data, 'offsets> ContextBound for Builder<'data, 'offsets> {
+impl ContextBound for Builder<'_, '_> {
     fn context(&self) -> Context {
         self.context.clone()
     }

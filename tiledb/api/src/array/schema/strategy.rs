@@ -25,6 +25,15 @@ use crate::filter::strategy::{
     StrategyContext as FilterContext,
 };
 
+impl Arbitrary for ArrayType {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)].boxed()
+    }
+}
+
 #[derive(Clone)]
 pub struct Requirements {
     pub domain: Option<Rc<DomainRequirements>>,

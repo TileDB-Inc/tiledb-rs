@@ -56,7 +56,7 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         fragment_info: *const tiledb_fragment_info_t,
         out: *mut FILE,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_stats_dump(out: *mut FILE) -> i32;
     pub fn tiledb_stats_raw_dump(out: *mut FILE) -> i32;
@@ -75,7 +75,7 @@ extern "C" {
         fragment_info: *mut tiledb_fragment_info_t,
         fid: u32,
         sparse: *mut i32,
-    ) -> i32;
+    ) -> capi_return_t;
 
     // We don't use any of the `from_name` APIs for fragment infos because
     // the wrapper API uses the `from_index` variant and returns all dimensions
@@ -87,7 +87,7 @@ extern "C" {
         fid: u32,
         dim_name: *const ::std::os::raw::c_char,
         domain: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_non_empty_domain_var_size_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -96,7 +96,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start_size: *mut u64,
         end_size: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_non_empty_domain_var_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -105,7 +105,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_mbr_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -114,7 +114,7 @@ extern "C" {
         mid: u32,
         dim_name: *const ::std::os::raw::c_char,
         mbr: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_mbr_var_size_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -124,7 +124,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start_size: *mut u64,
         end_size: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_mbr_var_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -134,7 +134,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     // The tiledb_handle_* functions are for internal use. They should probably be
     // part of a library separate from libtiledb.{dylib,so,dll} but for now they're

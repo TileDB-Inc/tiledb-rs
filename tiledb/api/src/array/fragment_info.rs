@@ -510,7 +510,7 @@ pub struct FragmentInfo<'info> {
     index: u32,
 }
 
-impl<'info> FragmentInfo<'info> {
+impl FragmentInfo<'_> {
     pub fn name(&self) -> TileDBResult<String> {
         self.info.fragment_name(self.index)
     }
@@ -643,7 +643,7 @@ pub struct FragmentInfoListIterator<'info> {
     index: u32,
 }
 
-impl<'data> ContextBound for FragmentInfoListIterator<'data> {
+impl ContextBound for FragmentInfoListIterator<'_> {
     fn context(&self) -> Context {
         self.info.context()
     }
@@ -672,7 +672,7 @@ impl<'info> Iterator for FragmentInfoListIterator<'info> {
     }
 }
 
-impl<'info> FusedIterator for FragmentInfoListIterator<'info> {}
+impl FusedIterator for FragmentInfoListIterator<'_> {}
 
 impl<'info> TryFrom<&'info FragmentInfoList>
     for FragmentInfoListIterator<'info>
