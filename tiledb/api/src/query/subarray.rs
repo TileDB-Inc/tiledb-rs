@@ -40,13 +40,13 @@ pub struct Subarray<'query> {
     _marker: PhantomData<&'query ()>,
 }
 
-impl<'query> ContextBound for Subarray<'query> {
+impl ContextBound for Subarray<'_> {
     fn context(&self) -> Context {
         self.schema.context()
     }
 }
 
-impl<'query> Subarray<'query> {
+impl Subarray<'_> {
     pub(crate) fn capi(&self) -> *mut ffi::tiledb_subarray_t {
         *self.raw
     }

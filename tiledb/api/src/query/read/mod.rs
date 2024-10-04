@@ -435,7 +435,7 @@ impl QueryBuilder for ReadBuilder {
     }
 }
 
-impl<'data> ReadQueryBuilder<'data> for ReadBuilder {}
+impl ReadQueryBuilder<'_> for ReadBuilder {}
 
 pub struct ReadQueryIterator<I, F> {
     query: Option<Box<dyn ReadQuery<Intermediate = I, Final = F>>>,

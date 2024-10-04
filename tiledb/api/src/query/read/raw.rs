@@ -443,7 +443,7 @@ pub struct RawReadQuery<'data, Q> {
     pub(crate) base: Q,
 }
 
-impl<'data, Q> ContextBound for RawReadQuery<'data, Q>
+impl<Q> ContextBound for RawReadQuery<'_, Q>
 where
     Q: ContextBound,
 {
@@ -452,7 +452,7 @@ where
     }
 }
 
-impl<'data, Q> Query for RawReadQuery<'data, Q>
+impl<Q> Query for RawReadQuery<'_, Q>
 where
     Q: Query,
 {
@@ -465,7 +465,7 @@ where
     }
 }
 
-impl<'data, Q> ReadQuery for RawReadQuery<'data, Q>
+impl<Q> ReadQuery for RawReadQuery<'_, Q>
 where
     Q: ReadQuery + ContextBound,
 {
@@ -522,7 +522,7 @@ pub struct RawReadBuilder<'data, B> {
     pub(crate) base: B,
 }
 
-impl<'data, B> ContextBound for RawReadBuilder<'data, B>
+impl<B> ContextBound for RawReadBuilder<'_, B>
 where
     B: QueryBuilder,
 {
@@ -567,7 +567,7 @@ pub struct VarRawReadQuery<'data, Q> {
     pub(crate) base: Q,
 }
 
-impl<'data, Q> ContextBound for VarRawReadQuery<'data, Q>
+impl<Q> ContextBound for VarRawReadQuery<'_, Q>
 where
     Q: ContextBound,
 {
@@ -576,7 +576,7 @@ where
     }
 }
 
-impl<'data, Q> Query for VarRawReadQuery<'data, Q>
+impl<Q> Query for VarRawReadQuery<'_, Q>
 where
     Q: Query,
 {
@@ -589,7 +589,7 @@ where
     }
 }
 
-impl<'data, Q> ReadQuery for VarRawReadQuery<'data, Q>
+impl<Q> ReadQuery for VarRawReadQuery<'_, Q>
 where
     Q: ReadQuery,
 {
@@ -662,7 +662,7 @@ pub struct VarRawReadBuilder<'data, B> {
     pub(crate) base: B,
 }
 
-impl<'data, B> ContextBound for VarRawReadBuilder<'data, B>
+impl<B> ContextBound for VarRawReadBuilder<'_, B>
 where
     B: ContextBound,
 {

@@ -895,7 +895,7 @@ pub enum WriteInputRef<'a> {
     Sparse(&'a SparseWriteInput),
 }
 
-impl<'a> WriteInputRef<'a> {
+impl WriteInputRef<'_> {
     /// Returns a reference to the cells of input of this write operation.
     pub fn cells(&self) -> &Cells {
         match self {

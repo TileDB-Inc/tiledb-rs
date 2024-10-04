@@ -235,7 +235,7 @@ impl TryFrom<CellStructureMut<'_>> for ScratchCellStructure {
     }
 }
 
-impl<'data> From<ScratchCellStructure> for CellStructure<'data> {
+impl From<ScratchCellStructure> for CellStructure<'_> {
     fn from(value: ScratchCellStructure) -> Self {
         match value {
             ScratchCellStructure::Fixed(nz) => Self::Fixed(nz),
@@ -246,7 +246,7 @@ impl<'data> From<ScratchCellStructure> for CellStructure<'data> {
     }
 }
 
-impl<'data> From<ScratchCellStructure> for CellStructureMut<'data> {
+impl From<ScratchCellStructure> for CellStructureMut<'_> {
     fn from(value: ScratchCellStructure) -> Self {
         match value {
             ScratchCellStructure::Fixed(nz) => Self::Fixed(nz),
@@ -294,7 +294,7 @@ impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
     }
 }
 
-impl<'data, C> From<ScratchSpace<C>> for QueryBuffers<'data, C> {
+impl<C> From<ScratchSpace<C>> for QueryBuffers<'_, C> {
     fn from(value: ScratchSpace<C>) -> Self {
         QueryBuffers {
             data: Buffer::Owned(value.0),
@@ -304,7 +304,7 @@ impl<'data, C> From<ScratchSpace<C>> for QueryBuffers<'data, C> {
     }
 }
 
-impl<'data, C> From<ScratchSpace<C>> for QueryBuffersMut<'data, C> {
+impl<C> From<ScratchSpace<C>> for QueryBuffersMut<'_, C> {
     fn from(value: ScratchSpace<C>) -> Self {
         QueryBuffersMut {
             data: BufferMut::Owned(value.0),
@@ -633,7 +633,7 @@ impl<'data, C> CellStructureSingleIterator<'data, C> {
     }
 }
 
-impl<'data, C> Iterator for CellStructureSingleIterator<'data, C>
+impl<C> Iterator for CellStructureSingleIterator<'_, C>
 where
     C: Copy,
 {
@@ -653,10 +653,7 @@ where
     }
 }
 
-impl<'data, C> FusedIterator for CellStructureSingleIterator<'data, C> where
-    C: Copy
-{
-}
+impl<C> FusedIterator for CellStructureSingleIterator<'_, C> where C: Copy {}
 
 impl<'data, C> TryFrom<RawReadOutput<'data, C>>
     for CellStructureSingleIterator<'data, C>
@@ -774,7 +771,7 @@ impl<'data, C> Iterator for FixedDataIterator<'data, C> {
     }
 }
 
-impl<'data, C> FusedIterator for FixedDataIterator<'data, C> where C: Copy {}
+impl<C> FusedIterator for FixedDataIterator<'_, C> where C: Copy {}
 
 impl<'data, C> TryFrom<RawReadOutput<'data, C>>
     for FixedDataIterator<'data, C>
@@ -829,7 +826,7 @@ impl<'data, C> VarDataIterator<'data, C> {
     }
 }
 
-impl<'data, C> Debug for VarDataIterator<'data, C>
+impl<C> Debug for VarDataIterator<'_, C>
 where
     C: Debug,
 {
@@ -886,7 +883,7 @@ impl<'data, C> Iterator for VarDataIterator<'data, C> {
     }
 }
 
-impl<'data, C> FusedIterator for VarDataIterator<'data, C> {}
+impl<C> FusedIterator for VarDataIterator<'_, C> {}
 
 impl<'data, C> TryFrom<RawReadOutput<'data, C>> for VarDataIterator<'data, C> {
     type Error = crate::error::Error;
@@ -908,7 +905,7 @@ impl<'data> TryFrom<RawReadOutput<'data, u8>> for Utf8LossyIterator<'data> {
     }
 }
 
-impl<'data> Iterator for Utf8LossyIterator<'data> {
+impl Iterator for Utf8LossyIterator<'_> {
     type Item = String;
     fn next(&mut self) -> Option<Self::Item> {
         self.var
@@ -921,7 +918,7 @@ impl<'data> Iterator for Utf8LossyIterator<'data> {
     }
 }
 
-impl<'data> FusedIterator for Utf8LossyIterator<'data> {}
+impl FusedIterator for Utf8LossyIterator<'_> {}
 
 pub trait FromQueryOutput: Sized {
     type Unit;

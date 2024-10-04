@@ -212,7 +212,7 @@ impl<'a> Dimensions<'a> {
     }
 }
 
-impl<'a> Iterator for Dimensions<'a> {
+impl Iterator for Dimensions<'_> {
     type Item = TileDBResult<Dimension>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor >= self.bound {

@@ -655,7 +655,7 @@ impl<'a> Fields<'a> {
     }
 }
 
-impl<'a> Iterator for Fields<'a> {
+impl Iterator for Fields<'_> {
     type Item = TileDBResult<Field>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -1011,7 +1011,7 @@ impl<'a> FieldDataIter<'a> {
     }
 }
 
-impl<'a> Iterator for FieldDataIter<'a> {
+impl Iterator for FieldDataIter<'_> {
     type Item = FieldData;
     fn next(&mut self) -> Option<Self::Item> {
         if self.cursor < self.schema.num_fields() {
