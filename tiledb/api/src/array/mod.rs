@@ -98,10 +98,6 @@ impl Display for Mode {
 #[derive(
     Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
 )]
-#[cfg_attr(
-    any(test, feature = "proptest-strategies"),
-    derive(proptest_derive::Arbitrary)
-)]
 pub enum TileOrder {
     RowMajor,
     ColumnMajor,

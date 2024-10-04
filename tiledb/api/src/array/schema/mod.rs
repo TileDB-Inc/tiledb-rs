@@ -32,10 +32,6 @@ use crate::{Factory, Result as TileDBResult};
     PartialEq,
     Serialize,
 )]
-#[cfg_attr(
-    any(test, feature = "proptest-strategies"),
-    derive(proptest_derive::Arbitrary)
-)]
 pub enum ArrayType {
     #[default]
     Dense,
