@@ -9,8 +9,11 @@ use tiledb::array::{
     DomainData, SchemaData, TileOrder,
 };
 use tiledb::context::Context;
+use tiledb::query_arrow::buffers::Error as BuffersError;
 use tiledb::query_arrow::fields::QueryFieldsBuilder;
-use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
+use tiledb::query_arrow::{
+    Error as QueryError, QueryBuilder, QueryLayout, QueryType, SharedBuffers,
+};
 use tiledb::Result as TileDBResult;
 use tiledb::{Datatype, Factory};
 
@@ -136,8 +139,27 @@ fn read_array(ctx: &Context) -> TileDBResult<()> {
         .end_subarray()
         .build()?;
 
+    let mut external_ref: Option<SharedBuffers> = None;
+
     loop {
-        let status = query.submit()?;
+        let result = query.submit();
+
+        if result.is_err() {
+            let err = result.err().unwrap();
+            println!("ERROR: {:?}", err);
+
+            if matches!(
+                err,
+                QueryError::QueryBuffersError(BuffersError::ArrayInUse)
+            ) {
+                drop(external_ref.take());
+                continue;
+            }
+
+            return Err(err.into());
+        }
+
+        let status = result.ok().unwrap();
 
         // Double our buffer sizes if we didn't manage to get any data out
         // of the query.
@@ -154,6 +176,11 @@ fn read_array(ctx: &Context) -> TileDBResult<()> {
 
         // Print any results we did get.
         let buffers = query.buffers()?;
+
+        // Simulate what happens if the client doesn't let go of their
+        // SharedBuffers reference.
+        external_ref = Some(buffers.clone());
+
         let rows = buffers.get::<aa::Int32Array>("rows").unwrap();
         let cols = buffers.get::<aa::Int32Array>("cols").unwrap();
         let a1 = buffers.get::<aa::Int32Array>("a1").unwrap();

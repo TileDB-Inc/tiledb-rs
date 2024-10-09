@@ -1416,6 +1416,7 @@ impl QueryBuffers {
 /// A small helper for users writing code directly against the TileDB API
 ///
 /// This struct is freely convertible to and from a HashMap of Arrow arrays.
+#[derive(Clone)]
 pub struct SharedBuffers {
     buffers: HashMap<String, Arc<dyn aa::Array>>,
 }

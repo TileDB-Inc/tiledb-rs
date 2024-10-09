@@ -12,9 +12,11 @@ use crate::key::LookupKey;
 use crate::query::conditions::QueryConditionExpr;
 use crate::range::{Range, SingleValueRange, VarValueRange};
 
-use buffers::{Error as QueryBuffersError, QueryBuffers, SharedBuffers};
+use buffers::{Error as QueryBuffersError, QueryBuffers};
 use fields::{QueryFields, QueryFieldsBuilderForQuery};
 use subarray::{SubarrayBuilderForQuery, SubarrayData};
+
+pub use buffers::SharedBuffers;
 
 pub mod arrow;
 pub mod buffers;
