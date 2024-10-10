@@ -1,11 +1,11 @@
 fn main() {
-    pkg_config::Config::new()
-        .atleast_version("2.20.0")
-        .probe("tiledb")
-        .expect("Build-time TileDB library missing, version >= 2.4 not found.");
-    println!("cargo:rustc-link-lib=tiledb");
-
-    let libdir = pkg_config::get_variable("tiledb", "libdir")
-        .expect("Missing tiledb dependency.");
-    tiledb_utils::build::set_linker_rpath(&libdir);
+    println!("cargo:rustc-link-lib=dylib=c++");
+    println!("cargo:rustc-link-lib=static=tiledb_bundled");
+    println!("cargo:rustc-link-lib=dylib=pthread");
+    println!("cargo:rustc-link-lib=dylib=dl");
+    println!("cargo:rustc-link-lib=framework=Security");
+    println!("cargo:rustc-link-lib=framework=CoreFoundation");
+    println!("cargo:rustc-link-lib=framework=SystemConfiguration");
+    println!("cargo:rustc-link-lib=framework=CoreServices");
+    println!("cargo:rustc-link-search=/opt/tiledb/lib");
 }
