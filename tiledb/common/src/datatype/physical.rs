@@ -2,9 +2,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 
-use serde::{Deserialize, Serialize};
-
-use crate::error::Error;
+use crate::datatype::Error;
 use crate::private::sealed;
 
 /// Trait for comparisons based on value bits.
@@ -206,11 +204,9 @@ pub trait PhysicalType:
     + Copy
     + Debug
     + Default
-    + for<'a> Deserialize<'a>
     + PartialEq
     + PartialOrd
     + Send
-    + Serialize
     + Sync
     + crate::private::Sealed
     + 'static

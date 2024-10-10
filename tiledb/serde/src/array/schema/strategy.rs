@@ -25,15 +25,6 @@ use crate::filter::strategy::{
     StrategyContext as FilterContext,
 };
 
-impl Arbitrary for ArrayType {
-    type Parameters = ();
-    type Strategy = BoxedStrategy<Self>;
-
-    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)].boxed()
-    }
-}
-
 #[derive(Clone)]
 pub struct Requirements {
     pub domain: Option<Rc<DomainRequirements>>,
@@ -75,58 +66,6 @@ impl Default for Requirements {
             validity_filters: None,
             sparse_tile_capacity: Self::min_sparse_tile_capacity_default()
                 ..=Self::max_sparse_tile_capacity_default(),
-        }
-    }
-}
-
-impl Arbitrary for CellValNum {
-    type Strategy = BoxedStrategy<CellValNum>;
-    type Parameters = Option<std::ops::Range<NonZeroU32>>;
-
-    fn arbitrary_with(r: Self::Parameters) -> Self::Strategy {
-        if let Some(range) = r {
-            (range.start.get()..range.end.get())
-                .prop_map(|nz| CellValNum::try_from(nz).unwrap())
-                .boxed()
-        } else {
-            prop_oneof![
-                30 => Just(CellValNum::single()),
-                30 => Just(CellValNum::Var),
-                25 => (2u32..=8).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
-                10 => (9u32..=16).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
-                3 => (17u32..=32).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
-                2 => (33u32..=64).prop_map(|nz| CellValNum::try_from(nz).unwrap()),
-                // NB: large fixed CellValNums don't really reflect production use cases
-                // and are not well tested, and are known to cause problems
-            ].boxed()
-        }
-    }
-}
-
-impl Arbitrary for CellOrder {
-    type Strategy = BoxedStrategy<CellOrder>;
-    type Parameters = Option<ArrayType>;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        match args {
-            None => prop_oneof![
-                Just(CellOrder::Unordered),
-                Just(CellOrder::RowMajor),
-                Just(CellOrder::ColumnMajor),
-                Just(CellOrder::Hilbert),
-            ]
-            .boxed(),
-            Some(ArrayType::Sparse) => prop_oneof![
-                Just(CellOrder::RowMajor),
-                Just(CellOrder::ColumnMajor),
-                Just(CellOrder::Hilbert),
-            ]
-            .boxed(),
-            Some(ArrayType::Dense) => prop_oneof![
-                Just(CellOrder::RowMajor),
-                Just(CellOrder::ColumnMajor),
-            ]
-            .boxed(),
         }
     }
 }

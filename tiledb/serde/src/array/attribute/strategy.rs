@@ -204,35 +204,3 @@ impl ValueTree for AttributeValueTree {
         self.filters.complicate()
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{Context, Factory};
-    use util::assert_option_subset;
-    use util::option::OptionSubset;
-
-    /// Test that the arbitrary attribute construction always succeeds
-    #[test]
-    fn attribute_arbitrary() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(attr in prop_attribute(Default::default()))| {
-            attr.create(&ctx).expect("Error constructing arbitrary attribute");
-        });
-    }
-
-    #[test]
-    fn attribute_eq_reflexivity() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(attr in prop_attribute(Default::default()))| {
-            assert_eq!(attr, attr);
-            assert_option_subset!(attr, attr);
-
-            let attr = attr.create(&ctx)
-                .expect("Error constructing arbitrary attribute");
-            assert_eq!(attr, attr);
-        });
-    }
-}

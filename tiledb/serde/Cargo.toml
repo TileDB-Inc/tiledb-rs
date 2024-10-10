@@ -1,0 +1,22 @@
+[package]
+name = "serde"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+num-traits = { workspace = true, optional = true }
+proptest = { workspace = true, optional = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tiledb-api = { workspace = true, optional = true }
+tiledb-common = { workspace = true, features = ["serde"] }
+tiledb-test-utils = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[features]
+default = []
+api-conversions = ["dep:tiledb-api"]
+proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:tiledb-test-utils"]

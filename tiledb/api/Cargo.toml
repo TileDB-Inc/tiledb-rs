@@ -1,29 +1,28 @@
 [package]
-name = "tiledb"
+name = "tiledb-api"
 version = { workspace = true }
 edition = { workspace = true }
 
 [lib]
-name = "tiledb"
+name = "tiledb_api"
 path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-arrow = { version = "52.0.0", features = ["prettyprint"], optional = true }
+arrow = { workspace = true, optional = true }
 itertools = "0"
-num-traits = { version = "0.2", optional = true }
-paste = "1.0"
+num-traits = { workspace = true, optional = true }
+paste = { workspace = true }
 proptest = { workspace = true, optional = true }
-serde = { version = "1.0.136", features = ["derive"] }
-serde_json = { workspace = true }
-thiserror = "1.0.58"
+thiserror = { workspace = true }
+tiledb-common = { workspace = true }
 tiledb-proc-macro = { workspace = true }
 tiledb-sys = { workspace = true }
 tiledb-test-utils = { workspace = true, optional = true }
 tiledb-utils = { workspace = true, features = ["serde_json"] }
 
 [dev-dependencies]
-num-traits = { version = "0.2" }
+num-traits = { workspace = true }
 proptest = { workspace = true }
 tiledb-test-utils = { workspace = true }
 
@@ -33,5 +32,4 @@ tiledb-utils = { workspace = true }
 
 [features]
 default = []
-proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:tiledb-test-utils"]
 arrow = ["dep:arrow"]

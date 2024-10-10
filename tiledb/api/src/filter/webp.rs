@@ -1,11 +1,19 @@
+use thiserror::Error;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use util::option::OptionSubset;
+#[cfg(feature = "option-subset")]
+use tiledb_utils::option::OptionSubset;
 
-use crate::Result as TileDBResult;
+#[derive(Clone, Debug, Error)]
+pub enum WebPFilterError {
+    #[error("Invalid discriminant for {}: {0}", std::any::type_name::<WebPFilterInputFormat>())]
+    InvalidDiscriminant(u64),
+}
 
-#[derive(
-    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "option-subset", derive(OptionSubset))]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum WebPFilterInputFormat {
     Rgb,
     Bgr,
@@ -14,8 +22,17 @@ pub enum WebPFilterInputFormat {
 }
 
 impl WebPFilterInputFormat {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_filter_webp_format_t {
-        let ffi_enum = match *self {
+    pub fn pixel_depth(&self) -> usize {
+        match *self {
+            WebPFilterInputFormat::Rgb | WebPFilterInputFormat::Bgr => 3,
+            WebPFilterInputFormat::Rgba | WebPFilterInputFormat::Bgra => 4,
+        }
+    }
+}
+
+impl From<WebPFilterInputFormat> for ffi::tiledb_filter_webp_format_t {
+    fn from(value: WebPFilterInputFormat) -> Self {
+        let ffi_enum = match value {
             WebPFilterInputFormat::Rgb => {
                 ffi::tiledb_filter_webp_format_t_TILEDB_WEBP_RGB
             }
@@ -31,18 +48,11 @@ impl WebPFilterInputFormat {
         };
         ffi_enum as ffi::tiledb_filter_webp_format_t
     }
-
-    pub fn pixel_depth(&self) -> usize {
-        match *self {
-            WebPFilterInputFormat::Rgb | WebPFilterInputFormat::Bgr => 3,
-            WebPFilterInputFormat::Rgba | WebPFilterInputFormat::Bgra => 4,
-        }
-    }
 }
 
 impl TryFrom<u32> for WebPFilterInputFormat {
-    type Error = crate::error::Error;
-    fn try_from(value: u32) -> TileDBResult<WebPFilterInputFormat> {
+    type Error = WebPFilterError;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             ffi::tiledb_filter_webp_format_t_TILEDB_WEBP_RGB => {
                 Ok(WebPFilterInputFormat::Rgb)
@@ -56,10 +66,7 @@ impl TryFrom<u32> for WebPFilterInputFormat {
             ffi::tiledb_filter_webp_format_t_TILEDB_WEBP_BGRA => {
                 Ok(WebPFilterInputFormat::Bgra)
             }
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid WebP filter format type: {}",
-                value
-            ))),
+            _ => Err(WebPFilterError::InvalidDiscriminant(value as u64)),
         }
     }
 }

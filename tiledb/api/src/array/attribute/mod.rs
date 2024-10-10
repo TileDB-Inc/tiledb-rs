@@ -6,9 +6,6 @@ use std::num::NonZeroU32;
 use std::ops::Deref;
 
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use util::option::OptionSubset;
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
@@ -18,7 +15,7 @@ use crate::error::{DatatypeErrorKind, Error};
 use crate::filter::list::{FilterList, FilterListData, RawFilterList};
 use crate::physical_type_go;
 use crate::string::{RawTDBString, TDBString};
-use crate::{Datatype, Factory, Result as TileDBResult};
+use crate::{Datatype, Result as TileDBResult};
 
 pub(crate) enum RawAttribute {
     Owned(*mut ffi::tiledb_attribute_t),
@@ -214,17 +211,6 @@ impl Attribute {
         }
         .to_string()
         .map(Some)
-    }
-}
-
-impl Debug for Attribute {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let data =
-            AttributeData::try_from(self).map_err(|_| std::fmt::Error)?;
-        let mut json = json!(data);
-        json["raw"] = json!(format!("{:p}", *self.raw));
-
-        write!(f, "{}", json)
     }
 }
 
@@ -623,179 +609,14 @@ impl<'a> FromFillValue<'a> for String {
     }
 }
 
-/// Encapsulation of data needed to construct an Attribute's fill value
-#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
-pub struct FillData {
-    pub data: crate::metadata::Value,
-    pub nullability: Option<bool>,
-}
-
-/// Encapsulation of data needed to construct an Attribute
-#[derive(
-    Clone, Default, Debug, Deserialize, OptionSubset, Serialize, PartialEq,
-)]
-pub struct AttributeData {
-    pub name: String,
-    pub datatype: Datatype,
-    pub nullability: Option<bool>,
-    pub cell_val_num: Option<CellValNum>,
-    pub fill: Option<FillData>,
-    pub filters: FilterListData,
-}
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-impl AttributeData {
-    /// Returns a strategy for generating values of this attribute's type.
-    pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
-        use crate::query::strategy::FieldValueStrategy;
-        use proptest::prelude::*;
-
-        use crate::filter::{CompressionData, CompressionType, FilterData};
-        let has_double_delta = self.filters.iter().any(|f| {
-            matches!(
-                f,
-                FilterData::Compression(CompressionData {
-                    kind: CompressionType::DoubleDelta { .. },
-                    ..
-                })
-            )
-        });
-
-        physical_type_go!(self.datatype, DT, {
-            if has_double_delta {
-                if std::any::TypeId::of::<DT>() == std::any::TypeId::of::<u64>()
-                {
-                    // see core `DoubleDelta::compute_bitsize`
-                    let min = 0u64;
-                    let max = u64::MAX >> 1;
-                    return FieldValueStrategy::from((min..=max).boxed());
-                } else if std::any::TypeId::of::<DT>()
-                    == std::any::TypeId::of::<i64>()
-                {
-                    let min = i64::MIN >> 2;
-                    let max = i64::MAX >> 2;
-                    return FieldValueStrategy::from((min..=max).boxed());
-                }
-            }
-            FieldValueStrategy::from(any::<DT>().boxed())
-        })
-    }
-}
-
-impl Display for AttributeData {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", json!(*self))
-    }
-}
-
-impl TryFrom<&Attribute> for AttributeData {
-    type Error = crate::error::Error;
-
-    fn try_from(attr: &Attribute) -> TileDBResult<Self> {
-        let datatype = attr.datatype()?;
-        let fill = physical_type_go!(datatype, DT, {
-            let (fill_value, fill_value_nullability) =
-                attr.fill_value_nullable::<&[DT]>()?;
-            FillData {
-                data: fill_value.to_vec().into(),
-                nullability: Some(fill_value_nullability),
-            }
-        });
-
-        Ok(AttributeData {
-            name: attr.name()?,
-            datatype,
-            nullability: Some(attr.is_nullable()?),
-            cell_val_num: Some(attr.cell_val_num()?),
-            fill: Some(fill),
-            filters: FilterListData::try_from(&attr.filter_list()?)?,
-        })
-    }
-}
-
-impl TryFrom<Attribute> for AttributeData {
-    type Error = crate::error::Error;
-
-    fn try_from(attr: Attribute) -> TileDBResult<Self> {
-        Self::try_from(&attr)
-    }
-}
-
-impl Factory for AttributeData {
-    type Item = Attribute;
-
-    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        let mut b = Builder::new(context, &self.name, self.datatype)?
-            .filter_list(self.filters.create(context)?)?;
-
-        if let Some(n) = self.nullability {
-            b = b.nullability(n)?;
-        }
-        if let Some(c) = self.cell_val_num {
-            if !matches!((self.datatype, c), (Datatype::Any, CellValNum::Var)) {
-                /* SC-46696 */
-                b = b.cell_val_num(c)?;
-            }
-        }
-        if let Some(ref fill) = self.fill {
-            b = crate::metadata::value_go!(fill.data, _DT, ref value, {
-                if let Some(fill_nullability) = fill.nullability {
-                    b.fill_value_nullability(value.as_slice(), fill_nullability)
-                } else {
-                    b.fill_value(value.as_slice())
-                }
-            })?;
-        }
-
-        Ok(b.build())
-    }
-}
-
 #[cfg(feature = "arrow")]
 pub mod arrow;
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
 
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::filter::list::Builder as FilterListBuilder;
     use crate::filter::*;
-
-    /// Test what the default values filled in for `None` with attribute data are.
-    /// Mostly because if we write code which does need the default, we're expecting
-    /// to match core and need to be notified if something changes or we did something
-    /// wrong.
-    #[test]
-    fn attribute_defaults() {
-        let ctx = Context::new().expect("Error creating context instance.");
-
-        {
-            let spec = AttributeData {
-                name: "xkcd".to_owned(),
-                datatype: Datatype::UInt32,
-                ..Default::default()
-            };
-            let attr = spec.create(&ctx).unwrap();
-            assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
-
-            // not nullable by default
-            assert!(!attr.is_nullable().unwrap());
-        }
-        {
-            let spec = AttributeData {
-                name: "xkcd".to_owned(),
-                datatype: Datatype::StringAscii,
-                ..Default::default()
-            };
-            let attr = spec.create(&ctx).unwrap();
-            assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
-
-            // not nullable by default
-            assert!(!attr.is_nullable().unwrap());
-        }
-    }
 
     #[test]
     fn attribute_get_name_and_type() {

@@ -1,30 +1,73 @@
-use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroU32;
 use std::ops::Deref;
 
-use anyhow::anyhow;
+use thiserror::Error;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::array::CellValNum;
 use crate::datatype::physical::{BitsEq, BitsHash, BitsOrd};
-use crate::datatype::Datatype;
-use crate::error::{DatatypeErrorKind, Error};
+use crate::datatype::{Datatype, Error as DatatypeError};
 use crate::physical_type_go;
-use crate::Result as TileDBResult;
 
 pub type MinimumBoundingRectangle = Vec<TypedRange>;
 
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+pub enum DimensionCompatibilityError {
+    #[error("Dimensions cannot have a multiple-value fixed ranges: found range of size {0}")]
+    MultiValueRange(usize),
+    #[error("{:?} is invalid for dimensions", CellValNum::Fixed(.0.clone()))]
+    CellValNumFixed(NonZeroU32),
+    #[error("Dimension of type {} cannot have {:?}", Datatype::StringAscii.to_string(), CellValNum::Fixed(.0.clone()))]
+    FixedStringAsciiDimension(NonZeroU32),
+    #[error("Dimension of type {0} cannot have variable-length range")]
+    VarRangeForNonStringDimension(Datatype),
+    #[error("Dimension of type {} cannot have a fixed-length range", Datatype::StringAscii.to_string())]
+    FixedRangeForStringDimension,
+    #[error("Dimension of type {0} cannot have {:?}", CellValNum::Var)]
+    CellValNumVar(Datatype),
+    #[error("Datatype error: {0}")]
+    Datatype(#[from] DatatypeError),
+}
+
+#[derive(Clone, Debug, Error)]
+pub enum RangeFromSlicesError {
+    #[error("Start range truncation of datatype {0}: expected multiple of {} bytes but found {1}", .0.size())]
+    StartTruncation(Datatype, usize),
+    #[error("End range truncation of datatype {0}: expected multiple of {} bytes but found {1}", .0.size())]
+    EndTruncation(Datatype, usize),
+
+    #[error("Start range invalid number of values: expected {0}, found {1}")]
+    StartMultiValueRangeMismatch(NonZeroU32, usize),
+    #[error("End range invalid number of values: expected {0}, found {1}")]
+    EndMultiValueRangeMismatch(NonZeroU32, usize),
+    #[error("Invalid multi-value range: {0}")]
+    InvalidMultiValueRange(#[from] MultiValueRangeError),
+}
+
+#[derive(Clone, Debug, Error)]
+pub enum MultiValueRangeError {
+    #[error("Expected multiple value cells but found {:?}; use SingleValueRange instead", CellValNum::single())]
+    CellValNumSingle,
+    #[error("Expected fixed-length {} but found {:?}", std::any::type_name::<CellValNum>(), CellValNum::Var)]
+    CellValNumVar,
+    #[error("Invalid start range: expected range of length {0} but found {1}")]
+    InvalidStartRange(NonZeroU32, usize),
+    #[error("Invalid end range: expected range of length {0} but found {1}")]
+    InvalidEndRange(NonZeroU32, usize),
+}
+
 macro_rules! check_datatype_inner {
-    ($ty:ty, $dtype:expr) => {
-        if !$dtype.is_compatible_type::<$ty>() {
-            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<$ty>().to_owned(),
-                tiledb_type: $dtype,
-            }));
+    ($ty:ty, $dtype:expr) => {{
+        let datatype = $dtype;
+        if !datatype.is_compatible_type::<$ty>() {
+            return Err(DatatypeError::physical_type_incompatible::<$ty>(
+                datatype,
+            ));
         }
-    };
+    }};
 }
 
 macro_rules! check_datatype {
@@ -79,7 +122,8 @@ where
     Some((lower, upper))
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum SingleValueRange {
     UInt8(u8, u8),
     UInt16(u16, u16),
@@ -97,7 +141,7 @@ impl SingleValueRange {
     /// Returns the number of cells spanned by this range if it is a
     /// range over a discrete domain.
     /// ```
-    /// use tiledb::range::SingleValueRange;
+    /// use tiledb_common::range::SingleValueRange;
     /// assert_eq!(Some(100), SingleValueRange::Int64(1, 100).num_cells());
     /// assert_eq!(None, SingleValueRange::Float64(1.0, 100.0).num_cells());
     /// ```
@@ -128,7 +172,10 @@ impl SingleValueRange {
         )
     }
 
-    pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
+    pub fn check_datatype(
+        &self,
+        datatype: Datatype,
+    ) -> Result<(), DatatypeError> {
         check_datatype!(self, datatype);
         Ok(())
     }
@@ -511,7 +558,8 @@ impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum MultiValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -526,7 +574,10 @@ pub enum MultiValueRange {
 }
 
 impl MultiValueRange {
-    pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
+    pub fn check_datatype(
+        &self,
+        datatype: Datatype,
+    ) -> Result<(), DatatypeError> {
         check_datatype!(self, datatype);
         Ok(())
     }
@@ -542,7 +593,8 @@ impl MultiValueRange {
     /// If the lower and upper bounds differ only in the last value,
     /// then the result is the discrete difference between the last values.
     /// ```
-    /// use tiledb::{array::CellValNum, range::MultiValueRange};
+    /// use tiledb_common::array::CellValNum;
+    /// use tiledb_common::range::MultiValueRange;
     ///
     /// let cvn = CellValNum::try_from(2).unwrap();
     /// assert_eq!(Some(100),
@@ -557,7 +609,7 @@ impl MultiValueRange {
     /// then all possible values of the trailing values represent unique
     /// cells in the range.
     /// ```
-    /// use tiledb::range::MultiValueRange;
+    /// use tiledb_common::range::MultiValueRange;
     /// let num_i32s = ((i32::MAX as i128 - i32::MIN as i128) + 1) as u128;
     /// let num_i64s = ((i64::MAX as i128 - i64::MIN as i128) + 1) as u128;
     /// assert_eq!(Some(num_i32s + 1),
@@ -701,35 +753,23 @@ macro_rules! multi_value_range_try_from {
     ($($V:ident : $U:ty),+) => {
         $(
             impl TryFrom<(CellValNum, Box<[$U]>, Box<[$U]>)> for MultiValueRange {
-                type Error = crate::error::Error;
+                type Error = MultiValueRangeError;
                 fn try_from(value: (CellValNum, Box<[$U]>, Box<[$U]>)) ->
-                        TileDBResult<MultiValueRange> {
+                        Result<Self, Self::Error> {
                     let cell_val_num = match value.0 {
                         CellValNum::Fixed(cvn) if u32::from(cvn) == 1u32 => {
-                            return Err(Error::InvalidArgument(anyhow!(
-                                "MultiValueRange does not support CellValNum::Fixed(1)"
-                            )));
+                            return Err(MultiValueRangeError::CellValNumSingle)
                         }
-                        CellValNum::Fixed(cvn) => cvn.get(),
+                        CellValNum::Fixed(cvn) => cvn,
                         CellValNum::Var => {
-                            return Err(Error::InvalidArgument(anyhow!(
-                                "MultiValueRange does not support CellValNum::Var"
-                            )));
+                            return Err(MultiValueRangeError::CellValNumVar)
                         }
                     };
-                    if value.1.len() as u32 != cell_val_num {
-                        return Err(Error::InvalidArgument(anyhow!(
-                            "Invalid range start length. Found {}, not {}",
-                            value.1.len(),
-                            cell_val_num
-                        )))
+                    if value.1.len() as u32 != cell_val_num.get() {
+                        return Err(MultiValueRangeError::InvalidStartRange(cell_val_num, value.1.len()))
                     }
-                    if value.2.len() as u32 != cell_val_num {
-                        return Err(Error::InvalidArgument(anyhow!(
-                            "Invalid range end length. Found {}, not {}",
-                            value.2.len(),
-                            cell_val_num
-                        )))
+                    if value.2.len() as u32 != cell_val_num.get() {
+                        return Err(MultiValueRangeError::InvalidEndRange(cell_val_num, value.2.len()))
                     }
                     Ok(MultiValueRange::$V(value.1, value.2))
                 }
@@ -737,7 +777,7 @@ macro_rules! multi_value_range_try_from {
 
             impl TryFrom<(CellValNum, Vec<$U>, Vec<$U>)> for MultiValueRange {
                 type Error = <Self as TryFrom<(CellValNum, Box<[$U]>, Box<[$U]>)>>::Error;
-                fn try_from(value: (CellValNum, Vec<$U>, Vec<$U>)) -> TileDBResult<MultiValueRange> {
+                fn try_from(value: (CellValNum, Vec<$U>, Vec<$U>)) -> Result<Self, Self::Error> {
                     let (cell_val_num, lb, ub) = value;
                     Self::try_from((cell_val_num, lb.into_boxed_slice(), ub.into_boxed_slice()))
                 }
@@ -957,7 +997,8 @@ macro_rules! multi_value_range_cmp {
     }};
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum VarValueRange {
     UInt8(Box<[u8]>, Box<[u8]>),
     UInt16(Box<[u16]>, Box<[u16]>),
@@ -977,7 +1018,10 @@ impl VarValueRange {
         CellValNum::Var
     }
 
-    pub fn check_datatype(&self, datatype: Datatype) -> TileDBResult<()> {
+    pub fn check_datatype(
+        &self,
+        datatype: Datatype,
+    ) -> Result<(), DatatypeError> {
         check_datatype!(self, datatype);
         Ok(())
     }
@@ -1290,7 +1334,8 @@ macro_rules! var_value_range_cmp {
     }};
 }
 
-#[derive(Clone, Deserialize, Serialize, Eq, Hash, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum Range {
     Single(SingleValueRange),
     Multi(MultiValueRange),
@@ -1325,13 +1370,13 @@ impl Range {
         &self,
         datatype: Datatype,
         cell_val_num: CellValNum,
-    ) -> TileDBResult<()> {
+    ) -> Result<(), DimensionCompatibilityError> {
         match self {
             Self::Single(svr) => svr.check_datatype(datatype)?,
-            Self::Multi(_) => {
-                return Err(Error::InvalidArgument(anyhow!(
-                    "Dimensions can not have a fixed cell val num > 1"
-                )));
+            Self::Multi(mvr) => {
+                return Err(DimensionCompatibilityError::MultiValueRange(
+                    mvr.num_values(),
+                ))
             }
             Self::Var(vvr) => vvr.check_datatype(datatype)?,
         }
@@ -1339,34 +1384,52 @@ impl Range {
         match cell_val_num {
             CellValNum::Fixed(cvn) => {
                 if cvn.get() > 1 {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Invalid cell val number: {}",
-                        cvn.get()
-                    )));
+                    return Err(DimensionCompatibilityError::CellValNumFixed(
+                        cvn,
+                    ));
                 }
                 if datatype == Datatype::StringAscii {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "StringAscii dimensions must be var sized."
-                    )));
+                    return Err(
+                        DimensionCompatibilityError::FixedStringAsciiDimension(
+                            cvn,
+                        ),
+                    );
                 }
                 if !matches!(self, Self::Single(_)) {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Non-string dimensions must have a cell val num of 1."
-                    )));
+                    return Err(DimensionCompatibilityError::VarRangeForNonStringDimension(datatype));
                 }
             }
             CellValNum::Var => {
                 if datatype != Datatype::StringAscii {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Dimensions of type {} must have a cell val num of 1",
-                        datatype
-                    )));
+                    return Err(DimensionCompatibilityError::CellValNumVar(
+                        datatype,
+                    ));
                 }
-                if !matches!(self, Self::Var(VarValueRange::UInt8(_, _))) {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "String dimensions must use VarValueRange::UInt8"
-                    )));
-                }
+                match self {
+                    Range::Single(SingleValueRange::UInt8(_, _)) =>
+                        Err(DimensionCompatibilityError::FixedRangeForStringDimension),
+                    Range::Multi(MultiValueRange::UInt8(_, _)) =>
+                        Err(DimensionCompatibilityError::FixedRangeForStringDimension),
+                    Range::Var(VarValueRange::UInt8(_, _)) => Ok(()),
+                    Range::Single(s) => single_value_range_go!(s, DT, _, _,
+                        Err(DimensionCompatibilityError::Datatype(
+                                DatatypeError::physical_type_incompatible::<DT>(datatype)))),
+                    Range::Multi(m) => {
+                        // NB: this is actually unreachable but this is what it would be if it were
+                        multi_value_range_go!(m, DT, _, _,
+                            Err(DimensionCompatibilityError::Datatype(
+                                    DatatypeError::physical_type_incompatible::<DT>(datatype))))
+                    },
+                    Range::Var(v) => var_value_range_go!(v, DT, _, _,
+                        Err(
+                            DimensionCompatibilityError::Datatype(
+                                DatatypeError::physical_type_incompatible::<DT>(
+                                    datatype,
+                                ),
+                            ),
+                        )
+                    ),
+                }?
             }
         }
 
@@ -1405,12 +1468,6 @@ impl Range {
     }
 }
 
-impl Debug for Range {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", json!(self))
-    }
-}
-
 macro_rules! range_from_impl {
     ($($V:ident : $U:ty),+) => {
         $(
@@ -1421,8 +1478,8 @@ macro_rules! range_from_impl {
             }
 
             impl TryFrom<(CellValNum, Box<[$U]>, Box<[$U]>)> for Range {
-                type Error = crate::error::Error;
-                fn try_from(value: (CellValNum, Box<[$U]>, Box<[$U]>)) -> TileDBResult<Range> {
+                type Error = <MultiValueRange as TryFrom<(CellValNum, Box<[$U]>, Box<[$U]>)>>::Error;
+                fn try_from(value: (CellValNum, Box<[$U]>, Box<[$U]>)) -> Result<Self, Self::Error> {
                     Ok(Range::Multi(MultiValueRange::try_from(value)?))
                 }
             }
@@ -1470,7 +1527,8 @@ impl From<SingleValueRange> for Range {
     }
 }
 
-#[derive(Clone, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct TypedRange {
     pub datatype: Datatype,
     pub range: Range,
@@ -1490,37 +1548,53 @@ impl TypedRange {
         cell_val_num: CellValNum,
         start: &[u8],
         end: &[u8],
-    ) -> TileDBResult<Self> {
+    ) -> Result<Self, RangeFromSlicesError> {
         match cell_val_num {
             CellValNum::Var => {
-                if start.len() as u64 % datatype.size() != 0 {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Invalid start length not a multiple of {:?}",
-                        datatype.size()
-                    )));
+                if start.len() % datatype.size() != 0 {
+                    return Err(RangeFromSlicesError::StartTruncation(
+                        datatype,
+                        start.len(),
+                    ));
                 }
-                if end.len() as u64 % datatype.size() != 0 {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Invalid end length not a multiple of {:?}",
-                        datatype.size()
-                    )));
+                if end.len() % datatype.size() != 0 {
+                    return Err(RangeFromSlicesError::EndTruncation(
+                        datatype,
+                        start.len(),
+                    ));
                 }
             }
             CellValNum::Fixed(cvn) => {
-                let expected_len = datatype.size() * cvn.get() as u64;
-                if start.len() as u64 != expected_len {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Invalid start length is {}, not {}",
+                if start.len() % datatype.size() != 0 {
+                    return Err(RangeFromSlicesError::StartTruncation(
+                        datatype,
                         start.len(),
-                        expected_len
-                    )));
+                    ));
+                } else if end.len() % datatype.size() != 0 {
+                    return Err(RangeFromSlicesError::EndTruncation(
+                        datatype,
+                        start.len(),
+                    ));
                 }
-                if end.len() as u64 != expected_len {
-                    return Err(Error::InvalidArgument(anyhow!(
-                        "Invalid end length is {}, not {}",
-                        start.len(),
-                        expected_len
-                    )));
+
+                let num_elements_start = start.len() / datatype.size();
+                if num_elements_start != cvn.get() as usize {
+                    return Err(
+                        RangeFromSlicesError::StartMultiValueRangeMismatch(
+                            cvn,
+                            num_elements_start,
+                        ),
+                    );
+                }
+
+                let num_elements_end = end.len() / datatype.size();
+                if num_elements_end != cvn.get() as usize {
+                    return Err(
+                        RangeFromSlicesError::EndMultiValueRangeMismatch(
+                            cvn,
+                            num_elements_end,
+                        ),
+                    );
                 }
             }
         }
@@ -1558,12 +1632,6 @@ impl TypedRange {
                 }),
             }
         })
-    }
-}
-
-impl Debug for TypedRange {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", json!(self))
     }
 }
 
@@ -1690,7 +1758,7 @@ pub mod strategy {
                 .map(|dt| Just(dt).boxed())
                 .unwrap_or(any::<Datatype>().boxed());
             let strat_nz = params.1.map(|nz| Just(nz).boxed()).unwrap_or(
-                (1..1024u32)
+                (2..1024u32)
                     .prop_map(|nz| NonZeroU32::new(nz).unwrap())
                     .boxed(),
             );
@@ -1775,21 +1843,24 @@ pub mod strategy {
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
+    use std::fmt::Debug;
 
-    use super::*;
-    use crate::Result as TileDBResult;
-    use proptest::collection::vec;
     use proptest::prelude::*;
 
-    fn test_clone(range: &Range) {
-        let other = range.clone();
-        assert_eq!(*range, other);
+    use super::*;
+
+    fn test_clone<T>(value: &T)
+    where
+        T: Clone + Debug + PartialEq,
+    {
+        let other = value.clone();
+        assert_eq!(*value, other);
     }
 
     fn test_dimension_compatibility(
         range: &Range,
         datatype: Datatype,
-    ) -> TileDBResult<()> {
+    ) -> anyhow::Result<()> {
         match range {
             Range::Single(srange) => {
                 if !matches!(datatype, Datatype::StringAscii) {
@@ -1836,6 +1907,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(feature = "serde")]
     fn test_serialization_roundtrip(range: &Range) {
         let data = serde_json::to_string(range).unwrap();
         let other: Range = serde_json::from_str(&data).unwrap();
@@ -1856,139 +1928,195 @@ mod tests {
         assert_eq!(*range, range2.range);
     }
 
-    // physical_type_go! seems to be fairly heavy for using with llvm-cov so I've
-    // minimized the number of usages in these tests by adding test helpers
-    // that are called from as few physical_type_go macros as possible.
-    #[test]
-    fn test_single_value_range() {
-        for datatype in Datatype::iter() {
-            physical_type_go!(datatype, DT, {
-                proptest!(ProptestConfig::with_cases(8),
-                        |(start in any::<DT>(), end in any::<DT>())| {
+    proptest! {
+        #[test]
+        fn single_value_range((datatype, range) in any::<Datatype>().prop_flat_map(|dt|
+                (
+                    Just(dt),
+                    any_with::<SingleValueRange>(Some(dt))
+                )
+        ))
+        {
+            do_single_value_range(datatype, range).unwrap()
+        }
 
-                    let range = Range::from(&[start, end]);
-                    test_clone(&range);
-                    test_dimension_compatibility(&range, datatype)?;
-                    test_serialization_roundtrip(&range);
+        #[test]
+        fn multi_value_range((datatype, range) in any::<Datatype>().prop_flat_map(|dt|
+                (
+                    Just(dt),
+                    any_with::<MultiValueRange>((Some(dt), None))
+                )
+        ))
+        {
+            do_multi_value_range(datatype, range).unwrap()
+        }
 
-                    let start_slice = start.to_le_bytes();
-                    let end_slice = end.to_le_bytes();
-                    test_from_slices(
-                        &range,
-                        datatype,
-                        CellValNum::try_from(1)?,
-                        &start_slice[..],
-                        &end_slice[..]
-                    );
-                });
-            });
+        #[test]
+        fn var_value_range((datatype, range) in any::<Datatype>().prop_flat_map(|dt|
+                (
+                    Just(dt),
+                    any_with::<VarValueRange>(Some(dt))
+                )
+        ))
+        {
+            do_var_value_range(datatype, range).unwrap()
         }
     }
 
-    #[test]
-    fn test_multi_value_range() {
-        for datatype in Datatype::iter() {
-            physical_type_go!(datatype, DT, {
-                proptest!(ProptestConfig::with_cases(8),
-                        |(data in vec(any::<DT>(), 2..=32))| {
-                    let len = data.len() as u32;
-                    let cell_val_num = CellValNum::try_from(len)?;
-                    let start = data.clone().into_boxed_slice();
-                    let end = start.clone();
+    fn do_single_value_range(
+        datatype: Datatype,
+        range: SingleValueRange,
+    ) -> anyhow::Result<()> {
+        test_clone(&range);
 
-                    let range = Range::try_from(
-                        (cell_val_num, start.clone(), end.clone()))?;
-                    test_clone(&range);
-                    test_dimension_compatibility(&range, datatype)?;
-                    test_serialization_roundtrip(&range);
+        let rr = Range::Single(range.clone());
+        test_dimension_compatibility(&rr, datatype)?;
 
-                    let nbytes = (len as u64 * datatype.size()) as usize;
-                    let start = data.clone().into_boxed_slice();
-                    let end = data.clone().into_boxed_slice();
+        #[cfg(feature = "serde")]
+        test_serialization_roundtrip(&rr);
 
-                    let start_slice = unsafe {
-                        std::slice::from_raw_parts(
-                            start.as_ptr() as *mut u8 as *const u8,
-                            nbytes,
-                        )
-                    };
-
-                    let end_slice = unsafe {
-                        std::slice::from_raw_parts(
-                            end.as_ptr() as *mut u8 as *const u8,
-                            nbytes,
-                        )
-                    };
-
-                    test_from_slices(
-                        &range,
-                        datatype,
-                        CellValNum::try_from(len)?,
-                        start_slice,
-                        end_slice
-                    );
-
-                    // Check TryFrom failures
-                    assert!(Range::try_from(
-                        (CellValNum::try_from(1)?, start.clone(), end.clone())).is_err());
-                    assert!(Range::try_from(
-                        (CellValNum::Var, start.clone(), end.clone())).is_err());
-
-                    let start = data.clone().into_boxed_slice();
-                    let mut end = data.clone();
-                    end.push(data[0]);
-                    let end = end.into_boxed_slice();
-                    assert!(Range::try_from((cell_val_num, start, end)).is_err());
-
-                    let mut start = data.clone();
-                    start.push(data[0]);
-                    let start = start.into_boxed_slice();
-                    let end = data.clone().into_boxed_slice();
-                    assert!(Range::try_from((cell_val_num, start, end)).is_err());
-                });
+        let (start_slice, end_slice) =
+            single_value_range_go!(range, _DT, ref start, ref end, {
+                (start.to_le_bytes().to_vec(), end.to_le_bytes().to_vec())
             });
-        }
+        test_from_slices(
+            &rr,
+            datatype,
+            CellValNum::try_from(1)?,
+            &start_slice[..],
+            &end_slice[..],
+        );
+        Ok(())
     }
 
-    #[test]
-    fn test_var_value_range() {
-        for datatype in Datatype::iter() {
-            physical_type_go!(datatype, DT, {
-                proptest!(ProptestConfig::with_cases(8),
-                        |(start in vec(any::<DT>(), 0..=32), end in vec(any::<DT>(), 0..=32))| {
-                    let start = start.into_boxed_slice();
-                    let end = end.into_boxed_slice();
+    fn do_multi_value_range(
+        datatype: Datatype,
+        range: MultiValueRange,
+    ) -> anyhow::Result<()> {
+        test_clone(&range);
 
-                    let range = Range::from((start.clone(), end.clone()));
-                    test_clone(&range);
-                    test_dimension_compatibility(&range, datatype)?;
-                    test_serialization_roundtrip(&range);
+        let rr = Range::Multi(range.clone());
+        test_dimension_compatibility(&rr, datatype)?;
 
-                    // Test from slices
-                    let start_slice = unsafe {
-                        std::slice::from_raw_parts(
-                            start.as_ptr() as *mut u8 as *const u8,
-                            std::mem::size_of_val(&*start),
-                        )
-                    };
+        #[cfg(feature = "serde")]
+        test_serialization_roundtrip(&rr);
 
-                    let end_slice = unsafe {
-                        std::slice::from_raw_parts(
-                            end.as_ptr() as *mut u8 as *const u8,
-                            std::mem::size_of_val(&*end),
-                        )
-                    };
+        let CellValNum::Fixed(cell_val_num) = range.cell_val_num() else {
+            unreachable!()
+        };
 
-                    test_from_slices(
-                        &range,
-                        datatype,
-                        CellValNum::Var,
-                        start_slice,
-                        end_slice
-                    );
-                });
+        let (start_slice, end_slice) =
+            multi_value_range_go!(range, _DT, ref start, ref end, {
+                assert_eq!(start.len(), end.len());
+                assert_eq!(cell_val_num.get() as usize, start.len());
+
+                let nbytes = std::mem::size_of_val(start.as_ref());
+
+                let start_slice = unsafe {
+                    std::slice::from_raw_parts(
+                        start.as_ptr() as *mut u8 as *const u8,
+                        nbytes,
+                    )
+                };
+                let end_slice = unsafe {
+                    std::slice::from_raw_parts(
+                        end.as_ptr() as *mut u8 as *const u8,
+                        nbytes,
+                    )
+                };
+                (start_slice, end_slice)
             });
-        }
+
+        test_from_slices(
+            &rr,
+            datatype,
+            CellValNum::Fixed(cell_val_num),
+            start_slice,
+            end_slice,
+        );
+
+        // Check TryFrom failures
+        multi_value_range_go!(range, _DT, ref start, ref end, {
+            assert!(Range::try_from((
+                CellValNum::try_from(1)?,
+                start.clone(),
+                end.clone()
+            ))
+            .is_err());
+            assert!(Range::try_from((
+                CellValNum::Var,
+                start.clone(),
+                end.clone()
+            ))
+            .is_err());
+
+            {
+                let start = start.clone();
+                let mut end = end.clone().into_vec();
+                end.push(end[0]);
+                let end = end.into_boxed_slice();
+                assert!(Range::try_from((
+                    CellValNum::Fixed(cell_val_num),
+                    start,
+                    end
+                ))
+                .is_err());
+            }
+
+            {
+                let mut start = start.clone().into_vec();
+                start.push(start[0]);
+                let start = start.into_boxed_slice();
+                let end = end.clone();
+                assert!(Range::try_from((
+                    CellValNum::Fixed(cell_val_num),
+                    start,
+                    end
+                ))
+                .is_err());
+            }
+        });
+        Ok(())
+    }
+
+    fn do_var_value_range(
+        datatype: Datatype,
+        range: VarValueRange,
+    ) -> anyhow::Result<()> {
+        test_clone(&range);
+
+        let rr = Range::Var(range.clone());
+        test_dimension_compatibility(&rr, datatype)?;
+
+        #[cfg(feature = "serde")]
+        test_serialization_roundtrip(&rr);
+
+        let (start_slice, end_slice) =
+            var_value_range_go!(range, DT, ref start, ref end, {
+                let to_byte_slice = |s: &[DT]| unsafe {
+                    std::slice::from_raw_parts(
+                        if s.len() == 0 {
+                            std::ptr::NonNull::<DT>::dangling().as_ptr()
+                                as *mut u8
+                        } else {
+                            s.as_ptr() as *mut u8
+                        } as *const u8,
+                        std::mem::size_of_val(&*s),
+                    )
+                };
+                let start_slice = to_byte_slice(start);
+                let end_slice = to_byte_slice(end);
+                (start_slice, end_slice)
+            });
+
+        test_from_slices(
+            &rr,
+            datatype,
+            CellValNum::Var,
+            start_slice,
+            end_slice,
+        );
+        Ok(())
     }
 
     #[test]
@@ -2016,15 +2144,94 @@ mod tests {
             )
             .is_err());
 
-        let range = Range::from(&[0u8, 1u8]);
-        assert!(range
+        let _ = format!("{:?}", range);
+    }
+
+    #[test]
+    fn dimension_compatibility_string_ascii_var() {
+        // single
+        assert_eq!(
+            Err(DimensionCompatibilityError::Datatype(
+                DatatypeError::PhysicalTypeIncompatible {
+                    physical_type: "u16",
+                    logical_type: Datatype::StringAscii
+                }
+            )),
+            Range::from(&[0u16, 1u16]).check_dimension_compatibility(
+                Datatype::StringAscii,
+                CellValNum::Var
+            )
+        );
+        assert_eq!(
+            Err(DimensionCompatibilityError::FixedRangeForStringDimension),
+            Range::from(&[0u8, 1u8]).check_dimension_compatibility(
+                Datatype::StringAscii,
+                CellValNum::Var
+            )
+        );
+
+        // multi
+        assert_eq!(
+            Err(DimensionCompatibilityError::MultiValueRange(2)),
+            Range::Multi(
+                MultiValueRange::try_from((
+                    CellValNum::try_from(2).unwrap(),
+                    vec![1u16, 10u16].into_boxed_slice(),
+                    vec![10u16, 1u16].into_boxed_slice()
+                ))
+                .unwrap()
+            )
             .check_dimension_compatibility(
                 Datatype::StringAscii,
                 CellValNum::Var
             )
-            .is_err());
+        );
+        assert_eq!(
+            Err(DimensionCompatibilityError::MultiValueRange(2)),
+            Range::Multi(
+                MultiValueRange::try_from((
+                    CellValNum::try_from(2).unwrap(),
+                    vec![1u8, 10u8].into_boxed_slice(),
+                    vec![10u8, 1u8].into_boxed_slice()
+                ))
+                .unwrap()
+            )
+            .check_dimension_compatibility(
+                Datatype::StringAscii,
+                CellValNum::Var
+            )
+        );
 
-        let _ = format!("{:?}", range);
+        // var but not u8
+        assert_eq!(
+            Err(DimensionCompatibilityError::Datatype(
+                DatatypeError::PhysicalTypeIncompatible {
+                    physical_type: "u16",
+                    logical_type: Datatype::StringAscii
+                }
+            )),
+            Range::Var(VarValueRange::from((
+                vec![1u16, 10u16].into_boxed_slice(),
+                vec![10u16, 1u16].into_boxed_slice()
+            )))
+            .check_dimension_compatibility(
+                Datatype::StringAscii,
+                CellValNum::Var
+            )
+        );
+
+        // var u8
+        assert_eq!(
+            Ok(()),
+            Range::Var(VarValueRange::from((
+                vec![1u8, 10u8].into_boxed_slice(),
+                vec![10u8, 1u8].into_boxed_slice()
+            )))
+            .check_dimension_compatibility(
+                Datatype::StringAscii,
+                CellValNum::Var
+            )
+        );
     }
 
     #[test]

@@ -90,9 +90,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.81"
+version = "1.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0952808a6c2afd1aa8947271f3a60f1a6763c7b912d210184c5149b5cf147247"
+checksum = "86fdf8605db99b54d3cd748a44c6d04df638eb5dafb219b135d0149bd0db01f6"
 
 [[package]]
 name = "api-coverage"
@@ -255,7 +255,7 @@ dependencies = [
  "indexmap",
  "lexical-core",
  "num",
- "serde",
+ "serde 1.0.197",
  "serde_json",
 ]
 
@@ -557,7 +557,7 @@ dependencies = [
  "csv-core",
  "itoa",
  "ryu",
- "serde",
+ "serde 1.0.197",
 ]
 
 [[package]]
@@ -1015,6 +1015,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "proptest-integrataions"
+version = "0.1.0"
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1166,6 +1170,19 @@ checksum = "92d43fe69e652f3df9bdc2b85b2854a0825b86e4fb76bc44d945137d053639ca"
 
 [[package]]
 name = "serde"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "proptest",
+ "serde 1.0.197",
+ "serde_json",
+ "tiledb-api",
+ "tiledb-common",
+ "tiledb-test-utils",
+]
+
+[[package]]
+name = "serde"
 version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fb1c873e1b9b056a4dc4c0c198b24c3ffa059243875552b2bd0933b1aee4ce2"
@@ -1192,7 +1209,7 @@ checksum = "c5f09b1bd632ef549eaa9f60a1f8de742bdbc698e6cee2095fc84dde5f549ae0"
 dependencies = [
  "itoa",
  "ryu",
- "serde",
+ "serde 1.0.197",
 ]
 
 [[package]]
@@ -1276,7 +1293,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tiledb"
+name = "tiledb-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1286,12 +1303,27 @@ dependencies = [
  "paste",
  "pkg-config",
  "proptest",
- "serde",
+ "thiserror",
+ "tiledb-common",
+ "tiledb-proc-macro",
+ "tiledb-sys",
+ "tiledb-test-utils",
+ "tiledb-utils",
+]
+
+[[package]]
+name = "tiledb-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arrow-schema",
+ "paste",
+ "proptest",
+ "serde 1.0.197",
  "serde_json",
  "thiserror",
  "tiledb-proc-macro",
  "tiledb-sys",
- "tiledb-test-utils",
  "tiledb-utils",
 ]
 
@@ -1309,7 +1341,7 @@ name = "tiledb-query-adapters"
 version = "0.1.0"
 dependencies = [
  "pkg-config",
- "tiledb",
+ "tiledb-api",
  "tiledb-utils",
 ]
 

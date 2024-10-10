@@ -2,18 +2,13 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use util::option::OptionSubset;
 
-use crate::array::{
-    dimension::DimensionData, dimension::RawDimension, Dimension,
-};
+use crate::array::dimension::{Dimension, RawDimension};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::key::LookupKey;
 use crate::range::{NonEmptyDomain, Range};
-use crate::{Factory, Result as TileDBResult};
+use crate::Result as TileDBResult;
 
 pub(crate) enum RawDomain {
     Owned(*mut ffi::tiledb_domain_t),
@@ -162,16 +157,6 @@ impl Domain {
     }
 }
 
-impl Debug for Domain {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let data = DomainData::try_from(self).map_err(|_| std::fmt::Error)?;
-        let mut json = json!(data);
-        json["raw"] = json!(format!("{:p}", *self.raw));
-
-        write!(f, "{}", json)
-    }
-}
-
 impl PartialEq<Domain> for Domain {
     fn eq(&self, other: &Domain) -> bool {
         let ndim_match = match (self.num_dimensions(), other.num_dimensions()) {
@@ -276,103 +261,6 @@ impl From<Builder> for Domain {
         builder.build()
     }
 }
-
-/// Encapsulation of data needed to construct a Domain
-#[derive(
-    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
-pub struct DomainData {
-    pub dimension: Vec<DimensionData>,
-}
-
-impl DomainData {
-    /// Returns the total number of cells spanned by all dimensions,
-    /// or `None` if:
-    /// - any dimension is not constrained into a domain; or
-    /// - the total number of cells exceeds `usize::MAX`.
-    pub fn num_cells(&self) -> Option<usize> {
-        let mut total = 1u128;
-        for d in self.dimension.iter() {
-            total = total.checked_mul(d.constraints.num_cells()?)?;
-        }
-        usize::try_from(total).ok()
-    }
-
-    /// Returns the number of cells in each tile, or `None` if:
-    /// - any dimension does not have a tile extent specified (e.g. for a sparse array); or
-    /// - the number of cells in a tile exceeds `usize::MAX`.
-    pub fn num_cells_per_tile(&self) -> Option<usize> {
-        let mut total = 1usize;
-        for d in self.dimension.iter() {
-            total = total.checked_mul(d.constraints.num_cells_per_tile()?)?;
-        }
-        Some(total)
-    }
-
-    /// Returns the domains of each dimension as a `NonEmptyDomain`,
-    /// or `None` if any dimension is not constrained into a domain
-    pub fn domains(&self) -> Option<NonEmptyDomain> {
-        self.dimension
-            .iter()
-            .map(|d| d.constraints.domain().map(Range::Single))
-            .collect::<Option<NonEmptyDomain>>()
-    }
-}
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-impl DomainData {
-    pub fn subarray_strategy(
-        &self,
-    ) -> impl proptest::prelude::Strategy<Value = Vec<Range>> {
-        self.dimension
-            .iter()
-            .map(|d| d.subarray_strategy(None).unwrap())
-            .collect::<Vec<proptest::prelude::BoxedStrategy<Range>>>()
-    }
-}
-
-impl Display for DomainData {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", json!(*self))
-    }
-}
-
-impl TryFrom<&Domain> for DomainData {
-    type Error = crate::error::Error;
-
-    fn try_from(domain: &Domain) -> TileDBResult<Self> {
-        Ok(DomainData {
-            dimension: (0..domain.num_dimensions()?)
-                .map(|d| DimensionData::try_from(&domain.dimension(d)?))
-                .collect::<TileDBResult<Vec<DimensionData>>>()?,
-        })
-    }
-}
-
-impl TryFrom<Domain> for DomainData {
-    type Error = crate::error::Error;
-
-    fn try_from(domain: Domain) -> TileDBResult<Self> {
-        Self::try_from(&domain)
-    }
-}
-
-impl Factory for DomainData {
-    type Item = Domain;
-
-    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        Ok(self
-            .dimension
-            .iter()
-            .try_fold(Builder::new(context)?, |b, d| {
-                b.add_dimension(d.create(context)?)
-            })?
-            .build())
-    }
-}
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
 
 #[cfg(test)]
 mod tests {
@@ -565,30 +453,5 @@ mod tests {
         assert_eq!(domain_d1_float64, domain_d1_float64);
         assert_ne!(domain_d0, domain_d1_float64);
         assert_ne!(domain_d1_int32, domain_d1_float64);
-    }
-
-    fn do_test_dimensions_iter(spec: DomainData) -> TileDBResult<()> {
-        let context = Context::new()?;
-        let domain = spec.create(&context)?;
-
-        let num_dimensions = domain.num_dimensions()?;
-        assert_eq!(num_dimensions, spec.dimension.len());
-        assert_eq!(num_dimensions, domain.dimensions()?.count());
-
-        for (dimension_spec, dimension) in
-            spec.dimension.iter().zip(domain.dimensions()?)
-        {
-            let dimension = DimensionData::try_from(dimension?)?;
-            assert_option_subset!(dimension_spec, dimension);
-        }
-
-        Ok(())
-    }
-
-    proptest! {
-        #[test]
-        fn test_dimensions_iter(spec in any::<DomainData>()) {
-            do_test_dimensions_iter(spec).expect("Error in do_test_dimensions_iter");
-        }
     }
 }

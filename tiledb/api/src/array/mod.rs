@@ -5,7 +5,6 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
 use util::option::OptionSubset;
 
 use crate::array::enumeration::RawEnumeration;
@@ -29,142 +28,21 @@ pub mod fragment_info;
 pub mod schema;
 
 use crate::config::Config;
-pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
+
+pub use attribute::{Attribute, Builder as AttributeBuilder};
 pub use dimension::{
-    Builder as DimensionBuilder, Dimension, DimensionConstraints, DimensionData,
+    Builder as DimensionBuilder, Dimension, DimensionConstraints,
 };
-pub use domain::{Builder as DomainBuilder, Domain, DomainData};
-pub use enumeration::{
-    Builder as EnumerationBuilder, Enumeration, EnumerationData,
-};
+pub use domain::{Builder as DomainBuilder, Domain};
+pub use enumeration::{Builder as EnumerationBuilder, Enumeration};
 use ffi::tiledb_config_t;
 pub use fragment_info::{
     Builder as FragmentInfoBuilder, FragmentInfo, FragmentInfoList,
 };
 pub use schema::{
-    ArrayType, Builder as SchemaBuilder, CellValNum, Field, Schema, SchemaData,
+    ArrayType, Builder as SchemaBuilder, CellValNum, Field, Schema,
 };
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Mode {
-    Read,
-    Write,
-    Delete,
-    Update,
-    ModifyExclusive,
-}
-
-impl Mode {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_query_type_t {
-        match *self {
-            Mode::Read => ffi::tiledb_query_type_t_TILEDB_READ,
-            Mode::Write => ffi::tiledb_query_type_t_TILEDB_WRITE,
-            Mode::Delete => ffi::tiledb_query_type_t_TILEDB_DELETE,
-            Mode::Update => ffi::tiledb_query_type_t_TILEDB_UPDATE,
-            Mode::ModifyExclusive => {
-                ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE
-            }
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_query_type_t> for Mode {
-    type Error = crate::error::Error;
-
-    fn try_from(value: ffi::tiledb_query_type_t) -> TileDBResult<Self> {
-        Ok(match value {
-            ffi::tiledb_query_type_t_TILEDB_READ => Mode::Read,
-            ffi::tiledb_query_type_t_TILEDB_WRITE => Mode::Write,
-            ffi::tiledb_query_type_t_TILEDB_DELETE => Mode::Delete,
-            ffi::tiledb_query_type_t_TILEDB_UPDATE => Mode::Update,
-            ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE => {
-                Mode::ModifyExclusive
-            }
-            _ => {
-                return Err(Error::ModeType(
-                    ModeErrorKind::InvalidDiscriminant(value as u64),
-                ))
-            }
-        })
-    }
-}
-
-impl Display for Mode {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        <Self as Debug>::fmt(self, f)
-    }
-}
-
-#[derive(
-    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum TileOrder {
-    RowMajor,
-    ColumnMajor,
-}
-
-impl TileOrder {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_layout_t {
-        match *self {
-            TileOrder::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
-            TileOrder::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_layout_t> for TileOrder {
-    type Error = crate::error::Error;
-    fn try_from(value: ffi::tiledb_layout_t) -> TileDBResult<Self> {
-        match value {
-            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(TileOrder::RowMajor),
-            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(TileOrder::ColumnMajor),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid tile order: {}",
-                value
-            ))),
-        }
-    }
-}
-
-#[derive(
-    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum CellOrder {
-    Unordered,
-    RowMajor,
-    ColumnMajor,
-    Global,
-    Hilbert,
-}
-
-impl CellOrder {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_layout_t {
-        match *self {
-            CellOrder::Unordered => ffi::tiledb_layout_t_TILEDB_UNORDERED,
-            CellOrder::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
-            CellOrder::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
-            CellOrder::Global => ffi::tiledb_layout_t_TILEDB_GLOBAL_ORDER,
-            CellOrder::Hilbert => ffi::tiledb_layout_t_TILEDB_HILBERT,
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
-    type Error = crate::error::Error;
-    fn try_from(value: ffi::tiledb_layout_t) -> TileDBResult<Self> {
-        match value {
-            ffi::tiledb_layout_t_TILEDB_UNORDERED => Ok(CellOrder::Unordered),
-            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(CellOrder::RowMajor),
-            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(CellOrder::ColumnMajor),
-            ffi::tiledb_layout_t_TILEDB_GLOBAL_ORDER => Ok(CellOrder::Global),
-            ffi::tiledb_layout_t_TILEDB_HILBERT => Ok(CellOrder::Hilbert),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid cell order: {}",
-                value
-            ))),
-        }
-    }
-}
+pub use tiledb_common::array::{CellOrder, Mode, TileOrder};
 
 /// Method of encryption.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

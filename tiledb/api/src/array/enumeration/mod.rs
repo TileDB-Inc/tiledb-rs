@@ -1,17 +1,11 @@
 use std::fmt::{self, Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-
 use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::string::{RawTDBString, TDBString};
-use crate::{Datatype, Factory, Result as TileDBResult};
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
+use crate::{Datatype, Result as TileDBResult};
 
 pub(crate) enum RawEnumeration {
     Owned(*mut ffi::tiledb_enumeration_t),
@@ -353,61 +347,6 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
             context: self.context,
             raw: RawEnumeration::Owned(c_enmr),
         })
-    }
-}
-
-/// Encapsulation of data needed to construct an Enumeration
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, OptionSubset)]
-pub struct EnumerationData {
-    pub name: String,
-    pub datatype: Datatype,
-    pub cell_val_num: Option<u32>,
-    pub ordered: Option<bool>,
-    pub data: Box<[u8]>,
-    pub offsets: Option<Box<[u64]>>,
-}
-
-impl TryFrom<&Enumeration> for EnumerationData {
-    type Error = crate::error::Error;
-
-    fn try_from(enmr: &Enumeration) -> TileDBResult<Self> {
-        let datatype = enmr.datatype()?;
-        let cell_val_num = enmr.cell_val_num()?;
-        let data = Box::from(enmr.data()?);
-        let offsets: Option<Box<[u64]>> = enmr.offsets()?.map(Box::from);
-
-        Ok(EnumerationData {
-            name: enmr.name()?,
-            datatype,
-            cell_val_num: Some(cell_val_num),
-            ordered: Some(enmr.ordered()?),
-            data,
-            offsets,
-        })
-    }
-}
-
-impl Factory for EnumerationData {
-    type Item = Enumeration;
-
-    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        let mut b = Builder::new(
-            context,
-            &self.name,
-            self.datatype,
-            &self.data[..],
-            self.offsets.as_ref().map(|o| &o[..]),
-        );
-
-        if let Some(cvn) = self.cell_val_num {
-            b = b.cell_val_num(cvn);
-        }
-
-        if let Some(ordered) = self.ordered {
-            b = b.ordered(ordered);
-        }
-
-        b.build()
     }
 }
 

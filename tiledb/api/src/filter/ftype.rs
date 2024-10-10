@@ -1,7 +1,26 @@
-use crate::error::Error;
-use crate::Result as TileDBResult;
+mod option;
+mod webp;
 
-#[derive(Clone, Debug, PartialEq)]
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
+use thiserror::Error;
+
+pub use self::option::*;
+pub use self::webp::*;
+
+#[derive(Clone, Debug, Error)]
+pub enum Error {
+    #[error("Invalid discriminant for {}: {0}", std::any::type_name::<FilterType>())]
+    InvalidDiscriminant(u64),
+    #[error("Invalid input for {}: {0}", std::any::type_name::<FilterType>())]
+    ParseError(String),
+    #[error("Internal error formatting {0}")]
+    InternalString(FilterType),
+}
+
+type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FilterType {
     None,
     Gzip,
@@ -24,8 +43,51 @@ pub enum FilterType {
 }
 
 impl FilterType {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_filter_type_t {
-        match *self {
+    pub fn to_string(&self) -> Result<String> {
+        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
+        let res = unsafe {
+            ffi::tiledb_filter_type_to_str(self.clone().into(), &mut c_str)
+        };
+        if res == ffi::TILEDB_OK {
+            let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
+            Ok(String::from(c_msg.to_string_lossy()))
+        } else {
+            Err(Error::InternalString(*self))
+        }
+    }
+
+    pub fn from_string(fs: &str) -> Result<Self> {
+        let c_ftype =
+            std::ffi::CString::new(fs).expect("Error creating CString");
+        std::ffi::CString::new(fs).expect("Error creating CString");
+        let mut c_ret: u32 = 0;
+        let res = unsafe {
+            ffi::tiledb_filter_type_from_str(
+                c_ftype.as_c_str().as_ptr(),
+                &mut c_ret,
+            )
+        };
+
+        if res == ffi::TILEDB_OK {
+            FilterType::try_from(c_ret)
+        } else {
+            Err(Error::ParseError(fs.to_owned()))
+        }
+    }
+}
+
+impl Display for FilterType {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self.to_string() {
+            Ok(s) => write!(f, "{}", s),
+            Err(e) => write!(f, "<FilterType: {}>", e),
+        }
+    }
+}
+
+impl From<FilterType> for ffi::tiledb_filter_type_t {
+    fn from(value: FilterType) -> Self {
+        match value {
             FilterType::None => ffi::tiledb_filter_type_t_TILEDB_FILTER_NONE,
             FilterType::Gzip => ffi::tiledb_filter_type_t_TILEDB_FILTER_GZIP,
             FilterType::Zstd => ffi::tiledb_filter_type_t_TILEDB_FILTER_ZSTD,
@@ -64,46 +126,11 @@ impl FilterType {
             FilterType::Delta => ffi::tiledb_filter_type_t_TILEDB_FILTER_DELTA,
         }
     }
-
-    pub fn to_string(&self) -> TileDBResult<String> {
-        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
-        let res = unsafe {
-            ffi::tiledb_filter_type_to_str(self.capi_enum(), &mut c_str)
-        };
-        if res == ffi::TILEDB_OK {
-            let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
-            Ok(String::from(c_msg.to_string_lossy()))
-        } else {
-            Err(Error::LibTileDB(format!(
-                "Error converting filter type: {:?} to string",
-                self
-            )))
-        }
-    }
-
-    pub fn from_string(fs: &str) -> TileDBResult<FilterType> {
-        let c_ftype =
-            std::ffi::CString::new(fs).expect("Error creating CString");
-        std::ffi::CString::new(fs).expect("Error creating CString");
-        let mut c_ret: u32 = 0;
-        let res = unsafe {
-            ffi::tiledb_filter_type_from_str(
-                c_ftype.as_c_str().as_ptr(),
-                &mut c_ret,
-            )
-        };
-
-        if res == ffi::TILEDB_OK {
-            FilterType::try_from(c_ret)
-        } else {
-            Err(Error::LibTileDB(format!("Invalid filter type: {}", fs)))
-        }
-    }
 }
 
 impl TryFrom<u32> for FilterType {
-    type Error = crate::error::Error;
-    fn try_from(value: u32) -> TileDBResult<FilterType> {
+    type Error = Error;
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
         match value {
             ffi::tiledb_filter_type_t_TILEDB_FILTER_NONE => {
                 Ok(FilterType::None)
@@ -153,10 +180,7 @@ impl TryFrom<u32> for FilterType {
             ffi::tiledb_filter_type_t_TILEDB_FILTER_DELTA => {
                 Ok(FilterType::Delta)
             }
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid filter type: {}",
-                value
-            ))),
+            _ => Err(Error::InvalidDiscriminant(value as u64)),
         }
     }
 }

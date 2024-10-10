@@ -156,32 +156,6 @@ macro_rules! datetime_type {
     }
 }
 
-/*
-declare_datetime!(
-    DateTimeYear,
-    DateTimeMonth,
-    DateTimeWeek,
-    DateTimeDay,
-    DateTimeHour,
-    DateTimeMinute,
-    DateTimeSecond,
-    DateTimeMillisecond,
-    DateTimeMicrosecond,
-    DateTimeNanosecond,
-    DateTimePicosecond,
-    DateTimeFemtosecond,
-    DateTimeAttosecond,
-    TimeHour,
-    TimeMinute,
-    TimeSecond,
-    TimeMillisecond,
-    TimeMicrosecond,
-    TimeNanosecond,
-    TimePicosecond,
-    TimeFemtosecond,
-    TimeAttosecond,
-);
-*/
 datetime_type!(
     DateTimeYear,
     DateTimeMonth,

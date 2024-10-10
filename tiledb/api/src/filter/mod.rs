@@ -10,16 +10,11 @@ use crate::error::{DatatypeErrorKind, Error};
 use crate::{Datatype, Result as TileDBResult};
 
 pub mod list;
-pub mod webp;
 
 pub use crate::filter::list::{Builder as FilterListBuilder, FilterList};
 pub use crate::filter::webp::WebPFilterInputFormat;
 
-mod ftype;
-mod option;
-
-use crate::filter::ftype::FilterType;
-use crate::filter::option::FilterOption;
+pub use tiledb_common::filter::*;
 
 #[derive(
     Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
