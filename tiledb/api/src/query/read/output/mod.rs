@@ -43,7 +43,7 @@ impl<C> RawReadOutput<'_, C> {
     }
 
     #[cfg(feature = "serde")]
-    fn to_json(&self) -> serde_json::value::Value
+    pub fn to_json(&self) -> serde_json::value::Value
     where
         C: Debug,
     {

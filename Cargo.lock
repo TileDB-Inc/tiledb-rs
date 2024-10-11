@@ -1304,6 +1304,7 @@ dependencies = [
  "pkg-config",
  "proptest",
  "serde 1.0.197",
+ "serde_json",
  "thiserror",
  "tiledb-common",
  "tiledb-proc-macro",
