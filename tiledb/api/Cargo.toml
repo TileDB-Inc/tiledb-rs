@@ -19,6 +19,7 @@ serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tiledb-common = { workspace = true }
 tiledb-proc-macro = { workspace = true }
+tiledb-serde = { workspace = true, optional = true }
 tiledb-sys = { workspace = true }
 tiledb-test-utils = { workspace = true, optional = true }
 
@@ -34,7 +35,7 @@ tiledb-utils = { workspace = true }
 [features]
 default = []
 arrow = ["dep:arrow"]
-serde = ["dep:serde", "dep:serde_json"]
+serde = ["dep:serde", "dep:serde_json", "dep:tiledb-serde"]
 
 [[example]]
 name = "using_tiledb_stats"

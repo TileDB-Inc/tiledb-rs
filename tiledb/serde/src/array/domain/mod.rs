@@ -1,7 +1,17 @@
+#[cfg(feature = "option-subset")]
+use tiledb_utils::option::OptionSubset;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+use tiledb_common::range::{NonEmptyDomain, Range};
+
+use crate::array::dimension::DimensionData;
+
 /// Encapsulation of data needed to construct a Domain
-#[derive(
-    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
+#[derive(Clone, Default, Debug, PartialEq)]
+#[cfg_attr(feature = "option-subset", derive(OptionSubset))]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct DomainData {
     pub dimension: Vec<DimensionData>,
 }
@@ -51,9 +61,6 @@ impl DomainData {
             .collect::<Vec<proptest::prelude::BoxedStrategy<Range>>>()
     }
 }
-
-#[cfg(feature = "api-conversions")]
-mod conversions;
 
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;

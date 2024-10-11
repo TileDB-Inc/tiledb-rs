@@ -35,6 +35,7 @@ macro_rules! out_ptr {
     };
 }
 
+pub use tiledb_common::key;
 pub use tiledb_common::physical_type_go;
 pub use tiledb_common::range;
 
@@ -46,7 +47,6 @@ pub mod error;
 pub mod filesystem;
 pub mod filter;
 pub mod group;
-pub mod key;
 pub mod metadata;
 pub mod query;
 pub mod stats;
@@ -75,3 +75,10 @@ pub use array::Array;
 pub use context::{Context, ContextBound};
 pub use datatype::Datatype;
 pub type Result<T> = std::result::Result<T, error::Error>;
+
+#[cfg(feature = "serde")]
+pub trait Factory {
+    type Item;
+
+    fn create(&self, context: &context::Context) -> Result<Self::Item>;
+}

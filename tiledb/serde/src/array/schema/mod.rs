@@ -1,7 +1,22 @@
+#[cfg(feature = "option-subset")]
+use tiledb_utils::option::OptionSubset;
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+use tiledb_common::array::{ArrayType, CellOrder, CellValNum, TileOrder};
+use tiledb_common::datatype::Datatype;
+use tiledb_common::filter::FilterData;
+use tiledb_common::key::LookupKey;
+
+use crate::array::attribute::AttributeData;
+use crate::array::dimension::DimensionData;
+use crate::array::domain::DomainData;
+
 /// Encapsulation of data needed to construct a Schema
-#[derive(
-    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
+#[derive(Clone, Default, Debug, PartialEq)]
+#[cfg_attr(feature = "option-subset", derive(OptionSubset))]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct SchemaData {
     pub array_type: ArrayType,
     pub domain: DomainData,
@@ -10,9 +25,9 @@ pub struct SchemaData {
     pub tile_order: Option<TileOrder>,
     pub allow_duplicates: Option<bool>,
     pub attributes: Vec<AttributeData>,
-    pub coordinate_filters: FilterListData,
-    pub offsets_filters: FilterListData,
-    pub nullity_filters: FilterListData,
+    pub coordinate_filters: Vec<FilterData>,
+    pub offsets_filters: Vec<FilterData>,
+    pub nullity_filters: Vec<FilterData>,
 }
 
 impl SchemaData {
@@ -75,7 +90,9 @@ impl SchemaData {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "option-subset", derive(OptionSubset))]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum FieldData {
     Dimension(DimensionData),
     Attribute(AttributeData),
@@ -131,20 +148,6 @@ impl From<DimensionData> for FieldData {
     }
 }
 
-impl TryFrom<B> for FieldData
-where
-    B: Borrow<Field>,
-{
-    type Error = crate::error::Error;
-
-    fn try_from(field: B) -> TileDBResult<Self> {
-        match field.borrow() {
-            Field::Dimension(d) => Ok(Self::from(DimensionData::try_from(d)?)),
-            Field::Attribute(a) => Ok(Self::from(AttributeData::try_from(a)?)),
-        }
-    }
-}
-
 pub struct FieldDataIter<'a> {
     schema: &'a SchemaData,
     cursor: usize,
@@ -175,9 +178,6 @@ impl Iterator for FieldDataIter<'_> {
 }
 
 impl std::iter::FusedIterator for FieldDataIter<'_> {}
-
-#[cfg(feature = "api-conversions")]
-mod conversions;
 
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;

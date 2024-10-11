@@ -1,12 +1,13 @@
-impl TryFrom<B> for EnumerationData
-where
-    B: Borrow<Enumeration>,
-{
-    type Error = crate::error::Error;
+use tiledb_serde::array::enumeration::EnumerationData;
 
-    fn try_from(enmr: B) -> TileDBResult<Self> {
-        let enmr = enmr.borrow();
+use super::{Builder, Enumeration};
+use crate::error::Error as TileDBError;
+use crate::{Context, Factory, Result as TileDBResult};
 
+impl TryFrom<&Enumeration> for EnumerationData {
+    type Error = TileDBError;
+
+    fn try_from(enmr: &Enumeration) -> Result<Self, Self::Error> {
         let datatype = enmr.datatype()?;
         let cell_val_num = enmr.cell_val_num()?;
         let data = Box::from(enmr.data()?);
@@ -20,6 +21,14 @@ where
             data,
             offsets,
         })
+    }
+}
+
+impl TryFrom<Enumeration> for EnumerationData {
+    type Error = TileDBError;
+
+    fn try_from(enmr: Enumeration) -> Result<Self, Self::Error> {
+        Self::try_from(&enmr)
     }
 }
 

@@ -1,11 +1,16 @@
-impl TryFrom<B> for DimensionData
-where
-    B: Borrow<Dimension>,
-{
-    type Error = crate::error::Error;
+use tiledb_common::array::dimension::DimensionConstraints;
+use tiledb_common::filter::FilterData;
+use tiledb_common::physical_type_go;
+use tiledb_serde::array::dimension::DimensionData;
 
-    fn try_from(dim: B) -> TileDBResult<Self> {
-        let dim = dim.borrow();
+use super::{Builder, Dimension};
+use crate::error::Error as TileDBError;
+use crate::{Context, Factory, Result as TileDBResult};
+
+impl TryFrom<&Dimension> for DimensionData {
+    type Error = TileDBError;
+
+    fn try_from(dim: &Dimension) -> Result<Self, Self::Error> {
         let datatype = dim.datatype()?;
         let constraints = physical_type_go!(datatype, DT, {
             let domain = dim.domain::<DT>()?;
@@ -23,7 +28,7 @@ where
             datatype,
             constraints,
             filters: {
-                let fl = FilterListData::try_from(&dim.filters()?)?;
+                let fl = Vec::<FilterData>::try_from(&dim.filters()?)?;
                 if fl.is_empty() {
                     None
                 } else {
@@ -31,6 +36,14 @@ where
                 }
             },
         })
+    }
+}
+
+impl TryFrom<Dimension> for DimensionData {
+    type Error = TileDBError;
+
+    fn try_from(dimension: Dimension) -> Result<Self, Self::Error> {
+        Self::try_from(&dimension)
     }
 }
 

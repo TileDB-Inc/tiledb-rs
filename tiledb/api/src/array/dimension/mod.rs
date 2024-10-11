@@ -257,6 +257,9 @@ impl From<Builder> for Dimension {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
+#[cfg(feature = "serde")]
+pub mod serde;
+
 #[cfg(test)]
 mod tests {
     use crate::array::dimension::*;

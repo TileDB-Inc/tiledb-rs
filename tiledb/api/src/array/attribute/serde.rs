@@ -1,11 +1,17 @@
-impl TryFrom<B> for AttributeData
-where
-    B: Borrow<Attribute>,
-{
+use tiledb_common::array::CellValNum;
+use tiledb_common::datatype::Datatype;
+use tiledb_common::filter::FilterData;
+use tiledb_common::{metadata_value_go, physical_type_go};
+use tiledb_serde::array::attribute::{AttributeData, FillData};
+
+use super::{Attribute, Builder};
+use crate::error::Error as TileDBError;
+use crate::{Context, Factory, Result as TileDBResult};
+
+impl TryFrom<&Attribute> for AttributeData {
     type Error = TileDBError;
 
-    fn try_from(attr: B) -> TileDBResult<Self> {
-        let attr = attr.borrow();
+    fn try_from(attr: &Attribute) -> Result<Self, Self::Error> {
         let datatype = attr.datatype()?;
         let fill = physical_type_go!(datatype, DT, {
             let (fill_value, fill_value_nullability) =
@@ -22,8 +28,16 @@ where
             nullability: Some(attr.is_nullable()?),
             cell_val_num: Some(attr.cell_val_num()?),
             fill: Some(fill),
-            filters: FilterListData::try_from(&attr.filter_list()?)?,
+            filters: Vec::<FilterData>::try_from(&attr.filter_list()?)?,
         })
+    }
+}
+
+impl TryFrom<Attribute> for AttributeData {
+    type Error = TileDBError;
+
+    fn try_from(attribute: Attribute) -> Result<Self, Self::Error> {
+        Self::try_from(&attribute)
     }
 }
 
@@ -44,7 +58,7 @@ impl Factory for AttributeData {
             }
         }
         if let Some(ref fill) = self.fill {
-            b = crate::metadata::value_go!(fill.data, _DT, ref value, {
+            b = metadata_value_go!(fill.data, _DT, ref value, {
                 if let Some(fill_nullability) = fill.nullability {
                     b.fill_value_nullability(value.as_slice(), fill_nullability)
                 } else {

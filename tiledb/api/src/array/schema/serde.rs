@@ -1,13 +1,17 @@
-use std::borrow::Borrow;
+use tiledb_common::filter::FilterData;
+use tiledb_serde::array::attribute::AttributeData;
+use tiledb_serde::array::dimension::DimensionData;
+use tiledb_serde::array::domain::DomainData;
+use tiledb_serde::array::schema::{FieldData, SchemaData};
 
-impl TryFrom<B> for SchemaData
-where
-    B: Borrow<Schema>,
-{
-    type Error = crate::error::Error;
+use super::{Builder, Field, Schema};
+use crate::error::Error as TileDBError;
+use crate::{Context, Factory, Result as TileDBResult};
 
-    fn try_from(schema: B) -> TileDBResult<Self> {
-        let schema = schema.borrow();
+impl TryFrom<&Schema> for SchemaData {
+    type Error = TileDBError;
+
+    fn try_from(schema: &Schema) -> Result<Self, Self::Error> {
         Ok(SchemaData {
             array_type: schema.array_type()?,
             domain: DomainData::try_from(&schema.domain()?)?,
@@ -18,16 +22,24 @@ where
             attributes: (0..schema.num_attributes()?)
                 .map(|a| AttributeData::try_from(&schema.attribute(a)?))
                 .collect::<TileDBResult<Vec<AttributeData>>>()?,
-            coordinate_filters: FilterListData::try_from(
+            coordinate_filters: Vec::<FilterData>::try_from(
                 &schema.coordinate_filters()?,
             )?,
-            offsets_filters: FilterListData::try_from(
+            offsets_filters: Vec::<FilterData>::try_from(
                 &schema.offsets_filters()?,
             )?,
-            nullity_filters: FilterListData::try_from(
+            nullity_filters: Vec::<FilterData>::try_from(
                 &schema.nullity_filters()?,
             )?,
         })
+    }
+}
+
+impl TryFrom<Schema> for SchemaData {
+    type Error = TileDBError;
+
+    fn try_from(schema: Schema) -> Result<Self, Self::Error> {
+        Self::try_from(&schema)
     }
 }
 
@@ -60,5 +72,24 @@ impl Factory for SchemaData {
         }
 
         b.build()
+    }
+}
+
+impl TryFrom<&Field> for FieldData {
+    type Error = TileDBError;
+
+    fn try_from(field: &Field) -> Result<Self, Self::Error> {
+        match field {
+            Field::Dimension(d) => Ok(Self::from(DimensionData::try_from(d)?)),
+            Field::Attribute(a) => Ok(Self::from(AttributeData::try_from(a)?)),
+        }
+    }
+}
+
+impl TryFrom<Field> for FieldData {
+    type Error = TileDBError;
+
+    fn try_from(field: Field) -> Result<Self, Self::Error> {
+        Self::try_from(&field)
     }
 }

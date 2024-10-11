@@ -327,6 +327,9 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
     }
 }
 
+#[cfg(feature = "serde")]
+pub mod serde;
+
 #[cfg(test)]
 mod tests {
     use super::*;

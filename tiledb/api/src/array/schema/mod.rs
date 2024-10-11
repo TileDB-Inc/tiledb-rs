@@ -619,6 +619,9 @@ impl TryFrom<Builder> for Schema {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
+#[cfg(feature = "serde")]
+pub mod serde;
+
 #[cfg(test)]
 mod tests {
     use tiledb_test_utils::{self, TestArrayUri};

@@ -463,6 +463,9 @@ impl Builder {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
+#[cfg(feature = "serde")]
+pub mod serde;
+
 #[cfg(test)]
 mod test {
     use super::*;

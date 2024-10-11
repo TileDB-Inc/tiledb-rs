@@ -255,7 +255,7 @@ dependencies = [
  "indexmap",
  "lexical-core",
  "num",
- "serde 1.0.197",
+ "serde",
  "serde_json",
 ]
 
@@ -557,7 +557,7 @@ dependencies = [
  "csv-core",
  "itoa",
  "ryu",
- "serde 1.0.197",
+ "serde",
 ]
 
 [[package]]
@@ -1170,19 +1170,6 @@ checksum = "92d43fe69e652f3df9bdc2b85b2854a0825b86e4fb76bc44d945137d053639ca"
 
 [[package]]
 name = "serde"
-version = "0.1.0"
-dependencies = [
- "num-traits",
- "proptest",
- "serde 1.0.197",
- "serde_json",
- "tiledb-api",
- "tiledb-common",
- "tiledb-test-utils",
-]
-
-[[package]]
-name = "serde"
 version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3fb1c873e1b9b056a4dc4c0c198b24c3ffa059243875552b2bd0933b1aee4ce2"
@@ -1209,7 +1196,7 @@ checksum = "c5f09b1bd632ef549eaa9f60a1f8de742bdbc698e6cee2095fc84dde5f549ae0"
 dependencies = [
  "itoa",
  "ryu",
- "serde 1.0.197",
+ "serde",
 ]
 
 [[package]]
@@ -1303,11 +1290,12 @@ dependencies = [
  "paste",
  "pkg-config",
  "proptest",
- "serde 1.0.197",
+ "serde",
  "serde_json",
  "thiserror",
  "tiledb-common",
  "tiledb-proc-macro",
+ "tiledb-serde",
  "tiledb-sys",
  "tiledb-test-utils",
  "tiledb-utils",
@@ -1321,7 +1309,7 @@ dependencies = [
  "arrow-schema",
  "paste",
  "proptest",
- "serde 1.0.197",
+ "serde",
  "serde_json",
  "thiserror",
  "tiledb-proc-macro",
@@ -1344,6 +1332,22 @@ version = "0.1.0"
 dependencies = [
  "pkg-config",
  "tiledb-api",
+ "tiledb-utils",
+]
+
+[[package]]
+name = "tiledb-serde"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tiledb-common",
+ "tiledb-proc-macro",
+ "tiledb-sys",
+ "tiledb-test-utils",
  "tiledb-utils",
 ]
 

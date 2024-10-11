@@ -260,6 +260,9 @@ impl From<Builder> for Domain {
     }
 }
 
+#[cfg(feature = "serde")]
+pub mod serde;
+
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;

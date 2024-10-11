@@ -1,5 +1,5 @@
 [package]
-name = "serde"
+name = "tiledb-serde"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
@@ -7,16 +7,20 @@ version.workspace = true
 [dependencies]
 num-traits = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tiledb-api = { workspace = true, optional = true }
-tiledb-common = { workspace = true, features = ["serde"] }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tiledb-common = { workspace = true }
+tiledb-proc-macro = { workspace = true, optional = true }
+tiledb-utils = { workspace = true, optional = true }
 tiledb-test-utils = { workspace = true, optional = true }
+tiledb-sys = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
 
 [features]
 default = []
-api-conversions = ["dep:tiledb-api"]
+option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils", "tiledb-common/option-subset"]
 proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:tiledb-test-utils"]
+serde = ["dep:serde", "tiledb-common/serde"]

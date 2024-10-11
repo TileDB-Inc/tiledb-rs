@@ -1,16 +1,27 @@
-impl TryFrom<B> for DomainData
-where
-    B: Borrow<Domain>,
-{
-    type Error = crate::error::Error;
+use tiledb_serde::array::dimension::DimensionData;
+use tiledb_serde::array::domain::DomainData;
 
-    fn try_from(domain: B) -> TileDBResult<Self> {
-        let domain = domain.borrow();
+use super::{Builder, Domain};
+use crate::error::Error as TileDBError;
+use crate::{Context, Factory, Result as TileDBResult};
+
+impl TryFrom<&Domain> for DomainData {
+    type Error = TileDBError;
+
+    fn try_from(domain: &Domain) -> Result<Self, Self::Error> {
         Ok(DomainData {
             dimension: (0..domain.num_dimensions()?)
                 .map(|d| DimensionData::try_from(&domain.dimension(d)?))
                 .collect::<TileDBResult<Vec<DimensionData>>>()?,
         })
+    }
+}
+
+impl TryFrom<Domain> for DomainData {
+    type Error = TileDBError;
+
+    fn try_from(domain: Domain) -> Result<Self, Self::Error> {
+        Self::try_from(&domain)
     }
 }
 
