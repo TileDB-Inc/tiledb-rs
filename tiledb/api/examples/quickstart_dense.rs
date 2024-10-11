@@ -1,4 +1,4 @@
-extern crate tiledb;
+extern crate tiledb_api as tiledb;
 
 use std::path::PathBuf;
 

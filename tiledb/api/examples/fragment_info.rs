@@ -1,4 +1,4 @@
-extern crate tiledb;
+extern crate tiledb_api as tiledb;
 
 use std::path::PathBuf;
 
@@ -59,7 +59,9 @@ fn read_fragment_info() -> TileDBResult<()> {
 
         frag_info.to_vacuum_uri().expect_err("No vacuums to vacuum");
 
-        println!("Schema {}: {:?}", i, frag_info.schema()?);
+        // FIXME: probably should be done using serde, need to remember why
+        // the dependency is api => serde and not the other way around
+        //println!("Schema {}: {:?}", i, frag_info.schema()?);
         println!("Schema Name {}: {}", i, frag_info.schema_name()?);
         println!(
             "Non-empty domain: {}: {:?}",

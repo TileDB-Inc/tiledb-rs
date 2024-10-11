@@ -34,3 +34,7 @@ tiledb-utils = { workspace = true }
 default = []
 arrow = ["dep:arrow"]
 serde = ["dep:serde"]
+
+[[example]]
+name = "using_tiledb_stats"
+required-features = ["serde"]
