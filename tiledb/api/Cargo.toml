@@ -14,12 +14,12 @@ itertools = "0"
 num-traits = { workspace = true, optional = true }
 paste = { workspace = true }
 proptest = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tiledb-common = { workspace = true }
 tiledb-proc-macro = { workspace = true }
 tiledb-sys = { workspace = true }
 tiledb-test-utils = { workspace = true, optional = true }
-tiledb-utils = { workspace = true, features = ["serde_json"] }
 
 [dev-dependencies]
 num-traits = { workspace = true }
@@ -33,3 +33,4 @@ tiledb-utils = { workspace = true }
 [features]
 default = []
 arrow = ["dep:arrow"]
+serde = ["dep:serde"]

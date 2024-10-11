@@ -493,6 +493,7 @@ query_buffers_proof_impls!(
     QueryBuffersCellStructureVar
 );
 
+#[derive(Debug)]
 pub enum TypedQueryBuffers<'data> {
     UInt8(QueryBuffers<'data, u8>),
     UInt16(QueryBuffers<'data, u16>),
@@ -754,8 +755,8 @@ impl<'cell> RefTypedQueryBuffersMut<'cell, '_> {
     }
 }
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy {
+#[cfg(test)]
+pub mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
 

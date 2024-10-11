@@ -4,7 +4,6 @@ use anyhow::anyhow;
 use itertools::izip;
 use paste::paste;
 
-use crate::datatype::PhysicalType;
 use crate::query::buffer::RefTypedQueryBuffersMut;
 use crate::query::read::output::{
     FromQueryOutput, RawReadOutput, TypedRawReadOutput,
@@ -14,7 +13,7 @@ macro_rules! trait_read_callback {
     ($name:ident, $($U:ident),+) => {
         pub trait $name: Sized {
             $(
-                type $U: PhysicalType;
+                type $U: CellValue;
             )+
             type Intermediate;
             type Final;
@@ -96,7 +95,7 @@ impl<A, F> FnMutAdapter<A, F> {
 impl<A, F> ReadCallback for FnMutAdapter<A, F>
 where
     A: FromQueryOutput,
-    <A as FromQueryOutput>::Unit: PhysicalType,
+    <A as FromQueryOutput>::Unit: CellValue,
     F: Clone + FnMut(A),
 {
     type Unit = <A as FromQueryOutput>::Unit;
@@ -143,7 +142,7 @@ macro_rules! fn_mut_adapter_tuple {
         impl<$($A),+, F> $callback for FnMutAdapter<($($A),+), F>
         where $(
                 $A: FromQueryOutput,
-                <$A as FromQueryOutput>::Unit: PhysicalType
+                <$A as FromQueryOutput>::Unit: CellValue
             ),+,
             F: Clone + FnMut($($A),+)
         {
@@ -428,7 +427,7 @@ mod impls {
 
     impl<C> ReadCallback for Vec<C>
     where
-        C: PhysicalType,
+        C: CellValue,
     {
         type Unit = C;
         type Intermediate = ();
@@ -453,7 +452,7 @@ mod impls {
 
     impl<C> ReadCallback for (Vec<C>, Vec<u8>)
     where
-        C: PhysicalType,
+        C: CellValue,
     {
         type Unit = C;
         type Intermediate = ();
@@ -485,7 +484,7 @@ mod impls {
 
     impl<C> ReadCallback for Vec<Vec<C>>
     where
-        C: PhysicalType,
+        C: CellValue,
     {
         type Unit = C;
         type Intermediate = ();
@@ -1186,7 +1185,7 @@ mod tests {
 
     fn do_read_result_repr<C>(dst_unit_capacity: usize, unitsrc: Vec<C>)
     where
-        C: PhysicalType,
+        C: CellValue,
     {
         let alloc = NonVarSized {
             capacity: dst_unit_capacity,
@@ -1370,7 +1369,7 @@ mod tests {
         fn read_result_strings(
             record_capacity in MIN_RECORDS..=MAX_RECORDS,
             byte_capacity in MIN_BYTE_CAPACITY..=MAX_BYTE_CAPACITY,
-            stringsrc in crate::query::buffer::strategy::prop_string_vec(
+            stringsrc in crate::query::buffer::tests::prop_string_vec(
                 (MIN_RECORDS..=MAX_RECORDS).into()
             )
         )

@@ -2,8 +2,6 @@ use thiserror::Error;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "option-subset")]
-use tiledb_utils::option::OptionSubset;
 
 #[derive(Clone, Debug, Error)]
 pub enum Error {
@@ -12,7 +10,6 @@ pub enum Error {
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "option-subset", derive(OptionSubset))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum FilterOption {
     CompressionLevel,

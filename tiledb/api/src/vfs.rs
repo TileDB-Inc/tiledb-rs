@@ -1,7 +1,5 @@
 use std::ops::Deref;
 
-use serde::{Deserialize, Serialize};
-
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::Result as TileDBResult;
@@ -282,7 +280,7 @@ impl VFS {
                 ctx,
                 c_vfs,
                 c_uri.as_ptr(),
-                mode.capi_enum(),
+                ffi::tiledb_vfs_mode_t::from(mode),
                 &mut c_fh,
             )
         })?;

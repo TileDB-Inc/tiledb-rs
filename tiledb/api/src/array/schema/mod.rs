@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -12,7 +11,7 @@ use crate::array::enumeration::Enumeration;
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
-use crate::filter::list::{FilterList, FilterListData, RawFilterList};
+use crate::filter::list::{FilterList, RawFilterList};
 use crate::key::LookupKey;
 use crate::query::read::output::FieldScratchAllocator;
 use crate::Datatype;
@@ -96,23 +95,22 @@ impl Field {
          * Allocate space for the largest integral number of cells
          * which fits within the memory limit.
          */
-        let est_values_per_cell = match self.cell_val_num().unwrap_or_default()
-        {
+        let est_values_per_cell = match self.cell_val_num()? {
             CellValNum::Fixed(nz) => nz.get() as usize,
             CellValNum::Var => 64,
         };
         let est_cell_size =
-            est_values_per_cell * self.datatype().size() as usize;
+            est_values_per_cell * self.datatype()?.size() as usize;
 
         let est_cell_capacity = memory_limit
             .unwrap_or(FieldScratchAllocator::DEFAULT_MEMORY_LIMIT)
             / est_cell_size;
 
-        FieldScratchAllocator {
+        Ok(FieldScratchAllocator {
             cell_val_num: self.cell_val_num().unwrap_or_default(),
             record_capacity: NonZeroUsize::new(est_cell_capacity).unwrap(),
             is_nullable: self.nullability().unwrap_or(true),
-        }
+        })
     }
 }
 
@@ -199,7 +197,7 @@ impl Schema {
             ffi::tiledb_array_schema_get_array_type(ctx, c_schema, &mut c_atype)
         })?;
 
-        ArrayType::try_from(c_atype)
+        Ok(ArrayType::try_from(c_atype)?)
     }
 
     /// Returns the sparse tile capacity for this schema,
@@ -231,7 +229,7 @@ impl Schema {
             )
         })?;
 
-        CellOrder::try_from(c_cell_order)
+        Ok(CellOrder::try_from(c_cell_order)?)
     }
 
     pub fn tile_order(&self) -> TileDBResult<TileOrder> {
@@ -245,7 +243,7 @@ impl Schema {
             )
         })?;
 
-        TileOrder::try_from(c_tile_order)
+        Ok(TileOrder::try_from(c_tile_order)?)
     }
 
     /// Returns whether duplicate coordinates are permitted.
@@ -466,7 +464,7 @@ impl Builder {
         array_type: ArrayType,
         domain: Domain,
     ) -> TileDBResult<Self> {
-        let c_array_type = array_type.capi_enum();
+        let c_array_type = ffi::tiledb_array_type_t::from(array_type);
         let mut c_schema: *mut ffi::tiledb_array_schema_t =
             std::ptr::null_mut();
         context.capi_call(|ctx| unsafe {
@@ -502,7 +500,7 @@ impl Builder {
 
     pub fn cell_order(self, order: CellOrder) -> TileDBResult<Self> {
         let c_schema = *self.schema.raw;
-        let c_order = order.capi_enum();
+        let c_order = ffi::tiledb_layout_t::from(order);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_set_cell_order(ctx, c_schema, c_order)
         })?;
@@ -511,7 +509,7 @@ impl Builder {
 
     pub fn tile_order(self, order: TileOrder) -> TileDBResult<Self> {
         let c_schema = *self.schema.raw;
-        let c_order = order.capi_enum();
+        let c_order = ffi::tiledb_layout_t::from(order);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_set_tile_order(ctx, c_schema, c_order)
         })?;

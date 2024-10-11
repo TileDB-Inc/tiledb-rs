@@ -1,5 +1,7 @@
+pub mod attribute;
 pub mod dimension;
 
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::num::NonZeroU32;
 
 use thiserror::Error;
@@ -90,6 +92,17 @@ impl TryFrom<ffi::tiledb_layout_t> for TileOrder {
             ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(TileOrder::ColumnMajor),
             _ => Err(TileOrderError::InvalidDiscriminant(value as u64)),
         }
+    }
+}
+
+#[cfg(feature = "proptest-strategies")]
+impl Arbitrary for TileOrder {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        prop_oneof![Just(TileOrder::RowMajor), Just(TileOrder::ColumnMajor)]
+            .boxed()
     }
 }
 
@@ -266,6 +279,12 @@ impl PartialEq<u32> for CellValNum {
             CellValNum::Fixed(val) => val.get() == *other,
             CellValNum::Var => *other == u32::MAX,
         }
+    }
+}
+
+impl Display for CellValNum {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        Debug::fmt(self, f)
     }
 }
 

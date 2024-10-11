@@ -5,7 +5,6 @@ use ffi::{
     tiledb_channel_operation_t, tiledb_channel_operator_t,
     tiledb_query_channel_t,
 };
-use std::any::type_name;
 use std::ffi::CString;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::marker::PhantomData;
@@ -13,7 +12,7 @@ use std::mem;
 
 use crate::array::{CellValNum, Schema};
 use crate::datatype::PhysicalType;
-use crate::error::Error as TileDBError;
+use crate::error::{DatatypeError, Error as TileDBError};
 use crate::{Datatype, Result as TileDBResult};
 
 /// Describes an aggregate function to apply to an array
@@ -320,10 +319,7 @@ pub trait AggregateQueryBuilder: QueryBuilder {
             agg_function.result_type(&self.base().array().schema()?)?;
         if !expected_type.is_compatible_type::<T>() {
             return Err(TileDBError::Datatype(
-                crate::error::DatatypeErrorKind::TypeMismatch {
-                    user_type: String::from(type_name::<T>()),
-                    tiledb_type: expected_type,
-                },
+                DatatypeError::physical_type_incompatible::<T>(expected_type),
             ));
         }
 
@@ -504,7 +500,6 @@ mod tests {
     use tiledb_test_utils::TestArrayUri;
 
     use super::*;
-    use crate::error::DatatypeErrorKind;
     use crate::tests::prelude::*;
 
     /// Initialize a quickstart array for aggregate testing.
@@ -834,19 +829,23 @@ mod tests {
             let e = try_apply!(AggregateFunction::Count, i64);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::UInt64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::UInt64,
+                        ..
+                    }
+                ))
             ));
 
             let e = try_apply!(AggregateFunction::Count, u32);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::UInt64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::UInt64,
+                        ..
+                    }
+                ))
             ));
         }
 
@@ -856,20 +855,24 @@ mod tests {
                 try_apply!(AggregateFunction::NullCount("a".to_owned()), i64);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::UInt64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::UInt64,
+                        ..
+                    }
+                ))
             ));
 
             let e =
                 try_apply!(AggregateFunction::NullCount("a".to_owned()), u32);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::UInt64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::UInt64,
+                        ..
+                    }
+                ))
             ));
         }
 
@@ -878,19 +881,23 @@ mod tests {
             let e = try_apply!(AggregateFunction::Min("a".to_owned()), i64);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::Int32,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::Int32,
+                        ..
+                    }
+                ))
             ));
 
             let e = try_apply!(AggregateFunction::Max("a".to_owned()), u32);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::Int32,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::Int32,
+                        ..
+                    }
+                ))
             ));
         }
 
@@ -899,19 +906,23 @@ mod tests {
             let e = try_apply!(AggregateFunction::Sum("a".to_owned()), u64);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::Int64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::Int64,
+                        ..
+                    }
+                ))
             ));
 
             let e = try_apply!(AggregateFunction::Sum("a".to_owned()), i32);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::Int64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::Int64,
+                        ..
+                    }
+                ))
             ));
         }
 
@@ -920,19 +931,23 @@ mod tests {
             let e = try_apply!(AggregateFunction::Mean("a".to_owned()), i32);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::Float64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::Float64,
+                        ..
+                    }
+                ))
             ));
 
             let e = try_apply!(AggregateFunction::Mean("a".to_owned()), f32);
             assert!(matches!(
                 e,
-                Err(TileDBError::Datatype(DatatypeErrorKind::TypeMismatch {
-                    tiledb_type: Datatype::Float64,
-                    ..
-                }))
+                Err(TileDBError::Datatype(
+                    DatatypeError::PhysicalTypeIncompatible {
+                        tiledb_type: Datatype::Float64,
+                        ..
+                    }
+                ))
             ));
         }
 

@@ -209,34 +209,6 @@ impl DimensionConstraints {
         Ok(())
     }
 
-    pub(crate) fn domain_ptr(&self) -> *const std::ffi::c_void {
-        dimension_constraints_go!(
-            self,
-            DT,
-            range,
-            _extent,
-            range.as_ptr() as *const DT as *const std::ffi::c_void,
-            std::ptr::null()
-        )
-    }
-
-    pub(crate) fn extent_ptr(&self) -> *const std::ffi::c_void {
-        dimension_constraints_go!(
-            self,
-            DT,
-            _range,
-            extent,
-            {
-                if let Some(extent) = extent {
-                    extent as *const DT as *const std::ffi::c_void
-                } else {
-                    std::ptr::null()
-                }
-            },
-            std::ptr::null()
-        )
-    }
-
     /// Returns the number of cells spanned by this constraint, if applicable
     pub fn num_cells(&self) -> Option<u128> {
         let (low, high) = crate::dimension_constraints_go!(

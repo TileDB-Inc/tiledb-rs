@@ -1,12 +1,9 @@
-mod option;
-mod webp;
-
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use thiserror::Error;
-
-pub use self::option::*;
-pub use self::webp::*;
+use tiledb_common::filter::{
+    ChecksumType, CompressionData, CompressionType, FilterData,
+};
 
 #[derive(Clone, Debug, Error)]
 pub enum Error {
@@ -182,6 +179,65 @@ impl TryFrom<u32> for FilterType {
             }
             _ => Err(Error::InvalidDiscriminant(value as u64)),
         }
+    }
+}
+
+impl From<&FilterData> for FilterType {
+    fn from(value: &FilterData) -> Self {
+        match value {
+            FilterData::None => FilterType::None,
+            FilterData::BitShuffle { .. } => FilterType::BitShuffle,
+            FilterData::ByteShuffle { .. } => FilterType::ByteShuffle,
+            FilterData::BitWidthReduction { .. } => {
+                FilterType::BitWidthReduction
+            }
+            FilterData::Checksum(ChecksumType::Md5) => FilterType::ChecksumMD5,
+            FilterData::Checksum(ChecksumType::Sha256) => {
+                FilterType::ChecksumSHA256
+            }
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Bzip2,
+                ..
+            }) => FilterType::Bzip2,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Delta { .. },
+                ..
+            }) => FilterType::Delta,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Dictionary,
+                ..
+            }) => FilterType::Dictionary,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::DoubleDelta { .. },
+                ..
+            }) => FilterType::DoubleDelta,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Gzip,
+                ..
+            }) => FilterType::Gzip,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Lz4,
+                ..
+            }) => FilterType::Lz4,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Rle,
+                ..
+            }) => FilterType::Rle,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Zstd,
+                ..
+            }) => FilterType::Zstd,
+            FilterData::PositiveDelta { .. } => FilterType::PositiveDelta,
+            FilterData::ScaleFloat { .. } => FilterType::ScaleFloat,
+            FilterData::WebP { .. } => FilterType::WebP,
+            FilterData::Xor => FilterType::Xor,
+        }
+    }
+}
+
+impl From<FilterData> for FilterType {
+    fn from(value: FilterData) -> Self {
+        FilterType::from(&value)
     }
 }
 

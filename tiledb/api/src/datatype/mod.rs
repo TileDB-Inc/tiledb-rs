@@ -1,19 +1,20 @@
-pub use tiledb_common::datatype::*;
-
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
+pub use tiledb_common::datatype::*;
+
 trait ToStringCore {
-    type Error: std::error::Error;
+    type Error;
     fn to_string_core(&self) -> Result<String, Self::Error>;
 }
 
-trait FromStringCore {
-    fn from_string_core(&self) -> Option<Self>;
+trait FromStringCore: Sized {
+    fn from_string_core(s: &str) -> Option<Self>;
 }
 
 impl ToStringCore for Datatype {
-    type Error = !;
+    type Error = std::convert::Infallible;
+
     fn to_string_core(&self) -> Result<String, Self::Error> {
         let copy = *self;
         let c_dtype = copy as ffi::tiledb_datatype_t;
@@ -27,14 +28,13 @@ impl ToStringCore for Datatype {
         assert_eq!(res, ffi::TILEDB_OK);
 
         let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        Ok(c_msg.to_string_lossy())
+        Ok(c_msg.to_string_lossy().into_owned())
     }
 }
 
 impl FromStringCore for Datatype {
-    fn from_string_core(&self) -> Option<Self> {
-        let c_dtype =
-            std::ffi::CString::new(dtype).expect("Error creating CString");
+    fn from_string_core(s: &str) -> Option<Self> {
+        let c_dtype = std::ffi::CString::new(s).ok()?;
         let mut c_ret: ffi::tiledb_datatype_t = 0;
         let res = unsafe {
             ffi::tiledb_datatype_from_str(

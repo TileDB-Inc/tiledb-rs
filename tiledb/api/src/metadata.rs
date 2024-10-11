@@ -1,363 +1,44 @@
-use crate::datatype::Datatype;
-use crate::error::DatatypeErrorKind;
-use crate::physical_type_go;
-use crate::Result as TileDBResult;
-use core::slice;
-use std::convert::From;
+use tiledb_common::datatype::Datatype;
+use tiledb_common::physical_type_go;
 
-use serde::{Deserialize, Serialize};
-use util::option::OptionSubset;
+pub use tiledb_common::metadata::*;
+pub use tiledb_common::metadata_value_go;
 
-#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
-pub enum Value {
-    UInt8Value(Vec<u8>),
-    UInt16Value(Vec<u16>),
-    UInt32Value(Vec<u32>),
-    UInt64Value(Vec<u64>),
-    Int8Value(Vec<i8>),
-    Int16Value(Vec<i16>),
-    Int32Value(Vec<i32>),
-    Int64Value(Vec<i64>),
-    Float32Value(Vec<f32>),
-    Float64Value(Vec<f64>),
-}
-
-fn get_value_vec<T>(vec: &[T]) -> (*const std::ffi::c_void, usize) {
-    let vec_size = vec.len();
-    let vec_ptr = vec.as_ptr() as *const std::ffi::c_void;
-    (vec_ptr, vec_size)
-}
-
-/// Applies a generic expression to the interior of a `Value`.
-///
-/// # Examples
-/// ```
-/// use tiledb::metadata::Value;
-/// use tiledb::value_go;
-///
-/// fn truncate(v: &mut Value, len: usize) {
-///     value_go!(v, _DT, ref mut v_inner, v_inner.truncate(len));
-/// }
-///
-/// let mut v = Value::UInt64Value(vec![0, 24, 48]);
-/// truncate(&mut v, 2);
-/// assert_eq!(v, Value::UInt64Value(vec![0, 24]));
-/// ```
-#[macro_export]
-macro_rules! value_go {
-    ($valuetype:expr, $typename:ident, $vec:pat, $then: expr) => {{
-        use $crate::metadata::Value;
-        match $valuetype {
-            Value::Int8Value($vec) => {
-                type $typename = i8;
-                $then
-            }
-            Value::Int16Value($vec) => {
-                type $typename = i16;
-                $then
-            }
-            Value::Int32Value($vec) => {
-                type $typename = i32;
-                $then
-            }
-            Value::Int64Value($vec) => {
-                type $typename = i64;
-                $then
-            }
-            Value::UInt8Value($vec) => {
-                type $typename = u8;
-                $then
-            }
-            Value::UInt16Value($vec) => {
-                type $typename = u16;
-                $then
-            }
-            Value::UInt32Value($vec) => {
-                type $typename = u32;
-                $then
-            }
-            Value::UInt64Value($vec) => {
-                type $typename = u64;
-                $then
-            }
-            Value::Float32Value($vec) => {
-                type $typename = f32;
-                $then
-            }
-            Value::Float64Value($vec) => {
-                type $typename = f64;
-                $then
-            }
-        }
-    }};
-}
-pub use value_go;
-
-/// Applies a generic expression to the interiors of two `Value`s with matching variants,
-/// i.e. with the same physical data type. Typical usage is for comparing the insides of the two
-/// `Value`s.
-#[macro_export]
-macro_rules! value_cmp {
-    ($lexpr:expr, $rexpr:expr, $typename:ident, $lpat:pat, $rpat:pat, $same_type:expr, $else:expr) => {{
-        use $crate::metadata::Value;
-        match ($lexpr, $rexpr) {
-            (Value::Int8Value($lpat), Value::Int8Value($rpat)) => {
-                type $typename = i8;
-                $same_type
-            }
-            (Value::Int16Value($lpat), Value::Int16Value($rpat)) => {
-                type $typename = i16;
-                $same_type
-            }
-            (Value::Int32Value($lpat), Value::Int32Value($rpat)) => {
-                type $typename = i32;
-                $same_type
-            }
-            (Value::Int64Value($lpat), Value::Int64Value($rpat)) => {
-                type $typename = i64;
-                $same_type
-            }
-            (Value::UInt8Value($lpat), Value::UInt8Value($rpat)) => {
-                type $typename = u8;
-                $same_type
-            }
-            (Value::UInt16Value($lpat), Value::UInt16Value($rpat)) => {
-                type $typename = u16;
-                $same_type
-            }
-            (Value::UInt32Value($lpat), Value::UInt32Value($rpat)) => {
-                type $typename = u32;
-                $same_type
-            }
-            (Value::UInt64Value($lpat), Value::UInt64Value($rpat)) => {
-                type $typename = u64;
-                $same_type
-            }
-            (Value::Float32Value($lpat), Value::Float32Value($rpat)) => {
-                type $typename = f32;
-                $same_type
-            }
-            (Value::Float64Value($lpat), Value::Float64Value($rpat)) => {
-                type $typename = f64;
-                $same_type
-            }
-            _ => $else,
-        }
-    }};
-}
-
-impl Value {
-    pub(crate) fn c_vec(&self) -> (*const std::ffi::c_void, usize) {
-        value_go!(self, _DT, ref vec, get_value_vec(vec))
-    }
-
-    pub fn len(&self) -> usize {
-        value_go!(self, _DT, ref v, v.len())
-    }
-
-    pub fn is_empty(&self) -> bool {
-        value_go!(self, _DT, ref v, v.is_empty())
-    }
-}
-
-macro_rules! value_impl {
-    ($ty:ty, $constructor:expr) => {
-        impl From<Vec<$ty>> for Value {
-            fn from(vec: Vec<$ty>) -> Self {
-                $constructor(vec)
-            }
-        }
-    };
-}
-
-value_impl!(i8, Value::Int8Value);
-value_impl!(i16, Value::Int16Value);
-value_impl!(i32, Value::Int32Value);
-value_impl!(i64, Value::Int64Value);
-value_impl!(u8, Value::UInt8Value);
-value_impl!(u16, Value::UInt16Value);
-value_impl!(u32, Value::UInt32Value);
-value_impl!(u64, Value::UInt64Value);
-value_impl!(f32, Value::Float32Value);
-value_impl!(f64, Value::Float64Value);
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Metadata {
-    pub key: String,
-    pub datatype: Datatype,
-    pub value: Value,
-}
-
-impl Metadata {
-    pub fn new<T>(
-        key: String,
-        datatype: Datatype,
-        vec: Vec<T>,
-    ) -> TileDBResult<Self>
-    where
-        Value: From<Vec<T>>,
-        T: 'static,
-    {
-        if !datatype.is_compatible_type::<T>() {
-            return Err(crate::error::Error::Datatype(
-                DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<T>().to_owned(),
-                    tiledb_type: datatype,
-                },
-            ));
-        }
-        Ok(Metadata {
-            key,
-            datatype,
-            value: Value::from(vec),
-        })
-    }
-
-    pub(crate) fn new_raw(
-        key: String,
-        datatype: Datatype,
-        vec_ptr: *const std::ffi::c_void,
-        vec_size: u32,
-    ) -> Self {
-        let value = physical_type_go!(datatype, DT, {
-            let vec_slice = unsafe {
-                slice::from_raw_parts(
-                    vec_ptr as *const DT,
-                    vec_size.try_into().unwrap(),
-                )
-            };
-            let vec_value: Vec<DT> = vec_slice.to_vec();
-            Value::from(vec_value)
+pub(crate) fn metadata_to_ffi(
+    metadata: &Metadata,
+) -> (u32, *const std::ffi::c_void, ffi::tiledb_datatype_t) {
+    let (vec_size, vec_ptr) =
+        metadata_value_go!(metadata.value, _DT, ref contents, {
+            (contents.len(), contents.as_ptr() as *const std::ffi::c_void)
         });
 
-        Metadata {
-            key,
-            datatype,
-            value,
-        }
-    }
-
-    pub(crate) fn c_data(
-        &self,
-    ) -> (usize, *const std::ffi::c_void, ffi::tiledb_datatype_t) {
-        let (vec_ptr, vec_size) = self.value.c_vec();
-        let c_datatype = self.datatype.capi_enum();
-        (vec_size, vec_ptr, c_datatype)
-    }
+    let c_datatype = ffi::tiledb_datatype_t::from(metadata.datatype);
+    (vec_size as u32, vec_ptr, c_datatype)
 }
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy {
-    use super::*;
-    use proptest::collection::{vec, SizeRange};
-    use proptest::prelude::*;
-
-    use crate::datatype::strategy::DatatypeContext;
-
-    pub struct Requirements {
-        key: BoxedStrategy<String>,
-        datatype: BoxedStrategy<Datatype>,
-        value_length: SizeRange,
-    }
-
-    impl Requirements {
-        const DEFAULT_VALUE_LENGTH_MIN: usize = 1; // SC-48955
-        const DEFAULT_VALUE_LENGTH_MAX: usize = 64;
-    }
-
-    impl Default for Requirements {
-        fn default() -> Self {
-            Requirements {
-                key: any::<String>().boxed(),
-                datatype: any_with::<Datatype>(DatatypeContext::NotAny).boxed(),
-                value_length: (Self::DEFAULT_VALUE_LENGTH_MIN
-                    ..=Self::DEFAULT_VALUE_LENGTH_MAX)
-                    .into(),
+pub(crate) fn metadata_from_ffi(
+    key: String,
+    datatype: Datatype,
+    ffi: (u32, *const std::ffi::c_void),
+) -> Metadata {
+    let value = physical_type_go!(datatype, DT, {
+        let slice = {
+            let vec_ptr = if ffi.0 == 0 {
+                std::ptr::NonNull::<DT>::dangling().as_ptr()
+                    as *const std::ffi::c_void
+            } else {
+                ffi.1
+            };
+            unsafe {
+                std::slice::from_raw_parts(vec_ptr as *const DT, ffi.0 as usize)
             }
-        }
-    }
+        };
+        Value::from(slice.to_vec())
+    });
 
-    impl Arbitrary for Metadata {
-        type Parameters = Requirements;
-        type Strategy = BoxedStrategy<Self>;
-
-        fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-            params
-                .datatype
-                .prop_flat_map(move |dt| {
-                    let value_strat = physical_type_go!(dt, DT, {
-                        vec(any::<DT>(), params.value_length.clone())
-                            .prop_map(Value::from)
-                            .boxed()
-                    });
-                    (params.key.clone(), Just(dt), value_strat)
-                })
-                .prop_map(|(key, datatype, value)| Metadata {
-                    key,
-                    datatype,
-                    value,
-                })
-                .boxed()
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use tiledb_test_utils::TestArrayUri;
-
-        use super::*;
-        use crate::array::{Array, Mode};
-        use crate::Context;
-
-        #[test]
-        fn arbitrary_put() {
-            let test_uri = tiledb_test_utils::get_uri_generator().unwrap();
-            let uri = test_uri.with_path("quickstart_dense").unwrap();
-
-            let c: Context = Context::new().unwrap();
-            crate::array::tests::create_quickstart_dense(&test_uri, &c)
-                .unwrap();
-
-            proptest!(move |(m_in in any::<Metadata>())| {
-                // write
-                {
-                    let mut a = Array::open(&c, &uri, Mode::Write).unwrap();
-                    a.put_metadata(m_in.clone()).expect("Error writing metadata");
-                }
-                // read
-                {
-                    let a = Array::open(&c, &uri, Mode::Read).unwrap();
-                    let m_out = a.metadata(m_in.key.clone()).expect("Error reading metadata");
-                    assert_eq!(m_in, m_out);
-                }
-            });
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-
-    fn do_value_cmp(m1: Metadata, m2: Metadata) {
-        if m1.datatype.same_physical_type(&m2.datatype) {
-            value_cmp!(&m1.value, &m2.value, _DT, _, _,
-                (),
-                unreachable!("Non-matching `Value` variants for same physical type: {:?} and {:?}",
-                    m1, m2));
-        } else {
-            value_cmp!(&m1.value, &m2.value, _DT, _, _,
-                unreachable!("Matching `Value` variants for different physical type: {:?} and {:?}",
-                    m1, m2),
-                ());
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn value_cmp((m1, m2) in (any::<Metadata>(), any::<Metadata>())) {
-            do_value_cmp(m1, m2)
-        }
+    Metadata {
+        key,
+        datatype,
+        value,
     }
 }

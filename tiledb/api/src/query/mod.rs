@@ -10,9 +10,6 @@ pub mod read;
 pub mod subarray;
 pub mod write;
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
-
 pub use self::conditions::QueryConditionExpr;
 pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
@@ -24,6 +21,24 @@ use self::subarray::RawSubarray;
 
 pub type QueryType = crate::array::Mode;
 pub type QueryLayout = crate::array::CellOrder;
+
+// TODO: this is basically just to patch things over
+// to prevent conflicting impl errors (because PhysicalType
+// comes from tiledb_common but the traits are defined in this crate)
+// we will also split the query adapter stuff out of this crate
+// but that will be more complicated
+pub trait CellValue: tiledb_common::datatype::PhysicalType {}
+
+impl CellValue for u8 {}
+impl CellValue for u16 {}
+impl CellValue for u32 {}
+impl CellValue for u64 {}
+impl CellValue for i8 {}
+impl CellValue for i16 {}
+impl CellValue for i32 {}
+impl CellValue for i64 {}
+impl CellValue for f32 {}
+impl CellValue for f64 {}
 
 pub enum RawQuery {
     Owned(*mut ffi::tiledb_query_t),
@@ -187,7 +202,7 @@ pub trait QueryBuilder: Sized {
         Self: Sized,
     {
         let c_query = **self.base().cquery();
-        let c_layout = layout.capi_enum();
+        let c_layout = ffi::tiledb_layout_t::from(layout);
         self.base().capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_layout(ctx, c_query, c_layout)
         })?;
@@ -269,7 +284,7 @@ impl QueryBuilder for BuilderBase {
 impl BuilderBase {
     fn new(array: Array, query_type: QueryType) -> TileDBResult<Self> {
         let c_array = **array.capi();
-        let c_query_type = query_type.capi_enum();
+        let c_query_type = ffi::tiledb_query_type_t::from(query_type);
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
         array.capi_call(|ctx| unsafe {
             ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)

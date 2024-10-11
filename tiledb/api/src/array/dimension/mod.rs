@@ -1,15 +1,13 @@
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
-use crate::error::{DatatypeErrorKind, Error};
-use crate::filter::list::{FilterList, FilterListData, RawFilterList};
-use crate::range::SingleValueRange;
+use crate::filter::list::{FilterList, RawFilterList};
 use crate::{physical_type_go, Datatype, Result as TileDBResult};
 
 pub use tiledb_common::array::dimension::DimensionConstraints;
+pub use tiledb_common::dimension_constraints_go;
 
 pub(crate) enum RawDimension {
     Owned(*mut ffi::tiledb_dimension_t),
@@ -71,7 +69,7 @@ impl Dimension {
             ffi::tiledb_dimension_get_type(ctx, c_dimension, &mut c_datatype)
         })?;
 
-        Datatype::try_from(c_datatype)
+        Ok(Datatype::try_from(c_datatype)?)
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
@@ -79,7 +77,7 @@ impl Dimension {
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_dimension_get_cell_val_num(ctx, *self.raw, &mut c_num)
         })?;
-        CellValNum::try_from(c_num)
+        Ok(CellValNum::try_from(c_num)?)
     }
 
     pub fn is_var_sized(&self) -> TileDBResult<bool> {
@@ -177,10 +175,30 @@ impl Builder {
         let constraints = constraints.into();
         constraints.verify_type_compatible(datatype)?;
 
-        let c_datatype = datatype.capi_enum();
+        let c_datatype = ffi::tiledb_datatype_t::from(datatype);
         let c_name = cstring!(name);
-        let c_domain = constraints.domain_ptr();
-        let c_extent = constraints.extent_ptr();
+        let c_domain = dimension_constraints_go!(
+            constraints,
+            DT,
+            ref range,
+            ref _extent,
+            range.as_ptr() as *const DT as *const std::ffi::c_void,
+            std::ptr::null()
+        );
+        let c_extent = dimension_constraints_go!(
+            constraints,
+            DT,
+            ref _range,
+            ref extent,
+            {
+                if let Some(extent) = extent {
+                    extent as *const DT as *const std::ffi::c_void
+                } else {
+                    std::ptr::null()
+                }
+            },
+            std::ptr::null()
+        );
 
         let mut c_dimension: *mut ffi::tiledb_dimension_t =
             std::ptr::null_mut();
@@ -208,7 +226,7 @@ impl Builder {
     }
 
     pub fn cell_val_num(self, num: CellValNum) -> TileDBResult<Self> {
-        let c_num = num.capi() as std::ffi::c_uint;
+        let c_num = std::ffi::c_uint::from(num);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_dimension_set_cell_val_num(ctx, *self.dim.raw, c_num)
         })?;

@@ -7,7 +7,7 @@ use crate::array::schema::{RawSchema, Schema};
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::Datatype;
-use crate::error::{DatatypeErrorKind, Error};
+use crate::error::{DatatypeError, Error};
 use crate::physical_type_go;
 use crate::range::{
     MinimumBoundingRectangle, Range, TypedNonEmptyDomain, TypedRange,
@@ -346,17 +346,15 @@ impl FragmentInfoInternal {
 
         physical_type_go!(datatype, DT, {
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
-                return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>().to_owned(),
-                    tiledb_type: datatype,
-                }));
+                return Err(Error::Datatype(
+                    DatatypeError::physical_type_incompatible::<DT>(datatype),
+                ));
             }
 
             if end_size % std::mem::size_of::<DT>() as u64 != 0 {
-                return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>().to_owned(),
-                    tiledb_type: datatype,
-                }));
+                return Err(Error::Datatype(
+                    DatatypeError::physical_type_incompatible::<DT>(datatype),
+                ));
             }
 
             let start_elems = start_size / std::mem::size_of::<DT>() as u64;
@@ -463,17 +461,15 @@ impl FragmentInfoInternal {
 
         physical_type_go!(datatype, DT, {
             if start_size % std::mem::size_of::<DT>() as u64 != 0 {
-                return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>().to_owned(),
-                    tiledb_type: datatype,
-                }));
+                return Err(Error::Datatype(
+                    DatatypeError::physical_type_incompatible::<DT>(datatype),
+                ));
             }
 
             if end_size % std::mem::size_of::<DT>() as u64 != 0 {
-                return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                    user_type: std::any::type_name::<DT>().to_owned(),
-                    tiledb_type: datatype,
-                }));
+                return Err(Error::Datatype(
+                    DatatypeError::physical_type_incompatible::<DT>(datatype),
+                ));
             }
 
             let start_elems = start_size / std::mem::size_of::<DT>() as u64;

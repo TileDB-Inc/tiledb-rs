@@ -5,6 +5,9 @@ extern crate tiledb_sys as ffi;
 
 pub mod array;
 pub mod datatype;
+pub mod filter;
+pub mod metadata;
+pub mod query;
 pub mod range;
 pub mod vfs;
 

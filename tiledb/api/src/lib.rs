@@ -1,7 +1,6 @@
 extern crate anyhow;
 extern crate thiserror;
 extern crate tiledb_sys as ffi;
-extern crate tiledb_utils as util;
 
 macro_rules! cstring {
     ($arg:expr) => {

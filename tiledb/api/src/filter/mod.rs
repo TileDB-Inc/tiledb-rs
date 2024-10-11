@@ -1,287 +1,25 @@
+mod ftype;
+pub mod list;
+mod option;
+
 use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use serde::{Deserialize, Serialize};
-use util::option::OptionSubset;
-
+use self::ftype::FilterType;
+use self::option::FilterOption;
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::error::{DatatypeErrorKind, Error};
 use crate::{Datatype, Result as TileDBResult};
 
-pub mod list;
+pub use self::ftype::Error as FilterTypeError;
+pub use self::list::{Builder as FilterListBuilder, FilterList};
+pub use self::option::Error as FilterOptionError;
 
-pub use crate::filter::list::{Builder as FilterListBuilder, FilterList};
-pub use crate::filter::webp::WebPFilterInputFormat;
-
-pub use tiledb_common::filter::*;
-
-#[derive(
-    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum CompressionType {
-    Bzip2,
-    Dictionary,
-    Gzip,
-    Lz4,
-    Rle,
-    Zstd,
-    Delta {
-        reinterpret_datatype: Option<Datatype>,
-    },
-    DoubleDelta {
-        reinterpret_datatype: Option<Datatype>,
-    },
-}
-
-#[derive(
-    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum ChecksumType {
-    Md5,
-    Sha256,
-}
-
-#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
-pub struct CompressionData {
-    pub kind: CompressionType,
-    pub level: Option<i32>,
-}
-
-impl CompressionData {
-    pub fn new(kind: CompressionType) -> Self {
-        CompressionData { kind, level: None }
-    }
-}
-
-#[derive(
-    Clone, Copy, Debug, Default, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
-pub enum ScaleFloatByteWidth {
-    I8,
-    I16,
-    I32,
-    #[default] // keep in sync with tiledb/sm/filter/float_scaling_filter.h
-    I64,
-}
-
-impl ScaleFloatByteWidth {
-    pub(crate) fn capi_enum(&self) -> usize {
-        match *self {
-            Self::I8 => std::mem::size_of::<i8>(),
-            Self::I16 => std::mem::size_of::<i16>(),
-            Self::I32 => std::mem::size_of::<i32>(),
-            Self::I64 => std::mem::size_of::<i64>(),
-        }
-    }
-
-    pub fn output_datatype(&self) -> Datatype {
-        match *self {
-            Self::I8 => Datatype::Int8,
-            Self::I16 => Datatype::Int16,
-            Self::I32 => Datatype::Int32,
-            Self::I64 => Datatype::Int64,
-        }
-    }
-}
-
-impl TryFrom<std::ffi::c_ulonglong> for ScaleFloatByteWidth {
-    type Error = crate::error::Error;
-    fn try_from(value: std::ffi::c_ulonglong) -> TileDBResult<Self> {
-        match value {
-            1 => Ok(Self::I8),
-            2 => Ok(Self::I16),
-            4 => Ok(Self::I32),
-            8 => Ok(Self::I64),
-            v => Err(Self::Error::LibTileDB(format!(
-                "Invalid scale float byte width: {}",
-                v
-            ))),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, OptionSubset, PartialEq, Serialize)]
-pub enum FilterData {
-    None,
-    BitShuffle,
-    ByteShuffle,
-    BitWidthReduction {
-        max_window: Option<u32>,
-    },
-    Checksum(ChecksumType),
-    Compression(CompressionData),
-    PositiveDelta {
-        max_window: Option<u32>,
-    },
-    ScaleFloat {
-        byte_width: Option<ScaleFloatByteWidth>,
-        factor: Option<f64>,
-        offset: Option<f64>,
-    },
-    WebP {
-        input_format: WebPFilterInputFormat,
-        lossless: Option<bool>,
-        quality: Option<f32>,
-    },
-    Xor,
-}
-
-impl FilterData {
-    pub fn construct(&self, context: &Context) -> TileDBResult<Filter> {
-        Filter::create(context, self)
-    }
-
-    pub fn get_type(&self) -> FilterType {
-        match *self {
-            FilterData::None => FilterType::None,
-            FilterData::BitShuffle { .. } => FilterType::BitShuffle,
-            FilterData::ByteShuffle { .. } => FilterType::ByteShuffle,
-            FilterData::BitWidthReduction { .. } => {
-                FilterType::BitWidthReduction
-            }
-            FilterData::Checksum(ChecksumType::Md5) => FilterType::ChecksumMD5,
-            FilterData::Checksum(ChecksumType::Sha256) => {
-                FilterType::ChecksumSHA256
-            }
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::Bzip2,
-                ..
-            }) => FilterType::Bzip2,
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::Delta { .. },
-                ..
-            }) => FilterType::Delta,
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::Dictionary,
-                ..
-            }) => FilterType::Dictionary,
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::DoubleDelta { .. },
-                ..
-            }) => FilterType::DoubleDelta,
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::Gzip,
-                ..
-            }) => FilterType::Gzip,
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::Lz4,
-                ..
-            }) => FilterType::Lz4,
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::Rle,
-                ..
-            }) => FilterType::Rle,
-            FilterData::Compression(CompressionData {
-                kind: CompressionType::Zstd,
-                ..
-            }) => FilterType::Zstd,
-            FilterData::PositiveDelta { .. } => FilterType::PositiveDelta,
-            FilterData::ScaleFloat { .. } => FilterType::ScaleFloat,
-            FilterData::WebP { .. } => FilterType::WebP,
-            FilterData::Xor => FilterType::Xor,
-        }
-    }
-
-    /// Returns the output datatype when this filter is applied to the input type.
-    /// If the filter cannot accept the requested input type, None is returned.
-    pub fn transform_datatype(&self, input: &Datatype) -> Option<Datatype> {
-        /*
-         * Note to developers, this code should be kept in sync with
-         * tiledb/sm/filters/filter/ functions
-         * - `accepts_input_datatype`
-         * - `output_datatype`
-         *
-         * Those functions are not part of the external C API.
-         */
-        match *self {
-            FilterData::None => Some(*input),
-            FilterData::BitShuffle => Some(*input),
-            FilterData::ByteShuffle => Some(*input),
-            FilterData::Checksum(_) => Some(*input),
-            FilterData::BitWidthReduction { .. }
-            | FilterData::PositiveDelta { .. } => {
-                if input.is_integral_type()
-                    || input.is_datetime_type()
-                    || input.is_time_type()
-                    || input.is_byte_type()
-                {
-                    Some(*input)
-                } else {
-                    None
-                }
-            }
-            FilterData::Compression(CompressionData { kind, .. }) => match kind
-            {
-                CompressionType::Delta {
-                    reinterpret_datatype,
-                }
-                | CompressionType::DoubleDelta {
-                    reinterpret_datatype,
-                } => reinterpret_datatype.map_or(Some(*input), |dtype| {
-                    if !dtype.is_real_type() {
-                        Some(dtype)
-                    } else {
-                        None
-                    }
-                }),
-                _ => Some(*input),
-            },
-            FilterData::ScaleFloat { byte_width, .. } => {
-                let input_size = input.size() as usize;
-                if input_size == std::mem::size_of::<f32>()
-                    || input_size == std::mem::size_of::<f64>()
-                {
-                    Some(
-                        byte_width
-                            .unwrap_or(ScaleFloatByteWidth::default())
-                            .output_datatype(),
-                    )
-                } else {
-                    None
-                }
-            }
-            FilterData::WebP { .. } => {
-                if *input == Datatype::UInt8 {
-                    Some(Datatype::UInt8)
-                } else {
-                    None
-                }
-            }
-            FilterData::Xor => match input.size() {
-                1 => Some(Datatype::Int8),
-                2 => Some(Datatype::Int16),
-                4 => Some(Datatype::Int32),
-                8 => Some(Datatype::Int64),
-                _ => None,
-            },
-        }
-    }
-}
-
-impl TryFrom<&Filter> for FilterData {
-    type Error = crate::error::Error;
-
-    fn try_from(filter: &Filter) -> TileDBResult<Self> {
-        filter.filter_data()
-    }
-}
-
-impl TryFrom<Filter> for FilterData {
-    type Error = crate::error::Error;
-
-    fn try_from(filter: Filter) -> TileDBResult<Self> {
-        Self::try_from(&filter)
-    }
-}
-
-impl crate::Factory for FilterData {
-    type Item = Filter;
-
-    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        Filter::create(context, self)
-    }
-}
+pub use tiledb_common::filter::{
+    ChecksumType, CompressionData, CompressionType, FilterData,
+    ScaleFloatByteWidth, ScaleFloatByteWidthError, WebPFilterError,
+    WebPFilterInputFormat,
+};
 
 pub(crate) enum RawFilter {
     Owned(*mut ffi::tiledb_filter_t),
@@ -332,7 +70,8 @@ impl Filter {
     {
         let filter_data = filter_data.borrow();
         let mut c_filter: *mut ffi::tiledb_filter_t = out_ptr!();
-        let ftype = filter_data.get_type().capi_enum();
+        let ftype =
+            ffi::tiledb_filter_type_t::from(FilterType::from(filter_data));
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_filter_alloc(ctx, ftype, &mut c_filter)
         })?;
@@ -375,8 +114,9 @@ impl Filter {
                     | CompressionType::DoubleDelta {
                         reinterpret_datatype: Some(reinterpret_datatype),
                     } => {
-                        let c_datatype = reinterpret_datatype.capi_enum()
-                            as std::ffi::c_uchar;
+                        let c_datatype =
+                            ffi::tiledb_datatype_t::from(reinterpret_datatype)
+                                as std::ffi::c_uchar;
                         Self::set_option(
                             context,
                             *raw,
@@ -404,7 +144,7 @@ impl Filter {
                 offset,
             } => {
                 if let Some(byte_width) = byte_width {
-                    let c_width = byte_width.capi_enum();
+                    let c_width = std::ffi::c_ulonglong::from(byte_width);
                     Self::set_option(
                         context,
                         *raw,
@@ -440,7 +180,8 @@ impl Filter {
             } => {
                 {
                     let c_format =
-                        input_format.capi_enum() as std::ffi::c_uchar;
+                        ffi::tiledb_filter_webp_format_t::from(input_format)
+                            as std::ffi::c_uchar;
                     Self::set_option(
                         context,
                         *raw,
@@ -507,14 +248,7 @@ impl Filter {
                     let dtype = self.get_option::<std::ffi::c_uchar>(
                         FilterOption::CompressionReinterpretDatatype,
                     )?;
-                    Datatype::try_from(dtype as ffi::tiledb_datatype_t)
-                        .map_err(|_| {
-                            Error::Datatype(
-                                DatatypeErrorKind::InvalidDiscriminant(
-                                    dtype as u64,
-                                ),
-                            )
-                        })?
+                    Datatype::try_from(dtype as ffi::tiledb_datatype_t)?
                 });
                 if FilterType::try_from(c_ftype).unwrap() == FilterType::Delta {
                     get_compression_data(CompressionType::Delta {
@@ -580,7 +314,7 @@ impl Filter {
 
     fn get_option<T>(&self, fopt: FilterOption) -> TileDBResult<T> {
         let c_filter = self.capi();
-        let c_opt = fopt.capi_enum();
+        let c_opt = ffi::tiledb_filter_option_t::from(fopt);
         let mut val: T = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_filter_get_option(
@@ -599,7 +333,7 @@ impl Filter {
         fopt: FilterOption,
         val: T,
     ) -> TileDBResult<()> {
-        let c_opt = fopt.capi_enum();
+        let c_opt = ffi::tiledb_filter_option_t::from(fopt);
         let c_val = &val as *const T as *const std::ffi::c_void;
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_filter_set_option(ctx, raw, c_opt, c_val)
@@ -628,9 +362,6 @@ impl PartialEq<Filter> for Filter {
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
 
 #[cfg(test)]
 mod tests {

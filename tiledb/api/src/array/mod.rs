@@ -5,14 +5,14 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use anyhow::anyhow;
-use util::option::OptionSubset;
 
 use crate::array::enumeration::RawEnumeration;
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
-use crate::error::{DatatypeErrorKind, Error, ModeErrorKind};
+use crate::error::{DatatypeError, Error};
 use crate::key::LookupKey;
+use crate::metadata;
 use crate::metadata::Metadata;
 use crate::range::{
     Range, SingleValueRange, TypedNonEmptyDomain, TypedRange, VarValueRange,
@@ -51,21 +51,9 @@ pub enum Encryption {
     Aes256Gcm,
 }
 
-impl Encryption {
-    /// Returns the corresponding C API constant.
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_encryption_type_t {
-        match *self {
-            Self::Unencrypted => {
-                ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION
-            }
-            Self::Aes256Gcm => ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM,
-        }
-    }
-}
-
 impl Display for Encryption {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let c_encryption = self.capi_enum();
+        let c_encryption = ffi::tiledb_encryption_type_t::from(*self);
         let mut c_str = out_ptr!();
 
         let c_ret = unsafe {
@@ -104,6 +92,19 @@ impl FromStr for Encryption {
                 "Invalid encryption type: {}",
                 s
             ))))
+        }
+    }
+}
+
+impl From<Encryption> for ffi::tiledb_encryption_type_t {
+    fn from(value: Encryption) -> Self {
+        match value {
+            Encryption::Unencrypted => {
+                ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION
+            }
+            Encryption::Aes256Gcm => {
+                ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM
+            }
         }
     }
 }
@@ -259,7 +260,8 @@ impl Array {
 
     pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
         let c_array = *self.raw;
-        let (vec_size, vec_ptr, datatype) = metadata.c_data();
+        let (vec_size, vec_ptr, datatype) =
+            metadata::metadata_to_ffi(&metadata);
         let c_key = cstring!(metadata.key);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_put_metadata(
@@ -267,7 +269,7 @@ impl Array {
                 c_array,
                 c_key.as_ptr(),
                 datatype,
-                vec_size as u32,
+                vec_size,
                 vec_ptr,
             )
         })?;
@@ -339,7 +341,11 @@ impl Array {
             }
         }?;
         let datatype = Datatype::try_from(c_datatype)?;
-        Ok(Metadata::new_raw(name, datatype, vec_ptr, vec_size))
+        Ok(metadata::metadata_from_ffi(
+            name,
+            datatype,
+            (vec_size, vec_ptr),
+        ))
     }
 
     pub fn has_metadata_key<S>(&self, name: S) -> TileDBResult<Option<Datatype>>
@@ -607,20 +613,18 @@ impl Array {
                 }
 
                 if start_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
                 if end_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
@@ -672,20 +676,18 @@ impl Array {
                 }
 
                 if start_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
                 if end_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
@@ -886,7 +888,7 @@ impl ArrayOpener {
         let c_array = *self.array.raw;
 
         if let Some(mode) = self.mode {
-            let c_mode = mode.capi_enum();
+            let c_mode = ffi::tiledb_query_type_t::from(mode);
             self.array.capi_call(|ctx| unsafe {
                 ffi::tiledb_array_open(ctx, c_array, c_mode)
             })?;
@@ -900,11 +902,9 @@ impl ArrayOpener {
     }
 }
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
-
 #[cfg(test)]
 pub mod tests {
+    use proptest::prelude::*;
     use tiledb_test_utils::{self, TestArrayUri};
 
     use super::*;
@@ -1000,6 +1000,27 @@ pub mod tests {
         test_uri.close().map_err(|e| Error::Other(e.to_string()))?;
 
         Ok(())
+    }
+
+    #[test]
+    fn proptest_array_create() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(schema_spec in any::<SchemaData>())| {
+            let schema_in = schema_spec.create(&ctx)
+                .expect("Error constructing arbitrary schema");
+
+            let test_uri = tiledb_test_utils::get_uri_generator().map_err(|e| Error::Other(e.to_string()))?;
+            let uri = test_uri.with_path("array").map_err(|e| Error::Other(e.to_string()))?;
+
+            Array::create(&ctx, &uri, schema_in)
+                .expect("Error creating array");
+
+            let schema_out = Schema::load(&ctx, &uri).expect("Error loading array schema");
+
+            let schema_out_spec = SchemaData::try_from(&schema_out).expect("Error creating schema spec");
+            assert_option_subset!(schema_spec, schema_out_spec);
+        })
     }
 
     #[test]
@@ -1126,6 +1147,29 @@ pub mod tests {
         }
 
         test_uri.close().map_err(|e| Error::Other(e.to_string()))
+    }
+
+    #[test]
+    fn arbitrary_metadata() {
+        let test_uri = tiledb_test_utils::get_uri_generator().unwrap();
+        let uri = test_uri.with_path("quickstart_dense").unwrap();
+
+        let c: Context = Context::new().unwrap();
+        create_quickstart_dense(&test_uri, &c).unwrap();
+
+        proptest!(move |(m_in in any::<Metadata>())| {
+            // write
+            {
+                let mut a = Array::open(&c, &uri, Mode::Write).unwrap();
+                a.put_metadata(m_in.clone()).expect("Error writing metadata");
+            }
+            // read
+            {
+                let a = Array::open(&c, &uri, Mode::Read).unwrap();
+                let m_out = a.metadata(m_in.key.clone()).expect("Error reading metadata");
+                assert_eq!(m_in, m_out);
+            }
+        });
     }
 
     fn create_simple_dense(

@@ -1,7 +1,4 @@
-use std::fmt::{self, Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
-
-use util::option::OptionSubset;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::string::{RawTDBString, TDBString};
@@ -68,7 +65,7 @@ impl Enumeration {
             ffi::tiledb_enumeration_get_type(ctx, c_enmr, &mut dtype)
         })?;
 
-        Datatype::try_from(dtype)
+        Ok(Datatype::try_from(dtype)?)
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<u32> {
@@ -191,26 +188,6 @@ impl Enumeration {
     }
 }
 
-impl Debug for Enumeration {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let name = self.name().map_err(|_| fmt::Error)?;
-        let dtype = self.datatype().map_err(|_| fmt::Error)?;
-
-        let dtype_string = dtype.to_string();
-        let cell_val_num = self.cell_val_num().map_err(|_| fmt::Error)?;
-        let ordered = self.ordered().map_err(|_| fmt::Error)?;
-
-        let json = json!({
-            "name": name,
-            "datatype": dtype_string,
-            "cell_val_num": cell_val_num,
-            "ordered": ordered,
-            "values": [], // TODO: Render values
-        });
-        write!(f, "{}", json)
-    }
-}
-
 impl PartialEq<Enumeration> for Enumeration {
     fn eq(&self, other: &Enumeration) -> bool {
         eq_helper!(self.name(), other.name());
@@ -310,7 +287,7 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
         let mut c_enmr: *mut ffi::tiledb_enumeration_t = out_ptr!();
         let name_bytes = self.name.as_bytes();
         let c_name = cstring!(name_bytes);
-        let c_dtype = self.dtype.capi_enum();
+        let c_dtype = ffi::tiledb_datatype_t::from(self.dtype);
 
         // Rust semantics require that slice pointers aren't nullptr so that
         // nullptr can be used to distinguish between Some and None. The stdlib

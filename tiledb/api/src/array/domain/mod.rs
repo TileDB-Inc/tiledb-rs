@@ -1,4 +1,3 @@
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
 use anyhow::anyhow;
@@ -7,7 +6,6 @@ use crate::array::dimension::{Dimension, RawDimension};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::key::LookupKey;
-use crate::range::{NonEmptyDomain, Range};
 use crate::Result as TileDBResult;
 
 pub(crate) enum RawDomain {

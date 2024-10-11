@@ -3,6 +3,8 @@ use std::hash::{Hash, Hasher};
 use std::ops::{BitAnd, BitOr, Deref, Not};
 
 use anyhow::anyhow;
+
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::context::Context;
@@ -10,7 +12,8 @@ use crate::datatype::physical::{BitsEq, BitsHash};
 use crate::error::Error;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum EqualityOp {
     Less,
     LessEqual,
@@ -46,7 +49,8 @@ impl Display for EqualityOp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum SetMembershipOp {
     In,
     NotIn,
@@ -70,7 +74,8 @@ impl Display for SetMembershipOp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum NullnessOp {
     IsNull,
     NotNull,
@@ -94,7 +99,8 @@ impl Display for NullnessOp {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum CombinationOp {
     And,
     Or,
@@ -122,7 +128,8 @@ impl Display for CombinationOp {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum Literal {
     UInt8(u8),
     UInt16(u16),
@@ -257,7 +264,8 @@ fn escape_string_literal(s: &str) -> impl Display + '_ {
 }
 
 // N.B. I initially tried slices here, but that breaks the Deserialize trait.
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum SetMembers {
     UInt8(Vec<u8>),
     UInt16(Vec<u16>),
@@ -454,7 +462,8 @@ impl From<&[&str]> for SetMembers {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct EqualityPredicate {
     field: String,
     op: EqualityOp,
@@ -497,7 +506,8 @@ impl Display for EqualityPredicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct SetMembershipPredicate {
     field: String,
     op: SetMembershipOp,
@@ -608,7 +618,8 @@ impl Display for SetMembershipPredicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct NullnessPredicate {
     field: String,
     op: NullnessOp,
@@ -647,7 +658,8 @@ impl Display for NullnessPredicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum Predicate {
     Equality(EqualityPredicate),
     SetMembership(SetMembershipPredicate),
@@ -674,7 +686,8 @@ impl Display for Predicate {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Field {
     field: String,
 }
@@ -763,7 +776,8 @@ impl Field {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum QueryConditionExpr {
     Cond(Predicate),
     Comb {

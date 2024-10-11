@@ -5,6 +5,7 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+anyhow = { workspace = true }
 arrow-schema = { workspace = true, optional = true }
 paste = { workspace = true }
 proptest = { workspace = true, optional = true }
@@ -16,7 +17,6 @@ tiledb-sys = { workspace = true }
 tiledb-utils = { workspace = true, optional = true }
 
 [dev-dependencies]
-anyhow = { workspace = true }
 proptest = { workspace = true }
 
 [features]

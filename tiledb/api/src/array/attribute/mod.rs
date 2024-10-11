@@ -1,18 +1,15 @@
 extern crate tiledb_sys as ffi;
 
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::num::NonZeroU32;
 use std::ops::Deref;
 
-use anyhow::anyhow;
+use tiledb_common::array::attribute::{FromFillValue, IntoFillValue};
 
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::physical::BitsEq;
-use crate::datatype::PhysicalType;
-use crate::error::{DatatypeErrorKind, Error};
-use crate::filter::list::{FilterList, FilterListData, RawFilterList};
+use crate::error::{DatatypeError, Error};
+use crate::filter::list::{FilterList, RawFilterList};
 use crate::physical_type_go;
 use crate::string::{RawTDBString, TDBString};
 use crate::{Datatype, Result as TileDBResult};
@@ -71,11 +68,11 @@ impl Attribute {
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
-        let mut c_dtype: std::ffi::c_uint = 0;
+        let mut c_dtype: ffi::tiledb_datatype_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_get_type(ctx, *self.raw, &mut c_dtype)
         })?;
-        Datatype::try_from(c_dtype)
+        Ok(Datatype::try_from(c_dtype)?)
     }
 
     pub fn is_nullable(&self) -> TileDBResult<bool> {
@@ -99,11 +96,11 @@ impl Attribute {
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
-        let mut c_num: std::ffi::c_uint = 0;
+        let mut c_num: std::ffi::c_uint = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_get_cell_val_num(ctx, *self.raw, &mut c_num)
         })?;
-        CellValNum::try_from(c_num)
+        Ok(CellValNum::try_from(c_num)?)
     }
 
     pub fn is_var_sized(&self) -> TileDBResult<bool> {
@@ -124,10 +121,11 @@ impl Attribute {
         let mut c_size: u64 = 0;
 
         if !self.datatype()?.is_compatible_type::<F::PhysicalType>() {
-            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
-                tiledb_type: self.datatype()?,
-            }));
+            return Err(Error::Datatype(
+                DatatypeError::physical_type_incompatible::<F::PhysicalType>(
+                    self.datatype()?,
+                ),
+            ));
         }
 
         self.capi_call(|ctx| unsafe {
@@ -148,17 +146,18 @@ impl Attribute {
         let slice: &[F::PhysicalType] = unsafe {
             std::slice::from_raw_parts(c_ptr as *const F::PhysicalType, len)
         };
-        F::from_raw(slice)
+        Ok(F::from_raw(slice)?)
     }
 
     pub fn fill_value_nullable<'a, F: FromFillValue<'a>>(
         &'a self,
     ) -> TileDBResult<(F, bool)> {
         if !self.datatype()?.is_compatible_type::<F::PhysicalType>() {
-            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
-                tiledb_type: self.datatype()?,
-            }));
+            return Err(Error::Datatype(
+                DatatypeError::physical_type_incompatible::<F::PhysicalType>(
+                    self.datatype()?,
+                ),
+            ));
         }
         if !self.is_nullable()? {
             /* see comment in Builder::fill_value_nullability */
@@ -328,7 +327,7 @@ impl Builder {
     }
 
     pub fn cell_val_num(self, num: CellValNum) -> TileDBResult<Self> {
-        let c_num = num.capi() as std::ffi::c_uint;
+        let c_num = std::ffi::c_uint::from(num);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_attribute_set_cell_val_num(ctx, *self.attr.raw, c_num)
         })?;
@@ -376,10 +375,11 @@ impl Builder {
             .datatype()?
             .is_compatible_type::<F::PhysicalType>()
         {
-            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
-                tiledb_type: self.attr.datatype()?,
-            }));
+            return Err(Error::Datatype(
+                DatatypeError::physical_type_incompatible::<F::PhysicalType>(
+                    self.datatype()?,
+                ),
+            ));
         }
 
         let fill: &[F::PhysicalType] = value.to_raw();
@@ -416,10 +416,11 @@ impl Builder {
             .datatype()?
             .is_compatible_type::<F::PhysicalType>()
         {
-            return Err(Error::Datatype(DatatypeErrorKind::TypeMismatch {
-                user_type: std::any::type_name::<F::PhysicalType>().to_owned(),
-                tiledb_type: self.attr.datatype()?,
-            }));
+            return Err(Error::Datatype(
+                DatatypeError::physical_type_incompatible::<F::PhysicalType>(
+                    self.attr.datatype()?,
+                ),
+            ));
         }
 
         let fill: &[F::PhysicalType] = value.to_raw();
@@ -456,156 +457,6 @@ impl Builder {
 
     pub fn build(self) -> Attribute {
         self.attr
-    }
-}
-
-/// Trait for data which can be used as a fill value for an attribute.
-pub trait IntoFillValue {
-    type PhysicalType: PhysicalType;
-
-    /// Get a reference to the raw fill value data.
-    /// The returned slice will be copied into the tiledb core.
-    fn to_raw(&self) -> &[Self::PhysicalType];
-}
-
-/// Trait for data which can be constructed from an attribute's raw fill value.
-pub trait FromFillValue<'a>: IntoFillValue + Sized {
-    /// Construct a value of this type from a raw fill value.
-    fn from_raw(raw: &'a [Self::PhysicalType]) -> TileDBResult<Self>;
-}
-
-impl<T> IntoFillValue for T
-where
-    T: PhysicalType,
-{
-    type PhysicalType = Self;
-
-    fn to_raw(&self) -> &[Self::PhysicalType] {
-        std::slice::from_ref(self)
-    }
-}
-
-impl<T> FromFillValue<'_> for T
-where
-    T: PhysicalType,
-{
-    fn from_raw(raw: &[Self::PhysicalType]) -> TileDBResult<Self> {
-        if raw.len() == 1 {
-            Ok(raw[0])
-        } else {
-            Err(Error::Datatype(DatatypeErrorKind::UnexpectedCellStructure {
-                context: None,
-                found: CellValNum::try_from(raw.len() as u32)
-                    /* this should be safe because core forbids zero-length fill value */
-                    .unwrap(),
-                expected: CellValNum::single()
-            }))
-        }
-    }
-}
-
-impl<T, const K: usize> IntoFillValue for [T; K]
-where
-    T: PhysicalType,
-{
-    type PhysicalType = T;
-
-    fn to_raw(&self) -> &[Self::PhysicalType] {
-        self
-    }
-}
-
-impl<'a, T, const K: usize> FromFillValue<'a> for [T; K]
-where
-    T: PhysicalType,
-{
-    fn from_raw(raw: &'a [Self::PhysicalType]) -> TileDBResult<Self> {
-        Self::try_from(raw).map_err(|_|
-            Error::Datatype(DatatypeErrorKind::UnexpectedCellStructure {
-                context: None,
-                found: CellValNum::try_from(raw.len() as u32)
-                    /* this should be safe because core forbids zero-length fill value */
-                    .unwrap(),
-                expected: {
-                    /* unfortunately no clear way to bound `0 < K < u32::MAX` for a trait impl */
-                    let nz = u32::try_from(K).ok().and_then(NonZeroU32::new)
-                        .expect("`impl FillValue for [T; K] requires 0 < K < u32::MAX");
-                    CellValNum::Fixed(nz)
-                }
-            }))
-    }
-}
-
-impl<T> IntoFillValue for &[T]
-where
-    T: PhysicalType,
-{
-    type PhysicalType = T;
-
-    fn to_raw(&self) -> &[Self::PhysicalType] {
-        self
-    }
-}
-
-impl<'a, T> FromFillValue<'a> for &'a [T]
-where
-    T: PhysicalType,
-{
-    fn from_raw(raw: &'a [Self::PhysicalType]) -> TileDBResult<Self> {
-        Ok(raw)
-    }
-}
-
-impl<T> IntoFillValue for Vec<T>
-where
-    T: PhysicalType,
-{
-    type PhysicalType = T;
-
-    fn to_raw(&self) -> &[Self::PhysicalType] {
-        self.as_slice()
-    }
-}
-
-impl<T> FromFillValue<'_> for Vec<T>
-where
-    T: PhysicalType,
-{
-    fn from_raw(raw: &[Self::PhysicalType]) -> TileDBResult<Self> {
-        Ok(raw.to_vec())
-    }
-}
-
-impl IntoFillValue for &str {
-    type PhysicalType = u8;
-
-    fn to_raw(&self) -> &[Self::PhysicalType] {
-        self.as_bytes()
-    }
-}
-
-impl<'a> FromFillValue<'a> for &'a str {
-    fn from_raw(raw: &'a [Self::PhysicalType]) -> TileDBResult<Self> {
-        std::str::from_utf8(raw).map_err(|e| {
-            Error::Deserialization(
-                "Non-UTF8 fill value".to_string(),
-                anyhow!(e),
-            )
-        })
-    }
-}
-
-impl IntoFillValue for String {
-    type PhysicalType = u8;
-
-    fn to_raw(&self) -> &[Self::PhysicalType] {
-        self.as_bytes()
-    }
-}
-
-impl<'a> FromFillValue<'a> for String {
-    fn from_raw(raw: &'a [Self::PhysicalType]) -> TileDBResult<Self> {
-        <&'a str as FromFillValue<'a>>::from_raw(raw).map(|s| s.to_string())
     }
 }
 
