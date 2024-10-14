@@ -30,7 +30,8 @@ pub mod strategy {
         // NB: this is hardly exhaustive, feel free to add stuff, this is just what has been needed
         // so far
 
-        pub use crate::query::strategy::{Cells, FieldData};
+        pub use cells::{Cells, FieldData};
+
         pub use crate::query::write::strategy::{
             DenseWriteInput, DenseWriteParameters, SparseWriteInput,
             SparseWriteParameters, WriteInput,

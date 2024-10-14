@@ -519,11 +519,11 @@ mod tests {
         context::ObjectType,
         Result as TileDBResult,
     };
-    use tiledb_test_utils::{self, TestArrayUri};
+    use uri::{self, TestArrayUri};
 
     #[test]
     fn test_group_metadata() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -658,7 +658,7 @@ mod tests {
 
     #[test]
     fn test_group_functionality() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -738,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_group_config() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;

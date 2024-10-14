@@ -161,6 +161,15 @@ pub fn prop_attribute(
         .boxed()
 }
 
+impl Arbitrary for AttributeData {
+    type Parameters = Option<Rc<Requirements>>;
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        prop_attribute(params.unwrap_or_default()).boxed()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AttributeValueTree {
     name: String,

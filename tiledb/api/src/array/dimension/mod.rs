@@ -1,5 +1,8 @@
 use std::ops::Deref;
 
+#[cfg(any(test, feature = "serde"))]
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
@@ -155,6 +158,19 @@ impl PartialEq<Dimension> for Dimension {
     }
 }
 
+#[cfg(any(test, feature = "serde"))]
+impl Debug for Dimension {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match tiledb_serde::array::dimension::DimensionData::try_from(self) {
+            Ok(d) => Debug::fmt(&d, f),
+            Err(e) => {
+                let RawDimension::Owned(ptr) = self.raw;
+                write!(f, "<Dimension @ {:?}: serialization error: {}>", ptr, e)
+            }
+        }
+    }
+}
+
 pub struct Builder {
     dim: Dimension,
 }
@@ -257,19 +273,20 @@ impl From<Builder> for Dimension {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(feature = "serde")]
+#[cfg(any(test, feature = "serde"))]
 pub mod serde;
 
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use util::assert_option_subset;
-    use util::option::OptionSubset;
 
-    use crate::array::dimension::*;
+    use tiledb_serde::array::dimension::DimensionData;
+    use utils::assert_option_subset;
+
+    use super::*;
     use crate::filter::list::Builder as FilterListBuilder;
     use crate::filter::*;
-    use crate::{Context, Factory};
+    use crate::Factory;
 
     #[test]
     fn test_dimension_alloc() {

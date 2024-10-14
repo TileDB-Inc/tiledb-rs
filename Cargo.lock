@@ -1320,7 +1320,6 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tiledb-common",
- "tiledb-proc-macro",
  "tiledb-serde",
  "tiledb-sys",
  "tiledb-utils",

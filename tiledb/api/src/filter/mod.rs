@@ -363,12 +363,22 @@ impl PartialEq<Filter> for Filter {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(feature = "serde")]
+#[cfg(any(test, feature = "serde"))]
 pub mod serde;
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use proptest::prelude::*;
+    use tiledb_common::filter::FilterData;
+    use tiledb_serde::filter::strategy::{
+        prop_filter, FilterPipelineStrategy, Requirements,
+    };
+    use utils::assert_option_subset;
+
     use super::*;
+    use crate::Factory;
 
     /// Ensure that we can construct a filter from all options using default settings
     #[test]

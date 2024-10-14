@@ -2,6 +2,9 @@ extern crate anyhow;
 extern crate thiserror;
 extern crate tiledb_sys as ffi;
 
+#[cfg(test)]
+extern crate tiledb_utils as utils;
+
 macro_rules! cstring {
     ($arg:expr) => {
         match std::ffi::CString::new($arg) {

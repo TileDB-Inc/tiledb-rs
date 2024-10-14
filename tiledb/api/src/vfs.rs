@@ -514,7 +514,7 @@ mod tests {
     // There is no cloud service backend for the VFS so we're not using the
     // URI generator facilities in these tests.
     use crate::error::Error;
-    use tiledb_test_utils::uri_generators::TestDirectory;
+    use uri::TestDirectory;
 
     #[test]
     fn vfs_alloc() -> TileDBResult<()> {

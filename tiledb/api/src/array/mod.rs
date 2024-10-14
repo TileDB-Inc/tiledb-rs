@@ -905,16 +905,21 @@ impl ArrayOpener {
 #[cfg(test)]
 pub mod tests {
     use proptest::prelude::*;
-    use tiledb_test_utils::{self, TestArrayUri};
+    use tiledb_common::array::dimension::DimensionConstraints;
+    use tiledb_common::datatype::Datatype;
+    use tiledb_common::metadata::Value;
+    use tiledb_serde::array::enumeration::EnumerationData;
+    use tiledb_serde::array::schema::SchemaData;
+    use uri::{self, TestArrayUri};
+    use utils::assert_option_subset;
+    use utils::option::OptionSubset;
 
     use super::*;
-    use crate::array::dimension::DimensionConstraints;
     use crate::config::CommonOption;
-    use crate::metadata::Value;
     use crate::query::{
         Query, QueryBuilder, QueryLayout, QueryType, WriteBuilder,
     };
-    use crate::{Datatype, Factory};
+    use crate::Factory;
 
     /// Create the array used in the "quickstart_dense" example
     pub fn create_quickstart_dense(
@@ -988,7 +993,7 @@ pub mod tests {
 
     #[test]
     fn test_array_create() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
@@ -1010,7 +1015,7 @@ pub mod tests {
             let schema_in = schema_spec.create(&ctx)
                 .expect("Error constructing arbitrary schema");
 
-            let test_uri = tiledb_test_utils::get_uri_generator().map_err(|e| Error::Other(e.to_string()))?;
+            let test_uri = uri::get_uri_generator().map_err(|e| Error::Other(e.to_string()))?;
             let uri = test_uri.with_path("array").map_err(|e| Error::Other(e.to_string()))?;
 
             Array::create(&ctx, &uri, schema_in)
@@ -1025,7 +1030,7 @@ pub mod tests {
 
     #[test]
     fn test_array_metadata() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -1093,7 +1098,7 @@ pub mod tests {
 
     #[test]
     fn test_mode_metadata() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -1151,7 +1156,7 @@ pub mod tests {
 
     #[test]
     fn arbitrary_metadata() {
-        let test_uri = tiledb_test_utils::get_uri_generator().unwrap();
+        let test_uri = uri::get_uri_generator().unwrap();
         let uri = test_uri.with_path("quickstart_dense").unwrap();
 
         let c: Context = Context::new().unwrap();
@@ -1238,7 +1243,7 @@ pub mod tests {
         // Test advanced consolidation. Based on unit-capi-consolidation.cc.
 
         let ctx: Context = Context::new().unwrap();
-        let array_uri = tiledb_test_utils::get_uri_generator().unwrap();
+        let array_uri = uri::get_uri_generator().unwrap();
         let array_uri = create_simple_dense(&array_uri, &ctx)?;
         write_dense_vector_4_fragments(&ctx, &array_uri, 0).unwrap();
 
@@ -1281,7 +1286,7 @@ pub mod tests {
 
     #[test]
     fn delete() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
@@ -1302,7 +1307,7 @@ pub mod tests {
 
     #[test]
     fn create_enumeration() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let uri = test_uri
@@ -1420,7 +1425,7 @@ pub mod tests {
 
     #[test]
     fn encrypted_array() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let key = "0123456789abcdeF0123456789abcdeF";

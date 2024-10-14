@@ -13,7 +13,7 @@ use proptest::bits::{BitSetLike, VarBitSet};
 
 use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
 
-use self::field::FieldData;
+pub use self::field::FieldData;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cells {

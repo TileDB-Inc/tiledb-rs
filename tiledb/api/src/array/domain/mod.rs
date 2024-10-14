@@ -1,5 +1,8 @@
 use std::ops::Deref;
 
+#[cfg(any(test, feature = "serde"))]
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 use anyhow::anyhow;
 
 use crate::array::dimension::{Dimension, RawDimension};
@@ -213,6 +216,19 @@ impl Iterator for Dimensions<'_> {
     }
 }
 
+#[cfg(any(test, feature = "serde"))]
+impl Debug for Domain {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match tiledb_serde::array::domain::DomainData::try_from(self) {
+            Ok(d) => Debug::fmt(&d, f),
+            Err(e) => {
+                let RawDomain::Owned(ptr) = self.raw;
+                write!(f, "<Domain @ {:?}: serialization error: {}>", ptr, e)
+            }
+        }
+    }
+}
+
 pub struct Builder {
     domain: Domain,
 }
@@ -260,14 +276,14 @@ impl From<Builder> for Domain {
     }
 }
 
-#[cfg(feature = "serde")]
+#[cfg(any(test, feature = "serde"))]
 pub mod serde;
 
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tiledb_utils::assert_option_subset;
-    use tiledb_utils::option::OptionSubset;
+    use tiledb_serde::array::domain::DomainData;
+    use utils::assert_option_subset;
 
     use crate::array::domain::Builder;
     use crate::array::*;
@@ -474,7 +490,7 @@ mod tests {
 
         proptest!(|(domain in any::<DomainData>())| {
             assert_eq!(domain, domain);
-            assert!(domain.option_subset(&domain));
+            assert_option_subset!(domain, domain);
 
             let domain = domain.create(&ctx)
                 .expect("Error constructing arbitrary domain");

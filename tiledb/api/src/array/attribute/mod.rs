@@ -3,6 +3,9 @@ extern crate tiledb_sys as ffi;
 use std::borrow::Borrow;
 use std::ops::Deref;
 
+#[cfg(any(test, feature = "serde"))]
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 use tiledb_common::array::attribute::{FromFillValue, IntoFillValue};
 
 use crate::array::CellValNum;
@@ -288,6 +291,19 @@ impl PartialEq<Attribute> for Attribute {
     }
 }
 
+#[cfg(any(test, feature = "serde"))]
+impl Debug for Attribute {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match tiledb_serde::array::attribute::AttributeData::try_from(self) {
+            Ok(a) => Debug::fmt(&a, f),
+            Err(e) => {
+                let RawAttribute::Owned(ptr) = self.raw;
+                write!(f, "<Attribute @ {:?}: serialization error: {}>", ptr, e)
+            }
+        }
+    }
+}
+
 pub struct Builder {
     attr: Attribute,
 }
@@ -463,7 +479,7 @@ impl Builder {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(feature = "serde")]
+#[cfg(any(test, feature = "serde"))]
 pub mod serde;
 
 #[cfg(test)]

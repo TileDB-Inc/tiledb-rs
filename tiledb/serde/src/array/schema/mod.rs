@@ -31,7 +31,7 @@ pub struct SchemaData {
 }
 
 impl SchemaData {
-    const DEFAULT_SPARSE_TILE_CAPACITY: u64 = 10000;
+    pub const DEFAULT_SPARSE_TILE_CAPACITY: u64 = 10000;
 
     pub fn num_fields(&self) -> usize {
         self.domain.dimension.len() + self.attributes.len()

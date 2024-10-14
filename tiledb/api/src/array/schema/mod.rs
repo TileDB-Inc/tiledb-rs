@@ -2,6 +2,9 @@ use std::borrow::Borrow;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
 
+#[cfg(any(test, feature = "serde"))]
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 use anyhow::anyhow;
 
 use crate::array::attribute::RawAttribute;
@@ -401,6 +404,19 @@ impl PartialEq<Schema> for Schema {
     }
 }
 
+#[cfg(any(test, feature = "serde"))]
+impl Debug for Schema {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match tiledb_serde::array::schema::SchemaData::try_from(self) {
+            Ok(s) => Debug::fmt(&s, f),
+            Err(e) => {
+                let RawSchema::Owned(ptr) = self.raw;
+                write!(f, "<Schema @ {:?}: serialization error: {}>", ptr, e)
+            }
+        }
+    }
+}
+
 pub struct Fields<'a> {
     schema: &'a Schema,
     cursor: usize,
@@ -619,14 +635,18 @@ impl TryFrom<Builder> for Schema {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(feature = "serde")]
+#[cfg(any(test, feature = "serde"))]
 pub mod serde;
 
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tiledb_test_utils::{self, TestArrayUri};
-    use util::option::OptionSubset;
+    use tiledb_serde::array::attribute::AttributeData;
+    use tiledb_serde::array::dimension::DimensionData;
+    use tiledb_serde::array::domain::DomainData;
+    use tiledb_serde::array::schema::SchemaData;
+    use uri::{self, TestArrayUri};
+    use utils::assert_option_subset;
 
     use super::*;
     use crate::array::tests::create_quickstart_dense;
@@ -789,7 +809,7 @@ mod tests {
 
     #[test]
     fn test_load() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
@@ -1277,14 +1297,17 @@ mod tests {
         let build_schema = |array_type: ArrayType| {
             Builder::new(
                 &ctx,
-                ArrayType::Sparse,
+                array_type,
                 DomainBuilder::new(&ctx)?
-                    .add_dimension(DimensionBuilder::new(
-                        &ctx,
-                        "d",
-                        Datatype::StringAscii,
-                        DimensionConstraints::StringAscii,
-                    )?)?
+                    .add_dimension(
+                        DimensionBuilder::new(
+                            &ctx,
+                            "d",
+                            Datatype::StringAscii,
+                            DimensionConstraints::StringAscii,
+                        )?
+                        .build(),
+                    )?
                     .build(),
             )?
             .add_attribute(sample_attribute(&ctx))?
@@ -1306,8 +1329,10 @@ mod tests {
         // creation should fail, StringAscii is not allowed for dense CellValNum::single()
         {
             let e = build_schema(ArrayType::Dense);
-            assert!(matches!(e, Error::LibTileDB(_)));
+            assert!(matches!(e, Err(Error::LibTileDB(_))));
         }
+
+        Ok(())
     }
 
     /// Test that the arbitrary schema construction always succeeds
@@ -1327,7 +1352,7 @@ mod tests {
 
         proptest!(|(schema in any::<SchemaData>())| {
             assert_eq!(schema, schema);
-            assert!(schema.option_subset(&schema));
+            assert_option_subset!(schema, schema);
 
             let schema = schema.create(&ctx)
                 .expect("Error constructing arbitrary schema");

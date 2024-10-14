@@ -1,5 +1,8 @@
 use std::ops::Deref;
 
+#[cfg(any(test, feature = "serde"))]
+use std::fmt::{Debug, Formatter, Result as FmtResult};
+
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::string::{RawTDBString, TDBString};
 use crate::{Datatype, Result as TileDBResult};
@@ -211,6 +214,24 @@ impl PartialEq<Enumeration> for Enumeration {
     }
 }
 
+#[cfg(any(test, feature = "serde"))]
+impl Debug for Enumeration {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match tiledb_serde::array::enumeration::EnumerationData::try_from(self)
+        {
+            Ok(e) => Debug::fmt(&e, f),
+            Err(e) => {
+                let RawEnumeration::Owned(ptr) = self.raw;
+                write!(
+                    f,
+                    "<Enumeration @ {:?}: serialization error: {}>",
+                    ptr, e
+                )
+            }
+        }
+    }
+}
+
 pub struct Builder<'data, 'offsets> {
     context: Context,
     name: String,
@@ -327,11 +348,14 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
     }
 }
 
-#[cfg(feature = "serde")]
+#[cfg(any(test, feature = "serde"))]
 pub mod serde;
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+    use tiledb_serde::array::enumeration::EnumerationData;
+
     use super::*;
     use crate::{Context, Factory};
 

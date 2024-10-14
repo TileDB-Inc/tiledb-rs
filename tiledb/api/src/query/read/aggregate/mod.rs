@@ -497,7 +497,7 @@ impl<T, B: QueryBuilder> AggregateQueryBuilder for AggregateBuilder<T, B> where
 mod tests {
     use std::rc::Rc;
 
-    use tiledb_test_utils::TestArrayUri;
+    use uri::TestArrayUri;
 
     use super::*;
     use crate::tests::prelude::*;
@@ -782,7 +782,7 @@ mod tests {
                 .build()?
         };
 
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let uri = test_uri
@@ -980,7 +980,7 @@ mod tests {
                 .build()?
         };
 
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let uri = test_uri

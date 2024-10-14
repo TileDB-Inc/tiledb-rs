@@ -372,11 +372,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::hash::{DefaultHasher, Hash, Hasher};
-    use std::rc::Rc;
-
-    use itertools::izip;
-    use tiledb_test_utils::{self, TestArrayUri};
+    use uri::{self, TestArrayUri};
 
     use super::*;
     use crate::array::*;
@@ -392,7 +388,7 @@ mod tests {
     fn default_subarray_constrained() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
 
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
         let test_uri =
             crate::array::tests::create_quickstart_dense(&test_uri, &ctx)?;
@@ -440,7 +436,7 @@ mod tests {
     fn default_subarray_unconstrained() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
 
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
         let test_uri = crate::array::tests::create_quickstart_sparse_string(
             &test_uri, &ctx,
@@ -489,7 +485,7 @@ mod tests {
     #[test]
     fn test_dense_ranges() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
         test_ranges(&ctx, ArrayType::Dense, &test_uri)
     }
@@ -497,7 +493,7 @@ mod tests {
     #[test]
     fn test_sparse_ranges() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
         test_ranges(&ctx, ArrayType::Sparse, &test_uri)
     }

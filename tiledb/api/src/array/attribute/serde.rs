@@ -73,10 +73,11 @@ impl Factory for AttributeData {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+    use utils::assert_option_subset;
+
     use super::*;
     use crate::{Context, Factory};
-    use util::assert_option_subset;
-    use util::option::OptionSubset;
 
     /// Test what the default values filled in for `None` with attribute data are.
     /// Mostly because if we write code which does need the default, we're expecting
@@ -117,7 +118,7 @@ mod tests {
     fn attribute_arbitrary() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in prop_attribute(Default::default()))| {
+        proptest!(|(attr in any::<AttributeData>())| {
             attr.create(&ctx).expect("Error constructing arbitrary attribute");
         });
     }
@@ -126,7 +127,7 @@ mod tests {
     fn attribute_eq_reflexivity() {
         let ctx = Context::new().expect("Error creating context");
 
-        proptest!(|(attr in prop_attribute(Default::default()))| {
+        proptest!(|(attr in any::<AttributeData>())| {
             assert_eq!(attr, attr);
             assert_option_subset!(attr, attr);
 

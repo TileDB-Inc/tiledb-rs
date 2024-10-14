@@ -4,11 +4,14 @@
 
 use std::rc::Rc;
 
-use crate::array::{
-    ArrayType, AttributeData, CellValNum, DimensionConstraints, DimensionData,
-    DomainData, SchemaData,
-};
-use crate::{physical_type_go, Datatype};
+use tiledb_common::array::dimension::DimensionConstraints;
+use tiledb_common::array::{ArrayType, CellValNum};
+use tiledb_common::datatype::Datatype;
+use tiledb_common::physical_type_go;
+use tiledb_serde::array::attribute::AttributeData;
+use tiledb_serde::array::dimension::DimensionData;
+use tiledb_serde::array::domain::DomainData;
+use tiledb_serde::array::schema::SchemaData;
 
 pub type FnAcceptDimension = dyn Fn(&Parameters, Datatype) -> bool;
 pub type FnAcceptAttribute =
