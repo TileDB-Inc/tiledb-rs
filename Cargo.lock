@@ -1314,7 +1314,6 @@ dependencies = [
  "thiserror",
  "tiledb-proc-macro",
  "tiledb-sys",
- "tiledb-test-utils",
  "tiledb-utils",
 ]
 
