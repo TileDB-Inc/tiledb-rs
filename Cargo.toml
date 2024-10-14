@@ -2,7 +2,9 @@
 resolver = "2"
 members = [
   "test-utils/cells",
+  "test-utils/signal",
   "test-utils/strategy-ext",
+  "test-utils/uri",
   "tiledb/api",
   "tiledb/common",
   "tiledb/proc-macro",
@@ -10,7 +12,6 @@ members = [
   "tiledb/queries",
   "tiledb/serde",
   "tiledb/sys",
-  "tiledb/test-utils",
   "tiledb/utils",
   "tools/api-coverage"
 ]
@@ -34,11 +35,13 @@ version = "0.1.0"
 anyhow = "1.0"
 arrow = { version = "52.0.0", features = ["prettyprint"] }
 arrow-schema = { version = "52.0.0" }
+cells = { path = "test-utils/cells", version = "0.1.0" }
 num-traits = "0.2"
 paste = "1.0"
 proptest = { version = "1.0.0" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+signal = { path = "test-utils/signal", version = "0.1.0" }
 strategy-ext = { path = "test-utils/strategy-ext", version = "0.1.0" }
 tempfile = { version = "3" }
 thiserror = { version = "1" }
@@ -50,3 +53,4 @@ tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
 tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }
 tiledb-utils = { path = "tiledb/utils", version = "0.1.0" }
 pkg-config = "0.3.30"
+uri = { path = "test-utils/uri", version = "0.1.0" }

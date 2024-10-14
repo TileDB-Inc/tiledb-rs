@@ -1217,6 +1217,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "signal"
+version = "0.1.0"
+dependencies = [
+ "nix",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1303,6 +1310,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "cells",
  "itertools",
  "num-traits",
  "paste",
@@ -1315,8 +1323,8 @@ dependencies = [
  "tiledb-proc-macro",
  "tiledb-serde",
  "tiledb-sys",
- "tiledb-test-utils",
  "tiledb-utils",
+ "uri",
 ]
 
 [[package]]
@@ -1378,16 +1386,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tiledb-test-utils"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nix",
- "paste",
- "tempfile",
-]
-
-[[package]]
 name = "tiledb-utils"
 version = "0.1.0"
 dependencies = [
@@ -1423,6 +1421,14 @@ name = "unicode-width"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
+
+[[package]]
+name = "uri"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+]
 
 [[package]]
 name = "utf8parse"
