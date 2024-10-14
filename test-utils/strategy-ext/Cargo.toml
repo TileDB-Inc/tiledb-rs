@@ -1,0 +1,8 @@
+[package]
+name = "strategy-ext"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+proptest = { workspace = true }

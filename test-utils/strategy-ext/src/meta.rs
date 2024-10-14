@@ -5,13 +5,13 @@ use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::{Config as ProptestConfig, TestRunner};
 
-use crate::strategy::sequence::SequenceValueTree;
+use crate::sequence::SequenceValueTree;
 
 /// Strategy to create [ValueTree] objects for a wrapped [Strategy].
 ///
 /// ```
 /// # use proptest::prelude::*;
-/// # use tiledb_test_utils::strategy::meta::ValueTreeStrategy;
+/// # use strategy_ext::meta::ValueTreeStrategy;
 ///
 /// proptest! {
 ///     #[test]

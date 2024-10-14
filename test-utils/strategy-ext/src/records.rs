@@ -416,8 +416,8 @@ enum ShrinkStep {
 mod tests {
     use super::*;
 
-    use crate::strategy::meta::*;
-    use crate::strategy::StrategyExt;
+    use crate::meta::*;
+    use crate::StrategyExt;
 
     #[test]
     fn shrink_convergence_u64() {

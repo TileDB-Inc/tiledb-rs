@@ -2,7 +2,7 @@ extern crate proptest;
 
 #[cfg(feature = "signal")]
 pub mod signal;
-pub mod strategy;
+
 pub mod uri_generators;
 
 #[cfg(feature = "signal")]

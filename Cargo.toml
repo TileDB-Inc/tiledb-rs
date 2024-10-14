@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "test-utils/strategy-ext",
   "tiledb/api",
   "tiledb/common",
   "tiledb/proc-macro",

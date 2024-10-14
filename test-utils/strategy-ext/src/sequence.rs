@@ -61,8 +61,8 @@ mod tests {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::strategy::meta::{ShrinkAction, ShrinkSequenceStrategy};
-    use crate::strategy::StrategyExt;
+    use crate::meta::{ShrinkAction, ShrinkSequenceStrategy};
+    use crate::StrategyExt;
 
     proptest! {
         /// Ensure that the sequence strategy always returns a subsequence
