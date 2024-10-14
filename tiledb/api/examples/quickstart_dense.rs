@@ -130,7 +130,8 @@ fn read_array() -> TileDBResult<()> {
     for value in results {
         print!("{} ", value)
     }
-    Ok(println!())
+    println!();
+    Ok(())
 }
 
 fn main() {
