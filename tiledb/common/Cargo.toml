@@ -15,13 +15,15 @@ thiserror = { workspace = true }
 tiledb-proc-macro = { workspace = true, optional = true }
 tiledb-sys = { workspace = true }
 tiledb-utils = { workspace = true, optional = true }
+tiledb-test-utils = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+tiledb-test-utils = { workspace = true }
 
 [features]
 default = []
 arrow = ["dep:arrow-schema"]
 option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils"]
-proptest-strategies = ["dep:proptest"]
+proptest-strategies = ["dep:proptest", "dep:tiledb-test-utils"]
 serde = ["dep:serde", "dep:serde_json"]

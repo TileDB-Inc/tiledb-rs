@@ -582,4 +582,98 @@ mod tests {
             _ => unreachable!(),
         }
     }
+
+    #[test]
+    /// Test that the arbitrary filter construction always succeeds
+    fn filter_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(filt in FilterPipelineStrategy::default())| {
+            filt.create(&ctx).expect("Error constructing arbitrary filter");
+        });
+    }
+
+    /// Test that the arbitrary filter construction always succeeds with a
+    /// supplied datatype
+    #[test]
+    fn filter_arbitrary_for_datatype() {
+        let ctx = Context::new().expect("Error creating context");
+
+        let strat = any::<Datatype>().prop_flat_map(|dt| {
+            (
+                Just(dt),
+                prop_filter(Rc::new(Requirements {
+                    input_datatype: Some(dt),
+                    ..Default::default()
+                })),
+            )
+        });
+
+        proptest!(|((dt, filt) in strat)| {
+            let filt = filt.create(&ctx)
+                .expect("Error constructing arbitrary filter");
+
+            let filt_data = filt.filter_data()
+                .expect("Error reading filter data");
+            assert!(filt_data.transform_datatype(&dt).is_some());
+        });
+    }
+
+    #[test]
+    /// Test that the arbitrary filter list construction always succeeds
+    fn filter_list_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(fl in FilterPipelineStrategy::default())| {
+            fl.create(&ctx).expect("Error constructing arbitrary filter list");
+        });
+    }
+
+    #[test]
+    /// Test that the arbitrary filter list construction always succeeds with a
+    /// supplied datatype
+    fn filter_list_arbitrary_for_datatype() {
+        let ctx = Context::new().expect("Error creating context");
+
+        let strat = any::<Datatype>().prop_flat_map(|dt| {
+            let req = Rc::new(Requirements {
+                input_datatype: Some(dt),
+                ..Default::default()
+            });
+            (Just(dt), FilterPipelineStrategy::new(req))
+        });
+
+        proptest!(|((dt, fl) in strat)| {
+            let fl = fl.create(&ctx)
+                .expect("Error constructing arbitrary filter");
+
+            let mut current_dt = dt;
+
+            let fl = fl.to_vec().expect("Error collecting filters");
+            for (fi, f) in fl.iter().enumerate() {
+                if let Some(next_dt) = f.filter_data()
+                    .expect("Error reading filter data")
+                    .transform_datatype(&current_dt) {
+                        current_dt = next_dt
+                } else {
+                    panic!("Constructed invalid filter list for datatype {}: \
+                        {:?}, invalid at position {}", dt, fl, fi)
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn filter_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(pipeline in FilterPipelineStrategy::default())| {
+            assert_eq!(pipeline, pipeline);
+            assert_option_subset!(pipeline, pipeline);
+
+            let pipeline = pipeline.create(&ctx)
+                .expect("Error constructing arbitrary filter");
+            assert_eq!(pipeline, pipeline);
+        });
+    }
 }

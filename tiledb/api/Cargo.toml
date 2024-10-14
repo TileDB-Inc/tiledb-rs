@@ -19,13 +19,14 @@ serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tiledb-common = { workspace = true }
 tiledb-proc-macro = { workspace = true }
-tiledb-serde = { workspace = true, optional = true }
+tiledb-serde = { workspace = true, optional = true, features = ["serde"] }
 tiledb-sys = { workspace = true }
 tiledb-test-utils = { workspace = true, optional = true }
 
 [dev-dependencies]
 num-traits = { workspace = true }
 proptest = { workspace = true }
+tiledb-serde = { workspace = true, features = ["proptest-strategies", "option-subset", "serde"] }
 tiledb-test-utils = { workspace = true }
 
 [build-dependencies]

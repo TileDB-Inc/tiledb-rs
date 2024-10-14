@@ -2,10 +2,10 @@ use std::cmp::Ordering;
 
 use proptest::collection::vec;
 use proptest::prelude::*;
+use tiledb_common::datatype::{Datatype, PhysicalType};
+use tiledb_common::physical_type_go;
 
-use crate::array::EnumerationData;
-use crate::datatype::PhysicalType;
-use crate::{physical_type_go, Datatype};
+use crate::array::enumeration::EnumerationData;
 
 pub fn prop_enumeration_name() -> impl Strategy<Value = String> {
     proptest::string::string_regex("[a-zA-Z0-9_]+")
@@ -109,32 +109,5 @@ impl Arbitrary for EnumerationData {
                 )
             })
             .boxed()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{Context, Factory};
-
-    /// Test that the arbitrary enumeration construction always succeeds
-    #[test]
-    fn enumeration_arbitrary() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(enmr in any::<EnumerationData>())| {
-            enmr.create(&ctx).expect("Error constructing arbitrary enumeration");
-        });
-    }
-
-    #[test]
-    fn enumeration_eq_reflexivity() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(enmr in any::<EnumerationData>())| {
-            let enmr = enmr.create(&ctx)
-                .expect("Error constructing arbitrary enumeration");
-            assert_eq!(enmr, enmr);
-        });
     }
 }

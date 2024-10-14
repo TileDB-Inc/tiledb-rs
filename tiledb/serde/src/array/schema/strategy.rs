@@ -1,10 +1,12 @@
 use std::collections::HashSet;
-use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
+use tiledb_common::array::{ArrayType, CellOrder, CellValNum, TileOrder};
+use tiledb_common::datatype::Datatype;
+use tiledb_common::filter::FilterData;
 use tiledb_test_utils::strategy::records::RecordsValueTree;
 use tiledb_test_utils::strategy::StrategyExt;
 
@@ -12,18 +14,63 @@ use crate::array::attribute::strategy::{
     prop_attribute, AttributeValueTree, Requirements as AttributeRequirements,
     StrategyContext as AttributeContext,
 };
+use crate::array::attribute::AttributeData;
+use crate::array::dimension::DimensionData;
 use crate::array::domain::strategy::{
     DomainValueTree, Requirements as DomainRequirements,
 };
-use crate::array::{
-    schema::FieldData, ArrayType, AttributeData, CellOrder, CellValNum,
-    DimensionData, DomainData, SchemaData, TileOrder,
-};
-use crate::filter::list::FilterListData;
+use crate::array::domain::DomainData;
+use crate::array::schema::{FieldData, SchemaData};
 use crate::filter::strategy::{
-    FilterPipelineValueTree, Requirements as FilterRequirements,
-    StrategyContext as FilterContext,
+    FilterPipelineStrategy, FilterPipelineValueTree,
+    Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
+
+#[derive(Clone, Debug)]
+pub enum FieldStrategyDatatype {
+    Datatype(Datatype, CellValNum),
+    SchemaField(FieldData),
+}
+
+pub enum FieldValueStrategy {
+    UInt8(BoxedStrategy<u8>),
+    UInt16(BoxedStrategy<u16>),
+    UInt32(BoxedStrategy<u32>),
+    UInt64(BoxedStrategy<u64>),
+    Int8(BoxedStrategy<i8>),
+    Int16(BoxedStrategy<i16>),
+    Int32(BoxedStrategy<i32>),
+    Int64(BoxedStrategy<i64>),
+    Float32(BoxedStrategy<f32>),
+    Float64(BoxedStrategy<f64>),
+}
+
+macro_rules! field_value_strategy {
+    ($($variant:ident : $T:ty),+) => {
+        $(
+            impl From<BoxedStrategy<$T>> for FieldValueStrategy {
+                fn from(value: BoxedStrategy<$T>) -> Self {
+                    Self::$variant(value)
+                }
+            }
+
+            impl TryFrom<FieldValueStrategy> for BoxedStrategy<$T> {
+                type Error = ();
+                fn try_from(value: FieldValueStrategy) -> Result<Self, Self::Error> {
+                    if let FieldValueStrategy::$variant(b) = value {
+                        Ok(b)
+                    } else {
+                        Err(())
+                    }
+                }
+            }
+        )+
+    }
+}
+
+field_value_strategy!(UInt8 : u8, UInt16 : u16, UInt32 : u32, UInt64 : u64);
+field_value_strategy!(Int8 : i8, Int16 : i16, Int32 : i32, Int64 : i64);
+field_value_strategy!(Float32 : f32, Float64 : f64);
 
 #[derive(Clone)]
 pub struct Requirements {
@@ -73,7 +120,7 @@ impl Default for Requirements {
 pub fn prop_coordinate_filters(
     domain: &DomainData,
     params: &Requirements,
-) -> impl Strategy<Value = FilterListData> {
+) -> impl Strategy<Value = Vec<FilterData>> {
     let req = FilterRequirements {
         context: Some(FilterContext::SchemaCoordinates(Rc::new(
             domain.clone(),
@@ -84,7 +131,7 @@ pub fn prop_coordinate_filters(
             .map(|rc| rc.as_ref().clone())
             .unwrap_or_default()
     };
-    any_with::<FilterListData>(Rc::new(req))
+    FilterPipelineStrategy::new(Rc::new(req))
 }
 
 fn prop_schema_for_domain(
@@ -137,8 +184,8 @@ fn prop_schema_for_domain(
             params.num_attributes.clone()
         ),
         prop_coordinate_filters(&domain, params.as_ref()),
-        any_with::<FilterListData>(offsets_filters_requirements),
-        any_with::<FilterListData>(validity_filters_requirements)
+        FilterPipelineStrategy::new(offsets_filters_requirements),
+        FilterPipelineStrategy::new(validity_filters_requirements)
     )
         .prop_map(
             move |(
@@ -391,33 +438,6 @@ impl ValueTree for SchemaValueTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Context, Factory};
-    use util::option::OptionSubset;
-
-    /// Test that the arbitrary schema construction always succeeds
-    #[test]
-    fn schema_arbitrary() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(maybe_schema in any::<SchemaData>())| {
-            maybe_schema.create(&ctx)
-                .expect("Error constructing arbitrary schema");
-        });
-    }
-
-    #[test]
-    fn schema_eq_reflexivity() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(schema in any::<SchemaData>())| {
-            assert_eq!(schema, schema);
-            assert!(schema.option_subset(&schema));
-
-            let schema = schema.create(&ctx)
-                .expect("Error constructing arbitrary schema");
-            assert_eq!(schema, schema);
-        });
-    }
 
     /// Runs one instance of [schema_value_tree]
     fn test_schema_value_tree(mut vt: SchemaValueTree) {

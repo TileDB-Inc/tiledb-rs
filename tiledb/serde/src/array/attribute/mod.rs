@@ -9,6 +9,9 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::metadata::Value as MetadataValue;
 
+#[cfg(any(test, feature = "proptest-strategies"))]
+use crate::array::schema::strategy::FieldValueStrategy;
+
 #[derive(Clone, Default, Debug, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
@@ -33,11 +36,13 @@ pub struct FillData {
 #[cfg(any(test, feature = "proptest-strategies"))]
 impl AttributeData {
     /// Returns a strategy for generating values of this attribute's type.
-    pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
-        use crate::query::strategy::FieldValueStrategy;
+    pub fn value_strategy(&self) -> FieldValueStrategy {
         use proptest::prelude::*;
+        use tiledb_common::filter::{
+            CompressionData, CompressionType, FilterData,
+        };
+        use tiledb_common::physical_type_go;
 
-        use crate::filter::{CompressionData, CompressionType, FilterData};
         let has_double_delta = self.filters.iter().any(|f| {
             matches!(
                 f,

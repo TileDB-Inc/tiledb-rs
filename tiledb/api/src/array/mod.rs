@@ -1404,11 +1404,17 @@ pub mod tests {
     fn encryption_type_capi() {
         assert_eq!(
             Encryption::Unencrypted,
-            Encryption::try_from(Encryption::Unencrypted.capi_enum()).unwrap()
+            Encryption::try_from(ffi::tiledb_encryption_type_t::from(
+                Encryption::Unencrypted
+            ))
+            .unwrap()
         );
         assert_eq!(
             Encryption::Aes256Gcm,
-            Encryption::try_from(Encryption::Aes256Gcm.capi_enum()).unwrap()
+            Encryption::try_from(ffi::tiledb_encryption_type_t::from(
+                Encryption::Aes256Gcm
+            ))
+            .unwrap()
         );
     }
 

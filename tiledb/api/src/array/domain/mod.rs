@@ -267,10 +267,11 @@ pub mod serde;
 mod tests {
     use proptest::prelude::*;
     use tiledb_utils::assert_option_subset;
+    use tiledb_utils::option::OptionSubset;
 
     use crate::array::domain::Builder;
     use crate::array::*;
-    use crate::{Datatype, Factory};
+    use crate::{Context, Datatype, Factory};
 
     #[test]
     fn test_add_dimension() {
@@ -454,5 +455,30 @@ mod tests {
         assert_eq!(domain_d1_float64, domain_d1_float64);
         assert_ne!(domain_d0, domain_d1_float64);
         assert_ne!(domain_d1_int32, domain_d1_float64);
+    }
+
+    /// Test that the arbitrary domain construction always succeeds
+    #[test]
+    fn domain_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(maybe_domain in any::<DomainData>())| {
+            maybe_domain.create(&ctx)
+                .expect("Error constructing arbitrary domain");
+        });
+    }
+
+    #[test]
+    fn domain_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(domain in any::<DomainData>())| {
+            assert_eq!(domain, domain);
+            assert!(domain.option_subset(&domain));
+
+            let domain = domain.create(&ctx)
+                .expect("Error constructing arbitrary domain");
+            assert_eq!(domain, domain);
+        });
     }
 }

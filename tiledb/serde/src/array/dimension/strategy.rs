@@ -5,21 +5,22 @@ use num_traits::{Bounded, FromPrimitive, Num};
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
 
+use tiledb_common::array::ArrayType;
+use tiledb_common::datatype::physical::BitsOrd;
+use tiledb_common::datatype::strategy::*;
+use tiledb_common::datatype::Datatype;
+use tiledb_common::physical_type_go;
 use tiledb_test_utils::strategy::StrategyExt;
 use tiledb_utils::numbers::{
     NextDirection, NextNumericValue, SmallestPositiveValue,
 };
 
 use crate::array::dimension::DimensionConstraints;
-use crate::array::{ArrayType, DimensionData};
-use crate::datatype::physical::BitsOrd;
-use crate::datatype::strategy::*;
-use crate::filter::list::FilterListData;
+use crate::array::dimension::DimensionData;
 use crate::filter::strategy::{
-    FilterPipelineValueTree, Requirements as FilterRequirements,
-    StrategyContext as FilterContext,
+    FilterPipelineStrategy, FilterPipelineValueTree,
+    Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
-use crate::{physical_type_go, Datatype};
 
 #[derive(Clone)]
 pub struct Requirements {
@@ -213,7 +214,7 @@ fn prop_dimension_for_datatype(
                 .map(|rc| rc.as_ref().clone())
                 .unwrap_or_default()
         };
-        let filters = any_with::<FilterListData>(Rc::new(filter_req));
+        let filters = FilterPipelineStrategy::new(Rc::new(filter_req));
         (prop_dimension_name(), Just(constraints), filters)
             .prop_map(move |(name, constraints, filters)| DimensionData {
                 name,
@@ -315,45 +316,17 @@ impl ValueTree for DimensionValueTree {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use proptest::prelude::*;
+    use proptest::strategy::Strategy;
+    use tiledb_common::range::{Range, SingleValueRange};
+
+    use super::Requirements;
     use super::*;
-    use crate::{Context, Factory};
-    use util::assert_option_subset;
-    use util::option::OptionSubset;
-
-    /// Test that the arbitrary dimension construction always succeeds
-    #[test]
-    fn test_prop_dimension() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(maybe_dimension in any::<DimensionData>())| {
-            maybe_dimension.create(&ctx)
-                .expect("Error constructing arbitrary dimension");
-        });
-    }
-
-    #[test]
-    fn dimension_eq_reflexivity() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(dimension in any::<DimensionData>())| {
-            assert_eq!(dimension, dimension);
-            assert_option_subset!(dimension, dimension);
-
-            let dimension = dimension
-                .create(&ctx).expect("Error constructing arbitrary attribute");
-            assert_eq!(dimension, dimension);
-        });
-    }
 
     #[test]
     fn subarray_strategy_dense() {
-        use super::strategy::Requirements;
-        use crate::array::ArrayType;
-        use crate::range::{Range, SingleValueRange};
-        use proptest::prelude::*;
-        use proptest::strategy::Strategy;
-        use std::rc::Rc;
-
         let req = Requirements {
             array_type: Some(ArrayType::Dense),
             ..Default::default()

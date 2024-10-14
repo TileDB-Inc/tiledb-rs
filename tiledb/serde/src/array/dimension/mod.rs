@@ -9,6 +9,9 @@ use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 
+#[cfg(any(test, feature = "proptest-strategies"))]
+use crate::array::schema::strategy::FieldValueStrategy;
+
 /// Encapsulation of data needed to construct a Dimension
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
@@ -34,9 +37,9 @@ impl DimensionData {
 impl DimensionData {
     /// Returns a strategy for generating values of this dimension's type
     /// which fall within the domain of this dimension.
-    pub fn value_strategy(&self) -> crate::query::strategy::FieldValueStrategy {
-        use crate::query::strategy::FieldValueStrategy;
+    pub fn value_strategy(&self) -> FieldValueStrategy {
         use proptest::prelude::*;
+        use tiledb_common::dimension_constraints_go;
 
         dimension_constraints_go!(
             self.constraints,
@@ -61,11 +64,12 @@ impl DimensionData {
     pub fn subarray_strategy(
         &self,
         cell_bound: Option<usize>,
-    ) -> Option<proptest::strategy::BoxedStrategy<crate::range::Range>> {
+    ) -> Option<proptest::strategy::BoxedStrategy<tiledb_common::range::Range>>
+    {
         use proptest::prelude::Just;
         use proptest::strategy::Strategy;
-
-        use crate::range::{Range, VarValueRange};
+        use tiledb_common::dimension_constraints_go;
+        use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
 
         dimension_constraints_go!(
             self.constraints,

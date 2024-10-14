@@ -3,13 +3,14 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
+use tiledb_common::array::{ArrayType, CellValNum};
+use tiledb_common::datatype::strategy::DatatypeContext;
+use tiledb_common::datatype::Datatype;
+use tiledb_common::dimension_constraints_go;
+use tiledb_common::filter::*;
 use tiledb_test_utils::strategy::sequence::SequenceValueTree;
 
-use crate::array::{ArrayType, CellValNum, DomainData};
-use crate::datatype::strategy::DatatypeContext;
-use crate::dimension_constraints_go;
-use crate::filter::list::FilterListData;
-use crate::filter::*;
+use crate::array::domain::DomainData;
 
 #[derive(Clone, Debug)]
 pub enum StrategyContext {
@@ -469,18 +470,18 @@ pub struct FilterPipelineValueTree {
 }
 
 impl FilterPipelineValueTree {
-    pub fn new(init: FilterListData) -> Self {
+    pub fn new(init: Vec<FilterData>) -> Self {
         FilterPipelineValueTree {
-            inner: SequenceValueTree::new(init.into_inner()),
+            inner: SequenceValueTree::new(init),
         }
     }
 }
 
 impl ValueTree for FilterPipelineValueTree {
-    type Value = FilterListData;
+    type Value = Vec<FilterData>;
 
     fn current(&self) -> Self::Value {
-        FilterListData::from(self.inner.current())
+        self.inner.current()
     }
 
     fn simplify(&mut self) -> bool {
@@ -492,14 +493,20 @@ impl ValueTree for FilterPipelineValueTree {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FilterPipelineStrategy {
     requirements: Rc<Requirements>,
 }
 
+impl FilterPipelineStrategy {
+    pub fn new(requirements: Rc<Requirements>) -> Self {
+        Self { requirements }
+    }
+}
+
 impl Strategy for FilterPipelineStrategy {
     type Tree = FilterPipelineValueTree;
-    type Value = FilterListData;
+    type Value = Vec<FilterData>;
 
     fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
         const MIN_FILTERS: usize = 0;
@@ -537,112 +544,20 @@ impl Strategy for FilterPipelineStrategy {
                 filters.push(f);
             }
 
-            filters.into_iter().collect::<FilterListData>()
+            filters.into_iter().collect::<Vec<FilterData>>()
         };
 
         Ok(FilterPipelineValueTree::new(initial_pipeline))
     }
 }
 
-impl Arbitrary for FilterListData {
-    type Parameters = Rc<Requirements>;
-    type Strategy = FilterPipelineStrategy;
-
-    fn arbitrary_with(args: Self::Parameters) -> Self::Strategy {
-        FilterPipelineStrategy {
-            requirements: Rc::clone(&args),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Factory;
-    use util::assert_option_subset;
-
-    #[test]
-    /// Test that the arbitrary filter construction always succeeds
-    fn filter_arbitrary() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(filt in any::<FilterListData>())| {
-            filt.create(&ctx).expect("Error constructing arbitrary filter");
-        });
-    }
-
-    /// Test that the arbitrary filter construction always succeeds with a
-    /// supplied datatype
-    #[test]
-    fn filter_arbitrary_for_datatype() {
-        let ctx = Context::new().expect("Error creating context");
-
-        let strat = any::<Datatype>().prop_flat_map(|dt| {
-            (
-                Just(dt),
-                prop_filter(Rc::new(Requirements {
-                    input_datatype: Some(dt),
-                    ..Default::default()
-                })),
-            )
-        });
-
-        proptest!(|((dt, filt) in strat)| {
-            let filt = filt.create(&ctx)
-                .expect("Error constructing arbitrary filter");
-
-            let filt_data = filt.filter_data()
-                .expect("Error reading filter data");
-            assert!(filt_data.transform_datatype(&dt).is_some());
-        });
-    }
-
-    #[test]
-    /// Test that the arbitrary filter list construction always succeeds
-    fn filter_list_arbitrary() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(fl in any::<FilterListData>())| {
-            fl.create(&ctx).expect("Error constructing arbitrary filter list");
-        });
-    }
-
-    #[test]
-    /// Test that the arbitrary filter list construction always succeeds with a
-    /// supplied datatype
-    fn filter_list_arbitrary_for_datatype() {
-        let ctx = Context::new().expect("Error creating context");
-
-        let strat = any::<Datatype>().prop_flat_map(|dt| {
-            let req = Rc::new(Requirements {
-                input_datatype: Some(dt),
-                ..Default::default()
-            });
-            (Just(dt), any_with::<FilterListData>(req))
-        });
-
-        proptest!(|((dt, fl) in strat)| {
-            let fl = fl.create(&ctx)
-                .expect("Error constructing arbitrary filter");
-
-            let mut current_dt = dt;
-
-            let fl = fl.to_vec().expect("Error collecting filters");
-            for (fi, f) in fl.iter().enumerate() {
-                if let Some(next_dt) = f.filter_data()
-                    .expect("Error reading filter data")
-                    .transform_datatype(&current_dt) {
-                        current_dt = next_dt
-                } else {
-                    panic!("Constructed invalid filter list for datatype {}: \
-                        {:?}, invalid at position {}", dt, fl, fi)
-                }
-            }
-        });
-    }
 
     /// Test that ScaleFloat serialization is invertible, because floating
     /// point sadness
+    #[cfg(feature = "serde")]
     #[test]
     fn filter_scalefloat_serde() {
         proptest!(|(scalefloat_in in prop_scalefloat())| {
@@ -654,24 +569,10 @@ mod tests {
         });
     }
 
-    #[test]
-    fn filter_eq_reflexivity() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(pipeline in any::<FilterListData>())| {
-            assert_eq!(pipeline, pipeline);
-            assert_option_subset!(pipeline, pipeline);
-
-            let pipeline = pipeline.create(&ctx)
-                .expect("Error constructing arbitrary filter");
-            assert_eq!(pipeline, pipeline);
-        });
-    }
-
     /// Ensure that filter pipelines can shrink
     #[test]
     fn pipeline_shrinking() {
-        let strat = any::<FilterListData>();
+        let strat = FilterPipelineStrategy::default();
 
         let mut runner =
             proptest::test_runner::TestRunner::new(Default::default());

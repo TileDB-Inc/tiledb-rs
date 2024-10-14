@@ -262,9 +262,14 @@ pub mod serde;
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+    use util::assert_option_subset;
+    use util::option::OptionSubset;
+
     use crate::array::dimension::*;
     use crate::filter::list::Builder as FilterListBuilder;
     use crate::filter::*;
+    use crate::{Context, Factory};
 
     #[test]
     fn test_dimension_alloc() {
@@ -502,5 +507,30 @@ mod tests {
             assert_eq!(cmp, cmp);
             assert_ne!(base, cmp);
         }
+    }
+
+    /// Test that the arbitrary dimension construction always succeeds
+    #[test]
+    fn test_prop_dimension() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(maybe_dimension in any::<DimensionData>())| {
+            maybe_dimension.create(&ctx)
+                .expect("Error constructing arbitrary dimension");
+        });
+    }
+
+    #[test]
+    fn dimension_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(dimension in any::<DimensionData>())| {
+            assert_eq!(dimension, dimension);
+            assert_option_subset!(dimension, dimension);
+
+            let dimension = dimension
+                .create(&ctx).expect("Error constructing arbitrary attribute");
+            assert_eq!(dimension, dimension);
+        });
     }
 }

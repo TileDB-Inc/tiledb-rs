@@ -333,6 +333,7 @@ pub mod serde;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Context, Factory};
 
     #[test]
     fn basic_build() -> TileDBResult<()> {
@@ -516,5 +517,26 @@ mod tests {
         assert_ne!(enmr1, enmr2);
 
         Ok(())
+    }
+
+    /// Test that the arbitrary enumeration construction always succeeds
+    #[test]
+    fn enumeration_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(enmr in any::<EnumerationData>())| {
+            enmr.create(&ctx).expect("Error constructing arbitrary enumeration");
+        });
+    }
+
+    #[test]
+    fn enumeration_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(enmr in any::<EnumerationData>())| {
+            let enmr = enmr.create(&ctx)
+                .expect("Error constructing arbitrary enumeration");
+            assert_eq!(enmr, enmr);
+        });
     }
 }

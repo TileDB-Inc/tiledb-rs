@@ -624,7 +624,9 @@ pub mod serde;
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
     use tiledb_test_utils::{self, TestArrayUri};
+    use util::option::OptionSubset;
 
     use super::*;
     use crate::array::tests::create_quickstart_dense;
@@ -634,6 +636,7 @@ mod tests {
     use crate::filter::{
         CompressionData, CompressionType, FilterData, FilterListBuilder,
     };
+    use crate::{Context, Factory};
 
     fn sample_attribute(c: &Context) -> Attribute {
         AttributeBuilder::new(c, "a1", Datatype::Int32)
@@ -1285,7 +1288,7 @@ mod tests {
                     .build(),
             )?
             .add_attribute(sample_attribute(&ctx))?
-            .build()?
+            .build()
         };
 
         // creation should succeed, StringAscii is allowed for sparse CellValNum::Var
@@ -1305,5 +1308,97 @@ mod tests {
             let e = build_schema(ArrayType::Dense);
             assert!(matches!(e, Error::LibTileDB(_)));
         }
+    }
+
+    /// Test that the arbitrary schema construction always succeeds
+    #[test]
+    fn schema_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(maybe_schema in any::<SchemaData>())| {
+            maybe_schema.create(&ctx)
+                .expect("Error constructing arbitrary schema");
+        });
+    }
+
+    #[test]
+    fn schema_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(schema in any::<SchemaData>())| {
+            assert_eq!(schema, schema);
+            assert!(schema.option_subset(&schema));
+
+            let schema = schema.create(&ctx)
+                .expect("Error constructing arbitrary schema");
+            assert_eq!(schema, schema);
+        });
+    }
+
+    /// Test what the default values filled in for `None` with schema data are.
+    /// Mostly because if we write code which does need the default, we're expecting
+    /// to match core and need to be notified if something changes or we did something
+    /// wrong.
+    #[test]
+    fn test_defaults() {
+        let ctx = Context::new().unwrap();
+
+        let dense_spec = SchemaData {
+            array_type: ArrayType::Dense,
+            domain: DomainData {
+                dimension: vec![DimensionData {
+                    name: "d".to_string(),
+                    datatype: Datatype::Int32,
+                    constraints: DimensionConstraints::Int32([0, 100], None),
+                    filters: None,
+                }],
+            },
+            attributes: vec![AttributeData {
+                name: "a".to_string(),
+                datatype: Datatype::Int32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        let dense_schema = dense_spec
+            .create(&ctx)
+            .expect("Error creating schema from mostly-default settings");
+
+        assert_eq!(ArrayType::Dense, dense_schema.array_type().unwrap());
+        assert_eq!(10000, dense_schema.capacity().unwrap());
+        assert_eq!(CellOrder::RowMajor, dense_schema.cell_order().unwrap());
+        assert_eq!(TileOrder::RowMajor, dense_schema.tile_order().unwrap());
+        assert!(!dense_schema.allows_duplicates().unwrap());
+
+        let sparse_spec = SchemaData {
+            array_type: ArrayType::Sparse,
+            domain: DomainData {
+                dimension: vec![DimensionData {
+                    name: "d".to_string(),
+                    datatype: Datatype::Int32,
+                    constraints: DimensionConstraints::Int32([0, 100], None),
+                    filters: None,
+                }],
+            },
+            attributes: vec![AttributeData {
+                name: "a".to_string(),
+                datatype: Datatype::Int32,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let sparse_schema = sparse_spec
+            .create(&ctx)
+            .expect("Error creating schema from mostly-default settings");
+
+        assert_eq!(ArrayType::Sparse, sparse_schema.array_type().unwrap());
+        assert_eq!(
+            SchemaData::DEFAULT_SPARSE_TILE_CAPACITY,
+            sparse_schema.capacity().unwrap()
+        );
+        assert_eq!(CellOrder::RowMajor, sparse_schema.cell_order().unwrap());
+        assert_eq!(TileOrder::RowMajor, sparse_schema.tile_order().unwrap());
+        assert!(!sparse_schema.allows_duplicates().unwrap());
     }
 }

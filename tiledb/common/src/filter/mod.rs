@@ -1,8 +1,5 @@
 mod webp;
 
-#[cfg(feature = "proptest-strategies")]
-pub mod strategy;
-
 use thiserror::Error;
 
 #[cfg(feature = "option-subset")]

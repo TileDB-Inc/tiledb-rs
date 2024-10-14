@@ -831,7 +831,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::UInt64,
+                        logical_type: Datatype::UInt64,
                         ..
                     }
                 ))
@@ -842,7 +842,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::UInt64,
+                        logical_type: Datatype::UInt64,
                         ..
                     }
                 ))
@@ -857,7 +857,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::UInt64,
+                        logical_type: Datatype::UInt64,
                         ..
                     }
                 ))
@@ -869,7 +869,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::UInt64,
+                        logical_type: Datatype::UInt64,
                         ..
                     }
                 ))
@@ -883,7 +883,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::Int32,
+                        logical_type: Datatype::Int32,
                         ..
                     }
                 ))
@@ -894,7 +894,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::Int32,
+                        logical_type: Datatype::Int32,
                         ..
                     }
                 ))
@@ -908,7 +908,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::Int64,
+                        logical_type: Datatype::Int64,
                         ..
                     }
                 ))
@@ -919,7 +919,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::Int64,
+                        logical_type: Datatype::Int64,
                         ..
                     }
                 ))
@@ -933,7 +933,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::Float64,
+                        logical_type: Datatype::Float64,
                         ..
                     }
                 ))
@@ -944,7 +944,7 @@ mod tests {
                 e,
                 Err(TileDBError::Datatype(
                     DatatypeError::PhysicalTypeIncompatible {
-                        tiledb_type: Datatype::Float64,
+                        logical_type: Datatype::Float64,
                         ..
                     }
                 ))

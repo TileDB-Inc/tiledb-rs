@@ -2,16 +2,18 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
+use tiledb_common::array::{ArrayType, CellValNum};
+use tiledb_common::datatype::Datatype;
+use tiledb_common::filter::FilterData;
+use tiledb_common::physical_type_go;
 use tiledb_test_utils::strategy::StrategyExt;
 
-use crate::array::{
-    attribute::FillData, ArrayType, AttributeData, CellValNum, DomainData,
-};
-use crate::filter::list::FilterListData;
+use crate::array::attribute::{AttributeData, FillData};
+use crate::array::domain::DomainData;
 use crate::filter::strategy::{
-    FilterPipelineValueTree, Requirements as FilterRequirements,
+    FilterPipelineStrategy, FilterPipelineValueTree,
+    Requirements as FilterRequirements,
 };
-use crate::{physical_type_go, Datatype};
 
 #[derive(Clone)]
 pub enum StrategyContext {
@@ -56,7 +58,7 @@ fn prop_filters(
     datatype: Datatype,
     cell_val_num: CellValNum,
     requirements: Rc<Requirements>,
-) -> impl Strategy<Value = FilterListData> {
+) -> impl Strategy<Value = Vec<FilterData>> {
     use crate::filter::strategy::StrategyContext as FilterContext;
 
     let pipeline_requirements = FilterRequirements {
@@ -82,7 +84,7 @@ fn prop_filters(
             .unwrap_or_default()
     };
 
-    any_with::<FilterListData>(Rc::new(pipeline_requirements))
+    FilterPipelineStrategy::new(Rc::new(pipeline_requirements))
 }
 
 /// Returns a strategy for generating an arbitrary Attribute of the given datatype

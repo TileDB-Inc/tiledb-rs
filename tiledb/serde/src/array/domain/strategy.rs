@@ -3,15 +3,17 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
+use tiledb_common::array::ArrayType;
+use tiledb_common::datatype::strategy::*;
+use tiledb_common::datatype::Datatype;
 use tiledb_test_utils::strategy::records::RecordsValueTree;
 use tiledb_test_utils::strategy::StrategyExt;
 
 use crate::array::dimension::strategy::{
     DimensionValueTree, Requirements as DimensionRequirements,
 };
-use crate::array::{ArrayType, DimensionData, DomainData};
-use crate::datatype::strategy::*;
-use crate::Datatype;
+use crate::array::dimension::DimensionData;
+use crate::array::domain::DomainData;
 
 #[derive(Clone)]
 pub struct Requirements {
@@ -192,34 +194,7 @@ impl ValueTree for DomainValueTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Context, Factory};
     use proptest::strategy::ValueTree;
-    use util::option::OptionSubset;
-
-    /// Test that the arbitrary domain construction always succeeds
-    #[test]
-    fn domain_arbitrary() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(maybe_domain in any::<DomainData>())| {
-            maybe_domain.create(&ctx)
-                .expect("Error constructing arbitrary domain");
-        });
-    }
-
-    #[test]
-    fn domain_eq_reflexivity() {
-        let ctx = Context::new().expect("Error creating context");
-
-        proptest!(|(domain in any::<DomainData>())| {
-            assert_eq!(domain, domain);
-            assert!(domain.option_subset(&domain));
-
-            let domain = domain.create(&ctx)
-                .expect("Error constructing arbitrary domain");
-            assert_eq!(domain, domain);
-        });
-    }
 
     #[test]
     fn domain_shrinking() {
