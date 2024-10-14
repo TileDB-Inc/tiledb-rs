@@ -4,11 +4,10 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
-use tiledb_common::array::{ArrayType, CellOrder, CellValNum, TileOrder};
-use tiledb_common::datatype::Datatype;
+use strategy_ext::records::RecordsValueTree;
+use strategy_ext::StrategyExt;
+use tiledb_common::array::{ArrayType, CellOrder, TileOrder};
 use tiledb_common::filter::FilterData;
-use tiledb_test_utils::strategy::records::RecordsValueTree;
-use tiledb_test_utils::strategy::StrategyExt;
 
 use crate::array::attribute::strategy::{
     prop_attribute, AttributeValueTree, Requirements as AttributeRequirements,
@@ -25,52 +24,6 @@ use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
-
-#[derive(Clone, Debug)]
-pub enum FieldStrategyDatatype {
-    Datatype(Datatype, CellValNum),
-    SchemaField(FieldData),
-}
-
-pub enum FieldValueStrategy {
-    UInt8(BoxedStrategy<u8>),
-    UInt16(BoxedStrategy<u16>),
-    UInt32(BoxedStrategy<u32>),
-    UInt64(BoxedStrategy<u64>),
-    Int8(BoxedStrategy<i8>),
-    Int16(BoxedStrategy<i16>),
-    Int32(BoxedStrategy<i32>),
-    Int64(BoxedStrategy<i64>),
-    Float32(BoxedStrategy<f32>),
-    Float64(BoxedStrategy<f64>),
-}
-
-macro_rules! field_value_strategy {
-    ($($variant:ident : $T:ty),+) => {
-        $(
-            impl From<BoxedStrategy<$T>> for FieldValueStrategy {
-                fn from(value: BoxedStrategy<$T>) -> Self {
-                    Self::$variant(value)
-                }
-            }
-
-            impl TryFrom<FieldValueStrategy> for BoxedStrategy<$T> {
-                type Error = ();
-                fn try_from(value: FieldValueStrategy) -> Result<Self, Self::Error> {
-                    if let FieldValueStrategy::$variant(b) = value {
-                        Ok(b)
-                    } else {
-                        Err(())
-                    }
-                }
-            }
-        )+
-    }
-}
-
-field_value_strategy!(UInt8 : u8, UInt16 : u16, UInt32 : u32, UInt64 : u64);
-field_value_strategy!(Int8 : i8, Int16 : i16, Int32 : i32, Int64 : i64);
-field_value_strategy!(Float32 : f32, Float64 : f64);
 
 #[derive(Clone)]
 pub struct Requirements {

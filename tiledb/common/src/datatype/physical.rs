@@ -213,8 +213,6 @@ pub trait PhysicalType:
 {
 }
 
-pub trait IntegralType: Eq + Ord + PhysicalType {}
-
 macro_rules! integral_type_impls {
     ($($T:ty: $datatype:expr),+) => {
         sealed!($($T),+);
@@ -239,8 +237,6 @@ macro_rules! integral_type_impls {
             }
 
             impl PhysicalType for $T {}
-
-            impl IntegralType for $T {}
         )+
     }
 }
@@ -456,4 +452,49 @@ impl Display for PhysicalValue {
             Self::Float64(value) => Display::fmt(value, f),
         }
     }
+}
+
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy {
+    use proptest::strategy::BoxedStrategy;
+
+    pub enum PhysicalValueStrategy {
+        UInt8(BoxedStrategy<u8>),
+        UInt16(BoxedStrategy<u16>),
+        UInt32(BoxedStrategy<u32>),
+        UInt64(BoxedStrategy<u64>),
+        Int8(BoxedStrategy<i8>),
+        Int16(BoxedStrategy<i16>),
+        Int32(BoxedStrategy<i32>),
+        Int64(BoxedStrategy<i64>),
+        Float32(BoxedStrategy<f32>),
+        Float64(BoxedStrategy<f64>),
+    }
+
+    macro_rules! field_value_strategy {
+    ($($variant:ident : $T:ty),+) => {
+        $(
+            impl From<BoxedStrategy<$T>> for PhysicalValueStrategy {
+                fn from(value: BoxedStrategy<$T>) -> Self {
+                    Self::$variant(value)
+                }
+            }
+
+            impl TryFrom<PhysicalValueStrategy> for BoxedStrategy<$T> {
+                type Error = ();
+                fn try_from(value: PhysicalValueStrategy) -> Result<Self, Self::Error> {
+                    if let PhysicalValueStrategy::$variant(b) = value {
+                        Ok(b)
+                    } else {
+                        Err(())
+                    }
+                }
+            }
+        )+
+    }
+}
+
+    field_value_strategy!(UInt8 : u8, UInt16 : u16, UInt32 : u32, UInt64 : u64);
+    field_value_strategy!(Int8 : i8, Int16 : i16, Int32 : i32, Int64 : i64);
+    field_value_strategy!(Float32 : f32, Float64 : f64);
 }

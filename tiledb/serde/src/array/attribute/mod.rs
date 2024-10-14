@@ -10,7 +10,7 @@ use tiledb_common::filter::FilterData;
 use tiledb_common::metadata::Value as MetadataValue;
 
 #[cfg(any(test, feature = "proptest-strategies"))]
-use crate::array::schema::strategy::FieldValueStrategy;
+use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
 
 #[derive(Clone, Default, Debug, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
@@ -36,7 +36,7 @@ pub struct FillData {
 #[cfg(any(test, feature = "proptest-strategies"))]
 impl AttributeData {
     /// Returns a strategy for generating values of this attribute's type.
-    pub fn value_strategy(&self) -> FieldValueStrategy {
+    pub fn value_strategy(&self) -> PhysicalValueStrategy {
         use proptest::prelude::*;
         use tiledb_common::filter::{
             CompressionData, CompressionType, FilterData,
@@ -60,16 +60,16 @@ impl AttributeData {
                     // see core `DoubleDelta::compute_bitsize`
                     let min = 0u64;
                     let max = u64::MAX >> 1;
-                    return FieldValueStrategy::from((min..=max).boxed());
+                    return PhysicalValueStrategy::from((min..=max).boxed());
                 } else if std::any::TypeId::of::<DT>()
                     == std::any::TypeId::of::<i64>()
                 {
                     let min = i64::MIN >> 2;
                     let max = i64::MAX >> 2;
-                    return FieldValueStrategy::from((min..=max).boxed());
+                    return PhysicalValueStrategy::from((min..=max).boxed());
                 }
             }
-            FieldValueStrategy::from(any::<DT>().boxed())
+            PhysicalValueStrategy::from(any::<DT>().boxed())
         })
     }
 }

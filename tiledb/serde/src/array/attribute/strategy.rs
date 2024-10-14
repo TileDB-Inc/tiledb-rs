@@ -2,11 +2,11 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
+use strategy_ext::StrategyExt;
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
-use tiledb_test_utils::strategy::StrategyExt;
 
 use crate::array::attribute::{AttributeData, FillData};
 use crate::array::domain::DomainData;

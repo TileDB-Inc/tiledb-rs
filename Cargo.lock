@@ -416,6 +416,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8cd6604a82acf3039f1144f54b8eb34e91ffba622051189e71b781822d5ee1f5"
 
 [[package]]
+name = "cells"
+version = "0.1.0"
+dependencies = [
+ "paste",
+ "proptest",
+ "strategy-ext",
+ "tiledb-common",
+ "tiledb-serde",
+]
+
+[[package]]
 name = "cexpr"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1212,6 +1223,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "strategy-ext"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+]
+
+[[package]]
 name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1343,11 +1361,11 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "strategy-ext",
  "thiserror",
  "tiledb-common",
  "tiledb-proc-macro",
  "tiledb-sys",
- "tiledb-test-utils",
  "tiledb-utils",
 ]
 
@@ -1365,7 +1383,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "nix",
- "proptest",
+ "paste",
  "tempfile",
 ]
 

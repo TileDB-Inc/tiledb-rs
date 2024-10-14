@@ -3,11 +3,11 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
+use strategy_ext::records::RecordsValueTree;
+use strategy_ext::StrategyExt;
 use tiledb_common::array::ArrayType;
 use tiledb_common::datatype::strategy::*;
 use tiledb_common::datatype::Datatype;
-use tiledb_test_utils::strategy::records::RecordsValueTree;
-use tiledb_test_utils::strategy::StrategyExt;
 
 use crate::array::dimension::strategy::{
     DimensionValueTree, Requirements as DimensionRequirements,

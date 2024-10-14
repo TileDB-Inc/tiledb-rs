@@ -10,7 +10,7 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 
 #[cfg(any(test, feature = "proptest-strategies"))]
-use crate::array::schema::strategy::FieldValueStrategy;
+use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
 
 /// Encapsulation of data needed to construct a Dimension
 #[derive(Clone, Debug, PartialEq)]
@@ -37,7 +37,7 @@ impl DimensionData {
 impl DimensionData {
     /// Returns a strategy for generating values of this dimension's type
     /// which fall within the domain of this dimension.
-    pub fn value_strategy(&self) -> FieldValueStrategy {
+    pub fn value_strategy(&self) -> PhysicalValueStrategy {
         use proptest::prelude::*;
         use tiledb_common::dimension_constraints_go;
 
@@ -46,10 +46,10 @@ impl DimensionData {
             DT,
             ref domain,
             _,
-            FieldValueStrategy::from((domain[0]..=domain[1]).boxed()),
+            PhysicalValueStrategy::from((domain[0]..=domain[1]).boxed()),
             {
                 assert_eq!(self.datatype, Datatype::StringAscii);
-                FieldValueStrategy::from(any::<u8>().boxed())
+                PhysicalValueStrategy::from(any::<u8>().boxed())
             }
         )
     }

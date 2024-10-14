@@ -9,22 +9,22 @@ num-traits = { workspace = true, optional = true }
 proptest = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+strategy-ext = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tiledb-common = { workspace = true }
 tiledb-proc-macro = { workspace = true, optional = true }
 tiledb-utils = { workspace = true, optional = true }
-tiledb-test-utils = { workspace = true, optional = true }
 tiledb-sys = { workspace = true }
 
 [dev-dependencies]
 num-traits = { workspace = true }
 proptest = { workspace = true }
 tiledb-common = { workspace = true, features = ["proptest-strategies"] }
-tiledb-test-utils = { workspace = true }
+strategy-ext = { workspace = true }
 tiledb-utils = { workspace = true }
 
 [features]
 default = []
 option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils", "tiledb-common/option-subset"]
-proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:tiledb-test-utils", "dep:tiledb-utils", "tiledb-common/proptest-strategies"]
+proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:strategy-ext", "dep:tiledb-utils", "tiledb-common/proptest-strategies"]
 serde = ["dep:serde", "tiledb-common/serde"]

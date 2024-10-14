@@ -3,12 +3,12 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
+use strategy_ext::sequence::SequenceValueTree;
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::strategy::DatatypeContext;
 use tiledb_common::datatype::Datatype;
 use tiledb_common::dimension_constraints_go;
 use tiledb_common::filter::*;
-use tiledb_test_utils::strategy::sequence::SequenceValueTree;
 
 use crate::array::domain::DomainData;
 
