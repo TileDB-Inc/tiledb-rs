@@ -59,7 +59,7 @@ macro_rules! typed_field_data {
                     if let FieldData::$V(values) = value {
                         Ok(values)
                     } else {
-                        crate::typed_field_data_go!(value, DT, _,
+                        $crate::typed_field_data_go!(value, DT, _,
                             {
                                 Err(DatatypeError::physical_type_mismatch::<$U, DT>())
                             },

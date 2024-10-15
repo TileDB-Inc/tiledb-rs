@@ -5,12 +5,12 @@ use tiledb_common::filter::{
     ChecksumType, CompressionData, CompressionType, FilterData,
 };
 
+use crate::{FromStringCore, ToStringCore};
+
 #[derive(Clone, Debug, Error)]
 pub enum Error {
     #[error("Invalid discriminant for {}: {0}", std::any::type_name::<FilterType>())]
     InvalidDiscriminant(u64),
-    #[error("Invalid input for {}: {0}", std::any::type_name::<FilterType>())]
-    ParseError(String),
     #[error("Internal error formatting {0}")]
     InternalString(FilterType),
 }
@@ -39,11 +39,13 @@ pub enum FilterType {
     Delta,
 }
 
-impl FilterType {
-    pub fn to_string(&self) -> Result<String> {
+impl ToStringCore for FilterType {
+    type Error = Error;
+
+    fn to_string_core(&self) -> Result<String> {
         let mut c_str = std::ptr::null::<std::os::raw::c_char>();
         let res = unsafe {
-            ffi::tiledb_filter_type_to_str(self.clone().into(), &mut c_str)
+            ffi::tiledb_filter_type_to_str((*self).into(), &mut c_str)
         };
         if res == ffi::TILEDB_OK {
             let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
@@ -52,11 +54,13 @@ impl FilterType {
             Err(Error::InternalString(*self))
         }
     }
+}
 
-    pub fn from_string(fs: &str) -> Result<Self> {
+impl FromStringCore for FilterType {
+    fn from_string_core(s: &str) -> Option<Self> {
         let c_ftype =
-            std::ffi::CString::new(fs).expect("Error creating CString");
-        std::ffi::CString::new(fs).expect("Error creating CString");
+            std::ffi::CString::new(s).expect("Error creating CString");
+        std::ffi::CString::new(s).expect("Error creating CString");
         let mut c_ret: u32 = 0;
         let res = unsafe {
             ffi::tiledb_filter_type_from_str(
@@ -66,16 +70,16 @@ impl FilterType {
         };
 
         if res == ffi::TILEDB_OK {
-            FilterType::try_from(c_ret)
+            FilterType::try_from(c_ret).ok()
         } else {
-            Err(Error::ParseError(fs.to_owned()))
+            None
         }
     }
 }
 
 impl Display for FilterType {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self.to_string() {
+        match self.to_string_core() {
             Ok(s) => write!(f, "{}", s),
             Err(e) => write!(f, "<FilterType: {}>", e),
         }
@@ -252,8 +256,8 @@ mod tests {
             if maybe_ftype.is_ok() {
                 let ftype = maybe_ftype.unwrap();
                 let ftype_str =
-                    ftype.to_string().expect("Error creating string.");
-                let str_ftype = FilterType::from_string(&ftype_str)
+                    ftype.to_string_core().expect("Error creating string.");
+                let str_ftype = FilterType::from_string_core(&ftype_str)
                     .expect("Error round tripping filter type string.");
                 assert_eq!(str_ftype, ftype);
             }

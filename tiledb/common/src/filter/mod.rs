@@ -179,7 +179,7 @@ impl FilterData {
                 _ => Some(*input),
             },
             FilterData::ScaleFloat { byte_width, .. } => {
-                let input_size = input.size() as usize;
+                let input_size = input.size();
                 if input_size == std::mem::size_of::<f32>()
                     || input_size == std::mem::size_of::<f64>()
                 {

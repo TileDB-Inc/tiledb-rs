@@ -85,3 +85,12 @@ pub trait Factory {
 
     fn create(&self, context: &context::Context) -> Result<Self::Item>;
 }
+
+pub trait ToStringCore {
+    type Error;
+    fn to_string_core(&self) -> std::result::Result<String, Self::Error>;
+}
+
+pub trait FromStringCore: Sized {
+    fn from_string_core(s: &str) -> Option<Self>;
+}

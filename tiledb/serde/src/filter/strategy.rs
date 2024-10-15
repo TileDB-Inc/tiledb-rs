@@ -429,7 +429,7 @@ pub fn prop_filter(
             None => true,
             Some(dt) => {
                 [std::mem::size_of::<f32>(), std::mem::size_of::<f64>()]
-                    .contains(&(dt.size() as usize))
+                    .contains(&dt.size())
             }
         };
     if ok_scale_float {
@@ -443,7 +443,7 @@ pub fn prop_filter(
     let ok_xor = requirements.allow_xor
         && match requirements.input_datatype {
             Some(input_datatype) => {
-                [1, 2, 4, 8].contains(&(input_datatype.size() as usize))
+                [1, 2, 4, 8].contains(&input_datatype.size())
             }
             None => true,
         };

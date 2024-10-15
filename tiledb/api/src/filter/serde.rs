@@ -35,7 +35,7 @@ impl TryFrom<&FilterList> for Vec<FilterData> {
         pipeline
             .to_vec()?
             .into_iter()
-            .map(|f| FilterData::try_from(f))
+            .map(FilterData::try_from)
             .collect::<Result<Self, Self::Error>>()
     }
 }

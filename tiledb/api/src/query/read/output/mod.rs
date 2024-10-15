@@ -14,7 +14,7 @@ use crate::{typed_query_buffers_go, Datatype};
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(any(test))]
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
 #[derive(Debug)]

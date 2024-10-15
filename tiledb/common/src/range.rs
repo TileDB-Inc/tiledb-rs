@@ -18,9 +18,9 @@ pub type MinimumBoundingRectangle = Vec<TypedRange>;
 pub enum DimensionCompatibilityError {
     #[error("Dimensions cannot have a multiple-value fixed ranges: found range of size {0}")]
     MultiValueRange(usize),
-    #[error("{:?} is invalid for dimensions", CellValNum::Fixed(.0.clone()))]
+    #[error("{:?} is invalid for dimensions", CellValNum::Fixed(*.0))]
     CellValNumFixed(NonZeroU32),
-    #[error("Dimension of type {} cannot have {:?}", Datatype::StringAscii.to_string(), CellValNum::Fixed(.0.clone()))]
+    #[error("Dimension of type {} cannot have {:?}", Datatype::StringAscii.to_string(), CellValNum::Fixed(*.0))]
     FixedStringAsciiDimension(NonZeroU32),
     #[error("Dimension of type {0} cannot have variable-length range")]
     VarRangeForNonStringDimension(Datatype),
@@ -1603,14 +1603,14 @@ impl TypedRange {
             let start_slice = unsafe {
                 std::slice::from_raw_parts(
                     start.as_ptr() as *const DT,
-                    start.len() / datatype.size() as usize,
+                    start.len() / datatype.size(),
                 )
             };
             let start = start_slice.to_vec().into_boxed_slice();
             let end_slice = unsafe {
                 std::slice::from_raw_parts(
                     end.as_ptr() as *const DT,
-                    end.len() / datatype.size() as usize,
+                    end.len() / datatype.size(),
                 )
             };
             let end = end_slice.to_vec().into_boxed_slice();

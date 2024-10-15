@@ -102,8 +102,7 @@ impl Field {
             CellValNum::Fixed(nz) => nz.get() as usize,
             CellValNum::Var => 64,
         };
-        let est_cell_size =
-            est_values_per_cell * self.datatype()?.size() as usize;
+        let est_cell_size = est_values_per_cell * self.datatype()?.size();
 
         let est_cell_capacity = memory_limit
             .unwrap_or(FieldScratchAllocator::DEFAULT_MEMORY_LIMIT)

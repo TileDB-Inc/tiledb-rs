@@ -1,16 +1,9 @@
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
+use crate::{FromStringCore, ToStringCore};
+
 pub use tiledb_common::datatype::*;
-
-trait ToStringCore {
-    type Error;
-    fn to_string_core(&self) -> Result<String, Self::Error>;
-}
-
-trait FromStringCore: Sized {
-    fn from_string_core(s: &str) -> Option<Self>;
-}
 
 impl ToStringCore for Datatype {
     type Error = std::convert::Infallible;

@@ -244,7 +244,7 @@ impl Strategy for DenseWriteStrategy {
                 match field.cell_val_num().unwrap_or(CellValNum::single()) {
                     CellValNum::Fixed(nz) => {
                         /* exact */
-                        nz.get() as usize * field.datatype().size() as usize
+                        nz.get() as usize * field.datatype().size()
                     }
                     CellValNum::Var => {
                         /* estimate */
@@ -253,7 +253,7 @@ impl Strategy for DenseWriteStrategy {
                         let est_nvalues = (params.value_min_var_size
                             + params.value_max_var_size)
                             / 2;
-                        est_nvalues * field.datatype().size() as usize
+                        est_nvalues * field.datatype().size()
                     }
                 }
             })
