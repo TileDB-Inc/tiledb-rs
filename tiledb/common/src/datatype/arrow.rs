@@ -1021,10 +1021,8 @@ pub mod tests {
             DatatypeFromArrowResult::Exact(datatype, cvn) => {
                 let arrow_out = to_arrow(&datatype, cvn);
                 if let DatatypeToArrowResult::Exact(arrow_out) = arrow_out {
-                    if let arrow::datatypes::DataType::FixedSizeList(
-                        element,
-                        1,
-                    ) = arrow_in
+                    if let arrow_schema::DataType::FixedSizeList(element, 1) =
+                        arrow_in
                     {
                         // FixedSizeList with length 1 has no way to indicate "list"
                         // for tiledb, so when converting back we lose the FixedSizeList
