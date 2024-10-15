@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use tiledb_common::range::Range;
 
 /// Encapsulates data for a subarray.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -49,8 +50,8 @@ impl SubarrayData {
     /// of all the ranges of `self` with all of the ranges of `other` on each dimension.
     ///
     /// ```
-    /// use tiledb::query::subarray::SubarrayData;
-    /// use tiledb::range::Range;
+    /// use tiledb_common::range::Range;
+    /// use tiledb_serde::query::subarray::SubarrayData;
     ///
     /// let s1 = SubarrayData {
     ///     dimension_ranges: vec![
@@ -80,8 +81,8 @@ impl SubarrayData {
     /// If any dimension does not have any intersection, then this returns `None`
     /// as the resulting subarray would select no coordinates.
     /// ```
-    /// use tiledb::query::subarray::SubarrayData;
-    /// use tiledb::range::Range;
+    /// use tiledb_common::range::Range;
+    /// use tiledb_serde::query::subarray::SubarrayData;
     ///
     /// let s1 = SubarrayData {
     ///     dimension_ranges: vec![
@@ -101,8 +102,8 @@ impl SubarrayData {
     /// then it is a special case which means to select the all coordinates.
     /// The intersection is equal to the ranges of `other`.
     /// ```
-    /// use tiledb::query::subarray::SubarrayData;
-    /// use tiledb::range::Range;
+    /// use tiledb_common::range::Range;
+    /// use tiledb_serde::query::subarray::SubarrayData;
     ///
     /// let s1 = SubarrayData {
     ///     dimension_ranges: vec![
@@ -156,7 +157,7 @@ pub mod strategy {
     use proptest::prelude::*;
 
     use super::*;
-    use crate::array::SchemaData;
+    use crate::array::schema::SchemaData;
 
     impl Arbitrary for SubarrayData {
         type Parameters = Option<Rc<SchemaData>>;
@@ -195,6 +196,16 @@ pub mod strategy {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use itertools::izip;
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::array::domain::strategy::Requirements as DomainRequirements;
+    use crate::array::schema::strategy::Requirements as SchemaRequirements;
+    use crate::array::schema::SchemaData;
+
     fn do_subarray_intersect_ranges(subarray: &SubarrayData, ranges: &[Range]) {
         if let Some(intersection) = subarray.intersect_ranges(ranges) {
             assert_eq!(
@@ -315,9 +326,6 @@ mod tests {
 
     fn strat_subarray_intersect_ranges(
     ) -> impl Strategy<Value = (SubarrayData, Vec<Range>)> {
-        use crate::array::domain::strategy::Requirements as DomainRequirements;
-        use crate::array::schema::strategy::Requirements as SchemaRequirements;
-
         let req = Rc::new(SchemaRequirements {
             domain: Some(Rc::new(DomainRequirements {
                 num_dimensions: 1..=1,

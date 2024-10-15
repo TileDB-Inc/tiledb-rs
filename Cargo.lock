@@ -423,6 +423,7 @@ dependencies = [
  "proptest",
  "strategy-ext",
  "tiledb-common",
+ "tiledb-proptest-config",
  "tiledb-serde",
 ]
 
@@ -1026,10 +1027,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "proptest-integrataions"
-version = "0.1.0"
-
-[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1352,6 +1349,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiledb-proptest-config"
+version = "0.1.0"
+
+[[package]]
 name = "tiledb-query-adapters"
 version = "0.1.0"
 dependencies = [
@@ -1364,6 +1365,7 @@ dependencies = [
 name = "tiledb-serde"
 version = "0.1.0"
 dependencies = [
+ "itertools",
  "num-traits",
  "proptest",
  "serde",
@@ -1372,6 +1374,7 @@ dependencies = [
  "thiserror",
  "tiledb-common",
  "tiledb-proc-macro",
+ "tiledb-proptest-config",
  "tiledb-sys",
  "tiledb-utils",
 ]

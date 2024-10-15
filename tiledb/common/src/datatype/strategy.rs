@@ -1,6 +1,6 @@
 use proptest::prelude::*;
 
-use super::Datatype;
+use super::*;
 
 fn prop_datatype() -> impl Strategy<Value = Datatype> {
     prop_oneof![
@@ -50,75 +50,6 @@ fn prop_datatype() -> impl Strategy<Value = Datatype> {
         Just(Datatype::GeometryWkt),
     ]
 }
-
-const DENSE_DIMENSION_DATATYPES: [Datatype; 30] = [
-    Datatype::Int8,
-    Datatype::Int16,
-    Datatype::Int32,
-    Datatype::Int64,
-    Datatype::UInt8,
-    Datatype::UInt16,
-    Datatype::UInt32,
-    Datatype::UInt64,
-    Datatype::DateTimeYear,
-    Datatype::DateTimeMonth,
-    Datatype::DateTimeWeek,
-    Datatype::DateTimeDay,
-    Datatype::DateTimeHour,
-    Datatype::DateTimeMinute,
-    Datatype::DateTimeSecond,
-    Datatype::DateTimeMillisecond,
-    Datatype::DateTimeMicrosecond,
-    Datatype::DateTimeNanosecond,
-    Datatype::DateTimePicosecond,
-    Datatype::DateTimeFemtosecond,
-    Datatype::DateTimeAttosecond,
-    Datatype::TimeHour,
-    Datatype::TimeMinute,
-    Datatype::TimeSecond,
-    Datatype::TimeMillisecond,
-    Datatype::TimeMicrosecond,
-    Datatype::TimeNanosecond,
-    Datatype::TimePicosecond,
-    Datatype::TimeFemtosecond,
-    Datatype::TimeAttosecond,
-];
-
-const SPARSE_DIMENSION_DATATYPES: [Datatype; 33] = [
-    Datatype::Int8,
-    Datatype::Int16,
-    Datatype::Int32,
-    Datatype::Int64,
-    Datatype::UInt8,
-    Datatype::UInt16,
-    Datatype::UInt32,
-    Datatype::UInt64,
-    Datatype::Float32,
-    Datatype::Float64,
-    Datatype::DateTimeYear,
-    Datatype::DateTimeMonth,
-    Datatype::DateTimeWeek,
-    Datatype::DateTimeDay,
-    Datatype::DateTimeHour,
-    Datatype::DateTimeMinute,
-    Datatype::DateTimeSecond,
-    Datatype::DateTimeMillisecond,
-    Datatype::DateTimeMicrosecond,
-    Datatype::DateTimeNanosecond,
-    Datatype::DateTimePicosecond,
-    Datatype::DateTimeFemtosecond,
-    Datatype::DateTimeAttosecond,
-    Datatype::TimeHour,
-    Datatype::TimeMinute,
-    Datatype::TimeSecond,
-    Datatype::TimeMillisecond,
-    Datatype::TimeMicrosecond,
-    Datatype::TimeNanosecond,
-    Datatype::TimePicosecond,
-    Datatype::TimeFemtosecond,
-    Datatype::TimeAttosecond,
-    Datatype::StringAscii,
-];
 
 fn prop_datatype_for_dense_dimension() -> impl Strategy<Value = Datatype> {
     /* see `Datatype::is_allowed_dimension_type_dense` */

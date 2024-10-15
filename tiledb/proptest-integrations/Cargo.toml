@@ -1,7 +1,0 @@
-[package]
-name = "proptest-integrataions"
-edition.workspace = true
-rust-version.workspace = true
-version.workspace = true
-
-[dependencies]

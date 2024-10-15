@@ -279,7 +279,6 @@ pub mod serde;
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-
     use tiledb_serde::array::dimension::DimensionData;
     use utils::assert_option_subset;
 
