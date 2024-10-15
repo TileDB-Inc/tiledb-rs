@@ -12,13 +12,12 @@ pub const TILEDB_VERSION_PATCH: u32 = 0;
 // This is a list of functions that we are currently planning on not wrapping.
 
 extern "C" {
-    // The datatype functions are something of a hindrance.
-    // - with respect to the crate structure: we want entities which only need
-    //   [tiledb_common] to not need to link to core, and [Datatype] must
-    //   live in [tiledb_common].
-    // - [tiledb_datatype_size] is essentially redundant with matching a Datatype
-    //   to its physical type
-
+    // With respect to the crate structure: we want entities which only need
+    // [tiledb_common] to not need to link to core, and [Datatype] must
+    // live in [tiledb_common].
+    //
+    // [tiledb_datatype_size] is essentially redundant with matching a Datatype
+    // to its physical type
     pub fn tiledb_datatype_size(type_: tiledb_datatype_t) -> u64;
 
     // The dump functions aren't being wrapped because Rust makes it really easy
