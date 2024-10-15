@@ -238,7 +238,7 @@ extern "C" {
         subarray: *const tiledb_subarray_t,
         dim_name: *const ::std::os::raw::c_char,
         range_num: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_subarray_get_range_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -248,7 +248,7 @@ extern "C" {
         start: *mut *const ::std::os::raw::c_void,
         end: *mut *const ::std::os::raw::c_void,
         stride: *mut *const ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_subarray_get_range_var_size_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -257,7 +257,7 @@ extern "C" {
         range_idx: u64,
         start_size: *mut u64,
         end_size: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_subarray_get_range_var_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -266,7 +266,7 @@ extern "C" {
         range_idx: u64,
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     // This function copies the non-empty domain values from each coordinate
     // into the user buffer. That's nice in C where you can just tell bytes

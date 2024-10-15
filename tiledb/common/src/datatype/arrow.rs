@@ -1021,7 +1021,17 @@ pub mod tests {
             DatatypeFromArrowResult::Exact(datatype, cvn) => {
                 let arrow_out = to_arrow(&datatype, cvn);
                 if let DatatypeToArrowResult::Exact(arrow_out) = arrow_out {
-                    assert_eq!(*arrow_in, arrow_out);
+                    if let arrow::datatypes::DataType::FixedSizeList(
+                        element,
+                        1,
+                    ) = arrow_in
+                    {
+                        // FixedSizeList with length 1 has no way to indicate "list"
+                        // for tiledb, so when converting back we lose the FixedSizeList
+                        assert_eq!(*element.data_type(), arrow_out);
+                    } else {
+                        assert_eq!(*arrow_in, arrow_out);
+                    }
                 } else {
                     unreachable!(
                         "Expected exact inversion, found {:?}",
