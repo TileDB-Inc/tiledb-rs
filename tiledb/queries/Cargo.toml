@@ -6,6 +6,7 @@ version.workspace = true
 
 [dependencies]
 tiledb-api = { workspace = true }
+tiledb-common = { workspace = true }
 
 [build-dependencies]
 pkg-config = { workspace = true }
