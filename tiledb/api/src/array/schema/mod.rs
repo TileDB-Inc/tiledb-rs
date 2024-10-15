@@ -1286,55 +1286,6 @@ mod tests {
         }
     }
 
-    /// Test our assumptions about StringAscii dimensions,
-    /// if this fails then changes may be needed elsewhere.
-    /// Namely we assume that StringAscii is only allowed
-    /// in variable-length sparse dimensions.
-    #[test]
-    fn test_string_dimension() -> TileDBResult<()> {
-        let ctx = Context::new().unwrap();
-
-        let build_schema = |array_type: ArrayType| {
-            Builder::new(
-                &ctx,
-                array_type,
-                DomainBuilder::new(&ctx)?
-                    .add_dimension(
-                        DimensionBuilder::new(
-                            &ctx,
-                            "d",
-                            Datatype::StringAscii,
-                            DimensionConstraints::StringAscii,
-                        )?
-                        .build(),
-                    )?
-                    .build(),
-            )?
-            .add_attribute(sample_attribute(&ctx))?
-            .build()
-        };
-
-        // creation should succeed, StringAscii is allowed for sparse CellValNum::Var
-        {
-            let schema =
-                build_schema(ArrayType::Sparse).expect("Error creating schema");
-            let cvn = schema
-                .domain()
-                .and_then(|d| d.dimension(0))
-                .and_then(|d| d.cell_val_num())
-                .unwrap();
-            assert_eq!(CellValNum::Var, cvn);
-        }
-
-        // creation should fail, StringAscii is not allowed for dense CellValNum::single()
-        {
-            let e = build_schema(ArrayType::Dense);
-            assert!(matches!(e, Err(Error::LibTileDB(_))));
-        }
-
-        Ok(())
-    }
-
     /// Test that the arbitrary schema construction always succeeds
     #[test]
     fn schema_arbitrary() {
@@ -1425,6 +1376,55 @@ mod tests {
         assert_eq!(CellOrder::RowMajor, sparse_schema.cell_order().unwrap());
         assert_eq!(TileOrder::RowMajor, sparse_schema.tile_order().unwrap());
         assert!(!sparse_schema.allows_duplicates().unwrap());
+    }
+
+    /// Test our assumptions about StringAscii dimensions,
+    /// if this fails then changes may be needed elsewhere.
+    /// Namely we assume that StringAscii is only allowed
+    /// in variable-length sparse dimensions.
+    #[test]
+    fn test_string_dimension() -> TileDBResult<()> {
+        let ctx = Context::new().unwrap();
+
+        let build_schema = |array_type: ArrayType| {
+            Builder::new(
+                &ctx,
+                array_type,
+                DomainBuilder::new(&ctx)?
+                    .add_dimension(
+                        DimensionBuilder::new(
+                            &ctx,
+                            "d",
+                            Datatype::StringAscii,
+                            DimensionConstraints::StringAscii,
+                        )?
+                        .build(),
+                    )?
+                    .build(),
+            )?
+            .add_attribute(sample_attribute(&ctx))?
+            .build()
+        };
+
+        // creation should succeed, StringAscii is allowed for sparse CellValNum::Var
+        {
+            let schema =
+                build_schema(ArrayType::Sparse).expect("Error creating schema");
+            let cvn = schema
+                .domain()
+                .and_then(|d| d.dimension(0))
+                .and_then(|d| d.cell_val_num())
+                .unwrap();
+            assert_eq!(CellValNum::Var, cvn);
+        }
+
+        // creation should fail, StringAscii is not allowed for dense CellValNum::single()
+        {
+            let e = build_schema(ArrayType::Dense);
+            assert!(matches!(e, Err(Error::LibTileDB(_))));
+        }
+
+        Ok(())
     }
 
     /// Creates a schema with a single dimension of the given `Datatype` with one attribute.
