@@ -9,6 +9,7 @@ paste = { workspace = true }
 proptest = { workspace = true }
 strategy-ext = { workspace = true }
 tiledb-common = { workspace = true }
+tiledb-proptest-config = { workspace = true, optional = true }
 tiledb-serde = { workspace = true }
 
 [dev-dependencies]
@@ -17,4 +18,4 @@ tiledb-serde = { workspace = true, features = ["proptest-strategies"] }
 
 [features]
 default = []
-proptest-strategies = ["tiledb-common/proptest-strategies", "tiledb-serde/proptest-strategies"]
+proptest-strategies = ["dep:tiledb-proptest-config", "tiledb-common/proptest-strategies", "tiledb-serde/proptest-strategies"]

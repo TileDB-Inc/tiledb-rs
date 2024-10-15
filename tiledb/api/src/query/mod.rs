@@ -298,3 +298,29 @@ impl BuilderBase {
         })
     }
 }
+
+pub trait ToReadQuery {
+    type ReadBuilder<'data, B>
+    where
+        Self: 'data;
+
+    /// Prepares a read query to read the fields written by this operation
+    /// restricted to the subarray represented by this write.
+    fn attach_read<'data, B>(
+        &'data self,
+        b: B,
+    ) -> TileDBResult<Self::ReadBuilder<'data, B>>
+    where
+        B: ReadQueryBuilder<'data>;
+}
+
+pub trait ToWriteQuery {
+    /// Prepares a write query to insert data from this write.
+    fn attach_write<'data>(
+        &'data self,
+        b: WriteBuilder<'data>,
+    ) -> TileDBResult<WriteBuilder<'data>>;
+}
+
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;

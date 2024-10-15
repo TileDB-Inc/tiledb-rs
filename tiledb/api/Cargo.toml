@@ -22,7 +22,7 @@ tiledb-serde = { workspace = true, optional = true, features = ["serde"] }
 tiledb-sys = { workspace = true }
 
 [dev-dependencies]
-cells = { workspace = true }
+cells = { workspace = true, features = ["proptest-strategies"] }
 num-traits = { workspace = true }
 proptest = { workspace = true }
 tiledb-common = { workspace = true, features = ["option-subset"] }
@@ -37,6 +37,7 @@ tiledb-utils = { workspace = true }
 [features]
 default = []
 arrow = ["dep:arrow"]
+proptest-strategies = ["dep:proptest"]
 serde = ["dep:serde", "dep:serde_json", "dep:tiledb-serde"]
 
 [[example]]

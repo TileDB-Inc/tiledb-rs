@@ -12,7 +12,6 @@ use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::{Datatype, PhysicalType};
 use tiledb_common::{dimension_constraints_go, physical_type_go};
 use tiledb_serde::array::schema::{FieldData as SchemaField, SchemaData};
-use tiledb_serde::strategy::config;
 
 use super::field::FieldData;
 use super::Cells;
@@ -537,19 +536,19 @@ pub struct CellsParameters {
 
 impl CellsParameters {
     pub fn min_records_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MIN
     }
 
     pub fn max_records_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MAX
+        **tiledb_proptest_config::TILEDB_STRATEGY_CELLS_PARAMETERS_NUM_RECORDS_MAX
     }
 
     pub fn cell_min_var_size_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MIN
     }
 
     pub fn cell_max_var_size_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MAX
+        **tiledb_proptest_config::TILEDB_STRATEGY_CELLS_PARAMETERS_CELL_VAR_SIZE_MAX
     }
 }
 

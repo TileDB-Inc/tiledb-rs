@@ -1,4 +1,5 @@
 pub mod field;
+pub mod write;
 
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;

@@ -6,6 +6,7 @@ use tiledb_serde::array::schema::SchemaData;
 use uri::TestArrayUri;
 
 use crate::error::Error;
+use crate::query::ToWriteQuery;
 use crate::tests::prelude::*;
 use crate::tests::strategy::prelude::*;
 use crate::{Context, Factory, Result as TileDBResult};

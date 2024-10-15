@@ -25,16 +25,16 @@ pub mod prelude {
     pub use super::examples::TestArray;
 }
 
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy {
     pub mod prelude {
         // NB: this is hardly exhaustive, feel free to add stuff, this is just what has been needed
         // so far
 
-        pub use cells::{Cells, FieldData};
-
-        pub use crate::query::write::strategy::{
-            DenseWriteInput, DenseWriteParameters, SparseWriteInput,
-            SparseWriteParameters, WriteInput,
+        pub use cells::write::strategy::{
+            DenseWriteParameters, SparseWriteParameters,
         };
+        pub use cells::write::{DenseWriteInput, SparseWriteInput, WriteInput};
+        pub use cells::{Cells, FieldData};
     }
 }
