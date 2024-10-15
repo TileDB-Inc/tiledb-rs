@@ -339,7 +339,7 @@ mod tests {
 
     #[test]
     fn ffi_mode() {
-        for m in vec![Mode::Read, Mode::Write, Mode::Delete, Mode::Update] {
+        for m in [Mode::Read, Mode::Write, Mode::Delete, Mode::Update] {
             assert_eq!(
                 m,
                 Mode::try_from(ffi::tiledb_query_type_t::from(m)).unwrap()
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn ffi_tile_order() {
-        for t in vec![TileOrder::RowMajor, TileOrder::ColumnMajor] {
+        for t in [TileOrder::RowMajor, TileOrder::ColumnMajor] {
             assert_eq!(
                 t,
                 TileOrder::try_from(ffi::tiledb_layout_t::from(t)).unwrap()
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn ffi_cell_order() {
-        for c in vec![
+        for c in [
             CellOrder::Unordered,
             CellOrder::RowMajor,
             CellOrder::ColumnMajor,
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn ffi_array_type() {
-        for a in vec![ArrayType::Dense, ArrayType::Sparse] {
+        for a in [ArrayType::Dense, ArrayType::Sparse] {
             assert_eq!(
                 a,
                 ArrayType::try_from(ffi::tiledb_array_type_t::from(a)).unwrap()

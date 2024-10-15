@@ -2091,23 +2091,29 @@ mod tests {
         #[cfg(feature = "serde")]
         test_serialization_roundtrip(&rr);
 
-        let (start_slice, end_slice) =
-            var_value_range_go!(range, DT, ref start, ref end, {
+        let (start_slice, end_slice) = var_value_range_go!(
+            range,
+            DT,
+            ref start,
+            ref end,
+            #[allow(clippy::unnecessary_cast)]
+            {
                 let to_byte_slice = |s: &[DT]| unsafe {
                     std::slice::from_raw_parts(
-                        if s.len() == 0 {
+                        if s.is_empty() {
                             std::ptr::NonNull::<DT>::dangling().as_ptr()
                                 as *mut u8
                         } else {
                             s.as_ptr() as *mut u8
                         } as *const u8,
-                        std::mem::size_of_val(&*s),
+                        std::mem::size_of_val(s),
                     )
                 };
                 let start_slice = to_byte_slice(start);
                 let end_slice = to_byte_slice(end);
                 (start_slice, end_slice)
-            });
+            }
+        );
 
         test_from_slices(
             &rr,

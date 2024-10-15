@@ -684,7 +684,6 @@ mod tests {
 
     #[cfg(feature = "serde_json")]
     mod serde_json {
-        use super::*;
         use crate::serde_json::json;
         use crate::serde_json::value::{Map, Value};
 
