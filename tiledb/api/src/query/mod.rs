@@ -71,7 +71,7 @@ pub trait Query {
     /// The Subarray is tied to the lifetime of the Query.
     ///
     /// ```compile_fail,E0505
-    /// # use tiledb::query::{Query, QueryBase, Subarray};
+    /// # use tiledb_api::query::{Query, QueryBase, Subarray};
     /// fn invalid_use(query: QueryBase) {
     ///     let subarray = query.subarray().unwrap();
     ///     drop(query);
