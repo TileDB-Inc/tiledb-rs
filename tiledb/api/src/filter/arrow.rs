@@ -39,15 +39,17 @@ impl FilterMetadata {
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+    use tiledb_serde::filter::strategy::FilterPipelineStrategy;
+
     use super::*;
     use crate::{Context, Factory};
-    use proptest::prelude::*;
 
     #[test]
     fn test_serialize_invertibility() {
         let c: TileDBContext = Context::new().unwrap();
 
-        proptest!(|(filters_in in any::<crate::filter::list::FilterListData>())| {
+        proptest!(|(filters_in in FilterPipelineStrategy::default())| {
             let filters_in = filters_in.create(&c)
                 .expect("Error constructing arbitrary filter list");
             let metadata = FilterMetadata::new(&filters_in)

@@ -36,7 +36,7 @@ tiledb-utils = { workspace = true }
 
 [features]
 default = []
-arrow = ["dep:arrow"]
+arrow = ["dep:arrow", "dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde"]
 proptest-strategies = ["dep:proptest"]
 serde = ["dep:serde", "dep:serde_json", "dep:tiledb-serde"]
 

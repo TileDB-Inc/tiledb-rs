@@ -1,3 +1,5 @@
+use arrow::datatypes::{ArrowNativeType, ArrowPrimitiveType};
+
 pub trait ArrowPrimitiveTypeNative: ArrowNativeType {
     type ArrowPrimitiveType: ArrowPrimitiveType<Native = Self>;
 }

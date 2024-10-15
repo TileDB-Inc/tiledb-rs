@@ -108,6 +108,8 @@ pub enum Error {
         expected: CellValNum,
         found: CellValNum,
     },
+    #[error("Unexpected null values")]
+    UnexpectedValidity,
     /// Error serializing data
     #[error("Serialization error: {0}: {1}")]
     Serialization(String, #[source] anyhow::Error),

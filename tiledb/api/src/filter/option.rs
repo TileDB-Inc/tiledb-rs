@@ -98,7 +98,7 @@ mod tests {
             let fopt = FilterOption::try_from(i);
             if let Ok(fopt) = fopt {
                 ok += 1;
-                assert_eq!(i, fopt.into());
+                assert_eq!(i, ffi::tiledb_filter_option_t::from(fopt));
             }
         }
         assert_eq!(ok, 10);

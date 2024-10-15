@@ -678,6 +678,57 @@ pub mod strategy {
     }
 }
 
+pub fn is_physical_type_match(
+    arrow_in: &arrow_schema::DataType,
+    arrow_out: &arrow_schema::DataType,
+) -> bool {
+    if arrow_in == arrow_out {
+        return true;
+    }
+
+    /* otherwise check some inexact compatibilities */
+    use arrow_schema::DataType as ADT;
+    match (arrow_in, arrow_out) {
+        (
+            ADT::FixedSizeList(ref item_in, len_in),
+            ADT::FixedSizeList(ref item_out, len_out),
+        ) => {
+            len_in == len_out
+                && is_physical_type_match(
+                    item_in.data_type(),
+                    item_out.data_type(),
+                )
+        }
+        (ADT::LargeList(ref item_in), ADT::LargeList(ref item_out)) => {
+            is_physical_type_match(item_in.data_type(), item_out.data_type())
+        }
+        (ADT::FixedSizeList(ref item_in, 1), dt_out) => {
+            /*
+             * fixed size list of 1 element should have no extra data,
+             * we probably don't need to keep the FixedSizeList part
+             * for correctness, punt on it for now and see if we need
+             * to deal with it later
+             */
+            is_physical_type_match(item_in.data_type(), dt_out)
+        }
+        (ADT::LargeUtf8, ADT::LargeList(ref item)) => {
+            /*
+             * Arrow does checked UTF-8, tiledb does not,
+             * so we must permit this inexactness
+             */
+            *item.data_type() == arrow_schema::DataType::UInt8
+                && !item.is_nullable()
+        }
+        (dt_in, dt_out) => {
+            if dt_in.is_primitive() {
+                dt_in.primitive_width() == dt_out.primitive_width()
+            } else {
+                false
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
@@ -964,63 +1015,6 @@ pub mod tests {
         }
     }
 
-    pub fn arrow_datatype_is_inexact_compatible(
-        arrow_in: &arrow_schema::DataType,
-        arrow_out: &arrow_schema::DataType,
-    ) -> bool {
-        if arrow_in == arrow_out {
-            return true;
-        }
-
-        /* otherwise check some inexact compatibilities */
-        use arrow_schema::DataType as ADT;
-        match (arrow_in, arrow_out) {
-            (
-                ADT::FixedSizeList(ref item_in, len_in),
-                ADT::FixedSizeList(ref item_out, len_out),
-            ) => {
-                len_in == len_out
-                    && arrow_datatype_is_inexact_compatible(
-                        item_in.data_type(),
-                        item_out.data_type(),
-                    )
-            }
-            (ADT::LargeList(ref item_in), ADT::LargeList(ref item_out)) => {
-                arrow_datatype_is_inexact_compatible(
-                    item_in.data_type(),
-                    item_out.data_type(),
-                )
-            }
-            (ADT::FixedSizeList(ref item_in, 1), dt_out) => {
-                /*
-                 * fixed size list of 1 element should have no extra data,
-                 * we probably don't need to keep the FixedSizeList part
-                 * for correctness, punt on it for now and see if we need
-                 * to deal with it later
-                 */
-                arrow_datatype_is_inexact_compatible(
-                    item_in.data_type(),
-                    dt_out,
-                )
-            }
-            (ADT::LargeUtf8, ADT::LargeList(ref item)) => {
-                /*
-                 * Arrow does checked UTF-8, tiledb does not,
-                 * so we must permit this inexactness
-                 */
-                *item.data_type() == arrow_schema::DataType::UInt8
-                    && !item.is_nullable()
-            }
-            (dt_in, dt_out) => {
-                if dt_in.is_primitive() {
-                    dt_in.primitive_width() == dt_out.primitive_width()
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
     fn do_from_arrow(arrow_in: &arrow_schema::DataType) {
         match from_arrow(arrow_in) {
             DatatypeFromArrowResult::None => (),
@@ -1039,7 +1033,7 @@ pub mod tests {
                 let arrow_out = to_arrow(&datatype, cvn);
                 let arrow_out = arrow_out.into_inner();
                 assert!(
-                    arrow_datatype_is_inexact_compatible(arrow_in, &arrow_out),
+                    is_physical_type_match(arrow_in, &arrow_out),
                     "{:?} => {:?}",
                     arrow_in,
                     arrow_out

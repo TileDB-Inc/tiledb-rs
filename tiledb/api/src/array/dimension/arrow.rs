@@ -3,6 +3,10 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tiledb_common::datatype::arrow::{
+    DatatypeFromArrowResult, DatatypeToArrowResult,
+};
+use tiledb_common::physical_type_go;
 
 use crate::array::dimension::DimensionConstraints;
 use crate::array::schema::arrow::{
@@ -10,12 +14,9 @@ use crate::array::schema::arrow::{
 };
 use crate::array::{Dimension, DimensionBuilder};
 use crate::context::{Context as TileDBContext, ContextBound};
-use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
-use crate::{
-    error::Error as TileDBError, physical_type_go, Result as TileDBResult,
-};
+use crate::{error::Error as TileDBError, Result as TileDBResult};
 
 // additional methods with arrow features
 impl Dimension {
@@ -59,8 +60,10 @@ impl DimensionMetadata {
 /// Details about the Dimension are stored under the key "tiledb"
 /// in the Field's metadata.
 pub fn to_arrow(dim: &Dimension) -> TileDBResult<FieldToArrowResult> {
-    let arrow_dt =
-        crate::datatype::arrow::to_arrow(&dim.datatype()?, dim.cell_val_num()?);
+    let arrow_dt = tiledb_common::datatype::arrow::to_arrow(
+        &dim.datatype()?,
+        dim.cell_val_num()?,
+    );
 
     let construct = |adt| -> TileDBResult<arrow::datatypes::Field> {
         let name = dim.name()?;
@@ -168,7 +171,7 @@ pub fn from_arrow(
         dim.cell_val_num(cell_val_num)?.filters(fl)
     };
 
-    match crate::datatype::arrow::from_arrow(field.data_type()) {
+    match tiledb_common::datatype::arrow::from_arrow(field.data_type()) {
         DatatypeFromArrowResult::None => Ok(DimensionFromArrowResult::None),
         DatatypeFromArrowResult::Inexact(datatype, cell_val_num) => {
             Ok(DimensionFromArrowResult::Inexact(construct(
@@ -184,10 +187,11 @@ pub fn from_arrow(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::array::dimension::DimensionData;
-    use crate::{Datatype, Factory};
     use proptest::prelude::*;
+    use tiledb_serde::array::dimension::DimensionData;
+
+    use super::*;
+    use crate::{Datatype, Factory};
 
     fn do_to_arrow(tdb_in: DimensionData) {
         let c: TileDBContext = TileDBContext::new().unwrap();

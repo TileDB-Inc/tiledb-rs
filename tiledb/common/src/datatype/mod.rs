@@ -28,11 +28,11 @@ pub enum Error {
         logical_type: Datatype,
     },
     #[error(
-        "Logical type mismatch: expected {actual_type}, found {requested_type}"
+        "Logical type mismatch: expected {target_type}, found {source_type}"
     )]
     LogicalTypeMismatch {
-        requested_type: Datatype,
-        actual_type: Datatype,
+        source_type: Datatype,
+        target_type: Datatype,
     },
 }
 
