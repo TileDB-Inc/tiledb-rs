@@ -200,7 +200,7 @@ impl FilterData {
                 }
             }
             FilterData::Xor => match input.size() {
-                0 => Some(Datatype::Int8),
+                1 => Some(Datatype::Int8),
                 2 => Some(Datatype::Int16),
                 4 => Some(Datatype::Int32),
                 8 => Some(Datatype::Int64),
