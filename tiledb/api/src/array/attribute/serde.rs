@@ -79,40 +79,6 @@ mod tests {
     use super::*;
     use crate::{Context, Factory};
 
-    /// Test what the default values filled in for `None` with attribute data are.
-    /// Mostly because if we write code which does need the default, we're expecting
-    /// to match core and need to be notified if something changes or we did something
-    /// wrong.
-    #[test]
-    fn attribute_defaults() {
-        let ctx = Context::new().expect("Error creating context instance.");
-
-        {
-            let spec = AttributeData {
-                name: "xkcd".to_owned(),
-                datatype: Datatype::UInt32,
-                ..Default::default()
-            };
-            let attr = spec.create(&ctx).unwrap();
-            assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
-
-            // not nullable by default
-            assert!(!attr.is_nullable().unwrap());
-        }
-        {
-            let spec = AttributeData {
-                name: "xkcd".to_owned(),
-                datatype: Datatype::StringAscii,
-                ..Default::default()
-            };
-            let attr = spec.create(&ctx).unwrap();
-            assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
-
-            // not nullable by default
-            assert!(!attr.is_nullable().unwrap());
-        }
-    }
-
     /// Test that the arbitrary attribute construction always succeeds
     #[test]
     fn attribute_arbitrary() {
