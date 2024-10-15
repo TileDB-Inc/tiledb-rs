@@ -8,6 +8,7 @@ use crate::array::CellValNum;
 use crate::datatype::PhysicalType;
 use crate::error::Error;
 use crate::query::buffer::*;
+use crate::query::CellValue;
 use crate::Result as TileDBResult;
 use crate::{typed_query_buffers_go, Datatype};
 
@@ -901,21 +902,16 @@ pub trait FromQueryOutput: Sized {
         Self::Unit: 'data;
 }
 
-macro_rules! from_query_output_impl_physical_type {
-    ($($T:ty),+) => {
-        $(
-            impl FromQueryOutput for $T {
-                type Unit = Self;
-                type Iterator<'data> = CellStructureSingleIterator<'data, Self::Unit>
-                    where Self: 'data;
-            }
-        )+
-    };
+impl<C> FromQueryOutput for C
+where
+    C: CellValue,
+{
+    type Unit = C;
+    type Iterator<'data>
+        = CellStructureSingleIterator<'data, Self::Unit>
+    where
+        C: 'data;
 }
-
-from_query_output_impl_physical_type!(
-    u8, u16, u32, u64, i8, i16, i32, i64, f32, f64
-);
 
 impl FromQueryOutput for String {
     type Unit = u8;
