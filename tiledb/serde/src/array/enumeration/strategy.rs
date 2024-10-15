@@ -76,11 +76,11 @@ pub struct Parameters {
 
 impl Parameters {
     fn min_variants_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MIN
     }
 
     fn max_variants_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MAX
+        **tiledb_proptest_config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MAX
     }
 }
 

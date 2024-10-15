@@ -1,10 +1,6 @@
 [workspace]
 resolver = "2"
 members = [
-  "test-utils/cells",
-  "test-utils/signal",
-  "test-utils/strategy-ext",
-  "test-utils/uri",
   "tiledb/api",
   "tiledb/common",
   "tiledb/proc-macro",
@@ -13,6 +9,11 @@ members = [
   "tiledb/serde",
   "tiledb/sys",
   "tiledb/utils",
+  "test-utils/cells",
+  "test-utils/proptest-config",
+  "test-utils/signal",
+  "test-utils/strategy-ext",
+  "test-utils/uri",
   "tools/api-coverage"
 ]
 default-members = [
@@ -48,6 +49,7 @@ thiserror = { version = "1" }
 tiledb-api = { path = "tiledb/api", version = "0.1.0" }
 tiledb-common = { path = "tiledb/common", version = "0.1.0" }
 tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
+tiledb-proptest-config = { path = "test-utils/proptest-config", version = "0.1.0" }
 tiledb-serde = { path = "tiledb/serde", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
 tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }

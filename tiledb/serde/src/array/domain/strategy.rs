@@ -25,19 +25,20 @@ pub struct Requirements {
 
 impl Requirements {
     pub fn env_max_dimensions() -> Option<usize> {
-        crate::strategy::config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX.environmental()
+        tiledb_proptest_config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX
+            .environmental()
     }
 
     pub fn min_dimensions_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MIN
     }
 
     pub fn max_dimensions_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX
+        **tiledb_proptest_config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX
     }
 
     pub fn cells_per_tile_limit_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_CELLS_PER_TILE_LIMIT
+        **tiledb_proptest_config::TILEDB_STRATEGY_DOMAIN_PARAMETERS_CELLS_PER_TILE_LIMIT
     }
 }
 

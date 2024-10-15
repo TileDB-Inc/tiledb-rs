@@ -38,19 +38,19 @@ pub struct Requirements {
 
 impl Requirements {
     pub fn min_attributes_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MIN
     }
 
     pub fn max_attributes_default() -> usize {
-        **crate::strategy::config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MAX
+        **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTES_MAX
     }
 
     pub fn min_sparse_tile_capacity_default() -> u64 {
-        **crate::strategy::config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN
     }
 
     pub fn max_sparse_tile_capacity_default() -> u64 {
-        **crate::strategy::config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN
     }
 }
 

@@ -13,6 +13,7 @@ strategy-ext = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tiledb-common = { workspace = true }
 tiledb-proc-macro = { workspace = true, optional = true }
+tiledb-proptest-config = { workspace = true, optional = true }
 tiledb-utils = { workspace = true, optional = true }
 tiledb-sys = { workspace = true }
 
@@ -20,11 +21,12 @@ tiledb-sys = { workspace = true }
 num-traits = { workspace = true }
 proptest = { workspace = true }
 tiledb-common = { workspace = true, features = ["proptest-strategies"] }
+tiledb-proptest-config = { workspace = true }
 strategy-ext = { workspace = true }
 tiledb-utils = { workspace = true }
 
 [features]
 default = []
 option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils", "tiledb-common/option-subset"]
-proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:strategy-ext", "dep:tiledb-utils", "tiledb-common/proptest-strategies"]
+proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:strategy-ext", "dep:tiledb-proptest-config", "dep:tiledb-utils", "tiledb-common/proptest-strategies"]
 serde = ["dep:serde", "tiledb-common/serde"]
