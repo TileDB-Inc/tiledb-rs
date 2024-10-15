@@ -42,5 +42,9 @@ proptest-strategies = ["dep:cells", "dep:proptest"]
 serde = ["dep:serde", "dep:serde_json", "dep:tiledb-serde"]
 
 [[example]]
+name = "fragment_info"
+required-features = ["serde"]
+
+[[example]]
 name = "using_tiledb_stats"
 required-features = ["serde"]
