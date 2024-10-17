@@ -1,4 +1,4 @@
-extern crate tiledb;
+extern crate tiledb_api as tiledb;
 
 use std::path::PathBuf;
 
@@ -6,15 +6,15 @@ use itertools::izip;
 
 use tiledb::array::dimension::DimensionConstraints;
 use tiledb::array::{
-    Array, ArrayType, AttributeData, CellOrder, DimensionData, DomainData,
-    SchemaData, TileOrder,
+    Array, ArrayType, AttributeBuilder, CellOrder, DimensionBuilder,
+    DomainBuilder, SchemaBuilder, TileOrder,
 };
 use tiledb::context::Context;
 use tiledb::query::{
     Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
 };
+use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
-use tiledb::{Datatype, Factory};
 
 const ARRAY_URI: &str = "quickstart_sparse_string";
 
@@ -54,36 +54,37 @@ fn main() -> TileDBResult<()> {
 }
 
 fn create_array(ctx: &Context) -> TileDBResult<()> {
-    let schema = SchemaData {
-        array_type: ArrayType::Sparse,
-        domain: DomainData {
-            dimension: vec![
-                DimensionData {
-                    name: "rows".to_owned(),
-                    datatype: Datatype::StringAscii,
-                    constraints: DimensionConstraints::StringAscii,
-                    filters: None,
-                },
-                DimensionData {
-                    name: "cols".to_owned(),
-                    datatype: Datatype::Int32,
-                    constraints: ([1i32, 4], 4i32).into(),
-                    filters: None,
-                },
-            ],
-        },
-        attributes: vec![AttributeData {
-            name: "a".to_owned(),
-            datatype: Datatype::Int32,
-            ..Default::default()
-        }],
-        tile_order: Some(TileOrder::RowMajor),
-        cell_order: Some(CellOrder::RowMajor),
+    let schema = {
+        let domain = DomainBuilder::new(ctx)?
+            .add_dimension(
+                DimensionBuilder::new(
+                    ctx,
+                    "rows",
+                    Datatype::StringAscii,
+                    DimensionConstraints::StringAscii,
+                )?
+                .build(),
+            )?
+            .add_dimension(
+                DimensionBuilder::new(
+                    ctx,
+                    "cols",
+                    Datatype::Int32,
+                    ([1i32, 4], 4i32),
+                )?
+                .build(),
+            )?
+            .build();
 
-        ..Default::default()
+        SchemaBuilder::new(ctx, ArrayType::Sparse, domain)?
+            .cell_order(CellOrder::RowMajor)?
+            .tile_order(TileOrder::RowMajor)?
+            .add_attribute(
+                AttributeBuilder::new(ctx, "a", Datatype::Int32)?.build(),
+            )?
+            .build()?
     };
 
-    let schema = schema.create(ctx)?;
     Array::create(ctx, ARRAY_URI, schema)?;
     Ok(())
 }

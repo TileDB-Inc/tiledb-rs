@@ -1,19 +1,21 @@
 pub mod examples;
 
 pub mod prelude {
-    pub use crate::array::attribute::{
-        AttributeData, Builder as AttributeBuilder,
+    pub use tiledb_common::array::dimension::DimensionConstraints;
+    pub use tiledb_common::array::{
+        ArrayType, CellOrder, CellValNum, Mode, TileOrder,
     };
-    pub use crate::array::dimension::{
-        Builder as DimensionBuilder, DimensionConstraints, DimensionData,
-    };
-    pub use crate::array::domain::{Builder as DomainBuilder, DomainData};
-    pub use crate::array::schema::{Builder as SchemaBuilder, SchemaData};
-    pub use crate::array::{
-        Array, ArrayType, Attribute, CellOrder, CellValNum, Dimension, Domain,
-        Mode, Schema, TileOrder,
-    };
-    pub use crate::Datatype;
+    pub use tiledb_common::datatype::Datatype;
+    pub use tiledb_pod::array::attribute::AttributeData;
+    pub use tiledb_pod::array::dimension::DimensionData;
+    pub use tiledb_pod::array::domain::DomainData;
+    pub use tiledb_pod::array::schema::SchemaData;
+
+    pub use crate::array::attribute::Builder as AttributeBuilder;
+    pub use crate::array::dimension::Builder as DimensionBuilder;
+    pub use crate::array::domain::Builder as DomainBuilder;
+    pub use crate::array::schema::Builder as SchemaBuilder;
+    pub use crate::array::{Array, Attribute, Dimension, Domain, Schema};
 
     pub use crate::query::{
         Query, QueryBuilder, QueryLayout, ReadBuilder, ReadQuery, WriteBuilder,
@@ -23,15 +25,16 @@ pub mod prelude {
     pub use super::examples::TestArray;
 }
 
+#[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy {
     pub mod prelude {
         // NB: this is hardly exhaustive, feel free to add stuff, this is just what has been needed
         // so far
 
-        pub use crate::query::strategy::{Cells, FieldData};
-        pub use crate::query::write::strategy::{
-            DenseWriteInput, DenseWriteParameters, SparseWriteInput,
-            SparseWriteParameters, WriteInput,
+        pub use cells::write::strategy::{
+            DenseWriteParameters, SparseWriteParameters,
         };
+        pub use cells::write::{DenseWriteInput, SparseWriteInput, WriteInput};
+        pub use cells::{Cells, FieldData};
     }
 }

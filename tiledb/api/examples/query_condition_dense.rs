@@ -1,3 +1,5 @@
+extern crate tiledb_api as tiledb;
+
 use std::cell::RefCell;
 use std::path::PathBuf;
 

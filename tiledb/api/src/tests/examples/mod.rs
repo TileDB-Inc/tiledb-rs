@@ -2,10 +2,11 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 use proptest::test_runner::TestRunner;
-use tiledb_test_utils::TestArrayUri;
+use tiledb_pod::array::schema::SchemaData;
+use uri::TestArrayUri;
 
-use crate::array::schema::SchemaData;
 use crate::error::Error;
+use crate::query::ToWriteQuery;
 use crate::tests::prelude::*;
 use crate::tests::strategy::prelude::*;
 use crate::{Context, Factory, Result as TileDBResult};
@@ -22,7 +23,7 @@ pub struct TestArray {
 
 impl TestArray {
     pub fn new(name: &str, schema: Rc<SchemaData>) -> TileDBResult<Self> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
         let uri = test_uri
             .with_path(name)

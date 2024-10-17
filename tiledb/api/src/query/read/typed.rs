@@ -1,6 +1,5 @@
 use super::*;
-
-use crate::datatype::PhysicalType;
+use crate::query::CellValue;
 
 pub trait ReadResult: Sized {
     type Constructor: ReadCallback<Intermediate = (), Final = Self>;
@@ -113,14 +112,14 @@ mod impls {
 
     impl<C> ReadResult for Vec<C>
     where
-        C: PhysicalType,
+        C: CellValue,
     {
         type Constructor = Self;
     }
 
     impl<C> ReadResult for (Vec<C>, Vec<u8>)
     where
-        C: PhysicalType,
+        C: CellValue,
     {
         type Constructor = Self;
     }

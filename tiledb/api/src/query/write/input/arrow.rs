@@ -10,16 +10,17 @@ use arrow::array::{
 };
 use arrow::buffer::OffsetBuffer;
 use arrow::datatypes::{ArrowPrimitiveType, Field};
+use tiledb_common::array::CellValNum;
 
-use crate::array::{CellValNum, Schema};
-use crate::datatype::PhysicalType;
-use crate::error::{DatatypeErrorKind, Error};
+use crate::array::Schema;
+use crate::error::{DatatypeError, Error};
 use crate::query::buffer::{
     Buffer, CellStructure, QueryBuffers, TypedQueryBuffers,
 };
 use crate::query::write::input::{
     DataProvider, RecordProvider, TypedDataProvider,
 };
+use crate::query::CellValue;
 use crate::Result as TileDBResult;
 
 fn cell_structure_var(
@@ -31,15 +32,10 @@ fn cell_structure_var(
             let expect_len = nz.get() as i64;
             for window in offsets.windows(2) {
                 if window[1] - window[0] != expect_len {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::UnexpectedCellStructure {
-                            context: Some(
-                                "Arrow array as query input".to_owned(),
-                            ),
-                            expected: cell_val_num,
-                            found: CellValNum::Var,
-                        },
-                    ));
+                    return Err(Error::UnexpectedCellStructure {
+                        expected: cell_val_num,
+                        found: CellValNum::Var,
+                    });
                 }
             }
             Ok(CellStructure::Fixed(nz))
@@ -56,16 +52,15 @@ fn cell_structure_fixed(
     cell_val_num: CellValNum,
 ) -> TileDBResult<CellStructure<'static>> {
     match cell_val_num {
-        CellValNum::Fixed(nz) if fixed_len as u32 != nz.get() => Err(
-            Error::Datatype(DatatypeErrorKind::UnexpectedCellStructure {
-                context: Some("Arrow array as query input".to_owned()),
+        CellValNum::Fixed(nz) if fixed_len as u32 != nz.get() => {
+            Err(Error::UnexpectedCellStructure {
                 expected: cell_val_num,
                 found: match NonZeroU32::new(fixed_len as u32) {
                     Some(nz) => CellValNum::Fixed(nz),
                     None => CellValNum::Var,
                 },
-            }),
-        ),
+            })
+        }
         CellValNum::Fixed(nz) => Ok(CellStructure::Fixed(nz)),
         CellValNum::Var => {
             let offsets = Buffer::Owned({
@@ -97,11 +92,7 @@ where
         if nulls.null_count() == 0 {
             None
         } else {
-            return Err(Error::Datatype(
-                DatatypeErrorKind::UnexpectedValidity {
-                    context: Some("Arrow array as query input".to_owned()),
-                },
-            ));
+            return Err(Error::UnexpectedValidity);
         }
     } else {
         None
@@ -116,15 +107,13 @@ fn apply_to_list_element_impl<'data, A>(
 ) -> TileDBResult<TypedQueryBuffers<'data>>
 where
     A: ArrowPrimitiveType,
-    <A as ArrowPrimitiveType>::Native: PhysicalType,
+    <A as ArrowPrimitiveType>::Native: CellValue,
     TypedQueryBuffers<'data>:
         From<QueryBuffers<'data, <PrimitiveArray<A> as DataProvider>::Unit>>,
 {
     if elements.nulls().is_some() && elements.nulls().unwrap().null_count() > 0
     {
-        return Err(Error::Datatype(DatatypeErrorKind::UnexpectedValidity {
-            context: Some("Arrow array list element".to_owned()),
-        }));
+        return Err(Error::UnexpectedValidity);
     }
 
     let data = Buffer::Borrowed(elements.values().as_ref());
@@ -256,7 +245,7 @@ fn apply_to_list_element<'data>(
 impl<A> DataProvider for PrimitiveArray<A>
 where
     A: ArrowPrimitiveType,
-    <A as ArrowPrimitiveType>::Native: PhysicalType,
+    <A as ArrowPrimitiveType>::Native: CellValue,
 {
     type Unit = <A as ArrowPrimitiveType>::Native;
 
@@ -279,23 +268,14 @@ where
             }
             CellValNum::Fixed(nz) => {
                 if self.values().len() % nz.get() as usize == 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::UnexpectedCellStructure {
-                            context: None,
-                            found: CellValNum::Fixed(nz),
-                            expected: CellValNum::single(),
-                        },
-                    ));
+                    return Err(Error::UnexpectedCellStructure {
+                        found: CellValNum::Fixed(nz),
+                        expected: CellValNum::single(),
+                    });
                 }
 
                 if self.nulls().map(|n| n.null_count() > 0).unwrap_or(false) {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::UnexpectedValidity {
-                            context: Some(
-                                "Arrow array list element".to_owned(),
-                            ),
-                        },
-                    ));
+                    return Err(Error::UnexpectedValidity);
                 }
 
                 Ok(QueryBuffers {
@@ -304,13 +284,10 @@ where
                     validity: None,
                 })
             }
-            CellValNum::Var => Err(Error::Datatype(
-                DatatypeErrorKind::UnexpectedCellStructure {
-                    context: None,
-                    found: CellValNum::Var,
-                    expected: CellValNum::single(),
-                },
-            )),
+            CellValNum::Var => Err(Error::UnexpectedCellStructure {
+                found: CellValNum::Var,
+                expected: CellValNum::single(),
+            }),
         }
     }
 }
@@ -568,7 +545,8 @@ impl<'data> Iterator for RecordBatchTileDBInputs<'data> {
             (None, None) => None,
             (Some(f), Some(c)) => {
                 let Some((datatype, cell_val_num)) =
-                    crate::datatype::arrow::from_arrow(f.data_type()).ok()
+                    tiledb_common::datatype::arrow::from_arrow(f.data_type())
+                        .ok()
                 else {
                     return Some(Err(Error::InvalidArgument(anyhow!(
                         format!(
@@ -588,10 +566,9 @@ impl<'data> Iterator for RecordBatchTileDBInputs<'data> {
                 };
                 if datatype != field_datatype {
                     return Some(Err(Error::Datatype(
-                        DatatypeErrorKind::InvalidDatatype {
-                            context: Some(f.name().clone()),
-                            found: datatype,
-                            expected: field_datatype,
+                        DatatypeError::LogicalTypeMismatch {
+                            source_type: datatype,
+                            target_type: field_datatype,
                         },
                     )));
                 }
@@ -601,13 +578,10 @@ impl<'data> Iterator for RecordBatchTileDBInputs<'data> {
                 };
                 if cell_val_num != field_cell_val_num {
                     /* TODO: we can be more flexible, e.g. fixed size list can go to Var */
-                    return Some(Err(Error::Datatype(
-                        DatatypeErrorKind::UnexpectedCellStructure {
-                            context: Some(f.name().clone()),
-                            found: cell_val_num,
-                            expected: field_cell_val_num,
-                        },
-                    )));
+                    return Some(Err(Error::UnexpectedCellStructure {
+                        found: cell_val_num,
+                        expected: field_cell_val_num,
+                    }));
                 }
                 let field_is_nullable = match tiledb_field.nullability() {
                     Ok(is_nullable) => is_nullable,
