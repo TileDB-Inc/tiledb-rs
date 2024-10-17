@@ -19,7 +19,7 @@ serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tiledb-common = { workspace = true }
-tiledb-serde = { workspace = true, optional = true, features = ["serde"] }
+tiledb-pod = { workspace = true, optional = true, features = ["serde"] }
 tiledb-sys = { workspace = true }
 
 [dev-dependencies]
@@ -27,8 +27,8 @@ cells = { workspace = true, features = ["proptest-strategies"] }
 num-traits = { workspace = true }
 proptest = { workspace = true }
 tiledb-common = { workspace = true, features = ["option-subset"] }
+tiledb-pod = { workspace = true, features = ["proptest-strategies", "option-subset", "serde"] }
 tiledb-utils = { workspace = true }
-tiledb-serde = { workspace = true, features = ["proptest-strategies", "option-subset", "serde"] }
 uri = { workspace = true }
 
 [build-dependencies]
@@ -39,7 +39,7 @@ tiledb-utils = { workspace = true }
 default = []
 arrow = ["dep:arrow", "dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde"]
 proptest-strategies = ["dep:cells", "dep:proptest"]
-serde = ["dep:serde", "dep:serde_json", "dep:tiledb-serde"]
+serde = ["dep:serde", "dep:serde_json", "dep:tiledb-pod"]
 
 [[example]]
 name = "fragment_info"

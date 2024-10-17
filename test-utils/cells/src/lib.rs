@@ -511,7 +511,7 @@ mod tests {
 
     use proptest::prelude::*;
     use tiledb_common::datatype::physical::BitsKeyAdapter;
-    use tiledb_serde::array::schema::SchemaData;
+    use tiledb_pod::array::schema::SchemaData;
 
     use super::*;
     use crate::strategy::{CellsParameters, CellsStrategySchema};

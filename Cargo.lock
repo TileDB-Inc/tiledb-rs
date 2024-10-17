@@ -423,8 +423,8 @@ dependencies = [
  "proptest",
  "strategy-ext",
  "tiledb-common",
+ "tiledb-pod",
  "tiledb-proptest-config",
- "tiledb-serde",
 ]
 
 [[package]]
@@ -1317,7 +1317,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tiledb-common",
- "tiledb-serde",
+ "tiledb-pod",
  "tiledb-sys",
  "tiledb-utils",
  "uri",
@@ -1335,6 +1335,24 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tiledb-proc-macro",
+ "tiledb-sys",
+ "tiledb-utils",
+]
+
+[[package]]
+name = "tiledb-pod"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "num-traits",
+ "proptest",
+ "serde",
+ "serde_json",
+ "strategy-ext",
+ "thiserror",
+ "tiledb-common",
+ "tiledb-proc-macro",
+ "tiledb-proptest-config",
  "tiledb-sys",
  "tiledb-utils",
 ]
@@ -1359,24 +1377,6 @@ dependencies = [
  "pkg-config",
  "tiledb-api",
  "tiledb-common",
- "tiledb-utils",
-]
-
-[[package]]
-name = "tiledb-serde"
-version = "0.1.0"
-dependencies = [
- "itertools",
- "num-traits",
- "proptest",
- "serde",
- "serde_json",
- "strategy-ext",
- "thiserror",
- "tiledb-common",
- "tiledb-proc-macro",
- "tiledb-proptest-config",
- "tiledb-sys",
  "tiledb-utils",
 ]
 

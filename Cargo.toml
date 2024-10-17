@@ -3,9 +3,9 @@ resolver = "2"
 members = [
   "tiledb/api",
   "tiledb/common",
+  "tiledb/pod",
   "tiledb/proc-macro",
   "tiledb/queries",
-  "tiledb/serde",
   "tiledb/sys",
   "tiledb/utils",
   "test-utils/cells",
@@ -18,9 +18,9 @@ members = [
 default-members = [
   "tiledb/api",
   "tiledb/common",
+  "tiledb/pod",
   "tiledb/proc-macro",
   "tiledb/queries",
-  "tiledb/serde",
   "tiledb/sys",
   "tiledb/utils",
 ]
@@ -47,9 +47,9 @@ tempfile = { version = "3" }
 thiserror = { version = "1" }
 tiledb-api = { path = "tiledb/api", version = "0.1.0" }
 tiledb-common = { path = "tiledb/common", version = "0.1.0" }
+tiledb-pod = { path = "tiledb/pod", version = "0.1.0" }
 tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
 tiledb-proptest-config = { path = "test-utils/proptest-config", version = "0.1.0" }
-tiledb-serde = { path = "tiledb/serde", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
 tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }
 tiledb-utils = { path = "tiledb/utils", version = "0.1.0" }

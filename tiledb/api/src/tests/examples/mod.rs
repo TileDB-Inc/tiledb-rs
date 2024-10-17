@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use proptest::prelude::*;
 use proptest::test_runner::TestRunner;
-use tiledb_serde::array::schema::SchemaData;
+use tiledb_pod::array::schema::SchemaData;
 use uri::TestArrayUri;
 
 use crate::error::Error;

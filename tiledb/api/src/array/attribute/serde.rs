@@ -2,7 +2,7 @@ use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::{metadata_value_go, physical_type_go};
-use tiledb_serde::array::attribute::{AttributeData, FillData};
+use tiledb_pod::array::attribute::{AttributeData, FillData};
 
 use super::{Attribute, Builder};
 use crate::error::Error as TileDBError;

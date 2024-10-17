@@ -219,7 +219,7 @@ impl Iterator for Dimensions<'_> {
 #[cfg(any(test, feature = "serde"))]
 impl Debug for Domain {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match tiledb_serde::array::domain::DomainData::try_from(self) {
+        match tiledb_pod::array::domain::DomainData::try_from(self) {
             Ok(d) => Debug::fmt(&d, f),
             Err(e) => {
                 let RawDomain::Owned(ptr) = self.raw;
@@ -282,8 +282,8 @@ pub mod serde;
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tiledb_serde::array::dimension::DimensionData;
-    use tiledb_serde::array::domain::DomainData;
+    use tiledb_pod::array::dimension::DimensionData;
+    use tiledb_pod::array::domain::DomainData;
     use utils::assert_option_subset;
 
     use crate::array::domain::Builder;

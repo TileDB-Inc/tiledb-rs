@@ -11,7 +11,7 @@ use strategy_ext::records::RecordsValueTree;
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::{Datatype, PhysicalType};
 use tiledb_common::{dimension_constraints_go, physical_type_go};
-use tiledb_serde::array::schema::{FieldData as SchemaField, SchemaData};
+use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 
 use super::field::FieldData;
 use super::Cells;
@@ -620,7 +620,7 @@ impl Arbitrary for Cells {
             CellsStrategy::new(schema, args).boxed()
         } else {
             let keys =
-                tiledb_serde::array::attribute::strategy::prop_attribute_name();
+                tiledb_pod::array::attribute::strategy::prop_attribute_name();
             let values = (any::<Datatype>(), any::<CellValNum>());
             proptest::collection::hash_map(keys, values, 1..16)
                 .prop_flat_map(move |values| {

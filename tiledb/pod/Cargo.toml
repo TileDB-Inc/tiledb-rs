@@ -1,5 +1,5 @@
 [package]
-name = "tiledb-serde"
+name = "tiledb-pod"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true

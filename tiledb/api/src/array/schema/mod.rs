@@ -406,7 +406,7 @@ impl PartialEq<Schema> for Schema {
 #[cfg(any(test, feature = "serde"))]
 impl Debug for Schema {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match tiledb_serde::array::schema::SchemaData::try_from(self) {
+        match tiledb_pod::array::schema::SchemaData::try_from(self) {
             Ok(s) => Debug::fmt(&s, f),
             Err(e) => {
                 let RawSchema::Owned(ptr) = self.raw;
@@ -641,10 +641,10 @@ pub mod serde;
 mod tests {
     use proptest::prelude::*;
     use tiledb_common::physical_type_go;
-    use tiledb_serde::array::attribute::AttributeData;
-    use tiledb_serde::array::dimension::DimensionData;
-    use tiledb_serde::array::domain::DomainData;
-    use tiledb_serde::array::schema::SchemaData;
+    use tiledb_pod::array::attribute::AttributeData;
+    use tiledb_pod::array::dimension::DimensionData;
+    use tiledb_pod::array::domain::DomainData;
+    use tiledb_pod::array::schema::SchemaData;
     use uri::{self, TestArrayUri};
     use utils::assert_option_subset;
 

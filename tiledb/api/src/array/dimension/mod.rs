@@ -161,7 +161,7 @@ impl PartialEq<Dimension> for Dimension {
 #[cfg(any(test, feature = "serde"))]
 impl Debug for Dimension {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match tiledb_serde::array::dimension::DimensionData::try_from(self) {
+        match tiledb_pod::array::dimension::DimensionData::try_from(self) {
             Ok(d) => Debug::fmt(&d, f),
             Err(e) => {
                 let RawDimension::Owned(ptr) = self.raw;
@@ -279,7 +279,7 @@ pub mod serde;
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tiledb_serde::array::dimension::DimensionData;
+    use tiledb_pod::array::dimension::DimensionData;
     use utils::assert_option_subset;
 
     use super::*;

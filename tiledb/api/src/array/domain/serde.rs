@@ -1,5 +1,5 @@
-use tiledb_serde::array::dimension::DimensionData;
-use tiledb_serde::array::domain::DomainData;
+use tiledb_pod::array::dimension::DimensionData;
+use tiledb_pod::array::domain::DomainData;
 
 use super::{Builder, Domain};
 use crate::error::Error as TileDBError;

@@ -188,7 +188,7 @@ pub fn from_arrow(
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tiledb_serde::array::dimension::DimensionData;
+    use tiledb_pod::array::dimension::DimensionData;
 
     use super::*;
     use crate::{Datatype, Factory};

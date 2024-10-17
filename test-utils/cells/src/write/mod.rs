@@ -6,7 +6,7 @@ use std::ops::Deref;
 use tiledb_common::array::{CellOrder, CellValNum};
 use tiledb_common::datatype::physical::BitsOrd;
 use tiledb_common::range::{NonEmptyDomain, Range, SingleValueRange};
-use tiledb_serde::array::schema::SchemaData;
+use tiledb_pod::array::schema::SchemaData;
 
 use crate::{typed_field_data_go, Cells};
 

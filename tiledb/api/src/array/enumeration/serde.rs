@@ -1,4 +1,4 @@
-use tiledb_serde::array::enumeration::EnumerationData;
+use tiledb_pod::array::enumeration::EnumerationData;
 
 use super::{Builder, Enumeration};
 use crate::error::Error as TileDBError;

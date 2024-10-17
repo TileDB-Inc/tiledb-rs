@@ -40,7 +40,7 @@ impl FilterMetadata {
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tiledb_serde::filter::strategy::FilterPipelineStrategy;
+    use tiledb_pod::filter::strategy::FilterPipelineStrategy;
 
     use super::*;
     use crate::{Context, Factory};

@@ -1,8 +1,8 @@
 use tiledb_common::filter::FilterData;
-use tiledb_serde::array::attribute::AttributeData;
-use tiledb_serde::array::dimension::DimensionData;
-use tiledb_serde::array::domain::DomainData;
-use tiledb_serde::array::schema::{FieldData, SchemaData};
+use tiledb_pod::array::attribute::AttributeData;
+use tiledb_pod::array::dimension::DimensionData;
+use tiledb_pod::array::domain::DomainData;
+use tiledb_pod::array::schema::{FieldData, SchemaData};
 
 use super::{Builder, Field, Schema};
 use crate::error::Error as TileDBError;

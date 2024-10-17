@@ -294,7 +294,7 @@ impl PartialEq<Attribute> for Attribute {
 #[cfg(any(test, feature = "serde"))]
 impl Debug for Attribute {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match tiledb_serde::array::attribute::AttributeData::try_from(self) {
+        match tiledb_pod::array::attribute::AttributeData::try_from(self) {
             Ok(a) => Debug::fmt(&a, f),
             Err(e) => {
                 let RawAttribute::Owned(ptr) = self.raw;
@@ -484,7 +484,7 @@ pub mod serde;
 
 #[cfg(test)]
 mod tests {
-    use tiledb_serde::array::attribute::AttributeData;
+    use tiledb_pod::array::attribute::AttributeData;
 
     use super::*;
     use crate::filter::list::Builder as FilterListBuilder;

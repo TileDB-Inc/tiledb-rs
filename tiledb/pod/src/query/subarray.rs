@@ -51,7 +51,7 @@ impl SubarrayData {
     ///
     /// ```
     /// use tiledb_common::range::Range;
-    /// use tiledb_serde::query::subarray::SubarrayData;
+    /// use tiledb_pod::query::subarray::SubarrayData;
     ///
     /// let s1 = SubarrayData {
     ///     dimension_ranges: vec![
@@ -82,7 +82,7 @@ impl SubarrayData {
     /// as the resulting subarray would select no coordinates.
     /// ```
     /// use tiledb_common::range::Range;
-    /// use tiledb_serde::query::subarray::SubarrayData;
+    /// use tiledb_pod::query::subarray::SubarrayData;
     ///
     /// let s1 = SubarrayData {
     ///     dimension_ranges: vec![
@@ -103,7 +103,7 @@ impl SubarrayData {
     /// The intersection is equal to the ranges of `other`.
     /// ```
     /// use tiledb_common::range::Range;
-    /// use tiledb_serde::query::subarray::SubarrayData;
+    /// use tiledb_pod::query::subarray::SubarrayData;
     ///
     /// let s1 = SubarrayData {
     ///     dimension_ranges: vec![

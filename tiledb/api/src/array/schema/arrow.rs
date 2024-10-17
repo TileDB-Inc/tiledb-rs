@@ -257,9 +257,9 @@ mod tests {
     use std::collections::HashSet;
 
     use proptest::prelude::*;
-    use tiledb_serde::array::attribute::AttributeData;
-    use tiledb_serde::array::dimension::DimensionData;
-    use tiledb_serde::array::schema::SchemaData;
+    use tiledb_pod::array::attribute::AttributeData;
+    use tiledb_pod::array::dimension::DimensionData;
+    use tiledb_pod::array::schema::SchemaData;
 
     use super::*;
     use crate::array::schema::Field as SchemaField;

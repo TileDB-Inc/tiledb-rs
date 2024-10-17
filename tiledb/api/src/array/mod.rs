@@ -908,8 +908,8 @@ pub mod tests {
     use tiledb_common::array::dimension::DimensionConstraints;
     use tiledb_common::datatype::Datatype;
     use tiledb_common::metadata::Value;
-    use tiledb_serde::array::enumeration::EnumerationData;
-    use tiledb_serde::array::schema::SchemaData;
+    use tiledb_pod::array::enumeration::EnumerationData;
+    use tiledb_pod::array::schema::SchemaData;
     use uri::{self, TestArrayUri};
     use utils::assert_option_subset;
     use utils::option::OptionSubset;

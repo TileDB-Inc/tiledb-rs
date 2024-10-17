@@ -9,7 +9,7 @@ use proptest::test_runner::TestRunner;
 use tiledb_common::array::{ArrayType, CellOrder, CellValNum};
 use tiledb_common::range::{Range, SingleValueRange};
 use tiledb_common::single_value_range_go;
-use tiledb_serde::array::schema::SchemaData;
+use tiledb_pod::array::schema::SchemaData;
 
 use super::*;
 use crate::strategy::{

@@ -1,7 +1,7 @@
 use tiledb_common::array::dimension::DimensionConstraints;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
-use tiledb_serde::array::dimension::DimensionData;
+use tiledb_pod::array::dimension::DimensionData;
 
 use super::{Builder, Dimension};
 use crate::error::Error as TileDBError;

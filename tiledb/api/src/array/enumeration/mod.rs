@@ -217,8 +217,7 @@ impl PartialEq<Enumeration> for Enumeration {
 #[cfg(any(test, feature = "serde"))]
 impl Debug for Enumeration {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match tiledb_serde::array::enumeration::EnumerationData::try_from(self)
-        {
+        match tiledb_pod::array::enumeration::EnumerationData::try_from(self) {
             Ok(e) => Debug::fmt(&e, f),
             Err(e) => {
                 let RawEnumeration::Owned(ptr) = self.raw;
@@ -354,7 +353,7 @@ pub mod serde;
 #[cfg(test)]
 mod tests {
     use proptest::prelude::*;
-    use tiledb_serde::array::enumeration::EnumerationData;
+    use tiledb_pod::array::enumeration::EnumerationData;
 
     use super::*;
     use crate::{Context, Factory};

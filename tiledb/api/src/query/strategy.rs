@@ -7,10 +7,10 @@ use cells::write::{
 use cells::{typed_field_data_go, Cells, FieldData};
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::physical_type_go;
-use tiledb_serde::array::dimension::strategy::Requirements as DimensionRequirements;
-use tiledb_serde::array::domain::strategy::Requirements as DomainRequirements;
-use tiledb_serde::array::schema::strategy::Requirements as SchemaRequirements;
-use tiledb_serde::filter::strategy::Requirements as FilterRequirements;
+use tiledb_pod::array::dimension::strategy::Requirements as DimensionRequirements;
+use tiledb_pod::array::domain::strategy::Requirements as DomainRequirements;
+use tiledb_pod::array::schema::strategy::Requirements as SchemaRequirements;
+use tiledb_pod::filter::strategy::Requirements as FilterRequirements;
 
 use super::*;
 use crate::query::read::output::{
@@ -366,7 +366,7 @@ mod tests {
     use cells::write::{DenseWriteInput, SparseWriteInput, WriteSequence};
     use proptest::prelude::*;
     use tiledb_common::range::{NonEmptyDomain, Range};
-    use tiledb_serde::array::schema::SchemaData;
+    use tiledb_pod::array::schema::SchemaData;
     use uri::TestArrayUri;
 
     use super::*;

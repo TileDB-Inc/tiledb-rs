@@ -184,7 +184,7 @@ pub mod strategy {
     pub fn prop_arrow_field() -> impl Strategy<Value = arrow::datatypes::Field>
     {
         (
-            tiledb_serde::array::attribute::strategy::prop_attribute_name(),
+            tiledb_pod::array::attribute::strategy::prop_attribute_name(),
             tiledb_common::datatype::arrow::strategy::any_datatype(
                 Default::default(),
             ),
@@ -204,7 +204,7 @@ pub mod strategy {
 #[cfg(test)]
 pub mod tests {
     use proptest::prelude::*;
-    use tiledb_serde::array::attribute::AttributeData;
+    use tiledb_pod::array::attribute::AttributeData;
 
     use super::*;
     use crate::Factory;
@@ -297,7 +297,7 @@ pub mod tests {
 
     proptest! {
         #[test]
-        fn test_tiledb_arrow(tdb_in in tiledb_serde::array::attribute::strategy::prop_attribute(Default::default())) {
+        fn test_tiledb_arrow(tdb_in in tiledb_pod::array::attribute::strategy::prop_attribute(Default::default())) {
             do_tiledb_arrow(tdb_in);
         }
 

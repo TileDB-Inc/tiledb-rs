@@ -6,10 +6,10 @@ pub mod prelude {
         ArrayType, CellOrder, CellValNum, Mode, TileOrder,
     };
     pub use tiledb_common::datatype::Datatype;
-    pub use tiledb_serde::array::attribute::AttributeData;
-    pub use tiledb_serde::array::dimension::DimensionData;
-    pub use tiledb_serde::array::domain::DomainData;
-    pub use tiledb_serde::array::schema::SchemaData;
+    pub use tiledb_pod::array::attribute::AttributeData;
+    pub use tiledb_pod::array::dimension::DimensionData;
+    pub use tiledb_pod::array::domain::DomainData;
+    pub use tiledb_pod::array::schema::SchemaData;
 
     pub use crate::array::attribute::Builder as AttributeBuilder;
     pub use crate::array::dimension::Builder as DimensionBuilder;

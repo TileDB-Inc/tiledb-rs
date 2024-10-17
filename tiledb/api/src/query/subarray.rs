@@ -377,8 +377,8 @@ mod tests {
 
     use itertools::izip;
     use proptest::prelude::*;
-    use tiledb_serde::array::schema::SchemaData;
-    use tiledb_serde::query::subarray::SubarrayData;
+    use tiledb_pod::array::schema::SchemaData;
+    use tiledb_pod::query::subarray::SubarrayData;
     use uri::{self, TestArrayUri};
 
     use super::*;
