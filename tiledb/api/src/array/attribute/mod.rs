@@ -3,7 +3,7 @@ extern crate tiledb_sys as ffi;
 use std::borrow::Borrow;
 use std::ops::Deref;
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use tiledb_common::array::attribute::{FromFillValue, IntoFillValue};
@@ -291,7 +291,7 @@ impl PartialEq<Attribute> for Attribute {
     }
 }
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 impl Debug for Attribute {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match tiledb_pod::array::attribute::AttributeData::try_from(self) {
@@ -479,8 +479,8 @@ impl Builder {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(any(test, feature = "serde"))]
-pub mod serde;
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {

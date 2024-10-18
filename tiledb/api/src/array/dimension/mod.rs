@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use crate::array::CellValNum;
@@ -158,7 +158,7 @@ impl PartialEq<Dimension> for Dimension {
     }
 }
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 impl Debug for Dimension {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match tiledb_pod::array::dimension::DimensionData::try_from(self) {
@@ -273,8 +273,8 @@ impl From<Builder> for Dimension {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(any(test, feature = "serde"))]
-pub mod serde;
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {

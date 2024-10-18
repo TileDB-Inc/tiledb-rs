@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use anyhow::anyhow;
@@ -403,7 +403,7 @@ impl PartialEq<Schema> for Schema {
     }
 }
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 impl Debug for Schema {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match tiledb_pod::array::schema::SchemaData::try_from(self) {
@@ -634,8 +634,8 @@ impl TryFrom<Builder> for Schema {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(any(test, feature = "serde"))]
-pub mod serde;
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use crate::context::{CApiInterface, Context, ContextBound};
@@ -214,7 +214,7 @@ impl PartialEq<Enumeration> for Enumeration {
     }
 }
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 impl Debug for Enumeration {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match tiledb_pod::array::enumeration::EnumerationData::try_from(self) {
@@ -347,8 +347,8 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
     }
 }
 
-#[cfg(any(test, feature = "serde"))]
-pub mod serde;
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {

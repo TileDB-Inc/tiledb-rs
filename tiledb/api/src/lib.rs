@@ -79,7 +79,7 @@ pub use context::{Context, ContextBound};
 pub use datatype::Datatype;
 pub type Result<T> = std::result::Result<T, error::Error>;
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 pub trait Factory {
     type Item;
 

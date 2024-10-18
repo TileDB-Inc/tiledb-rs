@@ -363,8 +363,8 @@ impl PartialEq<Filter> for Filter {
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(any(test, feature = "serde"))]
-pub mod serde;
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {

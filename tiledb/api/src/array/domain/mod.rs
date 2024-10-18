@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use anyhow::anyhow;
@@ -216,7 +216,7 @@ impl Iterator for Dimensions<'_> {
     }
 }
 
-#[cfg(any(test, feature = "serde"))]
+#[cfg(any(test, feature = "pod"))]
 impl Debug for Domain {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match tiledb_pod::array::domain::DomainData::try_from(self) {
@@ -276,8 +276,8 @@ impl From<Builder> for Domain {
     }
 }
 
-#[cfg(any(test, feature = "serde"))]
-pub mod serde;
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {
