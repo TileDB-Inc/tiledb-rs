@@ -1,4 +1,4 @@
-extern crate tiledb;
+extern crate tiledb_api as tiledb;
 
 use crate::tiledb::query::read::AggregateQueryBuilder;
 use std::path::PathBuf;

@@ -37,7 +37,8 @@ macro_rules! option_subset_partialeq {
 
 #[macro_export]
 macro_rules! assert_option_subset {
-    ($left:expr, $right:expr $(,)?) => {
+    ($left:expr, $right:expr $(,)?) => {{
+        use $crate::option::OptionSubset;
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(left_val.option_subset(right_val)) {
@@ -49,12 +50,13 @@ right: {right_val:?}"#
                 }
             }
         }
-    };
+    }};
 }
 
 #[macro_export]
 macro_rules! assert_not_option_subset {
-    ($left:expr, $right:expr $(,)?) => {
+    ($left:expr, $right:expr $(,)?) => {{
+        use $crate::option::OptionSubset;
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if left_val.option_subset(right_val) {
@@ -66,7 +68,7 @@ right: {right_val:?}"#
                 }
             }
         }
-    };
+    }};
 }
 
 impl<T> OptionSubset for Option<T>
@@ -682,7 +684,6 @@ mod tests {
 
     #[cfg(feature = "serde_json")]
     mod serde_json {
-        use super::*;
         use crate::serde_json::json;
         use crate::serde_json::value::{Map, Value};
 

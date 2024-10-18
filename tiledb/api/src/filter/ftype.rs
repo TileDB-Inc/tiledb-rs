@@ -1,7 +1,23 @@
-use crate::error::Error;
-use crate::Result as TileDBResult;
+use std::fmt::{Display, Formatter, Result as FmtResult};
 
-#[derive(Clone, Debug, PartialEq)]
+use thiserror::Error;
+use tiledb_common::filter::{
+    ChecksumType, CompressionData, CompressionType, FilterData,
+};
+
+use crate::{FromStringCore, ToStringCore};
+
+#[derive(Clone, Debug, Error)]
+pub enum Error {
+    #[error("Invalid discriminant for {}: {0}", std::any::type_name::<FilterType>())]
+    InvalidDiscriminant(u64),
+    #[error("Internal error formatting {0}")]
+    InternalString(FilterType),
+}
+
+type Result<T> = std::result::Result<T, Error>;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum FilterType {
     None,
     Gzip,
@@ -23,9 +39,56 @@ pub enum FilterType {
     Delta,
 }
 
-impl FilterType {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_filter_type_t {
-        match *self {
+impl ToStringCore for FilterType {
+    type Error = Error;
+
+    fn to_string_core(&self) -> Result<String> {
+        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
+        let res = unsafe {
+            ffi::tiledb_filter_type_to_str((*self).into(), &mut c_str)
+        };
+        if res == ffi::TILEDB_OK {
+            let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
+            Ok(String::from(c_msg.to_string_lossy()))
+        } else {
+            Err(Error::InternalString(*self))
+        }
+    }
+}
+
+impl FromStringCore for FilterType {
+    fn from_string_core(s: &str) -> Option<Self> {
+        let c_ftype =
+            std::ffi::CString::new(s).expect("Error creating CString");
+        std::ffi::CString::new(s).expect("Error creating CString");
+        let mut c_ret: u32 = 0;
+        let res = unsafe {
+            ffi::tiledb_filter_type_from_str(
+                c_ftype.as_c_str().as_ptr(),
+                &mut c_ret,
+            )
+        };
+
+        if res == ffi::TILEDB_OK {
+            FilterType::try_from(c_ret).ok()
+        } else {
+            None
+        }
+    }
+}
+
+impl Display for FilterType {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match self.to_string_core() {
+            Ok(s) => write!(f, "{}", s),
+            Err(e) => write!(f, "<FilterType: {}>", e),
+        }
+    }
+}
+
+impl From<FilterType> for ffi::tiledb_filter_type_t {
+    fn from(value: FilterType) -> Self {
+        match value {
             FilterType::None => ffi::tiledb_filter_type_t_TILEDB_FILTER_NONE,
             FilterType::Gzip => ffi::tiledb_filter_type_t_TILEDB_FILTER_GZIP,
             FilterType::Zstd => ffi::tiledb_filter_type_t_TILEDB_FILTER_ZSTD,
@@ -64,46 +127,11 @@ impl FilterType {
             FilterType::Delta => ffi::tiledb_filter_type_t_TILEDB_FILTER_DELTA,
         }
     }
-
-    pub fn to_string(&self) -> TileDBResult<String> {
-        let mut c_str = std::ptr::null::<std::os::raw::c_char>();
-        let res = unsafe {
-            ffi::tiledb_filter_type_to_str(self.capi_enum(), &mut c_str)
-        };
-        if res == ffi::TILEDB_OK {
-            let c_msg = unsafe { std::ffi::CStr::from_ptr(c_str) };
-            Ok(String::from(c_msg.to_string_lossy()))
-        } else {
-            Err(Error::LibTileDB(format!(
-                "Error converting filter type: {:?} to string",
-                self
-            )))
-        }
-    }
-
-    pub fn from_string(fs: &str) -> TileDBResult<FilterType> {
-        let c_ftype =
-            std::ffi::CString::new(fs).expect("Error creating CString");
-        std::ffi::CString::new(fs).expect("Error creating CString");
-        let mut c_ret: u32 = 0;
-        let res = unsafe {
-            ffi::tiledb_filter_type_from_str(
-                c_ftype.as_c_str().as_ptr(),
-                &mut c_ret,
-            )
-        };
-
-        if res == ffi::TILEDB_OK {
-            FilterType::try_from(c_ret)
-        } else {
-            Err(Error::LibTileDB(format!("Invalid filter type: {}", fs)))
-        }
-    }
 }
 
 impl TryFrom<u32> for FilterType {
-    type Error = crate::error::Error;
-    fn try_from(value: u32) -> TileDBResult<FilterType> {
+    type Error = Error;
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
         match value {
             ffi::tiledb_filter_type_t_TILEDB_FILTER_NONE => {
                 Ok(FilterType::None)
@@ -153,11 +181,67 @@ impl TryFrom<u32> for FilterType {
             ffi::tiledb_filter_type_t_TILEDB_FILTER_DELTA => {
                 Ok(FilterType::Delta)
             }
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid filter type: {}",
-                value
-            ))),
+            _ => Err(Error::InvalidDiscriminant(value as u64)),
         }
+    }
+}
+
+impl From<&FilterData> for FilterType {
+    fn from(value: &FilterData) -> Self {
+        match value {
+            FilterData::None => FilterType::None,
+            FilterData::BitShuffle { .. } => FilterType::BitShuffle,
+            FilterData::ByteShuffle { .. } => FilterType::ByteShuffle,
+            FilterData::BitWidthReduction { .. } => {
+                FilterType::BitWidthReduction
+            }
+            FilterData::Checksum(ChecksumType::Md5) => FilterType::ChecksumMD5,
+            FilterData::Checksum(ChecksumType::Sha256) => {
+                FilterType::ChecksumSHA256
+            }
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Bzip2,
+                ..
+            }) => FilterType::Bzip2,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Delta { .. },
+                ..
+            }) => FilterType::Delta,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Dictionary,
+                ..
+            }) => FilterType::Dictionary,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::DoubleDelta { .. },
+                ..
+            }) => FilterType::DoubleDelta,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Gzip,
+                ..
+            }) => FilterType::Gzip,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Lz4,
+                ..
+            }) => FilterType::Lz4,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Rle,
+                ..
+            }) => FilterType::Rle,
+            FilterData::Compression(CompressionData {
+                kind: CompressionType::Zstd,
+                ..
+            }) => FilterType::Zstd,
+            FilterData::PositiveDelta { .. } => FilterType::PositiveDelta,
+            FilterData::ScaleFloat { .. } => FilterType::ScaleFloat,
+            FilterData::WebP { .. } => FilterType::WebP,
+            FilterData::Xor => FilterType::Xor,
+        }
+    }
+}
+
+impl From<FilterData> for FilterType {
+    fn from(value: FilterData) -> Self {
+        FilterType::from(&value)
     }
 }
 
@@ -172,8 +256,8 @@ mod tests {
             if maybe_ftype.is_ok() {
                 let ftype = maybe_ftype.unwrap();
                 let ftype_str =
-                    ftype.to_string().expect("Error creating string.");
-                let str_ftype = FilterType::from_string(&ftype_str)
+                    ftype.to_string_core().expect("Error creating string.");
+                let str_ftype = FilterType::from_string_core(&ftype_str)
                     .expect("Error round tripping filter type string.");
                 assert_eq!(str_ftype, ftype);
             }

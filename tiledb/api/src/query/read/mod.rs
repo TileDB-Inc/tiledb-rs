@@ -106,13 +106,13 @@ impl<I, F> ReadStepOutput<I, F> {
     /// # Examples
     ///
     /// ```
-    /// use tiledb::query::ReadStepOutput;
+    /// use tiledb_api::query::ReadStepOutput;
     /// let r = ReadStepOutput::<String, String>::Intermediate("tiledb".to_string());
     /// assert_eq!("tiledb", r.unwrap_intermediate());
     /// ```
     ///
     /// ```should_panic
-    /// use tiledb::query::ReadStepOutput;
+    /// use tiledb_api::query::ReadStepOutput;
     /// let r = ReadStepOutput::<String, String>::Final("tiledb".to_string());
     /// assert_eq!("tiledb", r.unwrap_intermediate()); // fails
     /// ```
@@ -133,13 +133,13 @@ impl<I, F> ReadStepOutput<I, F> {
     /// # Examples
     ///
     /// ```
-    /// use tiledb::query::ReadStepOutput;
+    /// use tiledb_api::query::ReadStepOutput;
     /// let r = ReadStepOutput::<String, String>::Final("tiledb".to_string());
     /// assert_eq!("tiledb", r.unwrap_final());
     /// ```
     ///
     /// ```should_panic
-    /// use tiledb::query::ReadStepOutput;
+    /// use tiledb_api::query::ReadStepOutput;
     /// let r = ReadStepOutput::<String, String>::Intermediate("tiledb".to_string());
     /// assert_eq!("tiledb", r.unwrap_final()); // fails
     /// ```

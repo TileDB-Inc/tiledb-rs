@@ -1,12 +1,20 @@
-extern crate tiledb;
+extern crate tiledb_api;
+extern crate tiledb_common;
 extern crate tiledb_query_adapters;
 
 use std::path::PathBuf;
-use tiledb::datatype::PhysicalValue;
-use tiledb::query::read::AggregateFunction;
-use tiledb::query::{QueryBuilder, ReadQuery};
-use tiledb::Datatype;
-use tiledb::Result as TileDBResult;
+
+use tiledb_api::array::{
+    Array, AttributeBuilder, Dimension, DimensionBuilder, DomainBuilder,
+    SchemaBuilder,
+};
+use tiledb_api::query::read::AggregateFunction;
+use tiledb_api::query::{
+    QueryBuilder, QueryLayout, ReadBuilder, ReadQuery, WriteBuilder,
+};
+use tiledb_api::{Context, Result as TileDBResult};
+use tiledb_common::array::{ArrayType, Mode};
+use tiledb_common::datatype::{Datatype, PhysicalValue};
 use tiledb_query_adapters::AggregateQueryBuilderExt;
 
 const AGGREGATE_ARRAY_URI: &str = "aggregates";
@@ -44,12 +52,12 @@ fn main() {
 
 /// Returns whether the example array already exists
 fn array_exists() -> bool {
-    let tdb = match tiledb::context::Context::new() {
+    let tdb = match Context::new() {
         Err(_) => return false,
         Ok(tdb) => tdb,
     };
 
-    tiledb::array::Array::exists(&tdb, AGGREGATE_ARRAY_URI)
+    Array::exists(&tdb, AGGREGATE_ARRAY_URI)
         .expect("Error checking array existence")
 }
 
@@ -60,48 +68,35 @@ fn array_exists() -> bool {
 /// span all 4 elements on each dimension.
 /// Hence we have 16 cells of data and a single tile for the whole array.
 fn create_array() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
+    let tdb = Context::new()?;
 
     let domain = {
-        let rows: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new(
-                &tdb,
-                "rows",
-                Datatype::Int32,
-                ([1, 4], 4),
-            )?
-            .build();
-        let cols: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new(
-                &tdb,
-                "columns",
-                Datatype::Int32,
-                ([1, 4], 4),
-            )?
-            .build();
+        let rows: Dimension =
+            DimensionBuilder::new(&tdb, "rows", Datatype::Int32, ([1, 4], 4))?
+                .build();
+        let cols: Dimension = DimensionBuilder::new(
+            &tdb,
+            "columns",
+            Datatype::Int32,
+            ([1, 4], 4),
+        )?
+        .build();
 
-        tiledb::array::DomainBuilder::new(&tdb)?
+        DomainBuilder::new(&tdb)?
             .add_dimension(rows)?
             .add_dimension(cols)?
             .build()
     };
 
-    let attribute_a = tiledb::array::AttributeBuilder::new(
-        &tdb,
-        AGGREGATE_ATTRIBUTE_NAME,
-        tiledb::Datatype::Int32,
-    )?
-    .build();
+    let attribute_a =
+        AttributeBuilder::new(&tdb, AGGREGATE_ATTRIBUTE_NAME, Datatype::Int32)?
+            .build();
 
-    let schema = tiledb::array::SchemaBuilder::new(
-        &tdb,
-        tiledb::array::ArrayType::Dense,
-        domain,
-    )?
-    .add_attribute(attribute_a)?
-    .build()?;
+    let schema = SchemaBuilder::new(&tdb, ArrayType::Dense, domain)?
+        .add_attribute(attribute_a)?
+        .build()?;
 
-    tiledb::Array::create(&tdb, AGGREGATE_ARRAY_URI, schema)
+    Array::create(&tdb, AGGREGATE_ARRAY_URI, schema)
 }
 
 /// Writes data into the array in row-major order from a 1D-array buffer.
@@ -111,18 +106,14 @@ fn create_array() -> TileDBResult<()> {
 ///  [ 9, 10, 11, 12],
 ///  [13, 14, 15, 16]]
 fn write_array() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
+    let tdb = Context::new()?;
 
-    let array = tiledb::Array::open(
-        &tdb,
-        AGGREGATE_ARRAY_URI,
-        tiledb::array::Mode::Write,
-    )?;
+    let array = Array::open(&tdb, AGGREGATE_ARRAY_URI, Mode::Write)?;
 
     let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
 
-    let query = tiledb::query::WriteBuilder::new(array)?
-        .layout(tiledb::query::QueryLayout::RowMajor)?
+    let query = WriteBuilder::new(array)?
+        .layout(QueryLayout::RowMajor)?
         .data_typed(AGGREGATE_ATTRIBUTE_NAME, &data)?
         .build();
 
@@ -138,16 +129,12 @@ fn write_array() -> TileDBResult<()> {
 ///  [ _,  _,  _,  _]]]
 /// This should print 6, which is the number of elements in the slice.
 fn example_count() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
+    let tdb = Context::new()?;
 
-    let array = tiledb::Array::open(
-        &tdb,
-        AGGREGATE_ARRAY_URI,
-        tiledb::array::Mode::Read,
-    )?;
+    let array = Array::open(&tdb, AGGREGATE_ARRAY_URI, Mode::Read)?;
 
-    let mut query = tiledb::query::ReadBuilder::new(array)?
-        .layout(tiledb::query::QueryLayout::RowMajor)?
+    let mut query = ReadBuilder::new(array)?
+        .layout(QueryLayout::RowMajor)?
         .aggregate_physical_value(AggregateFunction::Count)?
         .start_subarray()?
         .add_range("rows", &[1i32, 2])?
@@ -174,16 +161,12 @@ fn example_count() -> TileDBResult<()> {
 ///  [ _,  _,  _,  _]]]
 /// This should print 36, which is the sum of elements in the slice.
 fn example_sum() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
+    let tdb = Context::new()?;
 
-    let array = tiledb::Array::open(
-        &tdb,
-        AGGREGATE_ARRAY_URI,
-        tiledb::array::Mode::Read,
-    )?;
+    let array = Array::open(&tdb, AGGREGATE_ARRAY_URI, Mode::Read)?;
 
-    let mut query = tiledb::query::ReadBuilder::new(array)?
-        .layout(tiledb::query::QueryLayout::RowMajor)?
+    let mut query = ReadBuilder::new(array)?
+        .layout(QueryLayout::RowMajor)?
         .aggregate_physical_value(AggregateFunction::Sum(
             AGGREGATE_ATTRIBUTE_NAME.to_owned(),
         ))?
@@ -214,16 +197,12 @@ fn example_sum() -> TileDBResult<()> {
 /// This function also uses the AggregateResultHandle enum to pass the
 /// result back.
 fn example_min_max() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
+    let tdb = Context::new()?;
 
-    let array = tiledb::Array::open(
-        &tdb,
-        AGGREGATE_ARRAY_URI,
-        tiledb::array::Mode::Read,
-    )?;
+    let array = Array::open(&tdb, AGGREGATE_ARRAY_URI, Mode::Read)?;
 
-    let mut query = tiledb::query::ReadBuilder::new(array)?
-        .layout(tiledb::query::QueryLayout::RowMajor)?
+    let mut query = ReadBuilder::new(array)?
+        .layout(QueryLayout::RowMajor)?
         .aggregate_physical_value(AggregateFunction::Max(
             AGGREGATE_ATTRIBUTE_NAME.to_owned(),
         ))?
@@ -256,16 +235,12 @@ fn example_min_max() -> TileDBResult<()> {
 ///  [ _,  _,  _,  _]]]
 /// This should print 8, which is the mean of the slice.
 fn example_mean() -> TileDBResult<()> {
-    let tdb = tiledb::context::Context::new()?;
+    let tdb = Context::new()?;
 
-    let array = tiledb::Array::open(
-        &tdb,
-        AGGREGATE_ARRAY_URI,
-        tiledb::array::Mode::Read,
-    )?;
+    let array = Array::open(&tdb, AGGREGATE_ARRAY_URI, Mode::Read)?;
 
-    let mut query = tiledb::query::ReadBuilder::new(array)?
-        .layout(tiledb::query::QueryLayout::RowMajor)?
+    let mut query = ReadBuilder::new(array)?
+        .layout(QueryLayout::RowMajor)?
         .aggregate_physical_value(AggregateFunction::Mean(
             AGGREGATE_ATTRIBUTE_NAME.to_owned(),
         ))?

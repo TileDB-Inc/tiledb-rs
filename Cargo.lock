@@ -90,9 +90,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.81"
+version = "1.0.89"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0952808a6c2afd1aa8947271f3a60f1a6763c7b912d210184c5149b5cf147247"
+checksum = "86fdf8605db99b54d3cd748a44c6d04df638eb5dafb219b135d0149bd0db01f6"
 
 [[package]]
 name = "api-coverage"
@@ -414,6 +414,18 @@ name = "cc"
 version = "1.0.90"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8cd6604a82acf3039f1144f54b8eb34e91ffba622051189e71b781822d5ee1f5"
+
+[[package]]
+name = "cells"
+version = "0.1.0"
+dependencies = [
+ "paste",
+ "proptest",
+ "strategy-ext",
+ "tiledb-common",
+ "tiledb-pod",
+ "tiledb-proptest-config",
+]
 
 [[package]]
 name = "cexpr"
@@ -1202,10 +1214,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "signal"
+version = "0.1.0"
+dependencies = [
+ "nix",
+]
+
+[[package]]
 name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
+
+[[package]]
+name = "strategy-ext"
+version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "strsim"
@@ -1276,11 +1302,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "tiledb"
+name = "tiledb-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "cells",
  "itertools",
  "num-traits",
  "paste",
@@ -1289,9 +1316,44 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tiledb-common",
+ "tiledb-pod",
+ "tiledb-sys",
+ "tiledb-utils",
+ "uri",
+]
+
+[[package]]
+name = "tiledb-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arrow-schema",
+ "paste",
+ "proptest",
+ "serde",
+ "serde_json",
+ "thiserror",
  "tiledb-proc-macro",
  "tiledb-sys",
- "tiledb-test-utils",
+ "tiledb-utils",
+]
+
+[[package]]
+name = "tiledb-pod"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "num-traits",
+ "proptest",
+ "serde",
+ "serde_json",
+ "strategy-ext",
+ "thiserror",
+ "tiledb-common",
+ "tiledb-proc-macro",
+ "tiledb-proptest-config",
+ "tiledb-sys",
  "tiledb-utils",
 ]
 
@@ -1305,11 +1367,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiledb-proptest-config"
+version = "0.1.0"
+
+[[package]]
 name = "tiledb-query-adapters"
 version = "0.1.0"
 dependencies = [
  "pkg-config",
- "tiledb",
+ "tiledb-api",
+ "tiledb-common",
  "tiledb-utils",
 ]
 
@@ -1319,16 +1386,6 @@ version = "0.1.0"
 dependencies = [
  "pkg-config",
  "tiledb-utils",
-]
-
-[[package]]
-name = "tiledb-test-utils"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "nix",
- "proptest",
- "tempfile",
 ]
 
 [[package]]
@@ -1367,6 +1424,14 @@ name = "unicode-width"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e51733f11c9c4f72aa0c160008246859e340b00807569a0da0e7a1079b27ba85"
+
+[[package]]
+name = "uri"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+]
 
 [[package]]
 name = "utf8parse"

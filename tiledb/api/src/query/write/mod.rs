@@ -249,6 +249,3 @@ impl<'data> WriteBuilder<'data> {
         Ok(b)
     }
 }
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;

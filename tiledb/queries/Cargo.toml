@@ -5,7 +5,8 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-tiledb = { workspace = true }
+tiledb-api = { workspace = true }
+tiledb-common = { workspace = true }
 
 [build-dependencies]
 pkg-config = { workspace = true }

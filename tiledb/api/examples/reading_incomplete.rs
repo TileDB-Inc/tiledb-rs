@@ -1,10 +1,10 @@
-extern crate tiledb;
+extern crate tiledb_api as tiledb;
 
 use std::cell::{Ref, RefCell};
 use std::path::PathBuf;
 
 use itertools::izip;
-use tiledb::array::{CellOrder, TileOrder};
+use tiledb::array::{CellOrder, Mode, TileOrder};
 use tiledb::query::buffer::{
     BufferMut, CellStructureMut, QueryBuffers, QueryBuffersMut,
 };
@@ -103,8 +103,7 @@ fn create_array() -> TileDBResult<()> {
 fn write_array() -> TileDBResult<()> {
     let tdb = tiledb::Context::new()?;
 
-    let array =
-        tiledb::Array::open(&tdb, ARRAY_NAME, tiledb::array::Mode::Write)?;
+    let array = tiledb::Array::open(&tdb, ARRAY_NAME, Mode::Write)?;
 
     let coords_rows = vec![1, 2, 2];
     let coords_cols = vec![1, 1, 2];
@@ -128,8 +127,7 @@ fn write_array() -> TileDBResult<()> {
 /// from a query.  The example wants to print out the query result set.
 /// Below are several different ways to implement this functionality.
 fn query_builder_start(tdb: &tiledb::Context) -> TileDBResult<ReadBuilder> {
-    let array =
-        tiledb::Array::open(tdb, ARRAY_NAME, tiledb::array::Mode::Read)?;
+    let array = tiledb::Array::open(tdb, ARRAY_NAME, Mode::Read)?;
 
     tiledb::query::ReadBuilder::new(array)?
         .layout(tiledb::query::QueryLayout::RowMajor)?

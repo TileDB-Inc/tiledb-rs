@@ -4,6 +4,7 @@ use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, ContextBound, ObjectType};
 use crate::error::Error;
 use crate::key::LookupKey;
+use crate::metadata;
 use crate::{Context, Datatype};
 
 extern crate tiledb_sys as ffi;
@@ -100,7 +101,7 @@ impl Group {
         }
 
         let raw_group = RawGroup::new(group_raw);
-        let query_type_raw = query_type.capi_enum();
+        let query_type_raw = ffi::tiledb_query_type_t::from(query_type);
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_group_open(ctx, group_raw, query_type_raw)
         })?;
@@ -135,7 +136,7 @@ impl Group {
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_get_query_type(ctx, c_group, &mut c_type)
         })?;
-        QueryType::try_from(c_type)
+        Ok(QueryType::try_from(c_type)?)
     }
 
     // Deletes the group itself. Can only be called once.
@@ -328,7 +329,8 @@ impl Group {
 
     pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
         let c_group = self.capi();
-        let (vec_size, vec_ptr, datatype) = metadata.c_data();
+        let (vec_size, vec_ptr, datatype) =
+            metadata::metadata_to_ffi(&metadata);
         let c_key = cstring!(metadata.key);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_group_put_metadata(
@@ -336,7 +338,7 @@ impl Group {
                 c_group,
                 c_key.as_ptr(),
                 datatype,
-                vec_size as u32,
+                vec_size,
                 vec_ptr,
             )
         })?;
@@ -408,7 +410,11 @@ impl Group {
             }
         }?;
         let datatype = Datatype::try_from(c_datatype)?;
-        Ok(Metadata::new_raw(name, datatype, vec_ptr, vec_size))
+        Ok(metadata::metadata_from_ffi(
+            name,
+            datatype,
+            (vec_size, vec_ptr),
+        ))
     }
 
     pub fn has_metadata_key<S>(&self, name: S) -> TileDBResult<Option<Datatype>>
@@ -513,11 +519,11 @@ mod tests {
         context::ObjectType,
         Result as TileDBResult,
     };
-    use tiledb_test_utils::{self, TestArrayUri};
+    use uri::{self, TestArrayUri};
 
     #[test]
     fn test_group_metadata() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -652,7 +658,7 @@ mod tests {
 
     #[test]
     fn test_group_functionality() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -732,7 +738,7 @@ mod tests {
 
     #[test]
     fn test_group_config() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;

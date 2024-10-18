@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use anyhow::anyhow;
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
@@ -31,7 +31,8 @@ impl Drop for RawStatsString {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct Metrics {
     pub timers: HashMap<String, f64>,
     pub counters: HashMap<String, u64>,
@@ -91,7 +92,10 @@ pub fn dump() -> TileDBResult<Option<String>> {
     Ok(Some(stats_dump_rust_str))
 }
 
+#[cfg(feature = "serde")]
 pub fn dump_json() -> TileDBResult<Option<Vec<Metrics>>> {
+    use anyhow::anyhow;
+
     if let Some(dump) = dump()? {
         let datas: Vec<Metrics> = serde_json::from_str::<Vec<Metrics>>(
             dump.as_str(),
