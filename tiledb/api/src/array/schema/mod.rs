@@ -1,153 +1,26 @@
 use std::borrow::Borrow;
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::num::{NonZeroU32, NonZeroUsize};
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 
-use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
-use util::option::OptionSubset;
+#[cfg(any(test, feature = "pod"))]
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-use crate::array::attribute::{AttributeData, RawAttribute};
-use crate::array::dimension::{Dimension, DimensionData};
-use crate::array::domain::{DomainData, RawDomain};
+use anyhow::anyhow;
+
+use crate::array::attribute::RawAttribute;
+use crate::array::dimension::Dimension;
+use crate::array::domain::RawDomain;
 use crate::array::enumeration::Enumeration;
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
-use crate::filter::list::{FilterList, FilterListData, RawFilterList};
+use crate::filter::list::{FilterList, RawFilterList};
 use crate::key::LookupKey;
 use crate::query::read::output::FieldScratchAllocator;
 use crate::Datatype;
-use crate::{Factory, Result as TileDBResult};
+use crate::Result as TileDBResult;
 
-#[derive(
-    Clone,
-    Default,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    OptionSubset,
-    PartialEq,
-    Serialize,
-)]
-pub enum ArrayType {
-    #[default]
-    Dense,
-    Sparse,
-}
-
-impl ArrayType {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_array_type_t {
-        match *self {
-            ArrayType::Dense => ffi::tiledb_array_type_t_TILEDB_DENSE,
-            ArrayType::Sparse => ffi::tiledb_array_type_t_TILEDB_SPARSE,
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_array_type_t> for ArrayType {
-    type Error = crate::error::Error;
-    fn try_from(value: ffi::tiledb_array_type_t) -> TileDBResult<Self> {
-        match value {
-            ffi::tiledb_array_type_t_TILEDB_DENSE => Ok(ArrayType::Dense),
-            ffi::tiledb_array_type_t_TILEDB_SPARSE => Ok(ArrayType::Sparse),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid array type: {}",
-                value
-            ))),
-        }
-    }
-}
-
-/// Represents the number of values carried within a single cell of an attribute or dimension.
-#[derive(
-    Copy, Clone, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum CellValNum {
-    /// The number of values per cell is a specific fixed number.
-    Fixed(std::num::NonZeroU32),
-    /// The number of values per cell varies.
-    /// When this option is used for a dimension or attribute, queries must allocate additional
-    /// space to hold structural information about each cell. The values will be concatenated
-    /// together in a single buffer, and the structural data buffer contains the offset
-    /// of each record into the values buffer.
-    Var,
-}
-
-impl CellValNum {
-    pub(crate) fn capi(&self) -> u32 {
-        match self {
-            CellValNum::Fixed(c) => c.get(),
-            CellValNum::Var => u32::MAX,
-        }
-    }
-
-    pub fn single() -> Self {
-        CellValNum::Fixed(NonZeroU32::new(1).unwrap())
-    }
-
-    pub fn is_var_sized(&self) -> bool {
-        matches!(self, CellValNum::Var)
-    }
-
-    pub fn is_single_valued(&self) -> bool {
-        matches!(self, CellValNum::Fixed(nz) if nz.get() == 1)
-    }
-
-    /// Return the fixed number of values per cell, if not variable.
-    pub fn fixed(&self) -> Option<NonZeroU32> {
-        if let CellValNum::Fixed(nz) = self {
-            Some(*nz)
-        } else {
-            None
-        }
-    }
-}
-
-impl Default for CellValNum {
-    fn default() -> Self {
-        Self::single()
-    }
-}
-
-impl Display for CellValNum {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        <Self as Debug>::fmt(self, f)
-    }
-}
-
-impl PartialEq<u32> for CellValNum {
-    fn eq(&self, other: &u32) -> bool {
-        match self {
-            CellValNum::Fixed(val) => val.get() == *other,
-            CellValNum::Var => *other == u32::MAX,
-        }
-    }
-}
-
-impl TryFrom<u32> for CellValNum {
-    type Error = crate::error::Error;
-    fn try_from(value: u32) -> TileDBResult<Self> {
-        match value {
-            0 => Err(Error::InvalidArgument(anyhow!(
-                "Cell val num cannot be zero"
-            ))),
-            u32::MAX => Ok(CellValNum::Var),
-            v => Ok(CellValNum::Fixed(NonZeroU32::new(v).unwrap())),
-        }
-    }
-}
-
-impl From<CellValNum> for u32 {
-    fn from(value: CellValNum) -> Self {
-        match value {
-            CellValNum::Fixed(nz) => nz.get(),
-            CellValNum::Var => u32::MAX,
-        }
-    }
-}
+pub use tiledb_common::array::{ArrayType, CellValNum};
 
 /// Wrapper for the CAPI handle.
 /// Ensures that the CAPI structure is freed.
@@ -221,7 +94,25 @@ impl Field {
         &self,
         memory_limit: Option<usize>,
     ) -> TileDBResult<crate::query::read::output::FieldScratchAllocator> {
-        Ok(FieldData::try_from(self)?.query_scratch_allocator(memory_limit))
+        /*
+         * Allocate space for the largest integral number of cells
+         * which fits within the memory limit.
+         */
+        let est_values_per_cell = match self.cell_val_num()? {
+            CellValNum::Fixed(nz) => nz.get() as usize,
+            CellValNum::Var => 64,
+        };
+        let est_cell_size = est_values_per_cell * self.datatype()?.size();
+
+        let est_cell_capacity = memory_limit
+            .unwrap_or(FieldScratchAllocator::DEFAULT_MEMORY_LIMIT)
+            / est_cell_size;
+
+        Ok(FieldScratchAllocator {
+            cell_val_num: self.cell_val_num().unwrap_or_default(),
+            record_capacity: NonZeroUsize::new(est_cell_capacity).unwrap(),
+            is_nullable: self.nullability().unwrap_or(true),
+        })
     }
 }
 
@@ -234,114 +125,6 @@ impl From<Dimension> for Field {
 impl From<Attribute> for Field {
     fn from(attr: Attribute) -> Field {
         Field::Attribute(attr)
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, OptionSubset, Serialize, PartialEq)]
-pub enum FieldData {
-    Dimension(DimensionData),
-    Attribute(AttributeData),
-}
-
-impl FieldData {
-    pub fn is_attribute(&self) -> bool {
-        matches!(self, Self::Attribute(_))
-    }
-
-    pub fn is_dimension(&self) -> bool {
-        matches!(self, Self::Dimension(_))
-    }
-
-    pub fn name(&self) -> &str {
-        match self {
-            Self::Dimension(d) => &d.name,
-            Self::Attribute(a) => &a.name,
-        }
-    }
-
-    pub fn datatype(&self) -> Datatype {
-        match self {
-            Self::Dimension(d) => d.datatype,
-            Self::Attribute(a) => a.datatype,
-        }
-    }
-
-    pub fn cell_val_num(&self) -> Option<CellValNum> {
-        match self {
-            Self::Dimension(d) => Some(d.cell_val_num()),
-            Self::Attribute(a) => a.cell_val_num,
-        }
-    }
-
-    pub fn nullability(&self) -> Option<bool> {
-        match self {
-            Self::Dimension(_) => Some(false),
-            Self::Attribute(a) => a.nullability,
-        }
-    }
-
-    pub fn query_scratch_allocator(
-        &self,
-        memory_limit: Option<usize>,
-    ) -> crate::query::read::output::FieldScratchAllocator {
-        /*
-         * Allocate space for the largest integral number of cells
-         * which fits within the memory limit.
-         */
-        let est_values_per_cell = match self.cell_val_num().unwrap_or_default()
-        {
-            CellValNum::Fixed(nz) => nz.get() as usize,
-            CellValNum::Var => 64,
-        };
-        let est_cell_size =
-            est_values_per_cell * self.datatype().size() as usize;
-
-        let est_cell_capacity = memory_limit
-            .unwrap_or(FieldScratchAllocator::DEFAULT_MEMORY_LIMIT)
-            / est_cell_size;
-
-        FieldScratchAllocator {
-            cell_val_num: self.cell_val_num().unwrap_or_default(),
-            record_capacity: NonZeroUsize::new(est_cell_capacity).unwrap(),
-            is_nullable: self.nullability().unwrap_or(true),
-        }
-    }
-}
-
-impl Display for FieldData {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", json!(*self))
-    }
-}
-
-impl From<AttributeData> for FieldData {
-    fn from(attr: AttributeData) -> Self {
-        FieldData::Attribute(attr)
-    }
-}
-
-impl From<DimensionData> for FieldData {
-    fn from(dim: DimensionData) -> Self {
-        FieldData::Dimension(dim)
-    }
-}
-
-impl TryFrom<&Field> for FieldData {
-    type Error = crate::error::Error;
-
-    fn try_from(field: &Field) -> TileDBResult<Self> {
-        match field {
-            Field::Dimension(d) => Ok(Self::from(DimensionData::try_from(d)?)),
-            Field::Attribute(a) => Ok(Self::from(AttributeData::try_from(a)?)),
-        }
-    }
-}
-
-impl TryFrom<Field> for FieldData {
-    type Error = crate::error::Error;
-
-    fn try_from(field: Field) -> TileDBResult<Self> {
-        Self::try_from(&field)
     }
 }
 
@@ -416,7 +199,7 @@ impl Schema {
             ffi::tiledb_array_schema_get_array_type(ctx, c_schema, &mut c_atype)
         })?;
 
-        ArrayType::try_from(c_atype)
+        Ok(ArrayType::try_from(c_atype)?)
     }
 
     /// Returns the sparse tile capacity for this schema,
@@ -448,7 +231,7 @@ impl Schema {
             )
         })?;
 
-        CellOrder::try_from(c_cell_order)
+        Ok(CellOrder::try_from(c_cell_order)?)
     }
 
     pub fn tile_order(&self) -> TileDBResult<TileOrder> {
@@ -462,7 +245,7 @@ impl Schema {
             )
         })?;
 
-        TileOrder::try_from(c_tile_order)
+        Ok(TileOrder::try_from(c_tile_order)?)
     }
 
     /// Returns whether duplicate coordinates are permitted.
@@ -597,17 +380,6 @@ impl Schema {
     }
 }
 
-impl Debug for Schema {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let data = SchemaData::try_from(self).map_err(|_| std::fmt::Error)?;
-        let mut json = json!(data);
-        json["version"] = json!(self.version());
-        json["raw"] = json!(format!("{:p}", *self.raw));
-
-        write!(f, "{}", json)
-    }
-}
-
 impl PartialEq<Schema> for Schema {
     fn eq(&self, other: &Schema) -> bool {
         eq_helper!(self.num_attributes(), other.num_attributes());
@@ -628,6 +400,19 @@ impl PartialEq<Schema> for Schema {
         eq_helper!(self.domain(), other.domain());
 
         true
+    }
+}
+
+#[cfg(any(test, feature = "pod"))]
+impl Debug for Schema {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match tiledb_pod::array::schema::SchemaData::try_from(self) {
+            Ok(s) => Debug::fmt(&s, f),
+            Err(e) => {
+                let RawSchema::Owned(ptr) = self.raw;
+                write!(f, "<Schema @ {:?}: serialization error: {}>", ptr, e)
+            }
+        }
     }
 }
 
@@ -694,7 +479,7 @@ impl Builder {
         array_type: ArrayType,
         domain: Domain,
     ) -> TileDBResult<Self> {
-        let c_array_type = array_type.capi_enum();
+        let c_array_type = ffi::tiledb_array_type_t::from(array_type);
         let mut c_schema: *mut ffi::tiledb_array_schema_t =
             std::ptr::null_mut();
         context.capi_call(|ctx| unsafe {
@@ -730,7 +515,7 @@ impl Builder {
 
     pub fn cell_order(self, order: CellOrder) -> TileDBResult<Self> {
         let c_schema = *self.schema.raw;
-        let c_order = order.capi_enum();
+        let c_order = ffi::tiledb_layout_t::from(order);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_set_cell_order(ctx, c_schema, c_order)
         })?;
@@ -739,7 +524,7 @@ impl Builder {
 
     pub fn tile_order(self, order: TileOrder) -> TileDBResult<Self> {
         let c_schema = *self.schema.raw;
-        let c_order = order.capi_enum();
+        let c_order = ffi::tiledb_layout_t::from(order);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_set_tile_order(ctx, c_schema, c_order)
         })?;
@@ -846,196 +631,22 @@ impl TryFrom<Builder> for Schema {
     }
 }
 
-/// Encapsulation of data needed to construct a Schema
-#[derive(
-    Clone, Default, Debug, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
-pub struct SchemaData {
-    pub array_type: ArrayType,
-    pub domain: DomainData,
-    pub capacity: Option<u64>,
-    pub cell_order: Option<CellOrder>,
-    pub tile_order: Option<TileOrder>,
-    pub allow_duplicates: Option<bool>,
-    pub attributes: Vec<AttributeData>,
-    pub coordinate_filters: FilterListData,
-    pub offsets_filters: FilterListData,
-    pub nullity_filters: FilterListData,
-}
-
-impl SchemaData {
-    const DEFAULT_SPARSE_TILE_CAPACITY: u64 = 10000;
-
-    pub fn num_fields(&self) -> usize {
-        self.domain.dimension.len() + self.attributes.len()
-    }
-
-    pub fn field<K: Into<LookupKey>>(&self, key: K) -> Option<FieldData> {
-        match key.into() {
-            LookupKey::Index(idx) => {
-                if idx < self.domain.dimension.len() {
-                    Some(FieldData::from(self.domain.dimension[idx].clone()))
-                } else if idx
-                    < self.domain.dimension.len() + self.attributes.len()
-                {
-                    Some(FieldData::from(
-                        self.attributes[idx - self.domain.dimension.len()]
-                            .clone(),
-                    ))
-                } else {
-                    None
-                }
-            }
-            LookupKey::Name(name) => {
-                for d in self.domain.dimension.iter() {
-                    if d.name == name {
-                        return Some(FieldData::from(d.clone()));
-                    }
-                }
-                for a in self.attributes.iter() {
-                    if a.name == name {
-                        return Some(FieldData::from(a.clone()));
-                    }
-                }
-                None
-            }
-        }
-    }
-
-    pub fn fields(&self) -> FieldDataIter {
-        FieldDataIter::new(self)
-    }
-
-    /// Returns the number of cells per tile
-    pub fn num_cells_per_tile(&self) -> usize {
-        match self.array_type {
-            ArrayType::Dense => {
-                // it should be safe to unwrap, the two `None` conditions must not
-                // be satisfied for a dense array domain
-                // (TODO: what about for string ascii dense domains?)
-                self.domain.num_cells_per_tile().unwrap()
-            }
-            ArrayType::Sparse => {
-                self.capacity.unwrap_or(Self::DEFAULT_SPARSE_TILE_CAPACITY)
-                    as usize
-            }
-        }
-    }
-}
-
-impl Display for SchemaData {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", json!(*self))
-    }
-}
-
-impl TryFrom<&Schema> for SchemaData {
-    type Error = crate::error::Error;
-
-    fn try_from(schema: &Schema) -> TileDBResult<Self> {
-        Ok(SchemaData {
-            array_type: schema.array_type()?,
-            domain: DomainData::try_from(&schema.domain()?)?,
-            capacity: Some(schema.capacity()?),
-            cell_order: Some(schema.cell_order()?),
-            tile_order: Some(schema.tile_order()?),
-            allow_duplicates: Some(schema.allows_duplicates()?),
-            attributes: (0..schema.num_attributes()?)
-                .map(|a| AttributeData::try_from(&schema.attribute(a)?))
-                .collect::<TileDBResult<Vec<AttributeData>>>()?,
-            coordinate_filters: FilterListData::try_from(
-                &schema.coordinate_filters()?,
-            )?,
-            offsets_filters: FilterListData::try_from(
-                &schema.offsets_filters()?,
-            )?,
-            nullity_filters: FilterListData::try_from(
-                &schema.nullity_filters()?,
-            )?,
-        })
-    }
-}
-
-impl TryFrom<Schema> for SchemaData {
-    type Error = crate::error::Error;
-
-    fn try_from(schema: Schema) -> TileDBResult<Self> {
-        Self::try_from(&schema)
-    }
-}
-
-impl Factory for SchemaData {
-    type Item = Schema;
-
-    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        let mut b = self.attributes.iter().try_fold(
-            Builder::new(
-                context,
-                self.array_type,
-                self.domain.create(context)?,
-            )?
-            .coordinate_filters(self.coordinate_filters.create(context)?)?
-            .offsets_filters(self.offsets_filters.create(context)?)?
-            .nullity_filters(self.nullity_filters.create(context)?)?,
-            |b, a| b.add_attribute(a.create(context)?),
-        )?;
-        if let Some(c) = self.capacity {
-            b = b.capacity(c)?;
-        }
-        if let Some(d) = self.allow_duplicates {
-            b = b.allow_duplicates(d)?;
-        }
-        if let Some(o) = self.cell_order {
-            b = b.cell_order(o)?;
-        }
-        if let Some(o) = self.tile_order {
-            b = b.tile_order(o)?;
-        }
-
-        b.build()
-    }
-}
-
-pub struct FieldDataIter<'a> {
-    schema: &'a SchemaData,
-    cursor: usize,
-}
-
-impl<'a> FieldDataIter<'a> {
-    pub fn new(schema: &'a SchemaData) -> Self {
-        FieldDataIter { schema, cursor: 0 }
-    }
-}
-
-impl Iterator for FieldDataIter<'_> {
-    type Item = FieldData;
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor < self.schema.num_fields() {
-            let item = self.schema.field(self.cursor);
-            self.cursor += 1;
-            Some(item.expect("Internal indexing error"))
-        } else {
-            None
-        }
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let exact = self.schema.num_fields() - self.cursor;
-        (exact, Some(exact))
-    }
-}
-
-impl std::iter::FusedIterator for FieldDataIter<'_> {}
-
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {
-    use tiledb_test_utils::{self, TestArrayUri};
+    use proptest::prelude::*;
+    use tiledb_common::physical_type_go;
+    use tiledb_pod::array::attribute::AttributeData;
+    use tiledb_pod::array::dimension::DimensionData;
+    use tiledb_pod::array::domain::DomainData;
+    use tiledb_pod::array::schema::SchemaData;
+    use uri::{self, TestArrayUri};
+    use utils::assert_option_subset;
 
     use super::*;
     use crate::array::tests::create_quickstart_dense;
@@ -1045,6 +656,7 @@ mod tests {
     use crate::filter::{
         CompressionData, CompressionType, FilterData, FilterListBuilder,
     };
+    use crate::{Context, Factory};
 
     fn sample_attribute(c: &Context) -> Attribute {
         AttributeBuilder::new(c, "a1", Datatype::Int32)
@@ -1197,7 +809,7 @@ mod tests {
 
     #[test]
     fn test_load() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
@@ -1674,14 +1286,37 @@ mod tests {
         }
     }
 
+    /// Test that the arbitrary schema construction always succeeds
+    #[test]
+    fn schema_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(maybe_schema in any::<SchemaData>())| {
+            maybe_schema.create(&ctx)
+                .expect("Error constructing arbitrary schema");
+        });
+    }
+
+    #[test]
+    fn schema_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(schema in any::<SchemaData>())| {
+            assert_eq!(schema, schema);
+            assert_option_subset!(schema, schema);
+
+            let schema = schema.create(&ctx)
+                .expect("Error constructing arbitrary schema");
+            assert_eq!(schema, schema);
+        });
+    }
+
     /// Test what the default values filled in for `None` with schema data are.
     /// Mostly because if we write code which does need the default, we're expecting
     /// to match core and need to be notified if something changes or we did something
     /// wrong.
     #[test]
     fn test_defaults() {
-        use crate::array::dimension::DimensionConstraints;
-
         let ctx = Context::new().unwrap();
 
         let dense_spec = SchemaData {
@@ -1729,7 +1364,6 @@ mod tests {
             }],
             ..Default::default()
         };
-
         let sparse_schema = sparse_spec
             .create(&ctx)
             .expect("Error creating schema from mostly-default settings");
@@ -1749,32 +1383,33 @@ mod tests {
     /// Namely we assume that StringAscii is only allowed
     /// in variable-length sparse dimensions.
     #[test]
-    fn test_string_dimension() {
-        let mut spec = SchemaData {
-            array_type: ArrayType::Sparse,
-            domain: DomainData {
-                dimension: vec![DimensionData {
-                    name: "d".to_string(),
-                    datatype: Datatype::StringAscii,
-                    constraints: DimensionConstraints::StringAscii,
-                    filters: None,
-                }],
-            },
-            attributes: vec![AttributeData {
-                name: "a".to_string(),
-                datatype: Datatype::Int32,
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-
-        assert_eq!(CellValNum::Var, spec.domain.dimension[0].cell_val_num());
-
+    fn test_string_dimension() -> TileDBResult<()> {
         let ctx = Context::new().unwrap();
+
+        let build_schema = |array_type: ArrayType| {
+            Builder::new(
+                &ctx,
+                array_type,
+                DomainBuilder::new(&ctx)?
+                    .add_dimension(
+                        DimensionBuilder::new(
+                            &ctx,
+                            "d",
+                            Datatype::StringAscii,
+                            DimensionConstraints::StringAscii,
+                        )?
+                        .build(),
+                    )?
+                    .build(),
+            )?
+            .add_attribute(sample_attribute(&ctx))?
+            .build()
+        };
 
         // creation should succeed, StringAscii is allowed for sparse CellValNum::Var
         {
-            let schema = spec.create(&ctx).expect("Error creating schema");
+            let schema =
+                build_schema(ArrayType::Sparse).expect("Error creating schema");
             let cvn = schema
                 .domain()
                 .and_then(|d| d.dimension(0))
@@ -1784,10 +1419,110 @@ mod tests {
         }
 
         // creation should fail, StringAscii is not allowed for dense CellValNum::single()
-        spec.array_type = ArrayType::Dense;
         {
-            let e = spec.create(&ctx).expect_err("Successfully created schema");
-            assert!(matches!(e, Error::LibTileDB(_)));
+            let e = build_schema(ArrayType::Dense);
+            assert!(matches!(e, Err(Error::LibTileDB(_))));
+        }
+
+        Ok(())
+    }
+
+    /// Creates a schema with a single dimension of the given `Datatype` with one attribute.
+    /// Used by the test to check if the `Datatype` can be used in this way.
+    fn dimension_comprehensive_schema(
+        context: &Context,
+        array_type: ArrayType,
+        datatype: Datatype,
+    ) -> TileDBResult<Schema> {
+        let dim = physical_type_go!(datatype, DT, {
+            if matches!(datatype, Datatype::StringAscii) {
+                DimensionBuilder::new(
+                    context,
+                    "d",
+                    datatype,
+                    DimensionConstraints::StringAscii,
+                )
+            } else {
+                let domain: [DT; 2] = [0 as DT, 127 as DT];
+                let extent: DT = 16 as DT;
+                DimensionBuilder::new(context, "d", datatype, (domain, extent))
+            }
+        })?
+        .build();
+
+        let attr = AttributeBuilder::new(context, "a", Datatype::Any)?.build();
+
+        let domain = DomainBuilder::new(context)?.add_dimension(dim)?.build();
+        Builder::new(context, array_type, domain)?
+            .add_attribute(attr)?
+            .build()
+    }
+
+    fn do_dense_dimension_comprehensive(datatype: Datatype) {
+        let allowed = tiledb_common::datatype::DENSE_DIMENSION_DATATYPES
+            .contains(&datatype);
+        assert_eq!(allowed, datatype.is_allowed_dimension_type_dense());
+
+        let context = Context::new().unwrap();
+        let r = dimension_comprehensive_schema(
+            &context,
+            ArrayType::Dense,
+            datatype,
+        );
+        assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
+        }
+    }
+
+    fn do_sparse_dimension_comprehensive(datatype: Datatype) {
+        let allowed = tiledb_common::datatype::SPARSE_DIMENSION_DATATYPES
+            .contains(&datatype);
+        assert_eq!(allowed, datatype.is_allowed_dimension_type_sparse());
+
+        let context = Context::new().unwrap();
+        let r = dimension_comprehensive_schema(
+            &context,
+            ArrayType::Sparse,
+            datatype,
+        );
+        assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
+        if let Err(Error::LibTileDB(s)) = r {
+            assert!(
+                s.contains("not a valid Dimension Datatype")
+                    || s.contains("do not support dimension datatype"),
+                "Expected dimension datatype error, received: {}",
+                s
+            );
+        } else {
+            assert!(
+                r.is_ok(),
+                "Found error other than LibTileDB: {}",
+                r.err().unwrap()
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn dense_dimension_comprehensive(dt in any::<Datatype>()) {
+            do_dense_dimension_comprehensive(dt)
+        }
+
+        #[test]
+        fn sparse_dimension_comprehensive(dt in any::<Datatype>()) {
+            do_sparse_dimension_comprehensive(dt)
         }
     }
 }

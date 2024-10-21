@@ -6,12 +6,13 @@ use arrow::array::{
     GenericListArray, LargeBinaryArray, PrimitiveArray,
 };
 use arrow::datatypes::Field;
+use tiledb_common::array::CellValNum;
+use tiledb_common::datatype::Datatype;
 
-use crate::array::CellValNum;
 use crate::datatype::arrow::ArrowPrimitiveTypeNative;
 use crate::query::buffer::arrow::{Celled, QueryBufferArrowArray};
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
-use crate::{typed_query_buffers_go, Datatype};
+use crate::typed_query_buffers_go;
 
 impl<C> TryFrom<RawReadOutput<'_, C>> for QueryBufferArrowArray<C>
 where
@@ -53,12 +54,12 @@ impl TryFrom<TypedRawReadOutput<'_>> for Arc<dyn ArrowArray> {
              * we have an array of something like `i64` and need to
              * turn that into `ADT::Time64(TimeUnit::Microsecond)` for example.
              */
-            let arrow_datatype = crate::datatype::arrow::to_arrow(
+            let arrow_datatype = tiledb_common::datatype::arrow::to_arrow(
                 &datatype,
                 CellValNum::single(),
             );
             let list_field_metadata = if arrow_datatype.is_inexact() {
-                HashMap::from([(crate::datatype::arrow::ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT.to_string(), datatype.to_string())])
+                HashMap::from([(tiledb_common::datatype::arrow::ARROW_FIELD_METADATA_KEY_TILEDB_TYPE_HINT.to_string(), datatype.to_string())])
             } else {
                 HashMap::new()
             };
@@ -385,7 +386,7 @@ mod tests {
     }
 
     fn do_raw_read_to_record_batch(rr: TypedRawReadOutput) {
-        let arrow = crate::datatype::arrow::to_arrow(
+        let arrow = tiledb_common::datatype::arrow::to_arrow(
             &rr.datatype,
             rr.cell_structure().as_cell_val_num(),
         )

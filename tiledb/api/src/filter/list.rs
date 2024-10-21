@@ -2,9 +2,6 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use serde::{Deserialize, Serialize};
-use util::option::OptionSubset;
-
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::{Filter, FilterData, RawFilter};
 use crate::Result as TileDBResult;
@@ -180,75 +177,6 @@ impl Builder {
 
     pub fn build(self) -> FilterList {
         self.filter_list
-    }
-}
-
-#[derive(
-    Clone, Debug, Default, Deserialize, OptionSubset, PartialEq, Serialize,
-)]
-pub struct FilterListData(Vec<FilterData>);
-
-impl FilterListData {
-    pub fn into_inner(self) -> Vec<FilterData> {
-        self.0
-    }
-}
-
-impl Deref for FilterListData {
-    type Target = Vec<FilterData>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<V> From<V> for FilterListData
-where
-    V: Into<Vec<FilterData>>,
-{
-    fn from(value: V) -> Self {
-        Self(value.into())
-    }
-}
-
-impl FromIterator<FilterData> for FilterListData {
-    fn from_iter<T>(iter: T) -> Self
-    where
-        T: IntoIterator<Item = FilterData>,
-    {
-        FilterListData(iter.into_iter().collect::<Vec<FilterData>>())
-    }
-}
-
-impl TryFrom<&FilterList> for FilterListData {
-    type Error = crate::error::Error;
-    fn try_from(filters: &FilterList) -> TileDBResult<Self> {
-        filters
-            .to_vec()?
-            .into_iter()
-            .map(|f| FilterData::try_from(&f))
-            .collect::<TileDBResult<Self>>()
-    }
-}
-
-impl TryFrom<FilterList> for FilterListData {
-    type Error = crate::error::Error;
-
-    fn try_from(filters: FilterList) -> TileDBResult<Self> {
-        Self::try_from(&filters)
-    }
-}
-
-impl crate::Factory for FilterListData {
-    type Item = FilterList;
-
-    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        Ok(self
-            .iter()
-            .fold(Builder::new(context), |b, filter| {
-                b?.add_filter_data(filter)
-            })?
-            .build())
     }
 }
 

@@ -1,0 +1,21 @@
+[package]
+name = "cells"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+paste = { workspace = true }
+proptest = { workspace = true }
+strategy-ext = { workspace = true }
+tiledb-common = { workspace = true }
+tiledb-pod = { workspace = true }
+tiledb-proptest-config = { workspace = true, optional = true }
+
+[dev-dependencies]
+tiledb-common = { workspace = true, features = ["proptest-strategies"] }
+tiledb-pod = { workspace = true, features = ["proptest-strategies"] }
+
+[features]
+default = []
+proptest-strategies = ["dep:tiledb-proptest-config", "tiledb-common/proptest-strategies", "tiledb-pod/proptest-strategies"]

@@ -3,20 +3,22 @@ use std::iter::FusedIterator;
 use std::num::{NonZeroU32, NonZeroUsize};
 
 use anyhow::anyhow;
-use serde_json::json;
 
 use crate::array::CellValNum;
 use crate::datatype::PhysicalType;
-use crate::error::{DatatypeErrorKind, Error};
+use crate::error::Error;
 use crate::query::buffer::*;
+use crate::query::CellValue;
 use crate::Result as TileDBResult;
 use crate::{typed_query_buffers_go, Datatype};
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
+
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
+#[derive(Debug)]
 pub struct RawReadOutput<'data, C> {
     pub ncells: usize,
     pub input: QueryBuffers<'data, C>,
@@ -41,10 +43,13 @@ impl<C> RawReadOutput<'_, C> {
         self.nvalues() * std::mem::size_of::<C>()
     }
 
-    fn to_json(&self) -> serde_json::value::Value
+    #[cfg(feature = "serde")]
+    pub fn to_json(&self) -> serde_json::value::Value
     where
         C: Debug,
     {
+        use serde_json::json;
+
         let cell_json = match self.input.cell_structure {
             CellStructure::Fixed(nz) => json!({"cell_val_num": nz}),
             CellStructure::Var(ref offsets) => json!({
@@ -76,15 +81,7 @@ impl<C> RawReadOutput<'_, C> {
     }
 }
 
-impl<C> Debug for RawReadOutput<'_, C>
-where
-    C: Debug,
-{
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{}", self.to_json())
-    }
-}
-
+#[derive(Debug)]
 pub struct TypedRawReadOutput<'data> {
     pub datatype: Datatype,
     pub ncells: usize,
@@ -124,20 +121,6 @@ impl<'data> TypedRawReadOutput<'data> {
 
     pub fn cell_structure(&self) -> &CellStructure<'data> {
         self.buffers.cell_structure()
-    }
-}
-
-impl Debug for TypedRawReadOutput<'_> {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let mut json = typed_query_buffers_go!(self.buffers, _DT, ref qb, {
-            RawReadOutput {
-                ncells: self.ncells,
-                input: qb.borrow(),
-            }
-            .to_json()
-        });
-        json["datatype"] = json!(self.datatype);
-        write!(f, "{}", json)
     }
 }
 
@@ -622,13 +605,10 @@ impl<'data, C> CellStructureSingleIterator<'data, C> {
     ) -> TileDBResult<Self> {
         match QueryBuffersCellStructureSingle::try_from(input) {
             Ok(qb) => Ok(Self::new(ncells, qb)),
-            Err(qb) => Err(Error::Datatype(
-                DatatypeErrorKind::UnexpectedCellStructure {
-                    context: None,
-                    expected: CellValNum::single(),
-                    found: qb.cell_structure.as_cell_val_num(),
-                },
-            )),
+            Err(qb) => Err(Error::UnexpectedCellStructure {
+                expected: CellValNum::single(),
+                found: qb.cell_structure.as_cell_val_num(),
+            }),
         }
     }
 }
@@ -727,13 +707,10 @@ impl<'data, C> FixedDataIterator<'data, C> {
                             "FixedDataIterator cannot take ownership of data inside QueryBuffers")))
                 } else {
                     assert!(!QueryBuffersCellStructureFixed::accept(&input));
-                    Err(Error::Datatype(
-                        DatatypeErrorKind::UnexpectedCellStructure {
-                            context: None,
-                            expected: CellValNum::single(), /* TODO: this is not really accurate, any Fixed */
-                            found: input.cell_structure.as_cell_val_num(),
-                        },
-                    ))
+                    Err(Error::UnexpectedCellStructure {
+                        expected: CellValNum::single(), /* TODO: this is not really accurate, any Fixed */
+                        found: input.cell_structure.as_cell_val_num(),
+                    })
                 }
             }
         }
@@ -813,13 +790,10 @@ impl<'data, C> VarDataIterator<'data, C> {
                                 "VarDataIterator cannot take ownership of data inside QueryBuffers")))
                 } else {
                     assert!(!QueryBuffersCellStructureVar::accept(&input));
-                    Err(Error::Datatype(
-                        DatatypeErrorKind::UnexpectedCellStructure {
-                            context: None,
-                            expected: CellValNum::Var,
-                            found: input.cell_structure.as_cell_val_num(),
-                        },
-                    ))
+                    Err(Error::UnexpectedCellStructure {
+                        expected: CellValNum::Var,
+                        found: input.cell_structure.as_cell_val_num(),
+                    })
                 }
             }
         }
@@ -930,7 +904,7 @@ pub trait FromQueryOutput: Sized {
 
 impl<C> FromQueryOutput for C
 where
-    C: PhysicalType,
+    C: CellValue,
 {
     type Unit = C;
     type Iterator<'data>

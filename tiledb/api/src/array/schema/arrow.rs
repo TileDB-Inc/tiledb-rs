@@ -256,11 +256,14 @@ pub fn attributes(schema: &ArrowSchema) -> TileDBResult<&[Arc<ArrowField>]> {
 mod tests {
     use std::collections::HashSet;
 
-    use super::*;
-    use crate::array::schema::{Field as SchemaField, SchemaData};
-    use crate::array::{AttributeData, DimensionData};
-    use crate::Factory;
     use proptest::prelude::*;
+    use tiledb_pod::array::attribute::AttributeData;
+    use tiledb_pod::array::dimension::DimensionData;
+    use tiledb_pod::array::schema::SchemaData;
+
+    use super::*;
+    use crate::array::schema::Field as SchemaField;
+    use crate::Factory;
 
     fn do_to_arrow(tdb_in: SchemaData) {
         let c: Context = Context::new().unwrap();

@@ -2,18 +2,18 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use crate::array::{CellValNum, Schema};
-use crate::datatype::PhysicalType;
-use crate::error::{DatatypeErrorKind, Error};
+use crate::error::Error;
 use crate::query::buffer::{
     Buffer, CellStructure, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
 };
+use crate::query::CellValue;
 use crate::Result as TileDBResult;
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
 
 pub trait DataProvider {
-    type Unit: PhysicalType;
+    type Unit: CellValue;
 
     fn query_buffers(
         &self,
@@ -52,7 +52,7 @@ where
 
 impl<C> DataProvider for QueryBuffers<'_, C>
 where
-    C: PhysicalType,
+    C: CellValue,
 {
     type Unit = C;
 
@@ -76,7 +76,7 @@ where
 
 impl<C> DataProvider for QueryBuffersMut<'_, C>
 where
-    C: PhysicalType,
+    C: CellValue,
 {
     type Unit = C;
 
@@ -106,13 +106,13 @@ where
 // some common impl logic inside of private functions.
 // Maybe we could make an adapter type in the future.
 trait AsSlice {
-    type Item: PhysicalType;
+    type Item: CellValue;
     fn values(&self) -> &[Self::Item];
 }
 
 impl<T> AsSlice for Vec<T>
 where
-    T: PhysicalType,
+    T: CellValue,
 {
     type Item = T;
     fn values(&self) -> &[Self::Item] {
@@ -122,7 +122,7 @@ where
 
 impl<T> AsSlice for [T]
 where
-    T: PhysicalType,
+    T: CellValue,
 {
     type Item = T;
     fn values(&self) -> &[Self::Item] {
@@ -158,13 +158,10 @@ where
             let expect_len = nz.get() as usize;
             for cell in items.iter() {
                 if cell.values().len() != expect_len {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::UnexpectedCellStructure {
-                            context: None,
-                            expected: CellValNum::Fixed(nz),
-                            found: CellValNum::Var,
-                        },
-                    ));
+                    return Err(Error::UnexpectedCellStructure {
+                        expected: CellValNum::Fixed(nz),
+                        found: CellValNum::Var,
+                    });
                 }
             }
             Ok(CellStructure::Fixed(nz))
@@ -186,7 +183,7 @@ where
 /// Helper function to implement `DataProvider::query_buffers`
 /// for types which resemble a nested slice.
 // (Without negative trait bounds we can't provide separate DataProvider
-// impls for `Vec<C> where C: PhysicalType` and `Vec<S> where S: AsSlice`)
+// impls for `Vec<C> where C: CellValue` and `Vec<S> where S: AsSlice`)
 fn query_buffers_impl<S>(
     value: &[S],
     cell_val_num: CellValNum,
@@ -221,7 +218,7 @@ where
 
 impl<C> DataProvider for Vec<C>
 where
-    C: PhysicalType,
+    C: CellValue,
 {
     type Unit = C;
 
@@ -236,7 +233,7 @@ where
 
 impl<C> DataProvider for [C]
 where
-    C: PhysicalType,
+    C: CellValue,
 {
     type Unit = C;
 
@@ -261,7 +258,7 @@ where
 
 impl<C> DataProvider for Vec<Vec<C>>
 where
-    C: PhysicalType,
+    C: CellValue,
 {
     type Unit = C;
 
@@ -375,7 +372,7 @@ mod tests {
 
         #[test]
         fn input_provider_strings(
-            stringvec in crate::query::buffer::strategy::prop_string_vec(
+            stringvec in crate::query::buffer::tests::prop_string_vec(
                 (MIN_RECORDS..=MAX_RECORDS).into()
             )
         ) {

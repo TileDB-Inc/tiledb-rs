@@ -1,42 +1,10 @@
 use std::ops::Deref;
 
-use serde::{Deserialize, Serialize};
-
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum VFSMode {
-    Read,
-    Write,
-    Append,
-}
-
-impl VFSMode {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_vfs_mode_t {
-        match *self {
-            VFSMode::Read => ffi::tiledb_vfs_mode_t_TILEDB_VFS_READ,
-            VFSMode::Write => ffi::tiledb_vfs_mode_t_TILEDB_VFS_WRITE,
-            VFSMode::Append => ffi::tiledb_vfs_mode_t_TILEDB_VFS_APPEND,
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_vfs_mode_t> for VFSMode {
-    type Error = crate::error::Error;
-    fn try_from(value: ffi::tiledb_vfs_mode_t) -> TileDBResult<Self> {
-        match value {
-            ffi::tiledb_vfs_mode_t_TILEDB_VFS_READ => Ok(VFSMode::Read),
-            ffi::tiledb_vfs_mode_t_TILEDB_VFS_WRITE => Ok(VFSMode::Write),
-            ffi::tiledb_vfs_mode_t_TILEDB_VFS_APPEND => Ok(VFSMode::Append),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid VFS mode: {}",
-                value
-            ))),
-        }
-    }
-}
+pub use tiledb_common::vfs::VFSMode;
 
 pub enum VFSLsStatus {
     Continue,
@@ -312,7 +280,7 @@ impl VFS {
                 ctx,
                 c_vfs,
                 c_uri.as_ptr(),
-                mode.capi_enum(),
+                ffi::tiledb_vfs_mode_t::from(mode),
                 &mut c_fh,
             )
         })?;
@@ -546,7 +514,7 @@ mod tests {
     // There is no cloud service backend for the VFS so we're not using the
     // URI generator facilities in these tests.
     use crate::error::Error;
-    use tiledb_test_utils::uri_generators::TestDirectory;
+    use uri::TestDirectory;
 
     #[test]
     fn vfs_alloc() -> TileDBResult<()> {
