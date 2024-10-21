@@ -2,7 +2,3 @@
 name = "tiledb-sys"
 version = { workspace = true }
 edition = { workspace = true }
-
-[build-dependencies]
-pkg-config = { workspace = true }
-tiledb-utils = { workspace = true }

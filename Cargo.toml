@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "tiledb/api",
   "tiledb/common",
+  "tiledb/libtiledb",
   "tiledb/pod",
   "tiledb/proc-macro",
   "tiledb/queries",
@@ -36,6 +37,7 @@ arrow = { version = "52.0.0", features = ["prettyprint"] }
 arrow-schema = { version = "52.0.0" }
 cells = { path = "test-utils/cells", version = "0.1.0" }
 itertools = "0"
+libtiledb = { path = "tiledb/libtiledb", version = "0.1.0" }
 num-traits = "0.2"
 paste = "1.0"
 proptest = { version = "1.0.0" }
