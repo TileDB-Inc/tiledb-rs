@@ -30,4 +30,4 @@ tiledb-utils = { workspace = true }
 default = []
 option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils", "tiledb-common/option-subset"]
 proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:strategy-ext", "dep:tiledb-proptest-config", "dep:tiledb-utils", "tiledb-common/proptest-strategies"]
-serde = ["dep:serde", "tiledb-common/serde"]
+serde = ["dep:serde", "dep:serde_json", "tiledb-common/serde"]

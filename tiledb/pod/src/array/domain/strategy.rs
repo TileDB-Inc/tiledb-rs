@@ -8,12 +8,24 @@ use strategy_ext::StrategyExt;
 use tiledb_common::array::ArrayType;
 use tiledb_common::datatype::strategy::*;
 use tiledb_common::datatype::Datatype;
+use tiledb_common::range::Range;
 
 use crate::array::dimension::strategy::{
     DimensionValueTree, Requirements as DimensionRequirements,
 };
 use crate::array::dimension::DimensionData;
 use crate::array::domain::DomainData;
+
+impl DomainData {
+    pub fn subarray_strategy(
+        &self,
+    ) -> impl proptest::prelude::Strategy<Value = Vec<Range>> {
+        self.dimension
+            .iter()
+            .map(|d| d.subarray_strategy(None).unwrap())
+            .collect::<Vec<proptest::prelude::BoxedStrategy<Range>>>()
+    }
+}
 
 #[derive(Clone)]
 pub struct Requirements {

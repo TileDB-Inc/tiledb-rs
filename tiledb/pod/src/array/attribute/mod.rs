@@ -9,9 +9,6 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::metadata::Value as MetadataValue;
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
-
 #[derive(Clone, Default, Debug, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
@@ -31,47 +28,6 @@ pub struct AttributeData {
 pub struct FillData {
     pub data: MetadataValue,
     pub nullability: Option<bool>,
-}
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-impl AttributeData {
-    /// Returns a strategy for generating values of this attribute's type.
-    pub fn value_strategy(&self) -> PhysicalValueStrategy {
-        use proptest::prelude::*;
-        use tiledb_common::filter::{
-            CompressionData, CompressionType, FilterData,
-        };
-        use tiledb_common::physical_type_go;
-
-        let has_double_delta = self.filters.iter().any(|f| {
-            matches!(
-                f,
-                FilterData::Compression(CompressionData {
-                    kind: CompressionType::DoubleDelta { .. },
-                    ..
-                })
-            )
-        });
-
-        physical_type_go!(self.datatype, DT, {
-            if has_double_delta {
-                if std::any::TypeId::of::<DT>() == std::any::TypeId::of::<u64>()
-                {
-                    // see core `DoubleDelta::compute_bitsize`
-                    let min = 0u64;
-                    let max = u64::MAX >> 1;
-                    return PhysicalValueStrategy::from((min..=max).boxed());
-                } else if std::any::TypeId::of::<DT>()
-                    == std::any::TypeId::of::<i64>()
-                {
-                    let min = i64::MIN >> 2;
-                    let max = i64::MAX >> 2;
-                    return PhysicalValueStrategy::from((min..=max).boxed());
-                }
-            }
-            PhysicalValueStrategy::from(any::<DT>().boxed())
-        })
-    }
 }
 
 #[cfg(any(test, feature = "proptest-strategies"))]

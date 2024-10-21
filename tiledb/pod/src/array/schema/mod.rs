@@ -1,6 +1,9 @@
 #[cfg(feature = "option-subset")]
 use tiledb_utils::option::OptionSubset;
 
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -178,6 +181,3 @@ impl Iterator for FieldDataIter<'_> {
 }
 
 impl std::iter::FusedIterator for FieldDataIter<'_> {}
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;

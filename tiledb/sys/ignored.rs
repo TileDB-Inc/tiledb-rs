@@ -20,10 +20,19 @@ extern "C" {
     // to its physical type
     pub fn tiledb_datatype_size(type_: tiledb_datatype_t) -> u64;
 
-    // The dump functions aren't being wrapped because Rust makes it really easy
+    // The dump/to_str/from_str functions aren't being wrapped because Rust makes it really easy
     // to write Debug traits that will dump everything as a JSON string. The dump
     // functions just write free form ASCII to a file handle which isn't nearly
     // as useful.
+    pub fn tiledb_datatype_to_str(
+        datatype: tiledb_datatype_t,
+        str_: *mut *const ::std::os::raw::c_char,
+    ) -> capi_return_t;
+
+    pub fn tiledb_datatype_from_str(
+        str_: *const ::std::os::raw::c_char,
+        datatype: *mut tiledb_datatype_t,
+    ) -> capi_return_t;
 
     pub fn tiledb_attribute_dump(
         ctx: *mut tiledb_ctx_t,

@@ -1,3 +1,6 @@
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
+
 #[cfg(feature = "option-subset")]
 use tiledb_utils::option::OptionSubset;
 
@@ -49,18 +52,3 @@ impl DomainData {
             .collect::<Option<NonEmptyDomain>>()
     }
 }
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-impl DomainData {
-    pub fn subarray_strategy(
-        &self,
-    ) -> impl proptest::prelude::Strategy<Value = Vec<Range>> {
-        self.dimension
-            .iter()
-            .map(|d| d.subarray_strategy(None).unwrap())
-            .collect::<Vec<proptest::prelude::BoxedStrategy<Range>>>()
-    }
-}
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;

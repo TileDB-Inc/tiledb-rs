@@ -1,3 +1,6 @@
+#[cfg(any(test, feature = "proptest-strategies"))]
+pub mod strategy;
+
 #[cfg(feature = "option-subset")]
 use tiledb_utils::option::OptionSubset;
 
@@ -18,6 +21,3 @@ pub struct EnumerationData {
     pub data: Box<[u8]>,
     pub offsets: Option<Box<[u64]>>,
 }
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;

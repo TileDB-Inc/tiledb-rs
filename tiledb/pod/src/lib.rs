@@ -9,7 +9,7 @@
 //! This contrasts with the [tiledb-api] crate where the structures
 //! are instead handles to tiledb C API data structures.
 //!
-//! There is no direct "plain old data" analogue ini Rust; the use
+//! There is no direct "plain old data" analogue in Rust; the use
 //! of the term in this crate intends to capture the spirit rather than the letter
 //! of what it means to be plain old data.
 //!

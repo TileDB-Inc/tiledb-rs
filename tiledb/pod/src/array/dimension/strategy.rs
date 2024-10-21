@@ -7,6 +7,7 @@ use proptest::strategy::ValueTree;
 
 use strategy_ext::StrategyExt;
 use tiledb_common::array::ArrayType;
+use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
 use tiledb_common::datatype::physical::BitsOrd;
 use tiledb_common::datatype::strategy::*;
 use tiledb_common::datatype::Datatype;
@@ -21,6 +22,121 @@ use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements, StrategyContext as FilterContext,
 };
+
+impl DimensionData {
+    /// Returns a strategy for generating values of this dimension's type
+    /// which fall within the domain of this dimension.
+    pub fn value_strategy(&self) -> PhysicalValueStrategy {
+        use proptest::prelude::*;
+        use tiledb_common::dimension_constraints_go;
+
+        dimension_constraints_go!(
+            self.constraints,
+            DT,
+            ref domain,
+            _,
+            PhysicalValueStrategy::from((domain[0]..=domain[1]).boxed()),
+            {
+                assert_eq!(self.datatype, Datatype::StringAscii);
+                PhysicalValueStrategy::from(any::<u8>().boxed())
+            }
+        )
+    }
+
+    /// Returns a strategy for generating subarray ranges which fall within
+    /// the domain of this dimension.
+    ///
+    /// `cell_bound` is an optional restriction on the number of possible values
+    /// which the strategy is allowed to return.
+    ///
+    /// If `cell_bound` is `None`, then this function always returns `Some`.
+    pub fn subarray_strategy(
+        &self,
+        cell_bound: Option<usize>,
+    ) -> Option<proptest::strategy::BoxedStrategy<tiledb_common::range::Range>>
+    {
+        use proptest::prelude::Just;
+        use proptest::strategy::Strategy;
+        use tiledb_common::dimension_constraints_go;
+        use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
+
+        dimension_constraints_go!(
+            self.constraints,
+            DT,
+            ref domain,
+            _,
+            {
+                let cell_bound = cell_bound
+                    .map(|bound| DT::try_from(bound).unwrap_or(DT::MAX))
+                    .unwrap_or(DT::MAX);
+
+                let domain_lower = domain[0];
+                let domain_upper = domain[1];
+                let strat =
+                    (domain_lower..=domain_upper).prop_flat_map(move |lb| {
+                        let ub = std::cmp::min(
+                            domain_upper,
+                            lb.checked_add(cell_bound).unwrap_or(DT::MAX),
+                        );
+                        (Just(lb), lb..=ub).prop_map(|(min, max)| {
+                            Range::Single(SingleValueRange::from(&[min, max]))
+                        })
+                    });
+                Some(strat.boxed())
+            },
+            {
+                if cell_bound.is_some() {
+                    /*
+                     * This can be implemented, but there's some ambiguity about
+                     * what it should mean when precision goes out the window,
+                     * so wait until there's a use case to decide.
+                     */
+                    return None;
+                }
+
+                let domain_lower = domain[0];
+                let domain_upper = domain[1];
+                let strat =
+                    (domain_lower..=domain_upper).prop_flat_map(move |lb| {
+                        (Just(lb), (lb..=domain_upper)).prop_map(
+                            |(min, max)| {
+                                Range::Single(SingleValueRange::from(&[
+                                    min, max,
+                                ]))
+                            },
+                        )
+                    });
+                Some(strat.boxed())
+            },
+            {
+                // DimensionConstraints::StringAscii
+                let strat_bound =
+                    proptest::string::string_regex("[ -~]*").unwrap().boxed();
+
+                if cell_bound.is_some() {
+                    /*
+                     * This is not tractible unless there is a bound on the string length.
+                     * There isn't one since `StringAscii` is only allowed as a dimension
+                     * type in sparse arrays.
+                     */
+                    return None;
+                }
+
+                let strat = (strat_bound.clone(), strat_bound).prop_map(
+                    |(ascii1, ascii2)| {
+                        let (lb, ub) = if ascii1 < ascii2 {
+                            (ascii1, ascii2)
+                        } else {
+                            (ascii2, ascii1)
+                        };
+                        Range::Var(VarValueRange::from((lb, ub)))
+                    },
+                );
+                Some(strat.boxed())
+            }
+        )
+    }
+}
 
 #[derive(Clone)]
 pub struct Requirements {
