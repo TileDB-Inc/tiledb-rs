@@ -2,9 +2,17 @@
 name = "tiledb-sys"
 version = { workspace = true }
 edition = { workspace = true }
+build = "build/main.rs"
+links = "tiledb"
 
 [dependencies]
 tiledb-sys-defs = { workspace = true }
 
 [build-dependencies]
-libtiledb = { workspace = true }
+armerge = { workspace = true }
+bindgen = { workspace = true }
+cmake = { workspace = true }
+pkg-config = { workspace = true }
+regex = { workspace = true }
+tiledb-utils = { workspace = true }
+thiserror = { workspace = true }

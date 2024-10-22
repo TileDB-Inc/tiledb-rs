@@ -32,7 +32,7 @@ tiledb-utils = { workspace = true }
 uri = { workspace = true }
 
 [build-dependencies]
-libtiledb = { workspace = true }
+tiledb-sys-cfg = { workspace = true }
 
 [features]
 default = []

@@ -1,3 +1,3 @@
 fn main() {
-    libtiledb::rpath()
+    tiledb_sys_cfg::rpath();
 }
