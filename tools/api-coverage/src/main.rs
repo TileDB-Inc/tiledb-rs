@@ -33,6 +33,10 @@ struct Args {
     #[arg(short, long, default_value_t = String::from("tiledb/sys/remapped.rs"))]
     remapped: String,
 
+    /// Path to the sys-defs crate
+    #[arg(short, long, default_value_t = String::from("tiledb/sys/defs"))]
+    defs: String,
+
     /// Path to the sys crate
     #[arg(short, long, default_value_t = String::from("tiledb/sys/src"))]
     sys: String,
@@ -90,7 +94,7 @@ impl Processor {
     fn new(args: Args) -> Result<Self> {
         Ok(Processor {
             api_calls: api::process(&args.api)?,
-            sys_defs: sys::process(&args.sys)?,
+            sys_defs: sys::process(&args.defs, &args.sys)?,
             generated_defs: generated::generate(
                 &args.generated,
                 &args.wrapper,
@@ -140,7 +144,7 @@ impl Processor {
             if generated != val {
                 println!("Generated: {}", util::unparse_signature(generated));
                 println!("Ignored:   {}", util::unparse_signature(val));
-                panic!("Invalid ignore for constant: {}", key);
+                panic!("Invalid ignore for signature: {}", key);
             }
             self.generated_defs
                 .signatures
