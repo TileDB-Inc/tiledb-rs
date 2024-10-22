@@ -29,7 +29,7 @@
 #[cfg(feature = "option-subset")]
 #[macro_use]
 extern crate tiledb_proc_macro;
-extern crate tiledb_sys as ffi;
+extern crate tiledb_sys_defs as ffi;
 
 pub mod array;
 pub mod filter;

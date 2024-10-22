@@ -1,4 +1,6 @@
+#![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
+#![allow(non_snake_case)]
 
 pub const tiledb_array_type_t_TILEDB_DENSE: tiledb_array_type_t = 0;
 pub const tiledb_array_type_t_TILEDB_SPARSE: tiledb_array_type_t = 1;

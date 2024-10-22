@@ -842,6 +842,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
+name = "libtiledb"
+version = "0.1.0"
+dependencies = [
+ "pkg-config",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1309,9 +1316,9 @@ dependencies = [
  "arrow",
  "cells",
  "itertools",
+ "libtiledb",
  "num-traits",
  "paste",
- "pkg-config",
  "proptest",
  "serde",
  "serde_json",
@@ -1335,7 +1342,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tiledb-proc-macro",
- "tiledb-sys",
+ "tiledb-sys-defs",
  "tiledb-utils",
 ]
 
@@ -1353,7 +1360,7 @@ dependencies = [
  "tiledb-common",
  "tiledb-proc-macro",
  "tiledb-proptest-config",
- "tiledb-sys",
+ "tiledb-sys-defs",
  "tiledb-utils",
 ]
 
@@ -1374,19 +1381,22 @@ version = "0.1.0"
 name = "tiledb-query-adapters"
 version = "0.1.0"
 dependencies = [
- "pkg-config",
+ "libtiledb",
  "tiledb-api",
  "tiledb-common",
- "tiledb-utils",
 ]
 
 [[package]]
 name = "tiledb-sys"
 version = "0.1.0"
 dependencies = [
- "pkg-config",
- "tiledb-utils",
+ "libtiledb",
+ "tiledb-sys-defs",
 ]
+
+[[package]]
+name = "tiledb-sys-defs"
+version = "0.1.0"
 
 [[package]]
 name = "tiledb-utils"

@@ -16,7 +16,7 @@ tiledb-common = { workspace = true }
 tiledb-proc-macro = { workspace = true, optional = true }
 tiledb-proptest-config = { workspace = true, optional = true }
 tiledb-utils = { workspace = true, optional = true }
-tiledb-sys = { workspace = true }
+tiledb-sys-defs = { workspace = true }
 
 [dev-dependencies]
 num-traits = { workspace = true }

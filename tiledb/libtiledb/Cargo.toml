@@ -1,0 +1,8 @@
+[package]
+name = "libtiledb"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+pkg-config = { workspace = true }

@@ -9,5 +9,4 @@ tiledb-api = { workspace = true }
 tiledb-common = { workspace = true }
 
 [build-dependencies]
-pkg-config = { workspace = true }
-tiledb-utils = { workspace = true }
+libtiledb = { workspace = true }
