@@ -11,6 +11,9 @@ pub mod metadata;
 pub mod range;
 pub mod vfs;
 
+pub use datatype::Datatype;
+pub use key::LookupKey;
+
 mod private {
     // The "sealed trait" pattern is a way to prevent downstream crates from implementing traits
     // that you don't think they should implement. If you have `trait Foo: Sealed`, then
