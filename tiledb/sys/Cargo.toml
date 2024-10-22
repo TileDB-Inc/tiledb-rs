@@ -2,3 +2,9 @@
 name = "tiledb-sys"
 version = { workspace = true }
 edition = { workspace = true }
+
+[dependencies]
+tiledb-sys-defs = { workspace = true }
+
+[build-dependencies]
+libtiledb = { workspace = true }

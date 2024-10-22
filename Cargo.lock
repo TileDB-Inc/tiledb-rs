@@ -1342,7 +1342,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tiledb-proc-macro",
- "tiledb-sys",
+ "tiledb-sys-defs",
  "tiledb-utils",
 ]
 
@@ -1360,7 +1360,7 @@ dependencies = [
  "tiledb-common",
  "tiledb-proc-macro",
  "tiledb-proptest-config",
- "tiledb-sys",
+ "tiledb-sys-defs",
  "tiledb-utils",
 ]
 
@@ -1388,6 +1388,14 @@ dependencies = [
 
 [[package]]
 name = "tiledb-sys"
+version = "0.1.0"
+dependencies = [
+ "libtiledb",
+ "tiledb-sys-defs",
+]
+
+[[package]]
+name = "tiledb-sys-defs"
 version = "0.1.0"
 
 [[package]]

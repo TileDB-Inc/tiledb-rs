@@ -6,7 +6,6 @@ mod aggregate;
 mod array;
 mod array_type;
 mod attribute;
-mod capi_enum;
 mod config;
 mod constants;
 mod context;
@@ -32,6 +31,8 @@ mod subarray;
 mod types;
 mod version;
 mod vfs;
+
+pub use tiledb_sys_defs as capi_enum;
 
 pub use aggregate::*;
 pub use array::*;

@@ -8,6 +8,7 @@ members = [
   "tiledb/proc-macro",
   "tiledb/queries",
   "tiledb/sys",
+  "tiledb/sys-defs",
   "tiledb/utils",
   "test-utils/cells",
   "test-utils/proptest-config",
@@ -22,7 +23,6 @@ default-members = [
   "tiledb/pod",
   "tiledb/proc-macro",
   "tiledb/queries",
-  "tiledb/sys",
   "tiledb/utils",
 ]
 
@@ -53,6 +53,7 @@ tiledb-pod = { path = "tiledb/pod", version = "0.1.0" }
 tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
 tiledb-proptest-config = { path = "test-utils/proptest-config", version = "0.1.0" }
 tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
+tiledb-sys-defs = { path = "tiledb/sys-defs", version = "0.1.0" }
 tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }
 tiledb-utils = { path = "tiledb/utils", version = "0.1.0" }
 pkg-config = "0.3.30"
