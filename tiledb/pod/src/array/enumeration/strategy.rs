@@ -69,9 +69,9 @@ pub fn prop_enumeration_for_datatype(
 }
 
 pub struct Parameters {
-    datatype: BoxedStrategy<Datatype>,
-    min_variants: usize,
-    max_variants: usize,
+    pub datatype: BoxedStrategy<Datatype>,
+    pub min_variants: usize,
+    pub max_variants: usize,
 }
 
 impl Parameters {
