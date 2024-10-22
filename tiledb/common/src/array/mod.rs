@@ -15,6 +15,8 @@ use proptest::prelude::*;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub use dimension::DimensionConstraints;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Mode {
     Read,
