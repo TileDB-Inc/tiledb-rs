@@ -3,6 +3,8 @@ use std::ops::Deref;
 #[cfg(any(test, feature = "pod"))]
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
+use tiledb_common::array::CellValNum;
+
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::string::{RawTDBString, TDBString};
 use crate::{Datatype, Result as TileDBResult};
@@ -71,18 +73,17 @@ impl Enumeration {
         Ok(Datatype::try_from(dtype)?)
     }
 
-    pub fn cell_val_num(&self) -> TileDBResult<u32> {
+    pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
         let c_enmr = self.capi();
         let mut c_cvn: u32 = 0;
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_enumeration_get_cell_val_num(ctx, c_enmr, &mut c_cvn)
         })?;
-
-        Ok(c_cvn)
+        Ok(CellValNum::try_from(c_cvn)?)
     }
 
     pub fn is_var_sized(&self) -> TileDBResult<bool> {
-        Ok(self.cell_val_num()? == u32::MAX)
+        Ok(self.cell_val_num()? == CellValNum::Var)
     }
 
     pub fn ordered(&self) -> TileDBResult<bool> {
@@ -235,7 +236,7 @@ pub struct Builder<'data, 'offsets> {
     context: Context,
     name: String,
     dtype: Datatype,
-    cell_val_num: u32,
+    cell_val_num: CellValNum,
     ordered: bool,
     data: &'data [u8],
     offsets: Option<&'offsets [u64]>,
@@ -278,14 +279,14 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
             context: context.clone(),
             name: name.to_owned(),
             dtype,
-            cell_val_num: 1,
+            cell_val_num: CellValNum::single(),
             ordered: false,
             data,
             offsets,
         }
     }
 
-    pub fn cell_val_num(self, cell_val_num: u32) -> Self {
+    pub fn cell_val_num(self, cell_val_num: CellValNum) -> Self {
         Self {
             cell_val_num,
             ..self
@@ -294,7 +295,7 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
 
     pub fn var_sized(self) -> Self {
         Self {
-            cell_val_num: u32::MAX,
+            cell_val_num: CellValNum::Var,
             ..self
         }
     }
@@ -330,7 +331,7 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
                 ctx,
                 c_name.as_c_str().as_ptr(),
                 c_dtype,
-                self.cell_val_num,
+                u32::from(self.cell_val_num),
                 if self.ordered { 1 } else { 0 },
                 self.data.as_ptr() as *const std::ffi::c_void,
                 std::mem::size_of_val(self.data) as u64,
@@ -459,7 +460,7 @@ mod tests {
         let base = EnumerationData {
             name: "foo".to_owned(),
             datatype: Datatype::StringAscii,
-            cell_val_num: Some(u32::MAX),
+            cell_val_num: Some(CellValNum::Var),
             ordered: Some(false),
             data: Box::from("foobarbazbam".as_bytes()),
             offsets: Some(Box::from(&vec![0, 3, 6, 9][..])),
@@ -523,7 +524,7 @@ mod tests {
         let base = EnumerationData {
             name: "foo".to_owned(),
             datatype: Datatype::UInt8,
-            cell_val_num: Some(1),
+            cell_val_num: Some(CellValNum::single()),
             ordered: Some(false),
             data: Box::from(&vec![0u8, 1, 2, 3, 4, 5][..]),
             offsets: None,
@@ -532,7 +533,7 @@ mod tests {
         let enmr1 = base.create(&ctx)?;
 
         let base2 = EnumerationData {
-            cell_val_num: Some(2),
+            cell_val_num: Some(CellValNum::try_from(2).unwrap()),
             ..base
         };
 

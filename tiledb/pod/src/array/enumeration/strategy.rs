@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 use proptest::collection::vec;
 use proptest::prelude::*;
+use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::{Datatype, PhysicalType};
 use tiledb_common::physical_type_go;
 
@@ -12,7 +13,7 @@ pub fn prop_enumeration_name() -> impl Strategy<Value = String> {
         .expect("Error creating enumeration name strategy")
 }
 
-fn prop_cell_val_num() -> impl Strategy<Value = Option<u32>> {
+fn prop_cell_val_num() -> impl Strategy<Value = Option<CellValNum>> {
     Just(None)
 }
 

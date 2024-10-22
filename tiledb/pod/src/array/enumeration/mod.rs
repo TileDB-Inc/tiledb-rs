@@ -7,6 +7,7 @@ use tiledb_utils::option::OptionSubset;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::Datatype;
 
 /// Encapsulation of data needed to construct an Enumeration
@@ -16,7 +17,7 @@ use tiledb_common::datatype::Datatype;
 pub struct EnumerationData {
     pub name: String,
     pub datatype: Datatype,
-    pub cell_val_num: Option<u32>,
+    pub cell_val_num: Option<CellValNum>,
     pub ordered: Option<bool>,
     pub data: Box<[u8]>,
     pub offsets: Option<Box<[u64]>>,
