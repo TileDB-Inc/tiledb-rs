@@ -60,6 +60,7 @@ pub fn libtiledb() -> Result<String> {
     let mut builder = cmake::Config::new(&git_dir);
     builder
         .out_dir(out_dir)
+        .build_target("all")
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("TILEDB_WERROR", "OFF")
         .define("TILEDB_CCACHE", "ON")
@@ -86,7 +87,11 @@ fn merge_libs(build_dir: &std::path::Path) -> Result<()> {
     let mut tdb = std::path::PathBuf::from(build_dir);
     tdb.extend(["tiledb", "libtiledb.a"]);
     if !tdb.is_file() {
-        panic!("Missing libtiled: {}", tdb.display());
+        tdb.pop();
+        tdb.extend(["tiledb", "libtiledb.a"]);
+        if !tdb.is_file() {
+            panic!("Missing libtiled: {}", tdb.display());
+        }
     }
 
     let mut vcpkg_installed = std::path::PathBuf::from(build_dir);
