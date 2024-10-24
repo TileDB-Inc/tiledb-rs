@@ -41,6 +41,7 @@ fn configure_rustc(_out: &std::path::PathBuf) {
 }
 
 pub fn libtiledb() -> Result<String> {
+    println!("Compiling libtiledb");
     let build_dir = utils::build_dir();
     if build_dir.is_dir() {
         let mut bundled = build_dir.clone();
@@ -53,6 +54,7 @@ pub fn libtiledb() -> Result<String> {
 
     // N.B., you might think this should be `build_dir()`, but the cmake crate
     // appends `build` unconditionally so we have to go one directory up.
+    println!("Starting cmake builder");
     let out_dir = utils::out_dir();
     let git_dir = utils::git_dir();
     let mut builder = cmake::Config::new(&git_dir);
@@ -64,13 +66,16 @@ pub fn libtiledb() -> Result<String> {
         .define("TILEDB_S3", "ON")
         .define("TILEDB_SERIALIZATION", "ON");
 
+    println!("Maybe checking in parallel");
     if let Ok(num_jobs) = std::env::var("TILEDB_SYS_JOBS") {
         builder.build_arg(format!("-j{}", num_jobs));
     }
 
+    println!("Building!");
     let mut dst = builder.build();
     dst.push("build");
 
+    println!("Merging libs");
     merge_libs(&dst)?;
     configure_rustc(&dst);
     Ok(dst.display().to_string())
