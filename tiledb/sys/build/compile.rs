@@ -94,10 +94,23 @@ fn merge_libs(build_dir: &std::path::Path) -> Result<()> {
     // remains for us to care about.
     let mut not_vcpkg_paths = Vec::new();
     for path in paths.flatten() {
+        if !path.path().is_dir() {
+            continue;
+        }
+
         if path.path().display().to_string() == "vcpkg" {
             continue;
         }
+
         not_vcpkg_paths.push(path.path().display().to_string());
+    }
+
+    if not_vcpkg_paths.len() > 1 {
+        let paths = not_vcpkg_paths.join(", ");
+        panic!(
+            "Too many target triplet directories to choose from: {}",
+            paths
+        );
     }
 
     let path = if let Some(path) = not_vcpkg_paths.first() {
@@ -119,11 +132,8 @@ fn merge_libs(build_dir: &std::path::Path) -> Result<()> {
     let paths =
         std::fs::read_dir(lib_dir).expect("Error reading vcpkg lib directory.");
     let mut libs = vec![tdb.display().to_string()];
-    for path in paths {
-        if path.is_err() {
-            continue;
-        }
-        let path = path.unwrap().path().display().to_string();
+    for path in paths.flatten() {
+        let path = path.path().display().to_string();
         if !path.ends_with(".a") {
             continue;
         }
