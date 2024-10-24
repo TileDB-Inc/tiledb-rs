@@ -58,6 +58,7 @@ pub fn libtiledb() -> Result<String> {
     let mut builder = cmake::Config::new(&git_dir);
     builder
         .out_dir(out_dir)
+        .always_configure(false)
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("TILEDB_WERROR", "OFF")
         .define("TILEDB_CCACHE", "ON")
