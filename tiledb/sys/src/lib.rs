@@ -2,6 +2,9 @@
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
 
+// For build.rs support
+pub mod build;
+
 mod aggregate;
 mod array;
 mod array_type;

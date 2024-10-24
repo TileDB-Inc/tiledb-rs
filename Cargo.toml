@@ -33,18 +33,23 @@ version = "0.1.0"
 
 [workspace.dependencies]
 anyhow = "1.0"
+armerge = "2"
 arrow = { version = "52.0.0", features = ["prettyprint"] }
 arrow-schema = { version = "52.0.0" }
+bindgen = "0.70"
 cells = { path = "test-utils/cells", version = "0.1.0" }
+cmake = "0.1"
 itertools = "0"
 libtiledb = { path = "tiledb/libtiledb", version = "0.1.0" }
 num-traits = "0.2"
 paste = "1.0"
 proptest = { version = "1.0.0" }
+regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 signal = { path = "test-utils/signal", version = "0.1.0" }
 strategy-ext = { path = "test-utils/strategy-ext", version = "0.1.0" }
+subprocess = "0.2"
 tempfile = { version = "3" }
 thiserror = { version = "1" }
 tiledb-api = { path = "tiledb/api", version = "0.1.0" }

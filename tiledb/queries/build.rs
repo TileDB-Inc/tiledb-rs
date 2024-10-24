@@ -1,3 +1,3 @@
 fn main() {
-    libtiledb::rpath()
+    libtiledb::configure();
 }

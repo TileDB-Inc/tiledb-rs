@@ -34,15 +34,11 @@ impl TDBString {
     }
 
     pub fn to_string(&self) -> TileDBResult<String> {
-        let mut c_str: *const i8 = out_ptr!();
+        let mut c_str = out_ptr!();
         let mut c_len: usize = 0;
 
         let res = unsafe {
-            ffi::tiledb_string_view(
-                *self.raw,
-                &mut c_str as *mut *const i8,
-                &mut c_len,
-            )
+            ffi::tiledb_string_view(*self.raw, &mut c_str, &mut c_len)
         };
 
         if res == ffi::TILEDB_OK {
