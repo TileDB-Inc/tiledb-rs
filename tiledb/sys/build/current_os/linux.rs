@@ -4,7 +4,7 @@ pub fn configure_rustc(_out: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-fn merge_libraries(build_dir: &std::path::Path) -> Result<()> {
+pub fn merge_libraries(build_dir: &std::path::Path) -> Result<()> {
     let mut tdb = std::path::PathBuf::from(build_dir);
     tdb.extend(["tiledb", "tiledb", "libtiledb.a"]);
     if !tdb.is_file() {
