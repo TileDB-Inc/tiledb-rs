@@ -58,7 +58,6 @@ pub fn libtiledb() -> Result<String> {
     let mut builder = cmake::Config::new(&git_dir);
     builder
         .out_dir(out_dir)
-        .always_configure(false)
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("TILEDB_WERROR", "OFF")
         .define("TILEDB_CCACHE", "ON")
@@ -69,7 +68,8 @@ pub fn libtiledb() -> Result<String> {
         builder.build_arg(format!("-j{}", num_jobs));
     }
 
-    let dst = builder.build();
+    let mut dst = builder.build();
+    dst.push("build");
 
     merge_libs(&dst)?;
     configure_rustc(&dst);

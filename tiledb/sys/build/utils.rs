@@ -6,9 +6,8 @@ pub fn out_dir() -> std::path::PathBuf {
         }
         pbuf
     } else {
-        let out_dir = std::env::var("OUT_DIR")
-            .ok()
-            .expect("Cargo didn't set OUT_DIR");
+        let out_dir =
+            std::env::var("OUT_DIR").expect("Cargo didn't set OUT_DIR");
         std::path::PathBuf::from(out_dir)
     }
 }
