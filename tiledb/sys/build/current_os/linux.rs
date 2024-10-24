@@ -1,5 +1,7 @@
 #![cfg(target_os = "linux")]
 
+use crate::error::{Error, Result};
+
 pub fn configure_rustc(_out: &std::path::Path) -> Result<()> {
     Ok(())
 }

@@ -1,5 +1,7 @@
 #![cfg(target_os = "windows")]
 
+use crate::error::Result;
+
 pub fn configure_rustc() -> Result<()> {
     todo!("Add windows support.");
 }

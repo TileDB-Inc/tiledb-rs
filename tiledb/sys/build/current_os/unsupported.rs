@@ -4,6 +4,8 @@
     target_os = "windows"
 )))]
 
+use crate::error::Result;
+
 pub fn configure_rustc() -> Result<()> {
     panic!("This operating system is not supported.");
 }
