@@ -98,11 +98,12 @@ fn merge_libs(build_dir: &std::path::Path) -> Result<()> {
             continue;
         }
 
-        if path.path().display().to_string() == "vcpkg" {
+        let path = path.path();
+        if path.file_name() == Some(std::ffi::OsStr::new("vcpkg")) {
             continue;
         }
 
-        not_vcpkg_paths.push(path.path().display().to_string());
+        not_vcpkg_paths.push(path.display().to_string());
     }
 
     if not_vcpkg_paths.len() > 1 {
