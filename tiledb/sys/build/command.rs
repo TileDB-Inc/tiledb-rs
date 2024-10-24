@@ -7,9 +7,16 @@ use crate::error::{Error, Result};
 
 pub fn run(cmd: &[&str], input: Option<&str>) -> Result<()> {
     // Execute our Git command
+    let stdin = if input.is_some() {
+        sp::Redirection::Pipe
+    } else {
+        sp::Redirection::None
+    };
+
     let mut git = sp::Popen::create(
         cmd,
         sp::PopenConfig {
+            stdin,
             stdout: sp::Redirection::Pipe,
             stderr: sp::Redirection::Pipe,
             ..Default::default()
