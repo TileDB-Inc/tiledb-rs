@@ -48,5 +48,5 @@ fn configure_rustc(out: &std::path::Path) {
     println!("cargo::metadata=STATIC=true");
 
     // Add any extra OS specific config
-    current_os::configure_rustc(out);
+    current_os::configure_rustc(out).expect("Error configuring rustc");
 }

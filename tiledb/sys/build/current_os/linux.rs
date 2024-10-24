@@ -1,6 +1,8 @@
 #![cfg(target_os = "linux")]
 
-pub fn configure_rustc() {}
+pub fn configure_rustc(_out: &std::path::Path) -> Result<()> {
+    Ok(())
+}
 
 fn merge_libraries(build_dir: &std::path::Path) -> Result<()> {
     let mut tdb = std::path::PathBuf::from(build_dir);
@@ -78,11 +80,11 @@ fn merge_libraries(build_dir: &std::path::Path) -> Result<()> {
     for path in libs {
         lines.push(format!("addlib {}", path));
     }
-    lines.push("save");
-    lines.push("end");
+    lines.push("save".to_string());
+    lines.push("end".to_string());
     let lines = lines.join("\n");
 
-    let cmd = ["ar", "-M"];
+    let cmd = vec!["ar", "-M"];
 
-    crate::command::run(cmd, Some(&lines))
+    crate::command::run(&cmd, Some(&lines))
 }
