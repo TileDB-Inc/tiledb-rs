@@ -1,6 +1,6 @@
 #![cfg(target_os = "linux")]
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 pub fn configure_rustc(_out: &std::path::Path) -> Result<()> {
     Ok(())
@@ -77,7 +77,7 @@ pub fn merge_libraries(build_dir: &std::path::Path) -> Result<()> {
     output.extend(["libtiledb_bundled.a"]);
 
     // Generate our MRI script
-    let lines = Vec::new();
+    let mut lines = Vec::new();
     lines.push(format!("create {}", output.display()));
     for path in libs {
         lines.push(format!("addlib {}", path));
