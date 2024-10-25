@@ -2,6 +2,9 @@ use std::cmp::Ordering;
 
 use proptest::collection::vec;
 use proptest::prelude::*;
+use proptest::strategy::ValueTree;
+use strategy_ext::records::RecordsValueTree;
+use strategy_ext::StrategyExt;
 use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
 use tiledb_common::{physical_type_go, Datatype};
@@ -163,9 +166,14 @@ impl Default for Parameters {
     }
 }
 
+type EnumerationStrategy = strategy_ext::meta::MapValueTree<
+    BoxedStrategy<EnumerationData>,
+    EnumerationValueTree,
+>;
+
 impl Arbitrary for EnumerationData {
     type Parameters = Parameters;
-    type Strategy = BoxedStrategy<Self>;
+    type Strategy = EnumerationStrategy;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         (params.datatype, params.cell_val_num)
@@ -178,5 +186,84 @@ impl Arbitrary for EnumerationData {
                 )
             })
             .boxed()
+            .value_tree_map(|vt| EnumerationValueTree::new(vt.current()))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct EnumerationValueTree {
+    name: String,
+    datatype: Datatype,
+    cell_val_num: CellValNum,
+    ordered: Option<bool>,
+    variants: RecordsValueTree<Vec<Vec<u8>>>,
+}
+
+impl EnumerationValueTree {
+    pub fn new(enumeration: EnumerationData) -> Self {
+        let variants = RecordsValueTree::new(1, enumeration.records());
+
+        EnumerationValueTree {
+            name: enumeration.name,
+            datatype: enumeration.datatype,
+            cell_val_num: enumeration
+                .cell_val_num
+                .unwrap_or(CellValNum::single()),
+            ordered: enumeration.ordered,
+            variants,
+        }
+    }
+}
+
+impl ValueTree for EnumerationValueTree {
+    type Value = EnumerationData;
+
+    fn current(&self) -> Self::Value {
+        let variants = self.variants.current();
+        let (data, offsets) =
+            super::variants_from_records(self.cell_val_num, variants);
+
+        EnumerationData {
+            name: self.name.clone(),
+            datatype: self.datatype,
+            cell_val_num: Some(self.cell_val_num),
+            ordered: self.ordered,
+            data,
+            offsets,
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        self.variants.simplify()
+    }
+
+    fn complicate(&mut self) -> bool {
+        self.variants.simplify()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use strategy_ext::meta::{ShrinkAction, ShrinkSequenceStrategy};
+
+    use super::*;
+
+    fn do_search_integrity(
+        mut vt: EnumerationValueTree,
+        search: Vec<ShrinkAction>,
+    ) {
+        for action in search {
+            if !action.apply(&mut vt) {
+                break;
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn search_integrity(vt in any::<EnumerationData>().prop_indirect(), search in ShrinkSequenceStrategy::default()) {
+            do_search_integrity(vt, search)
+        }
     }
 }
