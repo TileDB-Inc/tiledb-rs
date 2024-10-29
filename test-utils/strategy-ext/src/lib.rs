@@ -1,6 +1,7 @@
 pub mod meta;
 pub mod records;
 pub mod sequence;
+pub mod strategy;
 
 use std::fmt::Debug;
 
