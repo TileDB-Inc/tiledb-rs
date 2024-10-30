@@ -10,7 +10,7 @@ use anyhow::anyhow;
 use crate::array::attribute::RawAttribute;
 use crate::array::dimension::Dimension;
 use crate::array::domain::RawDomain;
-use crate::array::enumeration::Enumeration;
+use crate::array::enumeration::{Enumeration, RawEnumeration};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
@@ -349,6 +349,25 @@ impl Schema {
 
     pub fn fields(&self) -> TileDBResult<Fields<'_>> {
         Fields::new(self)
+    }
+
+    /// Returns the enumeration with the given name.
+    pub fn enumeration(&self, name: &str) -> TileDBResult<Enumeration> {
+        let c_schema = self.capi();
+        let c_name = cstring!(name);
+        let mut c_enmr = out_ptr!();
+        self.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_schema_get_enumeration_from_name(
+                ctx,
+                c_schema,
+                c_name.as_ptr(),
+                &mut c_enmr,
+            )
+        })?;
+        Ok(Enumeration::new(
+            self.context.clone(),
+            RawEnumeration::Owned(c_enmr),
+        ))
     }
 
     fn filter_list(
