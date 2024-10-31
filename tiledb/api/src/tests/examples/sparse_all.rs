@@ -116,6 +116,7 @@ pub fn schema(params: Parameters) -> SchemaData {
                 cell_val_num: Some(cell_val_num),
                 fill: None,
                 filters: Default::default(),
+                enumeration: None,
             });
         };
 
@@ -147,6 +148,7 @@ pub fn schema(params: Parameters) -> SchemaData {
         tile_order: None,
         allow_duplicates: None,
         attributes: atts,
+        enumerations: Default::default(),
         coordinate_filters: Default::default(),
         offsets_filters: Default::default(),
         nullity_filters: Default::default(),

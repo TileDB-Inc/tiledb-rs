@@ -4,17 +4,17 @@ use tiledb_utils::option::OptionSubset;
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
+use std::rc::Rc;
+
 #[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use tiledb_common::array::{ArrayType, CellOrder, CellValNum, TileOrder};
 use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::key::LookupKey;
 
-use crate::array::attribute::AttributeData;
-use crate::array::dimension::DimensionData;
-use crate::array::domain::DomainData;
+use crate::array::{AttributeData, DimensionData, DomainData, EnumerationData};
 
 /// Encapsulation of data needed to construct a Schema
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -28,6 +28,14 @@ pub struct SchemaData {
     pub tile_order: Option<TileOrder>,
     pub allow_duplicates: Option<bool>,
     pub attributes: Vec<AttributeData>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "SchemaData::serialize_enumerations",
+            deserialize_with = "SchemaData::deserialize_enumerations"
+        )
+    )]
+    pub enumerations: Vec<Rc<EnumerationData>>,
     pub coordinate_filters: Vec<FilterData>,
     pub offsets_filters: Vec<FilterData>,
     pub nullity_filters: Vec<FilterData>,
@@ -90,6 +98,33 @@ impl SchemaData {
                     as usize
             }
         }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl SchemaData {
+    fn serialize_enumerations<S>(
+        enumerations: &Vec<Rc<EnumerationData>>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        enumerations
+            .iter()
+            .map(|e| e.as_ref())
+            .collect::<Vec<&EnumerationData>>()
+            .serialize(serializer)
+    }
+
+    fn deserialize_enumerations<'de, D>(
+        deserializer: D,
+    ) -> Result<Vec<Rc<EnumerationData>>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Vec::<EnumerationData>::deserialize(deserializer)
+            .map(|v| v.into_iter().map(Rc::new).collect::<Vec<_>>())
     }
 }
 
@@ -181,3 +216,53 @@ impl Iterator for FieldDataIter<'_> {
 }
 
 impl std::iter::FusedIterator for FieldDataIter<'_> {}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "serde")]
+    mod serde {
+        use std::cell::LazyCell;
+        use std::collections::HashMap;
+
+        use proptest::prelude::*;
+
+        use super::super::*;
+        use crate::array::attribute::EnumerationRef;
+
+        fn do_roundtrip(schema_in: SchemaData) {
+            let mut schema_out =
+                crate::test::serde::roundtrip(&schema_in).unwrap();
+
+            // attributes would have gone from `EnumerationRef::BorrowedBySchema` to
+            // `EnumerationRef::Name`, resolve those
+            let enumeration_map = LazyCell::new(|| {
+                schema_in
+                    .enumerations
+                    .iter()
+                    .map(|e| (e.name.clone(), Rc::clone(e)))
+                    .collect::<HashMap<_, _>>()
+            });
+
+            for attribute in schema_out.attributes.iter_mut() {
+                let Some(enumeration) = attribute.enumeration.as_mut() else {
+                    continue;
+                };
+                let EnumerationRef::Name(ename) = enumeration else {
+                    unreachable!()
+                };
+
+                let eref = Rc::clone(enumeration_map.get(ename).unwrap());
+                *enumeration = EnumerationRef::BorrowedFromSchema(eref);
+            }
+
+            assert_eq!(schema_in, schema_out);
+        }
+
+        proptest! {
+            #[test]
+            fn roundtrip(schema_in in any::<SchemaData>()) {
+                do_roundtrip(schema_in)
+            }
+        }
+    }
+}

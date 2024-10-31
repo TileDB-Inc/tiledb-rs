@@ -34,3 +34,18 @@ extern crate tiledb_sys_defs as ffi;
 pub mod array;
 pub mod filter;
 pub mod query;
+
+#[cfg(test)]
+pub mod test {
+    #[cfg(feature = "serde")]
+    pub mod serde {
+        use serde::{Deserialize, Serialize};
+
+        pub fn roundtrip<T>(value: &T) -> Result<T, serde_json::Error>
+        where
+            T: for<'a> Deserialize<'a> + Serialize,
+        {
+            serde_json::from_value::<T>(serde_json::to_value(value)?)
+        }
+    }
+}

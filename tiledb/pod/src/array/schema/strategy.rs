@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use proptest::prelude::*;
@@ -13,13 +13,13 @@ use crate::array::attribute::strategy::{
     prop_attribute, AttributeValueTree, Requirements as AttributeRequirements,
     StrategyContext as AttributeContext,
 };
-use crate::array::attribute::AttributeData;
-use crate::array::dimension::DimensionData;
+use crate::array::attribute::EnumerationRef;
 use crate::array::domain::strategy::{
     DomainValueTree, Requirements as DomainRequirements,
 };
-use crate::array::domain::DomainData;
+use crate::array::enumeration::strategy::EnumerationValueTree;
 use crate::array::schema::{FieldData, SchemaData};
+use crate::array::{AttributeData, DimensionData, DomainData, EnumerationData};
 use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements, StrategyContext as FilterContext,
@@ -189,6 +189,11 @@ fn prop_schema_for_domain(
                     }
                 }
 
+                let enumerations = attributes.iter_mut()
+                    .filter_map(|a| a.enumeration.as_mut())
+                    .map(|e| e.for_schema().expect("Schema was not owned by attribute"))
+                    .collect::<Vec<_>>();
+
                 SchemaData {
                     array_type,
                     domain,
@@ -197,6 +202,7 @@ fn prop_schema_for_domain(
                     tile_order: Some(tile_order),
                     allow_duplicates: Some(allow_duplicates),
                     attributes,
+                    enumerations,
                     coordinate_filters,
                     offsets_filters,
                     nullity_filters,
@@ -295,6 +301,7 @@ pub struct SchemaValueTree {
     tile_order: Just<Option<TileOrder>>, // TODO: make shrinkable
     allow_duplicates: Just<Option<bool>>, // TODO: make shrinkable
     all_attributes: Vec<AttributeValueTree>,
+    all_enumerations: HashMap<String, EnumerationValueTree>,
     selected_attributes: RecordsValueTree<Vec<usize>>,
     coordinate_filters: FilterPipelineValueTree,
     offsets_filters: FilterPipelineValueTree,
@@ -317,6 +324,16 @@ impl SchemaValueTree {
                 .into_iter()
                 .map(AttributeValueTree::new)
                 .collect::<Vec<_>>(),
+            all_enumerations: schema
+                .enumerations
+                .into_iter()
+                .map(|e| {
+                    (
+                        e.name.clone(),
+                        EnumerationValueTree::new(EnumerationData::clone(&e)),
+                    )
+                })
+                .collect::<HashMap<String, EnumerationValueTree>>(),
             selected_attributes: RecordsValueTree::new(
                 1,
                 (0..num_attributes).collect::<Vec<_>>(),
@@ -338,6 +355,39 @@ impl ValueTree for SchemaValueTree {
     type Value = SchemaData;
 
     fn current(&self) -> Self::Value {
+        let mut enumerations = HashMap::<String, Rc<EnumerationData>>::new();
+
+        let attributes = self
+            .selected_attributes
+            .current()
+            .into_iter()
+            .map(|a| {
+                let mut a = self.all_attributes[a].current();
+                if let Some(enumeration) =
+                    a.enumeration.as_ref().map(|e| e.name().to_owned())
+                {
+                    let e = enumerations.entry(enumeration).or_insert_with_key(
+                        |k| {
+                            self.all_enumerations
+                                .get(k)
+                                .unwrap()
+                                .current()
+                                .into()
+                        },
+                    );
+                    a.enumeration =
+                        Some(EnumerationRef::BorrowedFromSchema(Rc::clone(e)));
+                }
+                a
+            })
+            .collect::<Vec<_>>();
+
+        let enumerations = attributes
+            .iter()
+            .filter_map(|a| a.enumeration.as_ref())
+            .filter_map(|e| enumerations.remove(e.name()))
+            .collect::<Vec<_>>();
+
         SchemaData {
             array_type: self.array_type,
             domain: self.domain.current(),
@@ -345,12 +395,8 @@ impl ValueTree for SchemaValueTree {
             cell_order: self.cell_order.current(),
             tile_order: self.tile_order.current(),
             allow_duplicates: self.allow_duplicates.current(),
-            attributes: self
-                .selected_attributes
-                .current()
-                .into_iter()
-                .map(|a| self.all_attributes[a].current())
-                .collect::<Vec<_>>(),
+            attributes,
+            enumerations,
             coordinate_filters: self.coordinate_filters.current(),
             offsets_filters: self.offsets_filters.current(),
             nullity_filters: self.nullity_filters.current(),
@@ -365,6 +411,7 @@ impl ValueTree for SchemaValueTree {
                 .current()
                 .into_iter()
                 .any(|a| self.all_attributes[a].simplify())
+            || self.all_enumerations.values_mut().any(|e| e.simplify())
             || self.cell_order.simplify()
             || self.tile_order.simplify()
             || self.coordinate_filters.simplify()
@@ -380,6 +427,7 @@ impl ValueTree for SchemaValueTree {
                 .current()
                 .into_iter()
                 .any(|a| self.all_attributes[a].complicate())
+            || self.all_enumerations.values_mut().any(|e| e.complicate())
             || self.cell_order.complicate()
             || self.tile_order.complicate()
             || self.coordinate_filters.complicate()

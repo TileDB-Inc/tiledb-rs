@@ -59,6 +59,13 @@ macro_rules! config_param {
     };
 }
 
+// array/attribute/strategy.rs
+config_param!(
+    TILEDB_STRATEGY_ATTRIBUTE_PARAMETERS_ENUMERATION_LIKELIHOOD,
+    f64,
+    0.2
+);
+
 // array/domain/strategy.rs
 config_param!(TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MIN, usize, 1);
 config_param!(TILEDB_STRATEGY_DOMAIN_PARAMETERS_DIMENSIONS_MAX, usize, 8);
@@ -92,6 +99,16 @@ config_param!(
     TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MAX,
     usize,
     1024
+);
+config_param!(
+    TILEDB_STRATEGY_ENUMERATION_PARAMETERS_VAR_VARIANT_NUM_VALUES_MIN,
+    usize,
+    0
+);
+config_param!(
+    TILEDB_STRATEGY_ENUMERATION_PARAMETERS_VAR_VARIANT_NUM_VALUES_MAX,
+    usize,
+    64
 );
 
 // query/strategy.rs

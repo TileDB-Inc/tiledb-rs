@@ -1,7 +1,9 @@
 use std::rc::Rc;
 
+use proptest::option::Probability;
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
+use strategy_ext::strategy::MaybeValueTree;
 use strategy_ext::StrategyExt;
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
@@ -9,8 +11,11 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 
-use crate::array::attribute::{AttributeData, FillData};
-use crate::array::domain::DomainData;
+use crate::array::attribute::{AttributeData, EnumerationRef, FillData};
+use crate::array::enumeration::strategy::{
+    EnumerationValueTree, Parameters as EnumerationParameters,
+};
+use crate::array::{DomainData, EnumerationData};
 use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements,
@@ -36,6 +41,12 @@ impl AttributeData {
         });
 
         physical_type_go!(self.datatype, DT, {
+            if let Some(e) = self.enumeration.as_ref().and_then(|e| e.values())
+            {
+                let min = 0 as DT;
+                let max = e.num_variants() as DT;
+                return PhysicalValueStrategy::from((min..max).boxed());
+            }
             if has_double_delta {
                 if std::any::TypeId::of::<DT>() == std::any::TypeId::of::<u64>()
                 {
@@ -62,13 +73,35 @@ pub enum StrategyContext {
     Schema(ArrayType, Rc<DomainData>),
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Requirements {
     pub name: Option<String>,
     pub datatype: Option<Datatype>,
     pub nullability: Option<bool>,
     pub context: Option<StrategyContext>,
     pub filters: Option<Rc<FilterRequirements>>,
+    pub enumeration_likelihood: Probability,
+}
+
+impl Requirements {
+    pub fn enumeration_probability_default() -> f64 {
+        **tiledb_proptest_config::TILEDB_STRATEGY_ATTRIBUTE_PARAMETERS_ENUMERATION_LIKELIHOOD
+    }
+}
+
+impl Default for Requirements {
+    fn default() -> Self {
+        Requirements {
+            name: None,
+            datatype: None,
+            nullability: None,
+            context: None,
+            filters: None,
+            enumeration_likelihood: Probability::new(
+                Self::enumeration_probability_default(),
+            ),
+        }
+    }
 }
 
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
@@ -154,6 +187,7 @@ fn prop_attribute_for_datatype(
                 any::<CellValNum>()
             };
             let fill_nullable = any::<bool>();
+
             (name, nullable, cell_val_num, fill_nullable).prop_flat_map(
                 move |(name, nullable, cell_val_num, fill_nullable)| {
                     (
@@ -163,9 +197,32 @@ fn prop_attribute_for_datatype(
                             cell_val_num,
                             requirements.clone(),
                         ),
+                        if cell_val_num.is_single_valued()
+                            && datatype
+                                .is_allowed_attribute_type_for_enumeration()
+                        {
+                            let key_max_variants = physical_type_go!(
+                                datatype,
+                                DT,
+                                DT::MAX as usize
+                            );
+                            let mut enumeration_params =
+                                EnumerationParameters::default();
+                            enumeration_params.max_variants = std::cmp::min(
+                                key_max_variants,
+                                enumeration_params.max_variants,
+                            );
+                            proptest::option::weighted(
+                                requirements.enumeration_likelihood,
+                                any_with::<EnumerationData>(enumeration_params),
+                            )
+                            .boxed()
+                        } else {
+                            Just(None).boxed()
+                        },
                     )
                         .prop_map(
-                            move |(fill, filters)| AttributeData {
+                            move |(fill, filters, enumeration)| AttributeData {
                                 name: name.clone(),
                                 datatype,
                                 nullability: Some(nullable),
@@ -177,6 +234,8 @@ fn prop_attribute_for_datatype(
                                     ),
                                 }),
                                 filters,
+                                enumeration: enumeration
+                                    .map(EnumerationRef::OwnedByAttribute),
                             },
                         )
                 },
@@ -219,6 +278,7 @@ pub struct AttributeValueTree {
     cell_val_num: Just<Option<CellValNum>>, // TODO: enable shrinking, will help identify if Var is necessary for example
     fill: Just<Option<FillData>>,           // TODO: enable shrinking
     filters: FilterPipelineValueTree,
+    enumeration: Option<MaybeValueTree<EnumerationRefValueTree>>,
 }
 
 impl AttributeValueTree {
@@ -230,6 +290,9 @@ impl AttributeValueTree {
             cell_val_num: Just(attr.cell_val_num),
             fill: Just(attr.fill),
             filters: FilterPipelineValueTree::new(attr.filters),
+            enumeration: attr
+                .enumeration
+                .map(|e| MaybeValueTree::new(EnumerationRefValueTree::new(e))),
         }
     }
 }
@@ -245,14 +308,76 @@ impl ValueTree for AttributeValueTree {
             cell_val_num: self.cell_val_num.current(),
             fill: self.fill.current(),
             filters: self.filters.current(),
+            enumeration: self.enumeration.as_ref().and_then(|e| e.current()),
         }
     }
 
     fn simplify(&mut self) -> bool {
-        self.filters.simplify()
+        self.enumeration
+            .as_mut()
+            .map(|e| e.simplify())
+            .unwrap_or(false)
+            || self.filters.simplify()
     }
 
     fn complicate(&mut self) -> bool {
-        self.filters.complicate()
+        self.enumeration
+            .as_mut()
+            .map(|e| e.complicate())
+            .unwrap_or(false)
+            || self.filters.complicate()
+    }
+}
+
+#[derive(Clone, Debug)]
+enum EnumerationRefValueTree {
+    Name(Just<String>),
+    OwnedByAttribute(EnumerationValueTree),
+    BorrowedFromSchema(Just<Rc<EnumerationData>>),
+}
+
+impl EnumerationRefValueTree {
+    pub fn new(enumeration: EnumerationRef) -> Self {
+        match enumeration {
+            EnumerationRef::Name(name) => Self::Name(Just(name)),
+            EnumerationRef::OwnedByAttribute(enumeration) => {
+                Self::OwnedByAttribute(EnumerationValueTree::new(enumeration))
+            }
+            EnumerationRef::BorrowedFromSchema(enumeration) => {
+                Self::BorrowedFromSchema(Just(enumeration))
+            }
+        }
+    }
+}
+
+impl ValueTree for EnumerationRefValueTree {
+    type Value = EnumerationRef;
+
+    fn current(&self) -> Self::Value {
+        match self {
+            Self::Name(ref name) => EnumerationRef::Name(name.current()),
+            Self::OwnedByAttribute(enumeration) => {
+                EnumerationRef::OwnedByAttribute(enumeration.current())
+            }
+            Self::BorrowedFromSchema(enumeration) => {
+                EnumerationRef::BorrowedFromSchema(enumeration.current())
+            }
+        }
+    }
+
+    fn simplify(&mut self) -> bool {
+        match self {
+            Self::Name(name) => name.simplify(),
+            Self::OwnedByAttribute(enumeration) => enumeration.simplify(),
+            Self::BorrowedFromSchema(enumeration) => enumeration.simplify(),
+        }
+    }
+
+    fn complicate(&mut self) -> bool {
+        match self {
+            Self::Name(name) => name.complicate(),
+            Self::OwnedByAttribute(enumeration) => enumeration.complicate(),
+            Self::BorrowedFromSchema(enumeration) => enumeration.complicate(),
+        }
     }
 }

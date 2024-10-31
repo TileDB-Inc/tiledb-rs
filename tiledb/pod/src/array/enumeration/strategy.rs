@@ -31,8 +31,7 @@ fn do_dedup<T: BitsEq>(a: &mut T, b: &mut T) -> bool {
 fn prop_enumeration_values(
     datatype: Datatype,
     cell_val_num: CellValNum,
-    min_variants: usize,
-    max_variants: usize,
+    params: &Parameters,
 ) -> BoxedStrategy<(Box<[u8]>, Option<Box<[u64]>>)> {
     fn to_enumeration_values<T>(data: Vec<T>) -> Vec<T>
     where
@@ -59,14 +58,14 @@ fn prop_enumeration_values(
         DT,
         match cell_val_num {
             CellValNum::Fixed(nz) if nz.get() == 1 => {
-                vec(any::<DT>(), min_variants..=max_variants)
+                vec(any::<DT>(), params.min_variants..=params.max_variants)
                     .prop_map(|v| (to_raw(to_enumeration_values(v)), None))
                     .boxed()
             }
             CellValNum::Fixed(nz) => {
                 vec(
                     vec(any::<DT>(), nz.get() as usize),
-                    min_variants..=max_variants,
+                    params.min_variants..=params.max_variants,
                 )
                 .prop_map(|v| {
                     (
@@ -82,31 +81,37 @@ fn prop_enumeration_values(
                 .boxed()
             }
             CellValNum::Var => {
-                vec(vec(any::<DT>(), 0..=64), min_variants..=max_variants)
-                    .prop_map(|v| {
-                        let variants = to_enumeration_values(v);
-                        let mut offsets = vec![0];
+                vec(
+                    vec(
+                        any::<DT>(),
+                        params.var_variant_min_values
+                            ..=params.var_variant_max_values,
+                    ),
+                    params.min_variants..=params.max_variants,
+                )
+                .prop_map(|v| {
+                    let variants = to_enumeration_values(v);
+                    let mut offsets = vec![0];
 
-                        // NB: the final variant length is inferred from total data length,
-                        // so we skip pushing it onto offsets
-                        variants.iter().take(variants.len() - 1).for_each(
-                            |value| {
-                                offsets
-                                    .push(offsets.last().unwrap() + value.len())
-                            },
-                        );
+                    // NB: the final variant length is inferred from total data length,
+                    // so we skip pushing it onto offsets
+                    variants.iter().take(variants.len() - 1).for_each(
+                        |value| {
+                            offsets.push(offsets.last().unwrap() + value.len())
+                        },
+                    );
 
-                        let data = to_raw(
-                            variants.into_iter().flatten().collect::<Vec<DT>>(),
-                        );
-                        let offsets = offsets
-                            .into_iter()
-                            .map(|o| (o * std::mem::size_of::<DT>()) as u64)
-                            .collect::<Vec<u64>>();
+                    let data = to_raw(
+                        variants.into_iter().flatten().collect::<Vec<DT>>(),
+                    );
+                    let offsets = offsets
+                        .into_iter()
+                        .map(|o| (o * std::mem::size_of::<DT>()) as u64)
+                        .collect::<Vec<u64>>();
 
-                        (data, Some(offsets.into_boxed_slice()))
-                    })
-                    .boxed()
+                    (data, Some(offsets.into_boxed_slice()))
+                })
+                .boxed()
             }
         }
     )
@@ -115,17 +120,11 @@ fn prop_enumeration_values(
 pub fn prop_enumeration_for_datatype(
     datatype: Datatype,
     cell_val_num: CellValNum,
-    min_variants: usize,
-    max_variants: usize,
+    params: &Parameters,
 ) -> impl Strategy<Value = EnumerationData> {
     let name = prop_enumeration_name();
     let ordered = prop_ordered();
-    let data = prop_enumeration_values(
-        datatype,
-        cell_val_num,
-        min_variants,
-        max_variants,
-    );
+    let data = prop_enumeration_values(datatype, cell_val_num, params);
     (name, ordered, data)
         .prop_map(move |(name, ordered, (data, offsets))| EnumerationData {
             name,
@@ -143,6 +142,8 @@ pub struct Parameters {
     pub cell_val_num: BoxedStrategy<CellValNum>,
     pub min_variants: usize,
     pub max_variants: usize,
+    pub var_variant_min_values: usize,
+    pub var_variant_max_values: usize,
 }
 
 impl Parameters {
@@ -153,15 +154,29 @@ impl Parameters {
     fn max_variants_default() -> usize {
         **tiledb_proptest_config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MAX
     }
+
+    fn var_variant_min_values_default() -> usize {
+        **tiledb_proptest_config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_VAR_VARIANT_NUM_VALUES_MIN
+    }
+
+    fn var_variant_max_values_default() -> usize {
+        **tiledb_proptest_config::TILEDB_STRATEGY_ENUMERATION_PARAMETERS_VAR_VARIANT_NUM_VALUES_MAX
+    }
 }
 
 impl Default for Parameters {
     fn default() -> Self {
         Parameters {
             datatype: any::<Datatype>().boxed(),
-            cell_val_num: any::<CellValNum>().boxed(),
+            cell_val_num: prop_oneof![
+                Just(CellValNum::single()),
+                Just(CellValNum::Var)
+            ]
+            .boxed(),
             min_variants: Self::min_variants_default(),
             max_variants: Self::max_variants_default(),
+            var_variant_min_values: Self::var_variant_min_values_default(),
+            var_variant_max_values: Self::var_variant_max_values_default(),
         }
     }
 }
@@ -176,14 +191,9 @@ impl Arbitrary for EnumerationData {
     type Strategy = EnumerationStrategy;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        (params.datatype, params.cell_val_num)
+        (params.datatype.clone(), params.cell_val_num.clone())
             .prop_flat_map(move |(dt, cvn)| {
-                prop_enumeration_for_datatype(
-                    dt,
-                    cvn,
-                    params.min_variants,
-                    params.max_variants,
-                )
+                prop_enumeration_for_datatype(dt, cvn, &params)
             })
             .boxed()
             .value_tree_map(|vt| EnumerationValueTree::new(vt.current()))
@@ -238,7 +248,7 @@ impl ValueTree for EnumerationValueTree {
     }
 
     fn complicate(&mut self) -> bool {
-        self.variants.simplify()
+        self.variants.complicate()
     }
 }
 

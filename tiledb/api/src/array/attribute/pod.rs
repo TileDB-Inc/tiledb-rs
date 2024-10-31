@@ -2,7 +2,7 @@ use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::{metadata_value_go, physical_type_go};
-use tiledb_pod::array::attribute::{AttributeData, FillData};
+use tiledb_pod::array::attribute::{AttributeData, EnumerationRef, FillData};
 
 use super::{Attribute, Builder};
 use crate::error::Error as TileDBError;
@@ -29,6 +29,7 @@ impl TryFrom<&Attribute> for AttributeData {
             cell_val_num: Some(attr.cell_val_num()?),
             fill: Some(fill),
             filters: Vec::<FilterData>::try_from(&attr.filter_list()?)?,
+            enumeration: attr.enumeration_name()?.map(EnumerationRef::Name),
         })
     }
 }
@@ -65,6 +66,9 @@ impl Factory for AttributeData {
                     b.fill_value(value.as_slice())
                 }
             })?;
+        }
+        if let Some(enumeration) = self.enumeration.as_ref() {
+            b = b.enumeration_name(enumeration.name())?
         }
 
         Ok(b.build())
