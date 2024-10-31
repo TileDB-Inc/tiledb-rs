@@ -46,10 +46,11 @@ impl EnumerationData {
                 .map(|w| self.data[w[0] as usize..w[1] as usize].to_vec())
                 .collect::<Vec<Vec<u8>>>()
         } else {
-            let fixed =
-                u32::from(self.cell_val_num.unwrap_or(CellValNum::single()));
+            let fixed = self.datatype.size()
+                * u32::from(self.cell_val_num.unwrap_or(CellValNum::single()))
+                    as usize;
             self.data
-                .chunks(fixed as usize)
+                .chunks(fixed)
                 .map(|s| s.to_vec())
                 .collect::<Vec<Vec<u8>>>()
         }
@@ -98,20 +99,59 @@ mod tests {
         assert_eq!(e.offsets, offsets_out);
     }
 
+    fn do_variants_records_integrity(enumeration: EnumerationData) {
+        assert_eq!(0, enumeration.data.len() % enumeration.datatype.size());
+
+        let records = enumeration.records();
+
+        match enumeration.cell_val_num.unwrap_or(CellValNum::single()) {
+            CellValNum::Fixed(nz) => {
+                let byte_len = enumeration.datatype.size() * nz.get() as usize;
+                for record in records {
+                    assert_eq!(byte_len, record.len());
+                }
+            }
+            CellValNum::Var => {
+                let offsets = enumeration.offsets.as_ref().unwrap();
+                assert_eq!(records.len(), offsets.len());
+
+                let offsets = offsets
+                    .iter()
+                    .copied()
+                    .chain(std::iter::once(enumeration.data.len() as u64))
+                    .collect::<Vec<_>>();
+                for (offsets, record) in offsets.windows(2).zip(records.iter())
+                {
+                    let (lb, ub) = (offsets[0] as usize, offsets[1] as usize);
+                    assert_eq!(ub - lb, record.len());
+                    assert_eq!(0, record.len() % enumeration.datatype.size());
+                }
+            }
+        }
+    }
+
     // NB: do not use Arbitrary because that *depends* on the roundtrip test
-    fn strat_variants_records_roundtrip(
-    ) -> impl Strategy<Value = EnumerationData> {
+    fn strat_enumeration() -> impl Strategy<Value = EnumerationData> {
         (any::<Datatype>(), any::<CellValNum>()).prop_flat_map(
             move |(dt, cvn)| {
-                super::strategy::prop_enumeration_for_datatype(dt, cvn, 1, 4)
+                super::strategy::prop_enumeration_for_datatype(
+                    dt,
+                    cvn,
+                    &Default::default(),
+                )
             },
         )
     }
 
     proptest! {
         #[test]
-        fn variants_records_roundtrip(enumeration in strat_variants_records_roundtrip()) {
+        fn variants_records_roundtrip(enumeration in strat_enumeration()) {
             do_variants_records_roundtrip(enumeration)
+        }
+
+        #[test]
+        fn variants_records_integrity(enumeration in strat_enumeration()) {
+            do_variants_records_integrity(enumeration)
         }
     }
 }
