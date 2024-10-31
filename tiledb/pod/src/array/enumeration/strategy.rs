@@ -28,11 +28,13 @@ fn do_dedup<T: BitsEq>(a: &mut T, b: &mut T) -> bool {
     a.bits_eq(b)
 }
 
+type EnumerationBytes = (Box<[u8]>, Option<Box<[u64]>>);
+
 fn prop_enumeration_values(
     datatype: Datatype,
     cell_val_num: CellValNum,
     params: &Parameters,
-) -> BoxedStrategy<(Box<[u8]>, Option<Box<[u64]>>)> {
+) -> BoxedStrategy<EnumerationBytes> {
     fn to_enumeration_values<T>(data: Vec<T>) -> Vec<T>
     where
         T: BitsEq + BitsOrd,

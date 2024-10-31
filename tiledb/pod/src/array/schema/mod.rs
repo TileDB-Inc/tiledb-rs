@@ -104,7 +104,7 @@ impl SchemaData {
 #[cfg(feature = "serde")]
 impl SchemaData {
     fn serialize_enumerations<S>(
-        enumerations: &Vec<Rc<EnumerationData>>,
+        enumerations: &[Rc<EnumerationData>],
         serializer: S,
     ) -> Result<S::Ok, S::Error>
     where
