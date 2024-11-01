@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -218,7 +218,7 @@ where
 
     /// Computes the bit mask for which records to include in the next iteration
     fn record_mask(&self) -> VarBitSet {
-        match self.search {
+        let mut by_search = match self.search {
             None => VarBitSet::saturated(self.init.len()),
             Some(ShrinkStep::Explore(c)) => {
                 let nchunks = std::cmp::max(1, self.num_chunks());
@@ -256,7 +256,26 @@ where
                 }
                 record_mask
             }
+        };
+
+        if by_search.count() < self.min_records {
+            // Buffer with some extras because the strategy requires it.
+            // We could probably do something smarter, but just choose the initial
+            // records. Most likely the minimum is 1 anyway.
+            let mut remaining = self.min_records - by_search.count();
+
+            for i in 0..self.init.len() {
+                if by_search.test(i) {
+                    continue;
+                }
+                remaining -= 1;
+                by_search.set(i);
+                if remaining == 0 {
+                    break;
+                }
+            }
         }
+        by_search
     }
 
     /// Receive the latest test result and return whether further steps can be taken.
@@ -351,19 +370,6 @@ where
                         &self.records_included[chunk_min..chunk_max],
                     );
                 }
-            }
-
-            if new_records_included.len() < self.min_records {
-                /* buffer with some extras because the strategy requires it */
-                let mut rec = new_records_included
-                    .into_iter()
-                    .collect::<BTreeSet<usize>>();
-                let mut i = 0;
-                while rec.len() < self.min_records {
-                    rec.insert(i);
-                    i += 1;
-                }
-                new_records_included = rec.into_iter().collect::<Vec<usize>>();
             }
 
             new_records_included
@@ -465,6 +471,18 @@ mod tests {
         }
     }
 
+    fn do_arbitrary_shrink_search(
+        rvt: &mut RecordsValueTree<Vec<u64>>,
+        search: Vec<ShrinkAction>,
+    ) {
+        for step in search {
+            step.apply(rvt);
+
+            let records = rvt.current();
+            assert!(records.len() >= rvt.min_records);
+        }
+    }
+
     proptest! {
         #[test]
         fn arbitrary_shrink_search(
@@ -473,9 +491,17 @@ mod tests {
                 max_length: 1024
             },
         ) {
-            for step in sequence {
-                step.apply(&mut rvt);
-            }
+            do_arbitrary_shrink_search(&mut rvt, sequence)
+        }
+
+        #[test]
+        fn arbitrary_shrink_search_min_size(
+            mut rvt in (1..=32usize).prop_flat_map(|min| vec_records_strategy(any::<u64>(), min..=1024).prop_indirect()),
+            sequence in ShrinkSequenceStrategy {
+                max_length: 1024
+            },
+        ) {
+            do_arbitrary_shrink_search(&mut rvt, sequence)
         }
     }
 }

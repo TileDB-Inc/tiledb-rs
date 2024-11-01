@@ -453,7 +453,12 @@ mod tests {
 
         // if we continue shrinking after finding the minimal attribute set
         // we should not thrash the attribute set
-        while vt.selected_attributes.simplify() {}
+        while vt.selected_attributes.simplify() {
+            let current = vt.current();
+            assert!(current.attributes.len() >= 1);
+            assert!(current.domain.dimension.len() >= 1);
+        }
+
         // (this may not be generally true but it is true for RecordsStrategy)
         assert!(!vt.selected_attributes.complicate());
 
