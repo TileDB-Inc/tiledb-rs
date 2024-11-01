@@ -204,7 +204,8 @@ fn prop_attribute_for_datatype(
                             let key_max_variants = physical_type_go!(
                                 datatype,
                                 DT,
-                                DT::MAX as usize
+                                // NB: see core `add_attribute`
+                                DT::MAX as usize - 1
                             );
                             let mut enumeration_params =
                                 EnumerationParameters::default();
