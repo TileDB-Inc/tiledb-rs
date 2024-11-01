@@ -3,13 +3,14 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use arrow::datatypes::{Field as ArrowField, Schema as ArrowSchema};
 use serde::{Deserialize, Serialize};
+use tiledb_pod::array::EnumerationData;
 
 use crate::array::{
     ArrayType, AttributeBuilder, CellOrder, DimensionBuilder, DomainBuilder,
     Schema, SchemaBuilder, TileOrder,
 };
 use crate::filter::arrow::FilterMetadata;
-use crate::{error::Error, Context, Result as TileDBResult};
+use crate::{error::Error, Context, Factory, Result as TileDBResult};
 
 pub type FieldToArrowResult = crate::arrow::ArrowConversionResult<
     arrow::datatypes::Field,
@@ -50,6 +51,7 @@ pub struct SchemaMetadata {
     allows_duplicates: bool,
     cell_order: CellOrder,
     tile_order: TileOrder,
+    enumerations: Vec<EnumerationData>,
     coordinate_filters: FilterMetadata,
     offsets_filters: FilterMetadata,
     nullity_filters: FilterMetadata,
@@ -67,6 +69,10 @@ impl SchemaMetadata {
             allows_duplicates: schema.allows_duplicates()?,
             cell_order: schema.cell_order()?,
             tile_order: schema.tile_order()?,
+            enumerations: schema
+                .enumerations()?
+                .map(|e| e.and_then(|e| EnumerationData::try_from(&e)))
+                .collect::<TileDBResult<Vec<EnumerationData>>>()?,
             coordinate_filters: FilterMetadata::new(
                 &schema.coordinate_filters()?,
             )?,
@@ -213,6 +219,11 @@ pub fn from_arrow(
         .coordinate_filters(&metadata.coordinate_filters.create(context)?)?
         .offsets_filters(&metadata.offsets_filters.create(context)?)?
         .nullity_filters(&metadata.nullity_filters.create(context)?)?;
+
+    b = metadata
+        .enumerations
+        .iter()
+        .try_fold(b, |b, enmr| b.add_enumeration(enmr.create(context)?))?;
 
     for f in attributes {
         match crate::array::attribute::arrow::from_arrow(context, f)? {
