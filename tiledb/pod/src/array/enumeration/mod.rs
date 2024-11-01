@@ -24,6 +24,7 @@ pub struct EnumerationData {
 }
 
 impl EnumerationData {
+    /// Returns the number of variants of this enumeration.
     pub fn num_variants(&self) -> usize {
         if let Some(offsets) = self.offsets.as_ref() {
             offsets.len()
@@ -36,6 +37,14 @@ impl EnumerationData {
         }
     }
 
+    /// Returns the variants of this enumeration re-organized into a list of records.
+    ///
+    /// Each record is raw bytes. It is the user's responsibility to reinterpret these
+    /// as physical values of [Self::datatype].
+    ///
+    /// If the enumeration's [CellValNum] is
+    /// * [CellValNum::Fixed], then each of the inner [Vec]s will have the same length.
+    /// * [CellValNum::Var], then the inner [Vec]s may each be of any size.
     pub fn records(&self) -> Vec<Vec<u8>> {
         if let Some(offsets) = self.offsets.as_ref() {
             let last_window =
@@ -57,6 +66,10 @@ impl EnumerationData {
     }
 }
 
+/// Returns a (raw bytes, offsets) pair representing the input set of records
+/// for the given [CellValNum].
+///
+/// This is the inverse of [EnumerationData::records].
 pub fn variants_from_records(
     cell_val_num: CellValNum,
     variants: Vec<Vec<u8>>,

@@ -38,11 +38,25 @@ pub struct FillData {
     pub nullability: Option<bool>,
 }
 
+/// Identifies an [EnumerationData] which this attribute indexes.
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum EnumerationRef {
+    /// The name of an enumeration whose data lives elsewhere.
     Name(String),
+    /// The enumeration is uniquely owned by this attribute.
+    ///
+    /// In typical usage, this is an ephemeral state before the
+    /// attribute is attached to a [SchemaData].
     OwnedByAttribute(EnumerationData),
+    /// This attribute is owned by a [SchemaData] and is sharing
+    /// its enumeration data.
+    ///
+    /// This is the expected variant for attributes which are
+    /// owned by [SchemaData]. Other variants may be used transiently.
+    /// For example, serialization of this variant writes only the enumeration name,
+    /// and deserialization of the owning [SchemaData] is responsible for
+    /// reconstructing this variant.
     #[cfg_attr(
         feature = "serde",
         serde(

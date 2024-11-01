@@ -423,7 +423,7 @@ impl Datatype {
         )
     }
 
-    /// Returns whether an attribute of this type can have an enumeration attached to it
+    /// Returns whether an attribute of this type can have an enumeration attached to it.
     // See `ArraySchema::add_attribute` and keep in sync with that
     pub fn is_allowed_attribute_type_for_enumeration(&self) -> bool {
         self.is_integral_type()

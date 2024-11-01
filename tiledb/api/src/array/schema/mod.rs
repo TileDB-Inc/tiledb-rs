@@ -351,15 +351,15 @@ impl Schema {
         Fields::new(self)
     }
 
-    /// Returns the enumeration with the given name.
+    /// Returns the enumeration identified by the requested key.
     pub fn enumeration(
         &self,
-        name: EnumerationKey,
+        key: EnumerationKey,
     ) -> TileDBResult<Enumeration> {
         let c_schema = self.capi();
         let mut c_enmr = out_ptr!();
 
-        match name {
+        match key {
             EnumerationKey::EnumerationName(name) => {
                 let c_name = cstring!(name);
                 self.capi_call(|ctx| unsafe {

@@ -329,6 +329,7 @@ impl ValueTree for AttributeValueTree {
     }
 }
 
+/// A [ValueTree] which shrinks an [EnumerationRef].
 #[derive(Clone, Debug)]
 enum EnumerationRefValueTree {
     Name(Just<String>),
