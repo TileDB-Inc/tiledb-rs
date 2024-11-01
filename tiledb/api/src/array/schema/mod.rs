@@ -6,6 +6,7 @@ use std::ops::Deref;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use anyhow::anyhow;
+use itertools::Itertools;
 
 use crate::array::attribute::RawAttribute;
 use crate::array::dimension::Dimension;
@@ -318,6 +319,13 @@ impl Schema {
         Ok(Attribute::new(&self.context, RawAttribute::Owned(c_attr)))
     }
 
+    /// Returns an [Iterator] over the attributes of this schema.
+    pub fn attributes<'a>(
+        &'a self,
+    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Attribute>> + 'a> {
+        Ok((0..self.num_attributes()?).map(|a| self.attribute(a)))
+    }
+
     pub fn num_fields(&self) -> TileDBResult<usize> {
         Ok(self.domain()?.num_dimensions()? + self.num_attributes()?)
     }
@@ -387,6 +395,23 @@ impl Schema {
             self.context.clone(),
             RawEnumeration::Owned(c_enmr),
         ))
+    }
+
+    /// Returns an [Iterator] over the enumerations of this schema.
+    pub fn enumerations<'a>(
+        &'a self,
+    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Enumeration>> + 'a>
+    {
+        Ok(self
+            .attributes()?
+            .map(|a| a.and_then(|a| a.enumeration_name()))
+            .flatten_ok()
+            .unique_by(|ename| ename.as_ref().ok().cloned())
+            .map(|ename| {
+                ename.and_then(|ename| {
+                    self.enumeration(EnumerationKey::EnumerationName(&ename))
+                })
+            }))
     }
 
     fn filter_list(
