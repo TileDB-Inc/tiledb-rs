@@ -146,11 +146,14 @@ impl ToReadQuery for Cells {
 }
 
 impl ToReadQuery for DenseWriteInput {
-    type ReadBuilder<'data, B> = CallbackVarArgReadBuilder<
+    type ReadBuilder<'data, B>
+        = CallbackVarArgReadBuilder<
         'data,
         MapAdapter<CellsConstructor, RawResultCallback>,
         B,
-    > where Self: 'data;
+    >
+    where
+        Self: 'data;
 
     fn attach_read<'data, B>(
         &'data self,
@@ -211,11 +214,14 @@ impl ToReadQuery for WriteInput {
 }
 
 impl ToReadQuery for WriteInputRef<'_> {
-    type ReadBuilder<'data, B> = CallbackVarArgReadBuilder<
+    type ReadBuilder<'data, B>
+        = CallbackVarArgReadBuilder<
         'data,
         MapAdapter<CellsConstructor, RawResultCallback>,
         B,
-    > where Self: 'data;
+    >
+    where
+        Self: 'data;
 
     fn attach_read<'data, B>(
         &'data self,
