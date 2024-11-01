@@ -68,7 +68,14 @@ extern "C" {
     pub fn tiledb_array_schema_get_enumeration_from_name(
         ctx: *mut tiledb_ctx_t,
         array_schema: *mut tiledb_array_schema_t,
-        name: *const ::std::os::raw::c_char,
+        enumeration_name: *const ::std::os::raw::c_char,
+        enumeration: *mut *mut tiledb_enumeration_t,
+    ) -> capi_return_t;
+
+    pub fn tiledb_array_schema_get_enumeration_from_attribute_name(
+        ctx: *mut tiledb_ctx_t,
+        array_schema: *mut tiledb_array_schema_t,
+        attribute_name: *const ::std::os::raw::c_char,
         enumeration: *mut *mut tiledb_enumeration_t,
     ) -> capi_return_t;
 

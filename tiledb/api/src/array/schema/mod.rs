@@ -352,18 +352,37 @@ impl Schema {
     }
 
     /// Returns the enumeration with the given name.
-    pub fn enumeration(&self, name: &str) -> TileDBResult<Enumeration> {
+    pub fn enumeration(
+        &self,
+        name: EnumerationKey,
+    ) -> TileDBResult<Enumeration> {
         let c_schema = self.capi();
-        let c_name = cstring!(name);
         let mut c_enmr = out_ptr!();
-        self.capi_call(|ctx| unsafe {
-            ffi::tiledb_array_schema_get_enumeration_from_name(
-                ctx,
-                c_schema,
-                c_name.as_ptr(),
-                &mut c_enmr,
-            )
-        })?;
+
+        match name {
+            EnumerationKey::EnumerationName(name) => {
+                let c_name = cstring!(name);
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_schema_get_enumeration_from_name(
+                        ctx,
+                        c_schema,
+                        c_name.as_ptr(),
+                        &mut c_enmr,
+                    )
+                })
+            }
+            EnumerationKey::AttributeName(name) => {
+                let c_name = cstring!(name);
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_schema_get_enumeration_from_attribute_name(
+                        ctx,
+                        c_schema,
+                        c_name.as_ptr(),
+                        &mut c_enmr,
+                    )
+                })
+            }
+        }?;
         Ok(Enumeration::new(
             self.context.clone(),
             RawEnumeration::Owned(c_enmr),
@@ -432,6 +451,26 @@ impl Debug for Schema {
                 write!(f, "<Schema @ {:?}: serialization error: {}>", ptr, e)
             }
         }
+    }
+}
+
+/// A key used to look up an enumeration from a [Schema].
+pub enum EnumerationKey<'a> {
+    /// Identifies an enumeration by its name.
+    EnumerationName(&'a str),
+    /// Identifies an enumeration by the name of an attribute which refers to it.
+    AttributeName(&'a str),
+}
+
+impl<'a> EnumerationKey<'a> {
+    /// Returns [Self::EnumerationName] for any argument which can be used as a [str].
+    pub fn by_name(s: &'a impl AsRef<str>) -> Self {
+        Self::EnumerationName(s.as_ref())
+    }
+
+    /// Returns [Self::AttributeName] for any argument which can be used as a [str].
+    pub fn by_attribute_name(s: &'a impl AsRef<str>) -> Self {
+        Self::AttributeName(s.as_ref())
     }
 }
 

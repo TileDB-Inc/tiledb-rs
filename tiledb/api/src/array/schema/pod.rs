@@ -7,7 +7,7 @@ use tiledb_pod::array::attribute::{AttributeData, EnumerationRef};
 use tiledb_pod::array::schema::{FieldData, SchemaData};
 use tiledb_pod::array::{DimensionData, DomainData, EnumerationData};
 
-use super::{Builder, Field, Schema};
+use super::{Builder, EnumerationKey, Field, Schema};
 use crate::error::Error;
 use crate::{Context, Factory, Result as TileDBResult};
 
@@ -32,11 +32,11 @@ impl TryFrom<&Schema> for SchemaData {
             *enumeration = EnumerationRef::BorrowedFromSchema(
                 match enumeration_map.entry(ename.to_owned()) {
                     Entry::Occupied(e) => Rc::clone(e.get()),
-                    Entry::Vacant(e) => {
-                        Rc::clone(e.insert(Rc::new(EnumerationData::try_from(
-                            &schema.enumeration(ename.as_ref())?,
-                        )?)))
-                    }
+                    Entry::Vacant(e) => Rc::clone(e.insert(Rc::new(
+                        EnumerationData::try_from(&schema.enumeration(
+                            EnumerationKey::EnumerationName(ename.as_ref()),
+                        )?)?,
+                    ))),
                 },
             );
         }
