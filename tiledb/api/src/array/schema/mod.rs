@@ -320,9 +320,9 @@ impl Schema {
     }
 
     /// Returns an [Iterator] over the attributes of this schema.
-    pub fn attributes<'a>(
-        &'a self,
-    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Attribute>> + 'a> {
+    pub fn attributes(
+        &self,
+    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Attribute>> + '_> {
         Ok((0..self.num_attributes()?).map(|a| self.attribute(a)))
     }
 
@@ -398,9 +398,9 @@ impl Schema {
     }
 
     /// Returns an [Iterator] over the enumerations of this schema.
-    pub fn enumerations<'a>(
-        &'a self,
-    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Enumeration>> + 'a>
+    pub fn enumerations(
+        &self,
+    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Enumeration>> + '_>
     {
         Ok(self
             .attributes()?
