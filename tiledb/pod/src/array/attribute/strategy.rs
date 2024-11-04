@@ -201,12 +201,8 @@ fn prop_attribute_for_datatype(
                             && datatype
                                 .is_allowed_attribute_type_for_enumeration()
                         {
-                            let key_max_variants = physical_type_go!(
-                                datatype,
-                                DT,
-                                // NB: see core `add_attribute`
-                                DT::MAX as usize - 1
-                            );
+                            let key_max_variants =
+                                datatype.max_enumeration_variants().unwrap();
                             let mut enumeration_params =
                                 EnumerationParameters::default();
                             enumeration_params.max_variants = std::cmp::min(
