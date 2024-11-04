@@ -430,7 +430,9 @@ impl Datatype {
     }
 
     pub fn max_enumeration_variants(&self) -> Option<usize> {
-        if self.is_allowed_attribute_type_for_enumeration() {
+        if matches!(self, Self::Boolean) {
+            Some(2)
+        } else if self.is_allowed_attribute_type_for_enumeration() {
             crate::physical_type_go!(self, DT, {
                 // NB: see core `add_attribute`
                 Some(DT::MAX as usize - 1)
