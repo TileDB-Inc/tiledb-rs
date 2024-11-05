@@ -11,6 +11,25 @@ use tiledb_common::{physical_type_go, Datatype};
 
 use crate::array::enumeration::EnumerationData;
 
+impl EnumerationData {
+    /// Returns a strategy which produces a valid
+    /// key datatype for this enumeration.
+    pub fn key_datatype_strategy(&self) -> impl Strategy<Value = Datatype> {
+        let nv = self.num_variants();
+        let mut candidates = Vec::new();
+
+        for dt in Datatype::iter() {
+            let Some(max_variants) = dt.max_enumeration_variants() else {
+                continue;
+            };
+            if nv <= max_variants {
+                candidates.push(dt)
+            }
+        }
+        proptest::sample::select(candidates)
+    }
+}
+
 pub fn prop_enumeration_name() -> impl Strategy<Value = String> {
     proptest::string::string_regex("[a-zA-Z0-9_]+")
         .expect("Error creating enumeration name strategy")
