@@ -42,9 +42,8 @@ impl AttributeData {
             .cell_val_num
             .map(|c| !c.is_single_valued())
             .unwrap_or(false)
+            || max_variants < enumeration.num_variants()
         {
-            false
-        } else if max_variants < enumeration.num_variants() {
             false
         } else {
             self.enumeration = Some(enumeration.name.clone());

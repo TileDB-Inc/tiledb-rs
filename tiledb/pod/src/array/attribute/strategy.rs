@@ -69,25 +69,13 @@ pub enum StrategyContext {
     Schema(ArrayType, Rc<DomainData>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Requirements {
     pub name: Option<String>,
     pub datatype: Option<Datatype>,
     pub nullability: Option<bool>,
     pub context: Option<StrategyContext>,
     pub filters: Option<Rc<FilterRequirements>>,
-}
-
-impl Default for Requirements {
-    fn default() -> Self {
-        Requirements {
-            name: None,
-            datatype: None,
-            nullability: None,
-            context: None,
-            filters: None,
-        }
-    }
 }
 
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
