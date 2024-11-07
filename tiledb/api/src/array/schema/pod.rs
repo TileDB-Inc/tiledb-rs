@@ -1,9 +1,6 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::rc::Rc;
-
+use itertools::Itertools;
 use tiledb_common::filter::FilterData;
-use tiledb_pod::array::attribute::{AttributeData, EnumerationRef};
+use tiledb_pod::array::attribute::AttributeData;
 use tiledb_pod::array::schema::{FieldData, SchemaData};
 use tiledb_pod::array::{DimensionData, DomainData, EnumerationData};
 
@@ -15,37 +12,21 @@ impl TryFrom<&Schema> for SchemaData {
     type Error = Error;
 
     fn try_from(schema: &Schema) -> Result<Self, Self::Error> {
-        let mut attributes = (0..schema.num_attributes()?)
+        let attributes = (0..schema.num_attributes()?)
             .map(|a| AttributeData::try_from(&schema.attribute(a)?))
             .collect::<TileDBResult<Vec<AttributeData>>>()?;
 
-        let mut enumeration_map: HashMap<String, Rc<EnumerationData>> =
-            HashMap::new();
-
-        for attr in attributes.iter_mut() {
-            let Some(enumeration) = attr.enumeration.as_mut() else {
-                continue;
-            };
-            let EnumerationRef::Name(ref ename) = enumeration else {
-                unreachable!()
-            };
-            *enumeration = EnumerationRef::BorrowedFromSchema(
-                match enumeration_map.entry(ename.to_owned()) {
-                    Entry::Occupied(e) => Rc::clone(e.get()),
-                    Entry::Vacant(e) => Rc::clone(e.insert(Rc::new(
-                        EnumerationData::try_from(&schema.enumeration(
-                            EnumerationKey::EnumerationName(ename.as_ref()),
-                        )?)?,
-                    ))),
-                },
-            );
-        }
-
         let enumerations = attributes
             .iter()
-            .filter_map(|a| a.enumeration.as_ref().map(|e| e.name()))
-            .filter_map(|ename| enumeration_map.remove(ename))
-            .collect::<Vec<Rc<EnumerationData>>>();
+            .filter_map(|a| a.enumeration.as_ref())
+            .unique()
+            .map(|ename| {
+                EnumerationData::try_from(
+                    schema
+                        .enumeration(EnumerationKey::EnumerationName(ename))?,
+                )
+            })
+            .collect::<TileDBResult<Vec<EnumerationData>>>()?;
 
         Ok(SchemaData {
             array_type: schema.array_type()?,

@@ -1,6 +1,5 @@
 use std::rc::Rc;
 
-use proptest::option::Probability;
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
 use strategy_ext::strategy::MaybeValueTree;
@@ -11,11 +10,9 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 
-use crate::array::attribute::{AttributeData, EnumerationRef, FillData};
-use crate::array::enumeration::strategy::{
-    EnumerationValueTree, Parameters as EnumerationParameters,
-};
-use crate::array::{DomainData, EnumerationData};
+use crate::array::attribute::{AttributeData, FillData};
+use crate::array::enumeration::strategy::Parameters as EnumerationParameters;
+use crate::array::DomainData;
 use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements,
@@ -41,10 +38,9 @@ impl AttributeData {
         });
 
         physical_type_go!(self.datatype, DT, {
-            if let Some(e) = self.enumeration.as_ref().and_then(|e| e.values())
-            {
+            if self.enumeration.is_some() {
                 let min = 0 as DT;
-                let max = e.num_variants() as DT;
+                let max = EnumerationParameters::default().max_variants as DT;
                 return PhysicalValueStrategy::from((min..max).boxed());
             }
             if has_double_delta {
@@ -80,13 +76,6 @@ pub struct Requirements {
     pub nullability: Option<bool>,
     pub context: Option<StrategyContext>,
     pub filters: Option<Rc<FilterRequirements>>,
-    pub enumeration_likelihood: Probability,
-}
-
-impl Requirements {
-    pub fn enumeration_probability_default() -> f64 {
-        **tiledb_proptest_config::TILEDB_STRATEGY_ATTRIBUTE_PARAMETERS_ENUMERATION_LIKELIHOOD
-    }
 }
 
 impl Default for Requirements {
@@ -97,9 +86,6 @@ impl Default for Requirements {
             nullability: None,
             context: None,
             filters: None,
-            enumeration_likelihood: Probability::new(
-                Self::enumeration_probability_default(),
-            ),
         }
     }
 }
@@ -197,29 +183,9 @@ fn prop_attribute_for_datatype(
                             cell_val_num,
                             requirements.clone(),
                         ),
-                        if cell_val_num.is_single_valued()
-                            && datatype
-                                .is_allowed_attribute_type_for_enumeration()
-                        {
-                            let key_max_variants =
-                                datatype.max_enumeration_variants().unwrap();
-                            let mut enumeration_params =
-                                EnumerationParameters::default();
-                            enumeration_params.max_variants = std::cmp::min(
-                                key_max_variants,
-                                enumeration_params.max_variants,
-                            );
-                            proptest::option::weighted(
-                                requirements.enumeration_likelihood,
-                                any_with::<EnumerationData>(enumeration_params),
-                            )
-                            .boxed()
-                        } else {
-                            Just(None).boxed()
-                        },
                     )
                         .prop_map(
-                            move |(fill, filters, enumeration)| AttributeData {
+                            move |(fill, filters)| AttributeData {
                                 name: name.clone(),
                                 datatype,
                                 nullability: Some(nullable),
@@ -231,8 +197,7 @@ fn prop_attribute_for_datatype(
                                     ),
                                 }),
                                 filters,
-                                enumeration: enumeration
-                                    .map(EnumerationRef::OwnedByAttribute),
+                                enumeration: None,
                             },
                         )
                 },
@@ -275,7 +240,7 @@ pub struct AttributeValueTree {
     cell_val_num: Just<Option<CellValNum>>, // TODO: enable shrinking, will help identify if Var is necessary for example
     fill: Just<Option<FillData>>,           // TODO: enable shrinking
     filters: FilterPipelineValueTree,
-    enumeration: Option<MaybeValueTree<EnumerationRefValueTree>>,
+    enumeration: Option<MaybeValueTree<Just<String>>>,
 }
 
 impl AttributeValueTree {
@@ -287,9 +252,7 @@ impl AttributeValueTree {
             cell_val_num: Just(attr.cell_val_num),
             fill: Just(attr.fill),
             filters: FilterPipelineValueTree::new(attr.filters),
-            enumeration: attr
-                .enumeration
-                .map(|e| MaybeValueTree::new(EnumerationRefValueTree::new(e))),
+            enumeration: attr.enumeration.map(|e| MaybeValueTree::new(Just(e))),
         }
     }
 }
@@ -323,59 +286,5 @@ impl ValueTree for AttributeValueTree {
             .map(|e| e.complicate())
             .unwrap_or(false)
             || self.filters.complicate()
-    }
-}
-
-/// A [ValueTree] which shrinks an [EnumerationRef].
-#[derive(Clone, Debug)]
-enum EnumerationRefValueTree {
-    Name(Just<String>),
-    OwnedByAttribute(EnumerationValueTree),
-    BorrowedFromSchema(Just<Rc<EnumerationData>>),
-}
-
-impl EnumerationRefValueTree {
-    pub fn new(enumeration: EnumerationRef) -> Self {
-        match enumeration {
-            EnumerationRef::Name(name) => Self::Name(Just(name)),
-            EnumerationRef::OwnedByAttribute(enumeration) => {
-                Self::OwnedByAttribute(EnumerationValueTree::new(enumeration))
-            }
-            EnumerationRef::BorrowedFromSchema(enumeration) => {
-                Self::BorrowedFromSchema(Just(enumeration))
-            }
-        }
-    }
-}
-
-impl ValueTree for EnumerationRefValueTree {
-    type Value = EnumerationRef;
-
-    fn current(&self) -> Self::Value {
-        match self {
-            Self::Name(ref name) => EnumerationRef::Name(name.current()),
-            Self::OwnedByAttribute(enumeration) => {
-                EnumerationRef::OwnedByAttribute(enumeration.current())
-            }
-            Self::BorrowedFromSchema(enumeration) => {
-                EnumerationRef::BorrowedFromSchema(enumeration.current())
-            }
-        }
-    }
-
-    fn simplify(&mut self) -> bool {
-        match self {
-            Self::Name(name) => name.simplify(),
-            Self::OwnedByAttribute(enumeration) => enumeration.simplify(),
-            Self::BorrowedFromSchema(enumeration) => enumeration.simplify(),
-        }
-    }
-
-    fn complicate(&mut self) -> bool {
-        match self {
-            Self::Name(name) => name.complicate(),
-            Self::OwnedByAttribute(enumeration) => enumeration.complicate(),
-            Self::BorrowedFromSchema(enumeration) => enumeration.complicate(),
-        }
     }
 }
