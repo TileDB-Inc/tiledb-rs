@@ -145,6 +145,7 @@ fn prop_schema_for_domain(
         params.num_attributes.clone(),
     )
     .prop_flat_map(|attributes| {
+        // we have the attributes, now make some candidate enumerations
         let num_attributes = attributes.len();
         (
             Just(attributes),
@@ -155,6 +156,8 @@ fn prop_schema_for_domain(
         )
     })
     .prop_flat_map(move |(attributes, enumerations)| {
+        // we have attributes and candidate enumerations,
+        // select optional enumerations per attribute
         let num_enumerations = enumerations.len();
         let attribute_mapping = attributes
             .iter()
@@ -173,6 +176,7 @@ fn prop_schema_for_domain(
         (Just(attributes), Just(enumerations), attribute_mapping)
     })
     .prop_map(|(mut attributes, enumerations, attribute_mapping)| {
+        // set enumeration names and return the attributes and used enumerations
         attribute_mapping.iter().copied().enumerate().for_each(
             |(aidx, eidx)| {
                 if let Some(eidx) = eidx {
