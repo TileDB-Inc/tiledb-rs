@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use num_traits::FromPrimitive;
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
 use strategy_ext::strategy::MaybeValueTree;
@@ -40,7 +41,10 @@ impl AttributeData {
         physical_type_go!(self.datatype, DT, {
             if self.enumeration.is_some() {
                 let min = 0 as DT;
-                let max = EnumerationParameters::default().max_variants as DT;
+                let max = DT::from_usize(
+                    EnumerationParameters::default().max_variants,
+                )
+                .unwrap_or(DT::MAX);
                 return PhysicalValueStrategy::from((min..max).boxed());
             }
             if has_double_delta {
