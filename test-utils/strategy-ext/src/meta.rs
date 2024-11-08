@@ -159,13 +159,24 @@ pub type ShrinkSequenceValueTree = SequenceValueTree<ShrinkAction>;
 /// for strategies built using existing adapters, without changing
 /// the way that the strategy is constructed.
 #[derive(Clone)]
-pub struct MapValueTree<S, F> {
+pub struct MapValueTree<S, VT>
+where
+    S: Strategy,
+    VT: ValueTree<Value = S::Value>,
+{
     source: S,
-    transform: Rc<F>,
+    transform: Rc<dyn Fn(S::Tree) -> VT>,
 }
 
-impl<S, F> MapValueTree<S, F> {
-    pub(super) fn new(source: S, transform: F) -> Self {
+impl<S, VT> MapValueTree<S, VT>
+where
+    S: Strategy,
+    VT: ValueTree<Value = S::Value>,
+{
+    pub(super) fn new<F>(source: S, transform: F) -> Self
+    where
+        F: Fn(S::Tree) -> VT + 'static,
+    {
         MapValueTree {
             source,
             transform: Rc::new(transform),
@@ -173,23 +184,22 @@ impl<S, F> MapValueTree<S, F> {
     }
 }
 
-impl<S, F> Debug for MapValueTree<S, F>
+impl<S, VT> Debug for MapValueTree<S, VT>
 where
-    S: Debug,
+    S: Debug + Strategy,
+    VT: ValueTree<Value = S::Value>,
 {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         f.debug_struct("MapValueTree")
             .field("source", &self.source)
-            .field("transform", &std::any::type_name::<F>())
             .finish()
     }
 }
 
-impl<S, F, VT> Strategy for MapValueTree<S, F>
+impl<S, VT> Strategy for MapValueTree<S, VT>
 where
     S: Strategy,
-    F: Fn(S::Tree) -> VT,
-    VT: Debug + ValueTree,
+    VT: Debug + ValueTree<Value = S::Value>,
 {
     type Tree = VT;
     type Value = VT::Value;

@@ -46,6 +46,7 @@ pub struct FillValueMetadata {
 pub struct AttributeMetadata {
     pub fill_value: FillValueMetadata,
     pub filters: FilterMetadata,
+    pub enumeration: Option<String>,
 }
 
 impl AttributeMetadata {
@@ -60,6 +61,7 @@ impl AttributeMetadata {
                 }
             }),
             filters: FilterMetadata::new(&attr.filter_list()?)?,
+            enumeration: attr.enumeration_name()?,
         })
     }
 
@@ -68,7 +70,11 @@ impl AttributeMetadata {
         &self,
         builder: AttributeBuilder,
     ) -> TileDBResult<AttributeBuilder> {
-        /* TODO: fill value */
+        let builder = if let Some(enumeration) = self.enumeration.as_ref() {
+            builder.enumeration_name(enumeration)?
+        } else {
+            builder
+        };
         let fl = self
             .filters
             .apply(FilterListBuilder::new(&builder.context())?)?

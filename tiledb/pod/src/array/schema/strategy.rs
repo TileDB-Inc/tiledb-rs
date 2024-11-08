@@ -1,6 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use itertools::Itertools;
+use proptest::option::Probability;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
@@ -13,13 +15,12 @@ use crate::array::attribute::strategy::{
     prop_attribute, AttributeValueTree, Requirements as AttributeRequirements,
     StrategyContext as AttributeContext,
 };
-use crate::array::attribute::AttributeData;
-use crate::array::dimension::DimensionData;
 use crate::array::domain::strategy::{
     DomainValueTree, Requirements as DomainRequirements,
 };
-use crate::array::domain::DomainData;
+use crate::array::enumeration::strategy::EnumerationValueTree;
 use crate::array::schema::{FieldData, SchemaData};
+use crate::array::{AttributeData, DimensionData, DomainData, EnumerationData};
 use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements, StrategyContext as FilterContext,
@@ -34,6 +35,7 @@ pub struct Requirements {
     pub offsets_filters: Option<Rc<FilterRequirements>>,
     pub validity_filters: Option<Rc<FilterRequirements>>,
     pub sparse_tile_capacity: std::ops::RangeInclusive<u64>,
+    pub attribute_enumeration_likelihood: Probability,
 }
 
 impl Requirements {
@@ -52,6 +54,10 @@ impl Requirements {
     pub fn max_sparse_tile_capacity_default() -> u64 {
         **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN
     }
+
+    pub fn attribute_enumeration_likelihood_default() -> f64 {
+        **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTE_ENUMERATION_LIKELIHOOD
+    }
 }
 
 impl Default for Requirements {
@@ -66,6 +72,8 @@ impl Default for Requirements {
             validity_filters: None,
             sparse_tile_capacity: Self::min_sparse_tile_capacity_default()
                 ..=Self::max_sparse_tile_capacity_default(),
+            attribute_enumeration_likelihood:
+                Self::attribute_enumeration_likelihood_default().into(),
         }
     }
 }
@@ -127,15 +135,72 @@ fn prop_schema_for_domain(
             ..Default::default()
         }));
 
+    // Generate attributes and enumerations together.
+    // Choose attributes, then candidate enumerations,
+    // then assign enumeration names to attributes
+    // and return the used attributes
+    let enumeration_likelihood = params.attribute_enumeration_likelihood;
+    let strat_attributes_enumerations = proptest::collection::vec(
+        prop_attribute(Rc::new(attr_requirements)),
+        params.num_attributes.clone(),
+    )
+    .prop_flat_map(|attributes| {
+        // we have the attributes, now make some candidate enumerations
+        let num_attributes = attributes.len();
+        (
+            Just(attributes),
+            proptest::collection::vec(
+                any::<EnumerationData>(),
+                0..=num_attributes,
+            ),
+        )
+    })
+    .prop_flat_map(move |(attributes, enumerations)| {
+        // we have attributes and candidate enumerations,
+        // select optional enumerations per attribute
+        let num_enumerations = enumerations.len();
+        let attribute_mapping = attributes
+            .iter()
+            .map(|_| {
+                if num_enumerations == 0 {
+                    Just(None).boxed()
+                } else {
+                    proptest::option::weighted(
+                        enumeration_likelihood,
+                        0..num_enumerations,
+                    )
+                    .boxed()
+                }
+            })
+            .collect::<Vec<_>>();
+        (Just(attributes), Just(enumerations), attribute_mapping)
+    })
+    .prop_map(|(mut attributes, enumerations, attribute_mapping)| {
+        // set enumeration names and return the attributes and used enumerations
+        attribute_mapping.iter().copied().enumerate().for_each(
+            |(aidx, eidx)| {
+                if let Some(eidx) = eidx {
+                    attributes[aidx].try_set_enumeration(&enumerations[eidx]);
+                }
+            },
+        );
+        (
+            attributes,
+            attribute_mapping
+                .into_iter()
+                .flatten()
+                .unique()
+                .map(|eidx| enumerations[eidx].clone())
+                .collect::<Vec<EnumerationData>>(),
+        )
+    });
+
     (
         capacity,
         any_with::<CellOrder>(Some(array_type)),
         any::<TileOrder>(),
         allow_duplicates,
-        proptest::collection::vec(
-            prop_attribute(Rc::new(attr_requirements)),
-            params.num_attributes.clone()
-        ),
+        strat_attributes_enumerations,
         prop_coordinate_filters(&domain, params.as_ref()),
         FilterPipelineStrategy::new(offsets_filters_requirements),
         FilterPipelineStrategy::new(validity_filters_requirements)
@@ -146,7 +211,7 @@ fn prop_schema_for_domain(
                 cell_order,
                 tile_order,
                 allow_duplicates,
-                attributes,
+                (attributes, enumerations),
                 coordinate_filters,
                 offsets_filters,
                 nullity_filters,
@@ -197,6 +262,7 @@ fn prop_schema_for_domain(
                     tile_order: Some(tile_order),
                     allow_duplicates: Some(allow_duplicates),
                     attributes,
+                    enumerations,
                     coordinate_filters,
                     offsets_filters,
                     nullity_filters,
@@ -295,6 +361,7 @@ pub struct SchemaValueTree {
     tile_order: Just<Option<TileOrder>>, // TODO: make shrinkable
     allow_duplicates: Just<Option<bool>>, // TODO: make shrinkable
     all_attributes: Vec<AttributeValueTree>,
+    all_enumerations: HashMap<String, EnumerationValueTree>,
     selected_attributes: RecordsValueTree<Vec<usize>>,
     coordinate_filters: FilterPipelineValueTree,
     offsets_filters: FilterPipelineValueTree,
@@ -317,6 +384,16 @@ impl SchemaValueTree {
                 .into_iter()
                 .map(AttributeValueTree::new)
                 .collect::<Vec<_>>(),
+            all_enumerations: schema
+                .enumerations
+                .into_iter()
+                .map(|e| {
+                    (
+                        e.name.clone(),
+                        EnumerationValueTree::new(EnumerationData::clone(&e)),
+                    )
+                })
+                .collect::<HashMap<String, EnumerationValueTree>>(),
             selected_attributes: RecordsValueTree::new(
                 1,
                 (0..num_attributes).collect::<Vec<_>>(),
@@ -338,6 +415,20 @@ impl ValueTree for SchemaValueTree {
     type Value = SchemaData;
 
     fn current(&self) -> Self::Value {
+        let attributes = self
+            .selected_attributes
+            .current()
+            .into_iter()
+            .map(|a| self.all_attributes[a].current())
+            .collect::<Vec<_>>();
+
+        let enumerations = attributes
+            .iter()
+            .filter_map(|a| a.enumeration.as_ref())
+            .unique()
+            .map(|e| self.all_enumerations.get(e).unwrap().current())
+            .collect::<Vec<_>>();
+
         SchemaData {
             array_type: self.array_type,
             domain: self.domain.current(),
@@ -345,12 +436,8 @@ impl ValueTree for SchemaValueTree {
             cell_order: self.cell_order.current(),
             tile_order: self.tile_order.current(),
             allow_duplicates: self.allow_duplicates.current(),
-            attributes: self
-                .selected_attributes
-                .current()
-                .into_iter()
-                .map(|a| self.all_attributes[a].current())
-                .collect::<Vec<_>>(),
+            attributes,
+            enumerations,
             coordinate_filters: self.coordinate_filters.current(),
             offsets_filters: self.offsets_filters.current(),
             nullity_filters: self.nullity_filters.current(),
@@ -365,6 +452,7 @@ impl ValueTree for SchemaValueTree {
                 .current()
                 .into_iter()
                 .any(|a| self.all_attributes[a].simplify())
+            || self.all_enumerations.values_mut().any(|e| e.simplify())
             || self.cell_order.simplify()
             || self.tile_order.simplify()
             || self.coordinate_filters.simplify()
@@ -380,6 +468,7 @@ impl ValueTree for SchemaValueTree {
                 .current()
                 .into_iter()
                 .any(|a| self.all_attributes[a].complicate())
+            || self.all_enumerations.values_mut().any(|e| e.complicate())
             || self.cell_order.complicate()
             || self.tile_order.complicate()
             || self.coordinate_filters.complicate()
@@ -405,7 +494,12 @@ mod tests {
 
         // if we continue shrinking after finding the minimal attribute set
         // we should not thrash the attribute set
-        while vt.selected_attributes.simplify() {}
+        while vt.selected_attributes.simplify() {
+            let current = vt.current();
+            assert!(!current.attributes.is_empty());
+            assert!(!current.domain.dimension.is_empty());
+        }
+
         // (this may not be generally true but it is true for RecordsStrategy)
         assert!(!vt.selected_attributes.complicate());
 

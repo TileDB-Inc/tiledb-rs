@@ -81,6 +81,11 @@ config_param!(
     u64,
     **TILEDB_STRATEGY_DOMAIN_PARAMETERS_CELLS_PER_TILE_LIMIT as u64
 );
+config_param!(
+    TILEDB_STRATEGY_SCHEMA_PARAMETERS_ATTRIBUTE_ENUMERATION_LIKELIHOOD,
+    f64,
+    0.125
+);
 
 // array/enumeration/strategy.rs
 config_param!(
@@ -92,6 +97,16 @@ config_param!(
     TILEDB_STRATEGY_ENUMERATION_PARAMETERS_NUM_VARIANTS_MAX,
     usize,
     1024
+);
+config_param!(
+    TILEDB_STRATEGY_ENUMERATION_PARAMETERS_VAR_VARIANT_NUM_VALUES_MIN,
+    usize,
+    0
+);
+config_param!(
+    TILEDB_STRATEGY_ENUMERATION_PARAMETERS_VAR_VARIANT_NUM_VALUES_MAX,
+    usize,
+    64
 );
 
 // query/strategy.rs

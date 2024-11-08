@@ -423,6 +423,25 @@ impl Datatype {
         )
     }
 
+    /// Returns whether an attribute of this type can have an enumeration attached to it.
+    // See `ArraySchema::add_attribute` and keep in sync with that
+    pub fn is_allowed_attribute_type_for_enumeration(&self) -> bool {
+        self.is_integral_type()
+    }
+
+    pub fn max_enumeration_variants(&self) -> Option<usize> {
+        if matches!(self, Self::Boolean) {
+            Some(2)
+        } else if self.is_allowed_attribute_type_for_enumeration() {
+            crate::physical_type_go!(self, DT, {
+                // NB: see core `add_attribute`
+                Some(DT::MAX as usize - 1)
+            })
+        } else {
+            None
+        }
+    }
+
     /// Returns whether this type can be used as a dimension type of a sparse array
     pub fn is_allowed_dimension_type_sparse(&self) -> bool {
         !matches!(self, Datatype::Boolean)

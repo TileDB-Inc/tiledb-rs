@@ -1,6 +1,7 @@
 pub mod meta;
 pub mod records;
 pub mod sequence;
+pub mod strategy;
 
 use std::fmt::Debug;
 
@@ -24,11 +25,11 @@ pub trait StrategyExt: Strategy {
     ///
     /// This is similar to [prop_map] but also enables changing the way
     /// that values produced by [self] are shrunk.
-    fn value_tree_map<F, VT>(self, transform: F) -> meta::MapValueTree<Self, F>
+    fn value_tree_map<F, VT>(self, transform: F) -> meta::MapValueTree<Self, VT>
     where
         Self: Sized,
-        F: Fn(<Self as Strategy>::Tree) -> VT,
-        VT: ValueTree,
+        F: Fn(<Self as Strategy>::Tree) -> VT + 'static,
+        VT: ValueTree<Value = Self::Value>,
     {
         meta::MapValueTree::new(self, transform)
     }

@@ -1,7 +1,9 @@
 use std::rc::Rc;
 
+use num_traits::FromPrimitive;
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
+use strategy_ext::strategy::MaybeValueTree;
 use strategy_ext::StrategyExt;
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
@@ -10,7 +12,8 @@ use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 
 use crate::array::attribute::{AttributeData, FillData};
-use crate::array::domain::DomainData;
+use crate::array::enumeration::strategy::Parameters as EnumerationParameters;
+use crate::array::DomainData;
 use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements,
@@ -36,6 +39,14 @@ impl AttributeData {
         });
 
         physical_type_go!(self.datatype, DT, {
+            if self.enumeration.is_some() {
+                let min = 0 as DT;
+                let max = DT::from_usize(
+                    EnumerationParameters::default().max_variants,
+                )
+                .unwrap_or(DT::MAX);
+                return PhysicalValueStrategy::from((min..max).boxed());
+            }
             if has_double_delta {
                 if std::any::TypeId::of::<DT>() == std::any::TypeId::of::<u64>()
                 {
@@ -154,6 +165,7 @@ fn prop_attribute_for_datatype(
                 any::<CellValNum>()
             };
             let fill_nullable = any::<bool>();
+
             (name, nullable, cell_val_num, fill_nullable).prop_flat_map(
                 move |(name, nullable, cell_val_num, fill_nullable)| {
                     (
@@ -177,6 +189,7 @@ fn prop_attribute_for_datatype(
                                     ),
                                 }),
                                 filters,
+                                enumeration: None,
                             },
                         )
                 },
@@ -219,6 +232,7 @@ pub struct AttributeValueTree {
     cell_val_num: Just<Option<CellValNum>>, // TODO: enable shrinking, will help identify if Var is necessary for example
     fill: Just<Option<FillData>>,           // TODO: enable shrinking
     filters: FilterPipelineValueTree,
+    enumeration: Option<MaybeValueTree<Just<String>>>,
 }
 
 impl AttributeValueTree {
@@ -230,6 +244,7 @@ impl AttributeValueTree {
             cell_val_num: Just(attr.cell_val_num),
             fill: Just(attr.fill),
             filters: FilterPipelineValueTree::new(attr.filters),
+            enumeration: attr.enumeration.map(|e| MaybeValueTree::new(Just(e))),
         }
     }
 }
@@ -245,14 +260,23 @@ impl ValueTree for AttributeValueTree {
             cell_val_num: self.cell_val_num.current(),
             fill: self.fill.current(),
             filters: self.filters.current(),
+            enumeration: self.enumeration.as_ref().and_then(|e| e.current()),
         }
     }
 
     fn simplify(&mut self) -> bool {
-        self.filters.simplify()
+        self.enumeration
+            .as_mut()
+            .map(|e| e.simplify())
+            .unwrap_or(false)
+            || self.filters.simplify()
     }
 
     fn complicate(&mut self) -> bool {
-        self.filters.complicate()
+        self.enumeration
+            .as_mut()
+            .map(|e| e.complicate())
+            .unwrap_or(false)
+            || self.filters.complicate()
     }
 }

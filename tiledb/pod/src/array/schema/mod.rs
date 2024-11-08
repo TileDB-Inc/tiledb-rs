@@ -12,9 +12,7 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::key::LookupKey;
 
-use crate::array::attribute::AttributeData;
-use crate::array::dimension::DimensionData;
-use crate::array::domain::DomainData;
+use crate::array::{AttributeData, DimensionData, DomainData, EnumerationData};
 
 /// Encapsulation of data needed to construct a Schema
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -28,6 +26,7 @@ pub struct SchemaData {
     pub tile_order: Option<TileOrder>,
     pub allow_duplicates: Option<bool>,
     pub attributes: Vec<AttributeData>,
+    pub enumerations: Vec<EnumerationData>,
     pub coordinate_filters: Vec<FilterData>,
     pub offsets_filters: Vec<FilterData>,
     pub nullity_filters: Vec<FilterData>,

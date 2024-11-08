@@ -29,6 +29,7 @@ impl TryFrom<&Attribute> for AttributeData {
             cell_val_num: Some(attr.cell_val_num()?),
             fill: Some(fill),
             filters: Vec::<FilterData>::try_from(&attr.filter_list()?)?,
+            enumeration: attr.enumeration_name()?,
         })
     }
 }
@@ -65,6 +66,9 @@ impl Factory for AttributeData {
                     b.fill_value(value.as_slice())
                 }
             })?;
+        }
+        if let Some(enumeration) = self.enumeration.as_ref() {
+            b = b.enumeration_name(enumeration)?
         }
 
         Ok(b.build())

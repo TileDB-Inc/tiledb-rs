@@ -36,7 +36,7 @@ libtiledb = { workspace = true }
 
 [features]
 default = []
-arrow = ["dep:arrow", "dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde"]
+arrow = ["dep:arrow", "dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde", "tiledb-pod/serde"]
 pod = ["dep:tiledb-pod"]
 proptest-strategies = ["dep:cells", "dep:proptest"]
 serde = ["dep:serde", "dep:serde_json", "dep:tiledb-pod"]

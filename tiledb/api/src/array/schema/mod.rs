@@ -6,11 +6,12 @@ use std::ops::Deref;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use anyhow::anyhow;
+use itertools::Itertools;
 
 use crate::array::attribute::RawAttribute;
 use crate::array::dimension::Dimension;
 use crate::array::domain::RawDomain;
-use crate::array::enumeration::Enumeration;
+use crate::array::enumeration::{Enumeration, RawEnumeration};
 use crate::array::{Attribute, CellOrder, Domain, TileOrder};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
@@ -318,6 +319,13 @@ impl Schema {
         Ok(Attribute::new(&self.context, RawAttribute::Owned(c_attr)))
     }
 
+    /// Returns an [Iterator] over the attributes of this schema.
+    pub fn attributes(
+        &self,
+    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Attribute>> + '_> {
+        Ok((0..self.num_attributes()?).map(|a| self.attribute(a)))
+    }
+
     pub fn num_fields(&self) -> TileDBResult<usize> {
         Ok(self.domain()?.num_dimensions()? + self.num_attributes()?)
     }
@@ -349,6 +357,61 @@ impl Schema {
 
     pub fn fields(&self) -> TileDBResult<Fields<'_>> {
         Fields::new(self)
+    }
+
+    /// Returns the enumeration identified by the requested key.
+    pub fn enumeration(
+        &self,
+        key: EnumerationKey,
+    ) -> TileDBResult<Enumeration> {
+        let c_schema = self.capi();
+        let mut c_enmr = out_ptr!();
+
+        match key {
+            EnumerationKey::EnumerationName(name) => {
+                let c_name = cstring!(name);
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_schema_get_enumeration_from_name(
+                        ctx,
+                        c_schema,
+                        c_name.as_ptr(),
+                        &mut c_enmr,
+                    )
+                })
+            }
+            EnumerationKey::AttributeName(name) => {
+                let c_name = cstring!(name);
+                self.capi_call(|ctx| unsafe {
+                    ffi::tiledb_array_schema_get_enumeration_from_attribute_name(
+                        ctx,
+                        c_schema,
+                        c_name.as_ptr(),
+                        &mut c_enmr,
+                    )
+                })
+            }
+        }?;
+        Ok(Enumeration::new(
+            self.context.clone(),
+            RawEnumeration::Owned(c_enmr),
+        ))
+    }
+
+    /// Returns an [Iterator] over the enumerations of this schema.
+    pub fn enumerations(
+        &self,
+    ) -> TileDBResult<impl Iterator<Item = TileDBResult<Enumeration>> + '_>
+    {
+        Ok(self
+            .attributes()?
+            .map(|a| a.and_then(|a| a.enumeration_name()))
+            .flatten_ok()
+            .unique_by(|ename| ename.as_ref().ok().cloned())
+            .map(|ename| {
+                ename.and_then(|ename| {
+                    self.enumeration(EnumerationKey::EnumerationName(&ename))
+                })
+            }))
     }
 
     fn filter_list(
@@ -413,6 +476,26 @@ impl Debug for Schema {
                 write!(f, "<Schema @ {:?}: serialization error: {}>", ptr, e)
             }
         }
+    }
+}
+
+/// A key used to look up an enumeration from a [Schema].
+pub enum EnumerationKey<'a> {
+    /// Identifies an enumeration by its name.
+    EnumerationName(&'a str),
+    /// Identifies an enumeration by the name of an attribute which refers to it.
+    AttributeName(&'a str),
+}
+
+impl<'a> EnumerationKey<'a> {
+    /// Returns [Self::EnumerationName] for any argument which can be used as a [str].
+    pub fn by_name(s: &'a impl AsRef<str>) -> Self {
+        Self::EnumerationName(s.as_ref())
+    }
+
+    /// Returns [Self::AttributeName] for any argument which can be used as a [str].
+    pub fn by_attribute_name(s: &'a impl AsRef<str>) -> Self {
+        Self::AttributeName(s.as_ref())
     }
 }
 

@@ -1,4 +1,6 @@
 use std::num::*;
+use std::rc::Rc;
+use std::sync::Arc;
 
 /// Trait for comparing types which can express optional data.
 ///
@@ -116,23 +118,31 @@ where
     }
 }
 
-impl<T> OptionSubset for Box<T>
-where
-    T: OptionSubset,
-{
-    fn option_subset(&self, other: &Self) -> bool {
-        self.as_ref().option_subset(other.as_ref())
-    }
+macro_rules! impl_as_ref {
+    ($A:ident) => {
+        impl<T> OptionSubset for $A<T>
+        where
+            T: OptionSubset,
+        {
+            fn option_subset(&self, other: &Self) -> bool {
+                self.as_ref().option_subset(other.as_ref())
+            }
+        }
+
+        impl<T> OptionSubset for $A<[T]>
+        where
+            T: OptionSubset,
+        {
+            fn option_subset(&self, other: &Self) -> bool {
+                self.as_ref().option_subset(other.as_ref())
+            }
+        }
+    };
 }
 
-impl<T> OptionSubset for Box<[T]>
-where
-    T: OptionSubset,
-{
-    fn option_subset(&self, other: &Self) -> bool {
-        self.as_ref().option_subset(other.as_ref())
-    }
-}
+impl_as_ref!(Box);
+impl_as_ref!(Rc);
+impl_as_ref!(Arc);
 
 #[cfg(feature = "serde_json")]
 mod serde_json {
