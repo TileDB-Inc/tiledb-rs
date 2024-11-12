@@ -349,7 +349,7 @@ pub trait AggregateQueryBuilder: QueryBuilder {
                 )
             })?;
         } else {
-            let c_field_name: *const i8 =
+            let c_field_name =
                 handle.field_name.as_ref().unwrap().as_c_str().as_ptr();
             match handle.function {
                 AggregateFunction::Count => unreachable!(

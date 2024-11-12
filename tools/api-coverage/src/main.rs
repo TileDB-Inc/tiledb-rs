@@ -34,7 +34,7 @@ struct Args {
     remapped: String,
 
     /// Path to the sys-defs crate
-    #[arg(short, long, default_value_t = String::from("tiledb/sys/defs"))]
+    #[arg(short, long, default_value_t = String::from("tiledb/sys-defs/src"))]
     defs: String,
 
     /// Path to the sys crate

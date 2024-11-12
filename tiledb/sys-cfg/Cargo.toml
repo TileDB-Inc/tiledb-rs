@@ -1,8 +1,8 @@
 [package]
-name = "libtiledb"
+name = "tiledb-sys-cfg"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-pkg-config = { workspace = true }
+tiledb-sys = { workspace = true }
