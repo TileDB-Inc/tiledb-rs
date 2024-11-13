@@ -35,7 +35,7 @@ pub struct Requirements {
     pub offsets_filters: Option<Rc<FilterRequirements>>,
     pub validity_filters: Option<Rc<FilterRequirements>>,
     pub sparse_tile_capacity: std::ops::RangeInclusive<u64>,
-    pub attribute_enumeration_likelihood: Probability,
+    pub attribute_enumeration_likelihood: f64,
 }
 
 impl Requirements {
@@ -73,7 +73,7 @@ impl Default for Requirements {
             sparse_tile_capacity: Self::min_sparse_tile_capacity_default()
                 ..=Self::max_sparse_tile_capacity_default(),
             attribute_enumeration_likelihood:
-                Self::attribute_enumeration_likelihood_default().into(),
+                Self::attribute_enumeration_likelihood_default(),
         }
     }
 }
@@ -162,11 +162,14 @@ fn prop_schema_for_domain(
         let attribute_mapping = attributes
             .iter()
             .map(|_| {
-                if num_enumerations == 0 {
+                // NB: `weighted` is not friendly to 0.0 and 1.0
+                if num_enumerations == 0 || enumeration_likelihood <= 0.0 {
                     Just(None).boxed()
+                } else if enumeration_likelihood >= 1.0 {
+                    (0..num_enumerations).prop_map(Some).boxed()
                 } else {
                     proptest::option::weighted(
-                        enumeration_likelihood,
+                        Probability::new(enumeration_likelihood),
                         0..num_enumerations,
                     )
                     .boxed()
