@@ -1,7 +1,8 @@
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroU32;
-use std::ops::Deref;
+use std::ops::{Deref, RangeInclusive};
 
+use num_traits::FromPrimitive;
 use thiserror::Error;
 
 #[cfg(feature = "serde")]
@@ -276,6 +277,12 @@ macro_rules! single_value_range_from {
                     SingleValueRange::$V(value[0], value[1])
                 }
             }
+
+            impl From<RangeInclusive<$U>> for SingleValueRange {
+                fn from(value: RangeInclusive<$U>) -> SingleValueRange {
+                    SingleValueRange::$V(*value.start(), *value.end())
+                }
+            }
         )+
     }
 }
@@ -283,6 +290,68 @@ macro_rules! single_value_range_from {
 single_value_range_from!(UInt8: u8, UInt16: u16, UInt32: u32, UInt64: u64);
 single_value_range_from!(Int8: i8, Int16: i16, Int32: i32, Int64: i64);
 single_value_range_from!(Float32: f32, Float64: f64);
+
+impl<T> TryFrom<SingleValueRange> for RangeInclusive<T>
+where
+    T: FromPrimitive,
+{
+    type Error = SingleValueRange;
+
+    fn try_from(value: SingleValueRange) -> Result<Self, Self::Error> {
+        match value.clone() {
+            SingleValueRange::UInt8(lower, upper) => {
+                let lower = <T>::from_u8(lower).ok_or(value.clone())?;
+                let upper = <T>::from_u8(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::UInt16(lower, upper) => {
+                let lower = <T>::from_u16(lower).ok_or(value.clone())?;
+                let upper = <T>::from_u16(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::UInt32(lower, upper) => {
+                let lower = <T>::from_u32(lower).ok_or(value.clone())?;
+                let upper = <T>::from_u32(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::UInt64(lower, upper) => {
+                let lower = <T>::from_u64(lower).ok_or(value.clone())?;
+                let upper = <T>::from_u64(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::Int8(lower, upper) => {
+                let lower = <T>::from_i8(lower).ok_or(value.clone())?;
+                let upper = <T>::from_i8(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::Int16(lower, upper) => {
+                let lower = <T>::from_i16(lower).ok_or(value.clone())?;
+                let upper = <T>::from_i16(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::Int32(lower, upper) => {
+                let lower = <T>::from_i32(lower).ok_or(value.clone())?;
+                let upper = <T>::from_i32(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::Int64(lower, upper) => {
+                let lower = <T>::from_i64(lower).ok_or(value.clone())?;
+                let upper = <T>::from_i64(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::Float32(lower, upper) => {
+                let lower = <T>::from_f32(lower).ok_or(value.clone())?;
+                let upper = <T>::from_f32(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+            SingleValueRange::Float64(lower, upper) => {
+                let lower = <T>::from_f64(lower).ok_or(value.clone())?;
+                let upper = <T>::from_f64(upper).ok_or(value)?;
+                Ok(lower..=upper)
+            }
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! single_value_range_go {
@@ -541,21 +610,6 @@ macro_rules! single_value_range_cmp {
             _ => $else,
         }
     }};
-}
-
-impl TryFrom<SingleValueRange> for std::ops::RangeInclusive<i128> {
-    type Error = ();
-    fn try_from(value: SingleValueRange) -> Result<Self, Self::Error> {
-        type Target = i128;
-        single_value_range_go!(value, _DT : Integral, start, end,
-            {
-                let start = Target::from(start);
-                let end = Target::from(end);
-                Ok(start..=end)
-            },
-            Err(())
-        )
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -1845,6 +1899,7 @@ mod tests {
     use std::cmp::Ordering;
     use std::fmt::Debug;
 
+    use paste::paste;
     use proptest::prelude::*;
 
     use super::*;
@@ -1856,6 +1911,78 @@ mod tests {
         let other = value.clone();
         assert_eq!(*value, other);
     }
+
+    #[test]
+    fn test_range_inclusive_try_from() {
+        macro_rules! do_test_range_inclusive_try_from {
+            ($Variant:ident, $DT:ty) => {{
+                let zero = 0 as $DT;
+                let one = 1 as $DT;
+                paste! {
+                    let min = [< $DT >]::MIN;
+                    let max = [< $DT >]::MAX;
+                }
+                assert_eq!(
+                    zero..=zero,
+                    SingleValueRange::$Variant(zero, zero).try_into().unwrap()
+                );
+                assert_eq!(
+                    zero..=one,
+                    SingleValueRange::$Variant(zero, one).try_into().unwrap()
+                );
+                assert_eq!(
+                    zero..=max,
+                    SingleValueRange::$Variant(zero, max).try_into().unwrap()
+                );
+                assert_eq!(
+                    min..=zero,
+                    SingleValueRange::$Variant(min, zero).try_into().unwrap()
+                );
+                assert_eq!(
+                    min..=max,
+                    SingleValueRange::$Variant(min, max).try_into().unwrap()
+                );
+            }};
+        }
+
+        do_test_range_inclusive_try_from!(UInt8, u8);
+        do_test_range_inclusive_try_from!(UInt16, u16);
+        do_test_range_inclusive_try_from!(UInt32, u32);
+        do_test_range_inclusive_try_from!(UInt64, u64);
+        do_test_range_inclusive_try_from!(Int8, i8);
+        do_test_range_inclusive_try_from!(Int16, i16);
+        do_test_range_inclusive_try_from!(Int32, i32);
+        do_test_range_inclusive_try_from!(Int64, i64);
+        do_test_range_inclusive_try_from!(Float32, f32);
+        do_test_range_inclusive_try_from!(Float64, f64);
+    }
+
+    fn do_inclusive_range_conversion<T>(range_in: RangeInclusive<T>)
+    where
+        T: Clone + Debug + FromPrimitive + PartialEq,
+        SingleValueRange: From<RangeInclusive<T>>,
+    {
+        let range_out = RangeInclusive::<T>::try_from(SingleValueRange::from(
+            range_in.clone(),
+        ));
+        assert_eq!(Ok(range_in), range_out);
+    }
+
+    macro_rules! inclusive_range_conversion {
+        ($($U:ty),+) => {
+            paste! {
+                proptest! {
+                    $(
+                        #[test]
+                        fn [< inclusive_range_conversion_ $U >](r in any::<RangeInclusive<$U>>()) {
+                            do_inclusive_range_conversion(r)
+                        }
+                    )+
+                }
+            }
+        }
+    }
+    inclusive_range_conversion!(u8, u16, u32, u64, i8, i16, i32, i64, f32, f64);
 
     fn test_dimension_compatibility(
         range: &Range,
