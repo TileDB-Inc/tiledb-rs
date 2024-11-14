@@ -1,9 +1,11 @@
-use tiledb::datatype::PhysicalValue;
-use tiledb::physical_type_go;
-use tiledb::query::read::aggregate::*;
-use tiledb::query::read::ReadStepOutput;
-use tiledb::query::{BuilderBase, Query, QueryBase, QueryBuilder, ReadQuery};
-use tiledb::{Array, Result as TileDBResult};
+use tiledb_api::query::read::aggregate::*;
+use tiledb_api::query::read::ReadStepOutput;
+use tiledb_api::query::{
+    BuilderBase, Query, QueryBase, QueryBuilder, ReadQuery,
+};
+use tiledb_api::{Array, Result as TileDBResult};
+use tiledb_common::datatype::PhysicalValue;
+use tiledb_common::physical_type_go;
 
 /// An `AggregateQueryBuilder` blanket implementation that provides extra adapters
 /// and methods for running aggregate queries.

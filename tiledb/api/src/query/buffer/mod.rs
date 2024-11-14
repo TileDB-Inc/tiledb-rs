@@ -26,7 +26,7 @@ impl<'data, T> Buffer<'data, T> {
     }
 }
 
-impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
+impl<T> AsRef<[T]> for Buffer<'_, T> {
     fn as_ref(&self) -> &[T] {
         match self {
             Buffer::Empty => unsafe {
@@ -41,20 +41,20 @@ impl<'data, T> AsRef<[T]> for Buffer<'data, T> {
     }
 }
 
-impl<'data, T> Deref for Buffer<'data, T> {
+impl<T> Deref for Buffer<'_, T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
         self.as_ref()
     }
 }
 
-impl<'data, T> From<Vec<T>> for Buffer<'data, T> {
+impl<T> From<Vec<T>> for Buffer<'_, T> {
     fn from(value: Vec<T>) -> Self {
         Self::from(value.into_boxed_slice())
     }
 }
 
-impl<'data, T> From<Box<[T]>> for Buffer<'data, T> {
+impl<T> From<Box<[T]>> for Buffer<'_, T> {
     fn from(value: Box<[T]>) -> Self {
         Buffer::Owned(value)
     }
@@ -162,7 +162,7 @@ impl Default for CellStructure<'_> {
     }
 }
 
-impl<'data> From<NonZeroU32> for CellStructure<'data> {
+impl From<NonZeroU32> for CellStructure<'_> {
     fn from(value: NonZeroU32) -> Self {
         Self::Fixed(value)
     }
@@ -217,7 +217,7 @@ impl<'data, T> BufferMut<'data, T> {
     }
 }
 
-impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
+impl<T> AsRef<[T]> for BufferMut<'_, T> {
     fn as_ref(&self) -> &[T] {
         match self {
             BufferMut::Empty => unsafe {
@@ -232,7 +232,7 @@ impl<'data, T> AsRef<[T]> for BufferMut<'data, T> {
     }
 }
 
-impl<'data, T> AsMut<[T]> for BufferMut<'data, T> {
+impl<T> AsMut<[T]> for BufferMut<'_, T> {
     fn as_mut(&mut self) -> &mut [T] {
         match self {
             BufferMut::Empty => unsafe {
@@ -247,20 +247,20 @@ impl<'data, T> AsMut<[T]> for BufferMut<'data, T> {
     }
 }
 
-impl<'data, T> Deref for BufferMut<'data, T> {
+impl<T> Deref for BufferMut<'_, T> {
     type Target = [T];
     fn deref(&self) -> &Self::Target {
         self.as_ref()
     }
 }
 
-impl<'data, T> DerefMut for BufferMut<'data, T> {
+impl<T> DerefMut for BufferMut<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_mut()
     }
 }
 
-impl<'data, T> From<Vec<T>> for BufferMut<'data, T> {
+impl<T> From<Vec<T>> for BufferMut<'_, T> {
     fn from(value: Vec<T>) -> Self {
         BufferMut::Owned(value.into_boxed_slice())
     }
@@ -388,7 +388,7 @@ impl Default for CellStructureMut<'_> {
     }
 }
 
-impl<'data> From<NonZeroU32> for CellStructureMut<'data> {
+impl From<NonZeroU32> for CellStructureMut<'_> {
     fn from(value: NonZeroU32) -> Self {
         Self::Fixed(value)
     }
@@ -492,6 +492,7 @@ query_buffers_proof_impls!(
     QueryBuffersCellStructureVar
 );
 
+#[derive(Debug)]
 pub enum TypedQueryBuffers<'data> {
     UInt8(QueryBuffers<'data, u8>),
     UInt16(QueryBuffers<'data, u16>),
@@ -745,7 +746,7 @@ macro_rules! ref_typed_query_buffers_go {
     }};
 }
 
-impl<'cell, 'data> RefTypedQueryBuffersMut<'cell, 'data> {
+impl<'cell> RefTypedQueryBuffersMut<'cell, '_> {
     pub fn as_shared(&'cell self) -> TypedQueryBuffers<'cell> {
         ref_typed_query_buffers_go!(self, _DT, qb, {
             TypedQueryBuffers::from(qb.as_shared())
@@ -753,8 +754,8 @@ impl<'cell, 'data> RefTypedQueryBuffersMut<'cell, 'data> {
     }
 }
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy {
+#[cfg(test)]
+pub mod tests {
     use proptest::collection::vec;
     use proptest::prelude::*;
 

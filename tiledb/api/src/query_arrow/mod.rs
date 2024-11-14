@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use thiserror::Error;
+use tiledb_common::{single_value_range_go, var_value_range_go};
 
 use crate::array::Array;
 use crate::config::Config;
@@ -37,6 +38,10 @@ pub enum Error {
     NulError(#[from] std::ffi::NulError),
     #[error("Error building query buffers: {0}")]
     QueryBuffersError(#[from] QueryBuffersError),
+    #[error("Dimension range error: {0}")]
+    DimensionRangeError(
+        #[from] tiledb_common::range::DimensionCompatibilityError,
+    ),
     #[error("Encountered internal libtiledb error: {0}")]
     TileDBError(#[from] TileDBError),
 }
@@ -404,7 +409,7 @@ impl QueryBuilder {
 
     fn alloc_query(&self) -> Result<RawQuery> {
         let c_array = **self.array.capi();
-        let c_query_type = self.query_type.capi_enum();
+        let c_query_type = ffi::tiledb_query_type_t::from(self.query_type);
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
@@ -446,7 +451,7 @@ impl QueryBuilder {
         };
 
         let c_query = **raw;
-        let c_layout = layout.capi_enum();
+        let c_layout = ffi::tiledb_layout_t::from(*layout);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_layout(ctx, c_query, c_layout)
         })?;
@@ -484,13 +489,14 @@ impl QueryBuilder {
         let schema = self.array.schema()?;
         let dim = schema.domain()?.dimension(key.clone())?;
 
-        range
-            .check_dimension_compatibility(dim.datatype()?, dim.cell_val_num()?)
-            .map_err(Error::from)?;
+        range.check_dimension_compatibility(
+            dim.datatype()?,
+            dim.cell_val_num()?,
+        )?;
 
         match range {
             Range::Single(range) => {
-                crate::single_value_range_go!(range, _DT, start, end, {
+                single_value_range_go!(range, _DT, start, end, {
                     let start = start.to_le_bytes();
                     let end = end.to_le_bytes();
                     match key {
@@ -526,7 +532,7 @@ impl QueryBuilder {
                 "This is rejected by range.check_dimension_compatibility"
             ),
             Range::Var(range) => {
-                crate::var_value_range_go!(range, _DT, start, end, {
+                var_value_range_go!(range, _DT, start, end, {
                     match key {
                         LookupKey::Index(idx) => {
                             self.capi_call(|ctx| unsafe {

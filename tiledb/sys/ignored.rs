@@ -12,11 +12,27 @@ pub const TILEDB_VERSION_PATCH: u32 = 0;
 // This is a list of functions that we are currently planning on not wrapping.
 
 extern "C" {
+    // With respect to the crate structure: we want entities which only need
+    // [tiledb_common] to not need to link to core, and [Datatype] must
+    // live in [tiledb_common].
+    //
+    // [tiledb_datatype_size] is essentially redundant with matching a Datatype
+    // to its physical type
+    pub fn tiledb_datatype_size(type_: tiledb_datatype_t) -> u64;
 
-    // The dump functions aren't being wrapped because Rust makes it really easy
+    // The dump/to_str/from_str functions aren't being wrapped because Rust makes it really easy
     // to write Debug traits that will dump everything as a JSON string. The dump
     // functions just write free form ASCII to a file handle which isn't nearly
     // as useful.
+    pub fn tiledb_datatype_to_str(
+        datatype: tiledb_datatype_t,
+        str_: *mut *const ::std::os::raw::c_char,
+    ) -> capi_return_t;
+
+    pub fn tiledb_datatype_from_str(
+        str_: *const ::std::os::raw::c_char,
+        datatype: *mut tiledb_datatype_t,
+    ) -> capi_return_t;
 
     pub fn tiledb_attribute_dump(
         ctx: *mut tiledb_ctx_t,
@@ -56,7 +72,7 @@ extern "C" {
         ctx: *mut tiledb_ctx_t,
         fragment_info: *const tiledb_fragment_info_t,
         out: *mut FILE,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_stats_dump(out: *mut FILE) -> i32;
     pub fn tiledb_stats_raw_dump(out: *mut FILE) -> i32;
@@ -75,7 +91,7 @@ extern "C" {
         fragment_info: *mut tiledb_fragment_info_t,
         fid: u32,
         sparse: *mut i32,
-    ) -> i32;
+    ) -> capi_return_t;
 
     // We don't use any of the `from_name` APIs for fragment infos because
     // the wrapper API uses the `from_index` variant and returns all dimensions
@@ -87,7 +103,7 @@ extern "C" {
         fid: u32,
         dim_name: *const ::std::os::raw::c_char,
         domain: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_non_empty_domain_var_size_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -96,7 +112,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start_size: *mut u64,
         end_size: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_non_empty_domain_var_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -105,7 +121,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_mbr_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -114,7 +130,7 @@ extern "C" {
         mid: u32,
         dim_name: *const ::std::os::raw::c_char,
         mbr: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_mbr_var_size_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -124,7 +140,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start_size: *mut u64,
         end_size: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_get_mbr_var_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -134,7 +150,7 @@ extern "C" {
         dim_name: *const ::std::os::raw::c_char,
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     // The tiledb_handle_* functions are for internal use. They should probably be
     // part of a library separate from libtiledb.{dylib,so,dll} but for now they're
@@ -230,7 +246,7 @@ extern "C" {
         subarray: *const tiledb_subarray_t,
         dim_name: *const ::std::os::raw::c_char,
         range_num: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_subarray_get_range_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -240,7 +256,7 @@ extern "C" {
         start: *mut *const ::std::os::raw::c_void,
         end: *mut *const ::std::os::raw::c_void,
         stride: *mut *const ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_subarray_get_range_var_size_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -249,7 +265,7 @@ extern "C" {
         range_idx: u64,
         start_size: *mut u64,
         end_size: *mut u64,
-    ) -> i32;
+    ) -> capi_return_t;
 
     pub fn tiledb_subarray_get_range_var_from_name(
         ctx: *mut tiledb_ctx_t,
@@ -258,7 +274,7 @@ extern "C" {
         range_idx: u64,
         start: *mut ::std::os::raw::c_void,
         end: *mut ::std::os::raw::c_void,
-    ) -> i32;
+    ) -> capi_return_t;
 
     // This function copies the non-empty domain values from each coordinate
     // into the user buffer. That's nice in C where you can just tell bytes

@@ -32,15 +32,19 @@ impl<'ast> syn::visit::Visit<'ast> for SysDefs {
     }
 }
 
-pub fn process(path: &String) -> Result<SysDefs> {
+pub fn process(defs: &str, funcs: &str) -> Result<SysDefs> {
     let mut sys = SysDefs::default();
 
-    util::walk_rust_sources(path, |src| {
-        let ast = util::parse_file(&src).unwrap_or_else(|e| {
-            panic!("Error parsing {} - {:?}", src, e);
-        });
-        sys.visit_file(&ast);
-    });
+    let mut walk = |path| {
+        util::walk_rust_sources(path, |src| {
+            let ast = util::parse_file(&src).unwrap_or_else(|e| {
+                panic!("Error parsing {} - {:?}", src, e);
+            });
+            sys.visit_file(&ast);
+        })
+    };
+    walk(defs);
+    walk(funcs);
 
     Ok(sys)
 }

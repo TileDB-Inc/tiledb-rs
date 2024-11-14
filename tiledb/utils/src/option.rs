@@ -1,4 +1,6 @@
 use std::num::*;
+use std::rc::Rc;
+use std::sync::Arc;
 
 /// Trait for comparing types which can express optional data.
 ///
@@ -37,7 +39,8 @@ macro_rules! option_subset_partialeq {
 
 #[macro_export]
 macro_rules! assert_option_subset {
-    ($left:expr, $right:expr $(,)?) => {
+    ($left:expr, $right:expr $(,)?) => {{
+        use $crate::option::OptionSubset;
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if !(left_val.option_subset(right_val)) {
@@ -49,12 +52,13 @@ right: {right_val:?}"#
                 }
             }
         }
-    };
+    }};
 }
 
 #[macro_export]
 macro_rules! assert_not_option_subset {
-    ($left:expr, $right:expr $(,)?) => {
+    ($left:expr, $right:expr $(,)?) => {{
+        use $crate::option::OptionSubset;
         match (&$left, &$right) {
             (left_val, right_val) => {
                 if left_val.option_subset(right_val) {
@@ -66,7 +70,7 @@ right: {right_val:?}"#
                 }
             }
         }
-    };
+    }};
 }
 
 impl<T> OptionSubset for Option<T>
@@ -114,23 +118,31 @@ where
     }
 }
 
-impl<T> OptionSubset for Box<T>
-where
-    T: OptionSubset,
-{
-    fn option_subset(&self, other: &Self) -> bool {
-        self.as_ref().option_subset(other.as_ref())
-    }
+macro_rules! impl_as_ref {
+    ($A:ident) => {
+        impl<T> OptionSubset for $A<T>
+        where
+            T: OptionSubset,
+        {
+            fn option_subset(&self, other: &Self) -> bool {
+                self.as_ref().option_subset(other.as_ref())
+            }
+        }
+
+        impl<T> OptionSubset for $A<[T]>
+        where
+            T: OptionSubset,
+        {
+            fn option_subset(&self, other: &Self) -> bool {
+                self.as_ref().option_subset(other.as_ref())
+            }
+        }
+    };
 }
 
-impl<T> OptionSubset for Box<[T]>
-where
-    T: OptionSubset,
-{
-    fn option_subset(&self, other: &Self) -> bool {
-        self.as_ref().option_subset(other.as_ref())
-    }
-}
+impl_as_ref!(Box);
+impl_as_ref!(Rc);
+impl_as_ref!(Arc);
 
 #[cfg(feature = "serde_json")]
 mod serde_json {
@@ -682,7 +694,6 @@ mod tests {
 
     #[cfg(feature = "serde_json")]
     mod serde_json {
-        use super::*;
         use crate::serde_json::json;
         use crate::serde_json::value::{Map, Value};
 

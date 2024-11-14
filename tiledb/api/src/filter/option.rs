@@ -1,8 +1,16 @@
-use crate::Result as TileDBResult;
+use thiserror::Error;
 
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+#[derive(Clone, Debug, Error)]
+pub enum Error {
+    #[error("Invalid discriminant for {}: {0}", std::any::type_name::<FilterOption>())]
+    InvalidDiscriminant(u64),
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum FilterOption {
     CompressionLevel,
     BitWidthMaxWindow,
@@ -16,9 +24,9 @@ pub enum FilterOption {
     CompressionReinterpretDatatype,
 }
 
-impl FilterOption {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_filter_option_t {
-        let ffi_enum = match *self {
+impl From<FilterOption> for ffi::tiledb_filter_option_t {
+    fn from(value: FilterOption) -> Self {
+        let ffi_enum = match value {
             FilterOption::CompressionLevel => {
                 ffi::tiledb_filter_option_t_TILEDB_COMPRESSION_LEVEL
             },
@@ -55,8 +63,8 @@ impl FilterOption {
 }
 
 impl TryFrom<u32> for FilterOption {
-    type Error = crate::error::Error;
-    fn try_from(value: u32) -> TileDBResult<Self> {
+    type Error = Error;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             ffi::tiledb_filter_option_t_TILEDB_COMPRESSION_LEVEL => {
                 Ok(FilterOption::CompressionLevel)
@@ -74,10 +82,7 @@ impl TryFrom<u32> for FilterOption {
             ffi::tiledb_filter_option_t_TILEDB_WEBP_INPUT_FORMAT => Ok(FilterOption::WebPInputFormat),
             ffi::tiledb_filter_option_t_TILEDB_WEBP_LOSSLESS => Ok(FilterOption::WebPLossless),
             ffi::tiledb_filter_option_t_TILEDB_COMPRESSION_REINTERPRET_DATATYPE => Ok(FilterOption::CompressionReinterpretDatatype),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid filter option type: {}",
-                value
-            ))),
+            _ => Err(Error::InvalidDiscriminant(value as u64))
         }
     }
 }
@@ -91,8 +96,9 @@ mod tests {
         let mut ok = 0;
         for i in 0..256 {
             let fopt = FilterOption::try_from(i);
-            if fopt.is_ok() {
+            if let Ok(fopt) = fopt {
                 ok += 1;
+                assert_eq!(i, ffi::tiledb_filter_option_t::from(fopt));
             }
         }
         assert_eq!(ok, 10);

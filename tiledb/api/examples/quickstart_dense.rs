@@ -1,4 +1,4 @@
-extern crate tiledb;
+extern crate tiledb_api as tiledb;
 
 use std::path::PathBuf;
 
@@ -130,7 +130,8 @@ fn read_array() -> TileDBResult<()> {
     for value in results {
         print!("{} ", value)
     }
-    Ok(println!())
+    println!();
+    Ok(())
 }
 
 fn main() {

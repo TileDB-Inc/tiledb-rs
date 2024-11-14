@@ -1,17 +1,13 @@
-use std::fmt::{self, Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+#[cfg(any(test, feature = "pod"))]
+use std::fmt::{Debug, Formatter, Result as FmtResult};
 
-use util::option::OptionSubset;
+use tiledb_common::array::CellValNum;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::string::{RawTDBString, TDBString};
-use crate::{Datatype, Factory, Result as TileDBResult};
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
+use crate::{Datatype, Result as TileDBResult};
 
 pub(crate) enum RawEnumeration {
     Owned(*mut ffi::tiledb_enumeration_t),
@@ -74,21 +70,20 @@ impl Enumeration {
             ffi::tiledb_enumeration_get_type(ctx, c_enmr, &mut dtype)
         })?;
 
-        Datatype::try_from(dtype)
+        Ok(Datatype::try_from(dtype)?)
     }
 
-    pub fn cell_val_num(&self) -> TileDBResult<u32> {
+    pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
         let c_enmr = self.capi();
         let mut c_cvn: u32 = 0;
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_enumeration_get_cell_val_num(ctx, c_enmr, &mut c_cvn)
         })?;
-
-        Ok(c_cvn)
+        Ok(CellValNum::try_from(c_cvn)?)
     }
 
     pub fn is_var_sized(&self) -> TileDBResult<bool> {
-        Ok(self.cell_val_num()? == u32::MAX)
+        Ok(self.cell_val_num()? == CellValNum::Var)
     }
 
     pub fn ordered(&self) -> TileDBResult<bool> {
@@ -197,26 +192,6 @@ impl Enumeration {
     }
 }
 
-impl Debug for Enumeration {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let name = self.name().map_err(|_| fmt::Error)?;
-        let dtype = self.datatype().map_err(|_| fmt::Error)?;
-
-        let dtype_string = dtype.to_string();
-        let cell_val_num = self.cell_val_num().map_err(|_| fmt::Error)?;
-        let ordered = self.ordered().map_err(|_| fmt::Error)?;
-
-        let json = json!({
-            "name": name,
-            "datatype": dtype_string,
-            "cell_val_num": cell_val_num,
-            "ordered": ordered,
-            "values": [], // TODO: Render values
-        });
-        write!(f, "{}", json)
-    }
-}
-
 impl PartialEq<Enumeration> for Enumeration {
     fn eq(&self, other: &Enumeration) -> bool {
         eq_helper!(self.name(), other.name());
@@ -240,17 +215,34 @@ impl PartialEq<Enumeration> for Enumeration {
     }
 }
 
+#[cfg(any(test, feature = "pod"))]
+impl Debug for Enumeration {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        match tiledb_pod::array::enumeration::EnumerationData::try_from(self) {
+            Ok(e) => Debug::fmt(&e, f),
+            Err(e) => {
+                let RawEnumeration::Owned(ptr) = self.raw;
+                write!(
+                    f,
+                    "<Enumeration @ {:?}: serialization error: {}>",
+                    ptr, e
+                )
+            }
+        }
+    }
+}
+
 pub struct Builder<'data, 'offsets> {
     context: Context,
     name: String,
     dtype: Datatype,
-    cell_val_num: u32,
+    cell_val_num: CellValNum,
     ordered: bool,
     data: &'data [u8],
     offsets: Option<&'offsets [u64]>,
 }
 
-impl<'data, 'offsets> ContextBound for Builder<'data, 'offsets> {
+impl ContextBound for Builder<'_, '_> {
     fn context(&self) -> Context {
         self.context.clone()
     }
@@ -287,14 +279,14 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
             context: context.clone(),
             name: name.to_owned(),
             dtype,
-            cell_val_num: 1,
+            cell_val_num: CellValNum::single(),
             ordered: false,
             data,
             offsets,
         }
     }
 
-    pub fn cell_val_num(self, cell_val_num: u32) -> Self {
+    pub fn cell_val_num(self, cell_val_num: CellValNum) -> Self {
         Self {
             cell_val_num,
             ..self
@@ -303,7 +295,7 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
 
     pub fn var_sized(self) -> Self {
         Self {
-            cell_val_num: u32::MAX,
+            cell_val_num: CellValNum::Var,
             ..self
         }
     }
@@ -316,7 +308,7 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
         let mut c_enmr: *mut ffi::tiledb_enumeration_t = out_ptr!();
         let name_bytes = self.name.as_bytes();
         let c_name = cstring!(name_bytes);
-        let c_dtype = self.dtype.capi_enum();
+        let c_dtype = ffi::tiledb_datatype_t::from(self.dtype);
 
         // Rust semantics require that slice pointers aren't nullptr so that
         // nullptr can be used to distinguish between Some and None. The stdlib
@@ -339,7 +331,7 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
                 ctx,
                 c_name.as_c_str().as_ptr(),
                 c_dtype,
-                self.cell_val_num,
+                u32::from(self.cell_val_num),
                 if self.ordered { 1 } else { 0 },
                 self.data.as_ptr() as *const std::ffi::c_void,
                 std::mem::size_of_val(self.data) as u64,
@@ -356,64 +348,16 @@ impl<'data, 'offsets> Builder<'data, 'offsets> {
     }
 }
 
-/// Encapsulation of data needed to construct an Enumeration
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, OptionSubset)]
-pub struct EnumerationData {
-    pub name: String,
-    pub datatype: Datatype,
-    pub cell_val_num: Option<u32>,
-    pub ordered: Option<bool>,
-    pub data: Box<[u8]>,
-    pub offsets: Option<Box<[u64]>>,
-}
-
-impl TryFrom<&Enumeration> for EnumerationData {
-    type Error = crate::error::Error;
-
-    fn try_from(enmr: &Enumeration) -> TileDBResult<Self> {
-        let datatype = enmr.datatype()?;
-        let cell_val_num = enmr.cell_val_num()?;
-        let data = Box::from(enmr.data()?);
-        let offsets: Option<Box<[u64]>> = enmr.offsets()?.map(Box::from);
-
-        Ok(EnumerationData {
-            name: enmr.name()?,
-            datatype,
-            cell_val_num: Some(cell_val_num),
-            ordered: Some(enmr.ordered()?),
-            data,
-            offsets,
-        })
-    }
-}
-
-impl Factory for EnumerationData {
-    type Item = Enumeration;
-
-    fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        let mut b = Builder::new(
-            context,
-            &self.name,
-            self.datatype,
-            &self.data[..],
-            self.offsets.as_ref().map(|o| &o[..]),
-        );
-
-        if let Some(cvn) = self.cell_val_num {
-            b = b.cell_val_num(cvn);
-        }
-
-        if let Some(ordered) = self.ordered {
-            b = b.ordered(ordered);
-        }
-
-        b.build()
-    }
-}
+#[cfg(any(test, feature = "pod"))]
+pub mod pod;
 
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+    use tiledb_pod::array::enumeration::EnumerationData;
+
     use super::*;
+    use crate::{Context, Factory};
 
     #[test]
     fn basic_build() -> TileDBResult<()> {
@@ -516,7 +460,7 @@ mod tests {
         let base = EnumerationData {
             name: "foo".to_owned(),
             datatype: Datatype::StringAscii,
-            cell_val_num: Some(u32::MAX),
+            cell_val_num: Some(CellValNum::Var),
             ordered: Some(false),
             data: Box::from("foobarbazbam".as_bytes()),
             offsets: Some(Box::from(&vec![0, 3, 6, 9][..])),
@@ -580,7 +524,7 @@ mod tests {
         let base = EnumerationData {
             name: "foo".to_owned(),
             datatype: Datatype::UInt8,
-            cell_val_num: Some(1),
+            cell_val_num: Some(CellValNum::single()),
             ordered: Some(false),
             data: Box::from(&vec![0u8, 1, 2, 3, 4, 5][..]),
             offsets: None,
@@ -589,7 +533,7 @@ mod tests {
         let enmr1 = base.create(&ctx)?;
 
         let base2 = EnumerationData {
-            cell_val_num: Some(2),
+            cell_val_num: Some(CellValNum::try_from(2).unwrap()),
             ..base
         };
 
@@ -597,5 +541,26 @@ mod tests {
         assert_ne!(enmr1, enmr2);
 
         Ok(())
+    }
+
+    /// Test that the arbitrary enumeration construction always succeeds
+    #[test]
+    fn enumeration_arbitrary() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(enmr in any::<EnumerationData>())| {
+            enmr.create(&ctx).expect("Error constructing arbitrary enumeration");
+        });
+    }
+
+    #[test]
+    fn enumeration_eq_reflexivity() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(enmr in any::<EnumerationData>())| {
+            let enmr = enmr.create(&ctx)
+                .expect("Error constructing arbitrary enumeration");
+            assert_eq!(enmr, enmr);
+        });
     }
 }

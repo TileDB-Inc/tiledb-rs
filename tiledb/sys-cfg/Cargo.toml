@@ -1,0 +1,8 @@
+[package]
+name = "tiledb-sys-cfg"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+tiledb-sys = { workspace = true }

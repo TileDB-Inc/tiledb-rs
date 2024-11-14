@@ -4,11 +4,14 @@
 
 use std::rc::Rc;
 
-use crate::array::{
-    ArrayType, AttributeData, CellValNum, DimensionConstraints, DimensionData,
-    DomainData, SchemaData,
-};
-use crate::{physical_type_go, Datatype};
+use tiledb_common::array::dimension::DimensionConstraints;
+use tiledb_common::array::{ArrayType, CellValNum};
+use tiledb_common::datatype::Datatype;
+use tiledb_common::physical_type_go;
+use tiledb_pod::array::attribute::AttributeData;
+use tiledb_pod::array::dimension::DimensionData;
+use tiledb_pod::array::domain::DomainData;
+use tiledb_pod::array::schema::SchemaData;
 
 pub type FnAcceptDimension = dyn Fn(&Parameters, Datatype) -> bool;
 pub type FnAcceptAttribute =
@@ -113,6 +116,7 @@ pub fn schema(params: Parameters) -> SchemaData {
                 cell_val_num: Some(cell_val_num),
                 fill: None,
                 filters: Default::default(),
+                enumeration: None,
             });
         };
 
@@ -144,6 +148,7 @@ pub fn schema(params: Parameters) -> SchemaData {
         tile_order: None,
         allow_duplicates: None,
         attributes: atts,
+        enumerations: Default::default(),
         coordinate_filters: Default::default(),
         offsets_filters: Default::default(),
         nullity_filters: Default::default(),

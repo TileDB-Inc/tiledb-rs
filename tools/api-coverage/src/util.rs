@@ -5,7 +5,7 @@ use anyhow::Result;
 use quote::ToTokens;
 use walkdir::WalkDir;
 
-pub fn parse_file(path: &String) -> Result<syn::File> {
+pub fn parse_file(path: &str) -> Result<syn::File> {
     let mut file = fs::File::open(path)?;
     let mut content = String::new();
     file.read_to_string(&mut content)?;
@@ -13,7 +13,7 @@ pub fn parse_file(path: &String) -> Result<syn::File> {
     Ok(ast)
 }
 
-pub fn walk_rust_sources<F>(path: &String, mut callback: F)
+pub fn walk_rust_sources<F>(path: &str, mut callback: F)
 where
     F: FnMut(String),
 {

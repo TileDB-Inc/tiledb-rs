@@ -3,9 +3,12 @@ extern crate tiledb_sys as ffi;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
-use crate::array::CellValNum;
-use crate::Datatype;
+#[cfg(feature = "serde")]
 use serde::{Serialize, Serializer};
+
+use tiledb_common::array::CellValNum;
+
+pub use tiledb_common::datatype::Error as DatatypeError;
 
 pub(crate) enum RawError {
     Owned(*mut ffi::tiledb_error_t),
@@ -27,107 +30,6 @@ impl Drop for RawError {
 }
 
 #[derive(Clone, Debug)]
-pub enum DatatypeErrorKind {
-    InvalidDiscriminant(u64),
-    TypeMismatch {
-        user_type: String,
-        tiledb_type: Datatype,
-    },
-    PhysicalTypeMismatch {
-        requested_type: String,
-        actual_type: String,
-    },
-    UnexpectedCellStructure {
-        context: Option<String>,
-        found: CellValNum,
-        expected: CellValNum,
-    },
-    UnexpectedValidity {
-        context: Option<String>,
-    },
-    InvalidDatatype {
-        context: Option<String>,
-        found: Datatype,
-        expected: Datatype,
-    },
-}
-
-impl Display for DatatypeErrorKind {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            DatatypeErrorKind::InvalidDiscriminant(value) => {
-                write!(f, "Invalid datatype: {}", value)
-            }
-            DatatypeErrorKind::TypeMismatch {
-                user_type,
-                tiledb_type,
-            } => {
-                write!(
-                    f,
-                    "Type mismatch: requested {}, but found {}",
-                    user_type, tiledb_type
-                )
-            }
-            DatatypeErrorKind::PhysicalTypeMismatch {
-                requested_type,
-                actual_type,
-            } => {
-                write!(
-                    f,
-                    "Physical type mismatch: requested {}, but found {}",
-                    requested_type, actual_type
-                )
-            }
-            DatatypeErrorKind::UnexpectedCellStructure {
-                ref context,
-                found,
-                expected,
-            } => {
-                if let Some(context) = context.as_ref() {
-                    write!(
-                        f,
-                        "Unexpected cell val num for {}: expected {}, found {}",
-                        context, expected, found
-                    )
-                } else {
-                    write!(
-                        f,
-                        "Unexpected cell val num: expected {}, found {}",
-                        expected, found
-                    )
-                }
-            }
-            DatatypeErrorKind::UnexpectedValidity { context } => {
-                if let Some(context) = context {
-                    write!(f, "Unexpected validity data for {}", context)
-                } else {
-                    write!(f, "Unexpected validity data")
-                }
-            }
-            DatatypeErrorKind::InvalidDatatype {
-                ref context,
-                found,
-                expected,
-            } => {
-                if let Some(context) = context.as_ref() {
-                    write!(
-                        f,
-                        "Unexpected datatype for {}: expected {}, found {}",
-                        context, expected, found
-                    )
-                } else {
-                    write!(
-                        f,
-                        "Unexpected datatype: expected {}, found {}",
-                        expected, found
-                    )
-                }
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub enum ObjectTypeErrorKind {
     InvalidDiscriminant(u64),
 }
@@ -137,21 +39,6 @@ impl Display for ObjectTypeErrorKind {
         match self {
             ObjectTypeErrorKind::InvalidDiscriminant(value) => {
                 write!(f, "Invalid object type: {}", value)
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum ModeErrorKind {
-    InvalidDiscriminant(u64),
-}
-
-impl Display for ModeErrorKind {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            ModeErrorKind::InvalidDiscriminant(value) => {
-                write!(f, "Invalid mode type: {}", value)
             }
         }
     }
@@ -177,13 +64,52 @@ pub enum Error {
     InvalidIndex(usize),
     /// Error with datatype handling
     #[error("Datatype error: {0}")]
-    Datatype(DatatypeErrorKind),
+    Datatype(#[from] DatatypeError),
     /// Error with ObjectType handling
     #[error("Object type error: {0}")]
     ObjectType(ObjectTypeErrorKind),
+    #[error("Datatype interface error: {0}")]
+    DatatypeFFIError(#[from] tiledb_common::datatype::TryFromFFIError),
     /// Error with Mode handling
     #[error("Mode type error: {0}")]
-    ModeType(ModeErrorKind),
+    ModeType(#[from] tiledb_common::array::ModeError),
+    #[error("ArrayType error: {0}")]
+    ArrayTypeError(#[from] tiledb_common::array::ArrayTypeError),
+    #[error("CellValNum error: {0}")]
+    CellValNumError(#[from] tiledb_common::array::CellValNumError),
+    #[error("CellOrder error: {0}")]
+    CellOrder(#[from] tiledb_common::array::CellOrderError),
+    #[error("TileOrder error: {0}")]
+    TileOrder(#[from] tiledb_common::array::TileOrderError),
+    #[error("FilterType error: {0}")]
+    FilterType(#[from] crate::filter::FilterTypeError),
+    #[error("FilterOption error: {0}")]
+    FilterOption(#[from] crate::filter::FilterOptionError),
+    #[error("WebPFilter error: {0}")]
+    WebPFilterType(#[from] crate::filter::WebPFilterError),
+    #[error("ScaleFloatByteWidth error: {0}")]
+    ScaleFloatFilter(#[from] crate::filter::ScaleFloatByteWidthError),
+    #[error("Dimension error: {0}")]
+    DimensionError(#[from] tiledb_common::array::dimension::Error),
+    #[error("Dimension range error: {0}")]
+    DimensionRangeError(
+        #[from] tiledb_common::range::DimensionCompatibilityError,
+    ),
+    #[error("FromFillValue error: {0}")]
+    FromFillValueError(
+        #[from] tiledb_common::array::attribute::FromFillValueError,
+    ),
+    #[error("Range raw data error: {0}")]
+    RangeRawDataError(#[from] tiledb_common::range::RangeFromSlicesError),
+    #[error("Multi-value range error: {0}")]
+    MultiValueRangeError(#[from] tiledb_common::range::MultiValueRangeError),
+    #[error("Unexpected {}: expected {expected}, found {found}", std::any::type_name::<CellValNum>())]
+    UnexpectedCellStructure {
+        expected: CellValNum,
+        found: CellValNum,
+    },
+    #[error("Unexpected null values")]
+    UnexpectedValidity,
     /// Error serializing data
     #[error("Serialization error: {0}: {1}")]
     Serialization(String, #[source] anyhow::Error),
@@ -197,15 +123,6 @@ pub enum Error {
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),
-}
-
-impl Error {
-    pub(crate) fn physical_type_mismatch<T, U>() -> Self {
-        Self::Datatype(DatatypeErrorKind::PhysicalTypeMismatch {
-            requested_type: std::any::type_name::<T>().to_owned(),
-            actual_type: std::any::type_name::<U>().to_owned(),
-        })
-    }
 }
 
 impl From<RawError> for Error {
@@ -227,6 +144,7 @@ impl From<RawError> for Error {
     }
 }
 
+#[cfg(feature = "serde")]
 impl Serialize for Error {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where

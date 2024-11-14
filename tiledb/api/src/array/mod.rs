@@ -5,15 +5,14 @@ use std::ops::Deref;
 use std::str::FromStr;
 
 use anyhow::anyhow;
-use serde::{Deserialize, Serialize};
-use util::option::OptionSubset;
 
 use crate::array::enumeration::RawEnumeration;
 use crate::array::schema::RawSchema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
-use crate::error::{DatatypeErrorKind, Error, ModeErrorKind};
+use crate::error::{DatatypeError, Error};
 use crate::key::LookupKey;
+use crate::metadata;
 use crate::metadata::Metadata;
 use crate::range::{
     Range, SingleValueRange, TypedNonEmptyDomain, TypedRange, VarValueRange,
@@ -29,142 +28,21 @@ pub mod fragment_info;
 pub mod schema;
 
 use crate::config::Config;
-pub use attribute::{Attribute, AttributeData, Builder as AttributeBuilder};
+
+pub use attribute::{Attribute, Builder as AttributeBuilder};
 pub use dimension::{
-    Builder as DimensionBuilder, Dimension, DimensionConstraints, DimensionData,
+    Builder as DimensionBuilder, Dimension, DimensionConstraints,
 };
-pub use domain::{Builder as DomainBuilder, Domain, DomainData};
-pub use enumeration::{
-    Builder as EnumerationBuilder, Enumeration, EnumerationData,
-};
+pub use domain::{Builder as DomainBuilder, Domain};
+pub use enumeration::{Builder as EnumerationBuilder, Enumeration};
 use ffi::tiledb_config_t;
 pub use fragment_info::{
     Builder as FragmentInfoBuilder, FragmentInfo, FragmentInfoList,
 };
 pub use schema::{
-    ArrayType, Builder as SchemaBuilder, CellValNum, Field, Schema, SchemaData,
+    ArrayType, Builder as SchemaBuilder, CellValNum, Field, Schema,
 };
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Mode {
-    Read,
-    Write,
-    Delete,
-    Update,
-    ModifyExclusive,
-}
-
-impl Mode {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_query_type_t {
-        match *self {
-            Mode::Read => ffi::tiledb_query_type_t_TILEDB_READ,
-            Mode::Write => ffi::tiledb_query_type_t_TILEDB_WRITE,
-            Mode::Delete => ffi::tiledb_query_type_t_TILEDB_DELETE,
-            Mode::Update => ffi::tiledb_query_type_t_TILEDB_UPDATE,
-            Mode::ModifyExclusive => {
-                ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE
-            }
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_query_type_t> for Mode {
-    type Error = crate::error::Error;
-
-    fn try_from(value: ffi::tiledb_query_type_t) -> TileDBResult<Self> {
-        Ok(match value {
-            ffi::tiledb_query_type_t_TILEDB_READ => Mode::Read,
-            ffi::tiledb_query_type_t_TILEDB_WRITE => Mode::Write,
-            ffi::tiledb_query_type_t_TILEDB_DELETE => Mode::Delete,
-            ffi::tiledb_query_type_t_TILEDB_UPDATE => Mode::Update,
-            ffi::tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE => {
-                Mode::ModifyExclusive
-            }
-            _ => {
-                return Err(Error::ModeType(
-                    ModeErrorKind::InvalidDiscriminant(value as u64),
-                ))
-            }
-        })
-    }
-}
-
-impl Display for Mode {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        <Self as Debug>::fmt(self, f)
-    }
-}
-
-#[derive(
-    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum TileOrder {
-    RowMajor,
-    ColumnMajor,
-}
-
-impl TileOrder {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_layout_t {
-        match *self {
-            TileOrder::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
-            TileOrder::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_layout_t> for TileOrder {
-    type Error = crate::error::Error;
-    fn try_from(value: ffi::tiledb_layout_t) -> TileDBResult<Self> {
-        match value {
-            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(TileOrder::RowMajor),
-            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(TileOrder::ColumnMajor),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid tile order: {}",
-                value
-            ))),
-        }
-    }
-}
-
-#[derive(
-    Clone, Copy, Debug, Deserialize, Eq, OptionSubset, PartialEq, Serialize,
-)]
-pub enum CellOrder {
-    Unordered,
-    RowMajor,
-    ColumnMajor,
-    Global,
-    Hilbert,
-}
-
-impl CellOrder {
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_layout_t {
-        match *self {
-            CellOrder::Unordered => ffi::tiledb_layout_t_TILEDB_UNORDERED,
-            CellOrder::RowMajor => ffi::tiledb_layout_t_TILEDB_ROW_MAJOR,
-            CellOrder::ColumnMajor => ffi::tiledb_layout_t_TILEDB_COL_MAJOR,
-            CellOrder::Global => ffi::tiledb_layout_t_TILEDB_GLOBAL_ORDER,
-            CellOrder::Hilbert => ffi::tiledb_layout_t_TILEDB_HILBERT,
-        }
-    }
-}
-
-impl TryFrom<ffi::tiledb_layout_t> for CellOrder {
-    type Error = crate::error::Error;
-    fn try_from(value: ffi::tiledb_layout_t) -> TileDBResult<Self> {
-        match value {
-            ffi::tiledb_layout_t_TILEDB_UNORDERED => Ok(CellOrder::Unordered),
-            ffi::tiledb_layout_t_TILEDB_ROW_MAJOR => Ok(CellOrder::RowMajor),
-            ffi::tiledb_layout_t_TILEDB_COL_MAJOR => Ok(CellOrder::ColumnMajor),
-            ffi::tiledb_layout_t_TILEDB_GLOBAL_ORDER => Ok(CellOrder::Global),
-            ffi::tiledb_layout_t_TILEDB_HILBERT => Ok(CellOrder::Hilbert),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid cell order: {}",
-                value
-            ))),
-        }
-    }
-}
+pub use tiledb_common::array::{CellOrder, Mode, TileOrder};
 
 /// Method of encryption.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -173,21 +51,9 @@ pub enum Encryption {
     Aes256Gcm,
 }
 
-impl Encryption {
-    /// Returns the corresponding C API constant.
-    pub(crate) fn capi_enum(&self) -> ffi::tiledb_encryption_type_t {
-        match *self {
-            Self::Unencrypted => {
-                ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION
-            }
-            Self::Aes256Gcm => ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM,
-        }
-    }
-}
-
 impl Display for Encryption {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        let c_encryption = self.capi_enum();
+        let c_encryption = ffi::tiledb_encryption_type_t::from(*self);
         let mut c_str = out_ptr!();
 
         let c_ret = unsafe {
@@ -226,6 +92,19 @@ impl FromStr for Encryption {
                 "Invalid encryption type: {}",
                 s
             ))))
+        }
+    }
+}
+
+impl From<Encryption> for ffi::tiledb_encryption_type_t {
+    fn from(value: Encryption) -> Self {
+        match value {
+            Encryption::Unencrypted => {
+                ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION
+            }
+            Encryption::Aes256Gcm => {
+                ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM
+            }
         }
     }
 }
@@ -381,7 +260,8 @@ impl Array {
 
     pub fn put_metadata(&mut self, metadata: Metadata) -> TileDBResult<()> {
         let c_array = *self.raw;
-        let (vec_size, vec_ptr, datatype) = metadata.c_data();
+        let (vec_size, vec_ptr, datatype) =
+            metadata::metadata_to_ffi(&metadata);
         let c_key = cstring!(metadata.key);
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_put_metadata(
@@ -389,7 +269,7 @@ impl Array {
                 c_array,
                 c_key.as_ptr(),
                 datatype,
-                vec_size as u32,
+                vec_size,
                 vec_ptr,
             )
         })?;
@@ -461,7 +341,11 @@ impl Array {
             }
         }?;
         let datatype = Datatype::try_from(c_datatype)?;
-        Ok(Metadata::new_raw(name, datatype, vec_ptr, vec_size))
+        Ok(metadata::metadata_from_ffi(
+            name,
+            datatype,
+            (vec_size, vec_ptr),
+        ))
     }
 
     pub fn has_metadata_key<S>(&self, name: S) -> TileDBResult<Option<Datatype>>
@@ -729,20 +613,18 @@ impl Array {
                 }
 
                 if start_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
                 if end_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
@@ -794,20 +676,18 @@ impl Array {
                 }
 
                 if start_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
                 if end_size % std::mem::size_of::<DT>() as u64 != 0 {
-                    return Err(Error::Datatype(
-                        DatatypeErrorKind::TypeMismatch {
-                            user_type: std::any::type_name::<DT>().to_owned(),
-                            tiledb_type: datatype,
-                        },
+                    return Err(Error::from(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            datatype,
+                        ),
                     ));
                 }
 
@@ -1008,7 +888,7 @@ impl ArrayOpener {
         let c_array = *self.array.raw;
 
         if let Some(mode) = self.mode {
-            let c_mode = mode.capi_enum();
+            let c_mode = ffi::tiledb_query_type_t::from(mode);
             self.array.capi_call(|ctx| unsafe {
                 ffi::tiledb_array_open(ctx, c_array, c_mode)
             })?;
@@ -1022,21 +902,24 @@ impl ArrayOpener {
     }
 }
 
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;
-
 #[cfg(test)]
 pub mod tests {
-    use tiledb_test_utils::{self, TestArrayUri};
+    use proptest::prelude::*;
+    use tiledb_common::array::dimension::DimensionConstraints;
+    use tiledb_common::datatype::Datatype;
+    use tiledb_common::metadata::Value;
+    use tiledb_pod::array::enumeration::EnumerationData;
+    use tiledb_pod::array::schema::SchemaData;
+    use uri::{self, TestArrayUri};
+    use utils::assert_option_subset;
+    use utils::option::OptionSubset;
 
     use super::*;
-    use crate::array::dimension::DimensionConstraints;
     use crate::config::CommonOption;
-    use crate::metadata::Value;
     use crate::query::{
         Query, QueryBuilder, QueryLayout, QueryType, WriteBuilder,
     };
-    use crate::{Datatype, Factory};
+    use crate::Factory;
 
     /// Create the array used in the "quickstart_dense" example
     pub fn create_quickstart_dense(
@@ -1110,7 +993,7 @@ pub mod tests {
 
     #[test]
     fn test_array_create() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
@@ -1125,8 +1008,29 @@ pub mod tests {
     }
 
     #[test]
+    fn proptest_array_create() {
+        let ctx = Context::new().expect("Error creating context");
+
+        proptest!(|(schema_spec in any::<SchemaData>())| {
+            let schema_in = schema_spec.create(&ctx)
+                .expect("Error constructing arbitrary schema");
+
+            let test_uri = uri::get_uri_generator().map_err(|e| Error::Other(e.to_string()))?;
+            let uri = test_uri.with_path("array").map_err(|e| Error::Other(e.to_string()))?;
+
+            Array::create(&ctx, &uri, schema_in)
+                .expect("Error creating array");
+
+            let schema_out = Schema::load(&ctx, &uri).expect("Error loading array schema");
+
+            let schema_out_spec = SchemaData::try_from(&schema_out).expect("Error creating schema spec");
+            assert_option_subset!(schema_spec, schema_out_spec);
+        })
+    }
+
+    #[test]
     fn test_array_metadata() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -1194,7 +1098,7 @@ pub mod tests {
 
     #[test]
     fn test_mode_metadata() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let tdb = Context::new()?;
@@ -1248,6 +1152,29 @@ pub mod tests {
         }
 
         test_uri.close().map_err(|e| Error::Other(e.to_string()))
+    }
+
+    #[test]
+    fn arbitrary_metadata() {
+        let test_uri = uri::get_uri_generator().unwrap();
+        let uri = test_uri.with_path("quickstart_dense").unwrap();
+
+        let c: Context = Context::new().unwrap();
+        create_quickstart_dense(&test_uri, &c).unwrap();
+
+        proptest!(move |(m_in in any::<Metadata>())| {
+            // write
+            {
+                let mut a = Array::open(&c, &uri, Mode::Write).unwrap();
+                a.put_metadata(m_in.clone()).expect("Error writing metadata");
+            }
+            // read
+            {
+                let a = Array::open(&c, &uri, Mode::Read).unwrap();
+                let m_out = a.metadata(m_in.key.clone()).expect("Error reading metadata");
+                assert_eq!(m_in, m_out);
+            }
+        });
     }
 
     fn create_simple_dense(
@@ -1316,7 +1243,7 @@ pub mod tests {
         // Test advanced consolidation. Based on unit-capi-consolidation.cc.
 
         let ctx: Context = Context::new().unwrap();
-        let array_uri = tiledb_test_utils::get_uri_generator().unwrap();
+        let array_uri = uri::get_uri_generator().unwrap();
         let array_uri = create_simple_dense(&array_uri, &ctx)?;
         write_dense_vector_4_fragments(&ctx, &array_uri, 0).unwrap();
 
@@ -1359,7 +1286,7 @@ pub mod tests {
 
     #[test]
     fn delete() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let c: Context = Context::new().unwrap();
@@ -1380,7 +1307,7 @@ pub mod tests {
 
     #[test]
     fn create_enumeration() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let uri = test_uri
@@ -1482,17 +1409,23 @@ pub mod tests {
     fn encryption_type_capi() {
         assert_eq!(
             Encryption::Unencrypted,
-            Encryption::try_from(Encryption::Unencrypted.capi_enum()).unwrap()
+            Encryption::try_from(ffi::tiledb_encryption_type_t::from(
+                Encryption::Unencrypted
+            ))
+            .unwrap()
         );
         assert_eq!(
             Encryption::Aes256Gcm,
-            Encryption::try_from(Encryption::Aes256Gcm.capi_enum()).unwrap()
+            Encryption::try_from(ffi::tiledb_encryption_type_t::from(
+                Encryption::Aes256Gcm
+            ))
+            .unwrap()
         );
     }
 
     #[test]
     fn encrypted_array() -> TileDBResult<()> {
-        let test_uri = tiledb_test_utils::get_uri_generator()
+        let test_uri = uri::get_uri_generator()
             .map_err(|e| Error::Other(e.to_string()))?;
 
         let key = "0123456789abcdeF0123456789abcdeF";

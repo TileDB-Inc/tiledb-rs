@@ -29,13 +29,13 @@ pub struct WriteQuery<'data> {
     _inputs: InputMap<'data>,
 }
 
-impl<'data> ContextBound for WriteQuery<'data> {
+impl ContextBound for WriteQuery<'_> {
     fn context(&self) -> Context {
         self.base.context()
     }
 }
 
-impl<'data> Query for WriteQuery<'data> {
+impl Query for WriteQuery<'_> {
     fn base(&self) -> &QueryBase {
         self.base.base()
     }
@@ -45,7 +45,7 @@ impl<'data> Query for WriteQuery<'data> {
     }
 }
 
-impl<'data> WriteQuery<'data> {
+impl WriteQuery<'_> {
     pub fn submit(&self) -> TileDBResult<()> {
         self.base.do_submit()
     }
@@ -56,7 +56,7 @@ pub struct WriteBuilder<'data> {
     inputs: InputMap<'data>,
 }
 
-impl<'data> ContextBound for WriteBuilder<'data> {
+impl ContextBound for WriteBuilder<'_> {
     fn context(&self) -> Context {
         self.base.context()
     }
@@ -249,6 +249,3 @@ impl<'data> WriteBuilder<'data> {
         Ok(b)
     }
 }
-
-#[cfg(any(test, feature = "proptest-strategies"))]
-pub mod strategy;

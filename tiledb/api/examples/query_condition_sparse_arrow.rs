@@ -4,13 +4,15 @@ use std::sync::Arc;
 use arrow::array as aa;
 use itertools::izip;
 
-use tiledb::array::{
-    Array, ArrayType, AttributeBuilder, CellOrder, DimensionBuilder,
-    DomainBuilder, SchemaBuilder,
+use tiledb_api::array::{
+    Array, AttributeBuilder, DimensionBuilder, DomainBuilder, SchemaBuilder,
 };
-use tiledb::query::conditions::QueryConditionExpr as QC;
-use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
-use tiledb::{Context, Datatype, Result as TileDBResult};
+use tiledb_api::context::Context;
+use tiledb_api::query::conditions::QueryConditionExpr as QC;
+use tiledb_api::query_arrow::{QueryBuilder, QueryLayout, QueryType};
+use tiledb_api::Result as TileDBResult;
+use tiledb_common::array::{ArrayType, CellOrder, Mode};
+use tiledb_common::Datatype;
 
 const ARRAY_URI: &str = "query_condition_sparse";
 const NUM_ELEMS: i32 = 10;
@@ -65,7 +67,7 @@ fn main() -> TileDBResult<()> {
 /// Read the array with the optional query condition and print the results
 /// to stdout.
 fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
-    let array = tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
+    let array = Array::open(ctx, ARRAY_URI, Mode::Read)?;
     let mut query = QueryBuilder::new(array, QueryType::Read)
         .with_layout(QueryLayout::RowMajor)
         .start_fields()
@@ -208,8 +210,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
         4.1f32, 3.4, 5.6, 3.7, 2.3, 1.7, 3.8, 4.9, 3.2, 3.1,
     ]));
 
-    let array =
-        tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Write)?;
+    let array = Array::open(ctx, ARRAY_URI, Mode::Write)?;
 
     let mut query = QueryBuilder::new(array, QueryType::Write)
         .with_layout(QueryLayout::Unordered)

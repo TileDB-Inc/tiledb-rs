@@ -1,0 +1,33 @@
+[package]
+name = "tiledb-pod"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+itertools = { workspace = true }
+num-traits = { workspace = true, optional = true }
+proptest = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+strategy-ext = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tiledb-common = { workspace = true }
+tiledb-proc-macro = { workspace = true, optional = true }
+tiledb-proptest-config = { workspace = true, optional = true }
+tiledb-utils = { workspace = true, optional = true }
+tiledb-sys-defs = { workspace = true }
+
+[dev-dependencies]
+num-traits = { workspace = true }
+proptest = { workspace = true }
+tiledb-common = { workspace = true, features = ["proptest-strategies"] }
+tiledb-proptest-config = { workspace = true }
+strategy-ext = { workspace = true }
+tiledb-utils = { workspace = true }
+
+[features]
+default = []
+option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils", "tiledb-common/option-subset"]
+proptest-strategies = ["dep:num-traits", "dep:proptest", "dep:strategy-ext", "dep:tiledb-proptest-config", "dep:tiledb-utils", "tiledb-common/proptest-strategies"]
+serde = ["dep:serde", "dep:serde_json", "tiledb-common/serde"]

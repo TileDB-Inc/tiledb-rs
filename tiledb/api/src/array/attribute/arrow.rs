@@ -3,17 +3,22 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tiledb_common::array::CellValNum;
+use tiledb_common::datatype::arrow::{
+    DatatypeFromArrowResult, DatatypeToArrowResult,
+};
+use tiledb_common::datatype::Datatype;
+use tiledb_common::physical_type_go;
 
 use crate::array::schema::arrow::{
     AttributeFromArrowResult, FieldToArrowResult,
 };
-use crate::array::{Attribute, AttributeBuilder, CellValNum};
+use crate::array::{Attribute, AttributeBuilder};
 use crate::context::ContextBound;
-use crate::datatype::arrow::{DatatypeFromArrowResult, DatatypeToArrowResult};
 use crate::error::Error;
 use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
-use crate::{physical_type_go, Context, Datatype, Result as TileDBResult};
+use crate::{Context, Result as TileDBResult};
 
 // additional methods with arrow features
 impl Attribute {
@@ -41,6 +46,7 @@ pub struct FillValueMetadata {
 pub struct AttributeMetadata {
     pub fill_value: FillValueMetadata,
     pub filters: FilterMetadata,
+    pub enumeration: Option<String>,
 }
 
 impl AttributeMetadata {
@@ -55,6 +61,7 @@ impl AttributeMetadata {
                 }
             }),
             filters: FilterMetadata::new(&attr.filter_list()?)?,
+            enumeration: attr.enumeration_name()?,
         })
     }
 
@@ -63,7 +70,11 @@ impl AttributeMetadata {
         &self,
         builder: AttributeBuilder,
     ) -> TileDBResult<AttributeBuilder> {
-        /* TODO: fill value */
+        let builder = if let Some(enumeration) = self.enumeration.as_ref() {
+            builder.enumeration_name(enumeration)?
+        } else {
+            builder
+        };
         let fl = self
             .filters
             .apply(FilterListBuilder::new(&builder.context())?)?
@@ -105,7 +116,7 @@ pub fn to_arrow(attr: &Attribute) -> TileDBResult<FieldToArrowResult> {
             )])))
     };
 
-    let arrow_dt = crate::datatype::arrow::to_arrow(
+    let arrow_dt = tiledb_common::datatype::arrow::to_arrow(
         &attr.datatype()?,
         attr.cell_val_num()?,
     );
@@ -156,7 +167,7 @@ pub fn from_arrow(
         }
     };
 
-    match crate::datatype::arrow::from_arrow(field.data_type()) {
+    match tiledb_common::datatype::arrow::from_arrow(field.data_type()) {
         DatatypeFromArrowResult::None => Ok(AttributeFromArrowResult::None),
         DatatypeFromArrowResult::Inexact(datatype, cell_val_num) => {
             Ok(AttributeFromArrowResult::Inexact(construct(
@@ -179,8 +190,10 @@ pub mod strategy {
     pub fn prop_arrow_field() -> impl Strategy<Value = arrow::datatypes::Field>
     {
         (
-            crate::array::attribute::strategy::prop_attribute_name(),
-            crate::datatype::arrow::strategy::any_datatype(Default::default()),
+            tiledb_pod::array::attribute::strategy::prop_attribute_name(),
+            tiledb_common::datatype::arrow::strategy::any_datatype(
+                Default::default(),
+            ),
             any::<bool>(),
             Just(HashMap::<String, String>::new()), /* TODO: we'd like to check that metadata is preserved,
                                                      * but right now the CAPI doesn't appear to have a way
@@ -196,10 +209,11 @@ pub mod strategy {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use crate::array::attribute::AttributeData;
-    use crate::Factory;
     use proptest::prelude::*;
+    use tiledb_pod::array::attribute::AttributeData;
+
+    use super::*;
+    use crate::Factory;
 
     fn do_tiledb_arrow(tdb_spec: AttributeData) {
         let c: Context = Context::new().unwrap();
@@ -274,9 +288,9 @@ pub mod tests {
             assert_eq!(arrow_in.is_nullable(), arrow_out.is_nullable());
 
             /* break out some datatypes */
-            use crate::datatype::arrow::tests::arrow_datatype_is_inexact_compatible;
+            use tiledb_common::datatype::arrow::is_physical_type_match;
             assert!(
-                arrow_datatype_is_inexact_compatible(
+                is_physical_type_match(
                     arrow_in.data_type(),
                     arrow_out.data_type()
                 ),
@@ -289,7 +303,7 @@ pub mod tests {
 
     proptest! {
         #[test]
-        fn test_tiledb_arrow(tdb_in in crate::array::attribute::strategy::prop_attribute(Default::default())) {
+        fn test_tiledb_arrow(tdb_in in tiledb_pod::array::attribute::strategy::prop_attribute(Default::default())) {
             do_tiledb_arrow(tdb_in);
         }
 

@@ -4,18 +4,17 @@ use std::sync::Arc;
 use arrow::array as aa;
 use itertools::izip;
 
-use tiledb::array::{
-    Array, ArrayType, AttributeData, CellOrder, CellValNum, DimensionData,
-    DomainData, SchemaData, TileOrder,
-};
-use tiledb::context::Context;
-use tiledb::query_arrow::buffers::Error as BuffersError;
-use tiledb::query_arrow::fields::QueryFieldsBuilder;
-use tiledb::query_arrow::{
+use tiledb_api::array::Array;
+use tiledb_api::context::Context;
+use tiledb_api::query_arrow::buffers::Error as BuffersError;
+use tiledb_api::query_arrow::fields::QueryFieldsBuilder;
+use tiledb_api::query_arrow::{
     Error as QueryError, QueryBuilder, QueryLayout, QueryType, SharedBuffers,
 };
-use tiledb::Result as TileDBResult;
-use tiledb::{Datatype, Factory};
+use tiledb_api::{Factory, Result as TileDBResult};
+use tiledb_common::array::{ArrayType, CellOrder, CellValNum, Mode, TileOrder};
+use tiledb_common::Datatype;
+use tiledb_pod::array::{AttributeData, DimensionData, DomainData, SchemaData};
 
 const ARRAY_URI: &str = "reading_incomplete";
 
@@ -99,8 +98,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
     let a2_data =
         Arc::new(aa::LargeStringArray::from(vec!["a", "bb", "ccc", "dddd"]));
 
-    let array =
-        tiledb::Array::open(&ctx, ARRAY_URI, tiledb::array::Mode::Write)?;
+    let array = Array::open(&ctx, ARRAY_URI, Mode::Write)?;
 
     let mut query = QueryBuilder::new(array, QueryType::Write)
         .with_layout(QueryLayout::Global)
@@ -119,7 +117,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
 fn read_array(ctx: &Context) -> TileDBResult<()> {
     let mut curr_capacity = 1;
 
-    let array = tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
+    let array = Array::open(ctx, ARRAY_URI, Mode::Read)?;
 
     let make_fields = |capacity| {
         QueryFieldsBuilder::new()

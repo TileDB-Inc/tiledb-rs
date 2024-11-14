@@ -4,15 +4,14 @@ use std::sync::Arc;
 use arrow::array as aa;
 use itertools::izip;
 
-use tiledb::array::dimension::DimensionConstraints;
-use tiledb::array::{
-    Array, ArrayType, AttributeData, CellOrder, DimensionData, DomainData,
-    SchemaData, TileOrder,
-};
-use tiledb::context::Context;
-use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
-use tiledb::Result as TileDBResult;
-use tiledb::{Datatype, Factory};
+use tiledb_api::array::Array;
+use tiledb_api::context::Context;
+use tiledb_api::query_arrow::{QueryBuilder, QueryLayout, QueryType};
+use tiledb_api::{Factory, Result as TileDBResult};
+use tiledb_common::array::dimension::DimensionConstraints;
+use tiledb_common::array::{ArrayType, CellOrder, Mode, TileOrder};
+use tiledb_common::Datatype;
+use tiledb_pod::array::{AttributeData, DimensionData, DomainData, SchemaData};
 
 const ARRAY_URI: &str = "quickstart_sparse_string";
 
@@ -31,7 +30,7 @@ fn main() -> TileDBResult<()> {
     create_array(&ctx)?;
     write_array(&ctx)?;
 
-    let array = Array::open(&ctx, ARRAY_URI, tiledb::array::Mode::Read)?;
+    let array = Array::open(&ctx, ARRAY_URI, Mode::Read)?;
     let mut query = QueryBuilder::new(array, QueryType::Read)
         .with_layout(QueryLayout::RowMajor)
         .start_fields()
@@ -100,8 +99,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
     let col_data = Arc::new(aa::Int32Array::from(vec![1, 4, 3]));
     let a_data = Arc::new(aa::Int32Array::from(vec![1, 2, 3]));
 
-    let array =
-        tiledb::Array::open(ctx, ARRAY_URI, tiledb::array::Mode::Write)?;
+    let array = Array::open(ctx, ARRAY_URI, Mode::Write)?;
 
     let mut query = QueryBuilder::new(array, QueryType::Write)
         .with_layout(CellOrder::Unordered)

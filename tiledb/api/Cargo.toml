@@ -1,43 +1,62 @@
 [package]
-name = "tiledb"
+name = "tiledb-api"
 version = { workspace = true }
 edition = { workspace = true }
 
 [lib]
-name = "tiledb"
+name = "tiledb_api"
 path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-arrow = { version = "52.0.0", features = ["prettyprint"] }
-itertools = "0"
-num-traits = { version = "0.2", optional = true }
-paste = "1.0"
+arrow = { workspace = true }
+cells = { workspace = true, features = ["proptest-strategies"], optional = true }
+itertools = { workspace = true }
+num-traits = { workspace = true, optional = true }
+paste = { workspace = true }
 proptest = { workspace = true, optional = true }
-proptest-derive = { workspace = true, optional = true }
-serde = { version = "1.0.136", features = ["derive"] }
-serde_json = { workspace = true }
-thiserror = "1.0.58"
-tiledb-proc-macro = { workspace = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tiledb-common = { workspace = true, features = ["arrow"] }
+tiledb-pod = { workspace = true, optional = true, features = ["serde"] }
 tiledb-sys = { workspace = true }
-tiledb-test-utils = { workspace = true, optional = true }
-tiledb-utils = { workspace = true, features = ["serde_json"] }
 
 [dev-dependencies]
-num-traits = { version = "0.2" }
+cells = { workspace = true, features = ["proptest-strategies"] }
+num-traits = { workspace = true }
 proptest = { workspace = true }
-proptest-derive = { workspace = true }
-tiledb-test-utils = { workspace = true }
+tiledb-common = { workspace = true, features = ["option-subset"] }
+tiledb-pod = { workspace = true, features = ["proptest-strategies", "option-subset", "serde"] }
+tiledb-utils = { workspace = true }
+uri = { workspace = true }
 
 [build-dependencies]
-pkg-config = { workspace = true }
-tiledb-utils = { workspace = true }
+tiledb-sys-cfg = { workspace = true }
 
 [features]
 default = []
-proptest-strategies = [
-    "dep:num-traits",
-    "dep:proptest",
-    "dep:proptest-derive",
-    "dep:tiledb-test-utils",
-]
+arrow = ["dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde", "tiledb-pod/serde"]
+pod = ["dep:tiledb-pod"]
+proptest-strategies = ["dep:cells", "dep:proptest"]
+serde = ["dep:serde", "dep:serde_json", "dep:tiledb-pod"]
+
+[[example]]
+name = "fragment_info"
+required-features = ["serde"]
+
+[[example]]
+name = "multi_range_subarray_arrow"
+required-features = ["pod"]
+
+[[example]]
+name = "quickstart_sparse_string_arrow"
+required-features = ["pod"]
+
+[[example]]
+name = "reading_incomplete_arrow"
+required-features = ["pod"]
+
+[[example]]
+name = "using_tiledb_stats"
+required-features = ["serde"]

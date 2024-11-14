@@ -4,14 +4,15 @@ use std::sync::Arc;
 use arrow::array::{Array as ArrowArray, Int32Array};
 use itertools::izip;
 
-use tiledb::array::{
-    Array, ArrayType, AttributeBuilder, Dimension, DimensionBuilder,
-    DomainBuilder, Mode as ArrayMode, SchemaBuilder,
+use tiledb_api::array::{
+    Array, AttributeBuilder, Dimension, DimensionBuilder, DomainBuilder,
+    SchemaBuilder,
 };
-use tiledb::context::Context;
-use tiledb::query_arrow::{QueryBuilder, QueryLayout, QueryType};
-use tiledb::Datatype;
-use tiledb::Result as TileDBResult;
+use tiledb_api::context::Context;
+use tiledb_api::query_arrow::{QueryBuilder, QueryLayout, QueryType};
+use tiledb_api::Result as TileDBResult;
+use tiledb_common::array::{ArrayType, Mode};
+use tiledb_common::Datatype;
 
 const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense";
 const QUICKSTART_ATTRIBUTE_NAME: &str = "a";
@@ -37,14 +38,9 @@ fn create_array() -> TileDBResult<()> {
     let tdb = Context::new()?;
 
     let domain = {
-        let rows: tiledb::array::Dimension =
-            tiledb::array::DimensionBuilder::new(
-                &tdb,
-                "rows",
-                Datatype::Int32,
-                ([1, 4], 4),
-            )?
-            .build();
+        let rows: Dimension =
+            DimensionBuilder::new(&tdb, "rows", Datatype::Int32, ([1, 4], 4))?
+                .build();
         let cols: Dimension = DimensionBuilder::new(
             &tdb,
             "columns",
@@ -82,8 +78,7 @@ fn create_array() -> TileDBResult<()> {
 fn write_array() -> TileDBResult<()> {
     let tdb = Context::new()?;
 
-    let array =
-        Array::open(&tdb, QUICKSTART_DENSE_ARRAY_URI, ArrayMode::Write)?;
+    let array = Array::open(&tdb, QUICKSTART_DENSE_ARRAY_URI, Mode::Write)?;
 
     let data: Arc<dyn ArrowArray> = Arc::new(Int32Array::from(vec![
         1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
@@ -112,7 +107,7 @@ fn write_array() -> TileDBResult<()> {
 fn read_array() -> TileDBResult<()> {
     let tdb = Context::new()?;
 
-    let array = Array::open(&tdb, QUICKSTART_DENSE_ARRAY_URI, ArrayMode::Read)?;
+    let array = Array::open(&tdb, QUICKSTART_DENSE_ARRAY_URI, Mode::Read)?;
 
     let mut query = QueryBuilder::new(array, QueryType::Read)
         .with_layout(QueryLayout::RowMajor)
