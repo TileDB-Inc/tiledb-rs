@@ -352,7 +352,7 @@ impl NewBufferTraitThing for ByteBuffers {
     }
 
     fn len(&self) -> usize {
-        (self.offsets.buffer.len() / std::mem::size_of::<i64>()) - 1
+        self.offsets.capacity_var_cells()
     }
 
     fn data(&mut self) -> &mut QueryBuffer {
@@ -382,6 +382,7 @@ impl NewBufferTraitThing for ByteBuffers {
     fn into_arrow(self: Box<Self>) -> IntoArrowResult {
         // NB: by default the offsets are not arrow-shaped.
         // However we use the configuration options to make them so.
+        let num_cells = self.offsets.num_var_cells();
 
         let dtype = self.dtype;
         let data = ArrowBuffer::from(self.data.buffer);
@@ -393,7 +394,7 @@ impl NewBufferTraitThing for ByteBuffers {
         // the underlying allocated data.
         match aa::ArrayData::try_new(
             dtype.clone(),
-            (*self.offsets.size as usize / std::mem::size_of::<i64>()) - 1,
+            num_cells,
             validity.clone().map(|v| v.into_inner().into_inner()),
             0,
             vec![offsets.clone(), data.clone()],
@@ -598,6 +599,26 @@ impl QueryBuffer {
     pub fn resize(&mut self) {
         self.buffer.resize(*self.size as usize, 0);
     }
+
+    /// Returns the number of variable-length cells which this buffer
+    /// has room to hold offsets for
+    pub fn capacity_var_cells(&self) -> usize {
+        if self.buffer.len() == 0 {
+            0
+        } else {
+            (self.buffer.len() / std::mem::size_of::<u64>()) - 1
+        }
+    }
+
+    /// Returns the number of variable-length cells which the offsets
+    /// in this buffer describe
+    pub fn num_var_cells(&self) -> usize {
+        if *self.size == 0 {
+            0
+        } else {
+            (*self.size as usize / std::mem::size_of::<u64>()) - 1
+        }
+    }
 }
 
 struct ListBuffers {
@@ -688,7 +709,7 @@ impl NewBufferTraitThing for ListBuffers {
     }
 
     fn len(&self) -> usize {
-        (self.offsets.buffer.len() / std::mem::size_of::<i64>()) - 1
+        self.offsets.num_var_cells()
     }
 
     fn data(&mut self) -> &mut QueryBuffer {
@@ -720,6 +741,8 @@ impl NewBufferTraitThing for ListBuffers {
 
         assert!(field.data_type().is_primitive());
 
+        let num_cells = self.offsets.num_var_cells();
+
         // NB: by default the offsets are not arrow-shaped.
         // However we use the configuration options to make them so.
 
@@ -732,7 +755,7 @@ impl NewBufferTraitThing for ListBuffers {
         // the underlying allocated data.
         match aa::ArrayData::try_new(
             field.data_type().clone(),
-            (*self.offsets.size as usize / std::mem::size_of::<i64>()) - 1,
+            num_cells,
             None,
             0,
             vec![data.clone().into()],
