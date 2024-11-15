@@ -6,15 +6,14 @@ use super::QueryBuilder;
 
 pub type SubarrayData = HashMap<String, Vec<Range>>;
 
+#[derive(Default)]
 pub struct SubarrayBuilder {
     subarray: SubarrayData,
 }
 
 impl SubarrayBuilder {
     pub fn new() -> Self {
-        Self {
-            subarray: Default::default(),
-        }
+        Self::default()
     }
 
     pub fn add_range<IntoRange: Into<Range>>(

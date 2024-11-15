@@ -1,4 +1,4 @@
-///! The TileDB Query interface and supporting utilities
+//! The TileDB Query interface and supporting utilities
 extern crate tiledb_sys as ffi;
 
 use std::collections::HashMap;
@@ -176,7 +176,7 @@ impl Query {
     }
 
     pub fn submit(&mut self) -> Result<QueryStatus> {
-        self.buffers.to_mutable()?;
+        self.buffers.make_mut()?;
         if matches!(self.query_type, QueryType::Read) {
             self.buffers.reset_lengths()?;
         }
@@ -194,14 +194,10 @@ impl Query {
         match self.curr_status()? {
             QueryStatus::Uninitialized
             | QueryStatus::Initialized
-            | QueryStatus::InProgress => {
-                return Err(Error::InternalError(
-                    "Invalid query status after submit".to_string(),
-                ))
-            }
-            QueryStatus::Failed => {
-                return Err(self.context.expect_last_error().into());
-            }
+            | QueryStatus::InProgress => Err(Error::InternalError(
+                "Invalid query status after submit".to_string(),
+            )),
+            QueryStatus::Failed => Err(self.context.expect_last_error().into()),
             QueryStatus::Incomplete => {
                 if self.buffers.iter().any(|(_, b)| b.len() > 0) {
                     Ok(QueryStatus::Incomplete)
@@ -222,7 +218,7 @@ impl Query {
             ffi::tiledb_query_finalize(ctx, c_query)
         })?;
 
-        self.buffers.to_shared()?;
+        self.buffers.make_shared()?;
         let mut ret = HashMap::with_capacity(self.buffers.len());
         for (field, buffer) in self.buffers.iter() {
             ret.insert(field.clone(), buffer.as_shared()?);
@@ -232,7 +228,7 @@ impl Query {
     }
 
     pub fn buffers(&mut self) -> Result<SharedBuffers> {
-        self.buffers.to_shared()?;
+        self.buffers.make_shared()?;
         let mut ret = HashMap::with_capacity(self.buffers.len());
         for (field, buffer) in self.buffers.iter() {
             ret.insert(field.clone(), buffer.as_shared()?);
@@ -250,7 +246,7 @@ impl Query {
     ) -> Result<QueryBuffers> {
         let mut tmp_buffers =
             QueryBuffers::from_fields(self.array.schema()?, fields)?;
-        tmp_buffers.to_mutable()?;
+        tmp_buffers.make_mut()?;
         if self.buffers.is_compatible(&tmp_buffers) {
             std::mem::swap(&mut self.buffers, &mut tmp_buffers);
             Ok(tmp_buffers)

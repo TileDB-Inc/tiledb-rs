@@ -112,16 +112,16 @@ impl ToArrowConverter {
 
         if arrow_type.is_primitive() {
             let width = arrow_type.primitive_width().unwrap();
-            if width != dtype.size() as usize {
+            if width != dtype.size() {
                 return Err(Error::PhysicalSizeMismatch(*dtype, arrow_type));
             }
 
             if cvn.is_single_valued() {
-                return Ok(arrow_type);
+                Ok(arrow_type)
             } else if cvn.is_var_sized() {
                 let field =
                     Arc::new(adt::Field::new("item", arrow_type, nullable));
-                return Ok(adt::DataType::LargeList(field));
+                Ok(adt::DataType::LargeList(field))
             } else {
                 // SAFETY: Due to the logic above we can guarantee that this
                 // is a fixed length cvn.
@@ -131,23 +131,25 @@ impl ToArrowConverter {
                 }
                 let field =
                     Arc::new(adt::Field::new("item", arrow_type, nullable));
-                return Ok(adt::DataType::FixedSizeList(field, cvn as i32));
+                Ok(adt::DataType::FixedSizeList(field, cvn as i32))
             }
         } else if matches!(arrow_type, adt::DataType::Boolean) {
             if !cvn.is_single_valued() {
-                return Err(Error::RequiresSingleValued(arrow_type));
+                Err(Error::RequiresSingleValued(arrow_type))
+            } else {
+                Ok(arrow_type)
             }
-            return Ok(arrow_type);
         } else if matches!(
             arrow_type,
             adt::DataType::LargeBinary | adt::DataType::LargeUtf8
         ) {
             if !cvn.is_var_sized() {
-                return Err(Error::RequiresVarSized(arrow_type));
+                Err(Error::RequiresVarSized(arrow_type))
+            } else {
+                Ok(arrow_type)
             }
-            return Ok(arrow_type);
         } else {
-            return Err(Error::InternalTypeError(arrow_type));
+            Err(Error::InternalTypeError(arrow_type))
         }
     }
 
@@ -358,9 +360,7 @@ impl FromArrowConverter {
             arrow::Timestamp(adt::TimeUnit::Nanosecond, None) => {
                 Ok((tiledb::DateTimeNanosecond, single, None))
             }
-            arrow::Timestamp(_, Some(_)) => {
-                return Err(Error::TimeZonesNotSupported);
-            }
+            arrow::Timestamp(_, Some(_)) => Err(Error::TimeZonesNotSupported),
 
             arrow::Time64(adt::TimeUnit::Second) => {
                 Ok((tiledb::TimeSecond, single, None))
@@ -480,7 +480,7 @@ impl FromArrowConverter {
             | arrow::Decimal256(_, _)
             | arrow::Map(_, _)
             | arrow::RunEndEncoded(_, _) => {
-                return Err(Error::UnsupportedArrowDataType(arrow_type));
+                Err(Error::UnsupportedArrowDataType(arrow_type))
             }
         }
     }

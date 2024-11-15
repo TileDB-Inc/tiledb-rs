@@ -53,15 +53,14 @@ impl QueryFields {
     }
 }
 
+#[derive(Default)]
 pub struct QueryFieldsBuilder {
     fields: QueryFields,
 }
 
 impl QueryFieldsBuilder {
     pub fn new() -> Self {
-        Self {
-            fields: Default::default(),
-        }
+        Self::default()
     }
 
     pub fn build(self) -> QueryFields {

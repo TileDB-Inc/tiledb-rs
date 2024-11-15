@@ -120,7 +120,7 @@ trait NewBufferTraitThing {
     fn validity(&mut self) -> Option<&mut QueryBuffer>;
 
     /// Check if another buffer is compatible with this buffer
-    fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool;
+    fn is_compatible(&self, other: &dyn NewBufferTraitThing) -> bool;
 
     /// Consume self and return an Arc<dyn aa::Array>
     fn into_arrow(self: Box<Self>) -> IntoArrowResult;
@@ -173,8 +173,7 @@ impl TryFrom<Arc<dyn aa::Array>> for BooleanBuffers {
 
         Ok(BooleanBuffers {
             data: QueryBuffer::new(abuf::MutableBuffer::from(data)),
-            validity: validity
-                .map(|v| QueryBuffer::new(abuf::MutableBuffer::from(v))),
+            validity: validity.map(QueryBuffer::new),
         })
     }
 }
@@ -200,7 +199,7 @@ impl NewBufferTraitThing for BooleanBuffers {
         self.validity.as_mut()
     }
 
-    fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
+    fn is_compatible(&self, other: &dyn NewBufferTraitThing) -> bool {
         let Some(other) = other.as_any().downcast_ref::<Self>() else {
             return false;
         };
@@ -311,7 +310,7 @@ impl NewBufferTraitThing for ByteBuffers {
         self.validity.as_mut()
     }
 
-    fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
+    fn is_compatible(&self, other: &dyn NewBufferTraitThing) -> bool {
         let Some(other) = other.as_any().downcast_ref::<Self>() else {
             return false;
         };
@@ -344,7 +343,7 @@ impl NewBufferTraitThing for ByteBuffers {
             vec![offsets.clone(), data.clone()],
             vec![],
         )
-        .map(|data| aa::make_array(data))
+        .map(aa::make_array)
         {
             Ok(arrow) => Ok(arrow),
             Err(e) => {
@@ -456,7 +455,7 @@ impl NewBufferTraitThing for FixedListBuffers {
         self.validity.as_mut()
     }
 
-    fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
+    fn is_compatible(&self, other: &dyn NewBufferTraitThing) -> bool {
         let Some(other) = other.as_any().downcast_ref::<Self>() else {
             return false;
         };
@@ -492,7 +491,7 @@ impl NewBufferTraitThing for FixedListBuffers {
             len,
             validity.clone().map(|v| v.into_inner().into_inner()),
             0,
-            vec![data.clone().into()],
+            vec![data.clone()],
             vec![],
         )
         .map(|data| {
@@ -544,7 +543,7 @@ impl QueryBuffer {
     }
 
     pub fn validity_ptr(&mut self) -> *mut u8 {
-        self.buffer.as_mut_ptr() as *mut u8
+        self.buffer.as_mut_ptr()
     }
 
     pub fn size_ptr(&mut self) -> *mut u64 {
@@ -563,7 +562,7 @@ impl QueryBuffer {
     /// Returns the number of variable-length cells which this buffer
     /// has room to hold offsets for
     pub fn capacity_var_cells(&self) -> usize {
-        if self.buffer.len() == 0 {
+        if self.buffer.is_empty() {
             0
         } else {
             (self.buffer.len() / std::mem::size_of::<u64>()) - 1
@@ -684,7 +683,7 @@ impl NewBufferTraitThing for ListBuffers {
         self.validity.as_mut()
     }
 
-    fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
+    fn is_compatible(&self, other: &dyn NewBufferTraitThing) -> bool {
         let Some(other) = other.as_any().downcast_ref::<Self>() else {
             return false;
         };
@@ -718,7 +717,7 @@ impl NewBufferTraitThing for ListBuffers {
             num_cells,
             None,
             0,
-            vec![data.clone().into()],
+            vec![data.clone()],
             vec![],
         )
         .and_then(|data| {
@@ -840,7 +839,7 @@ impl NewBufferTraitThing for PrimitiveBuffers {
         self.validity.as_mut()
     }
 
-    fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
+    fn is_compatible(&self, other: &dyn NewBufferTraitThing) -> bool {
         let Some(other) = other.as_any().downcast_ref::<Self>() else {
             return false;
         };
@@ -968,7 +967,7 @@ impl TryFrom<Arc<dyn aa::Array>> for Box<dyn NewBufferTraitThing> {
             | adt::DataType::Decimal256(_, _)
             | adt::DataType::Map(_, _)
             | adt::DataType::RunEndEncoded(_, _) => {
-                return Err((array, Error::UnsupportedArrowType(dtype)));
+                Err((array, Error::UnsupportedArrowType(dtype)))
             }
         }
     }
@@ -1000,7 +999,7 @@ impl MutableOrShared {
         self.shared.as_ref().map(Arc::clone)
     }
 
-    pub fn to_mutable(&mut self) -> Result<()> {
+    pub fn make_mut(&mut self) -> Result<()> {
         self.validate();
 
         if self.mutable.is_some() {
@@ -1024,7 +1023,7 @@ impl MutableOrShared {
         ret
     }
 
-    pub fn to_shared(&mut self) -> Result<()> {
+    pub fn make_shared(&mut self) -> Result<()> {
         self.validate();
 
         if self.shared.is_some() {
@@ -1065,7 +1064,7 @@ impl BufferEntry {
             return Err(Error::UnshareableMutableBuffer);
         };
 
-        return Ok(Arc::clone(array));
+        Ok(Arc::clone(array))
     }
 
     pub fn len(&self) -> usize {
@@ -1083,7 +1082,7 @@ impl BufferEntry {
                 .mutable
                 .as_ref()
                 .unwrap()
-                .is_compatible(other.entry.mutable.as_ref().unwrap());
+                .is_compatible(other.entry.mutable.as_ref().unwrap().as_ref());
         }
 
         false
@@ -1131,12 +1130,12 @@ impl BufferEntry {
         Ok(mutable.validity())
     }
 
-    fn to_mutable(&mut self) -> Result<()> {
-        self.entry.to_mutable()
+    fn make_mut(&mut self) -> Result<()> {
+        self.entry.make_mut()
     }
 
-    fn to_shared(&mut self) -> Result<()> {
-        self.entry.to_shared()
+    fn make_shared(&mut self) -> Result<()> {
+        self.entry.make_shared()
     }
 }
 
@@ -1258,7 +1257,7 @@ impl QueryBuffers {
             }
         }
 
-        return true;
+        true
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &BufferEntry)> {
@@ -1271,16 +1270,16 @@ impl QueryBuffers {
         self.buffers.iter_mut()
     }
 
-    pub fn to_mutable(&mut self) -> Result<()> {
+    pub fn make_mut(&mut self) -> Result<()> {
         for value in self.buffers.values_mut() {
-            value.to_mutable()?
+            value.make_mut()?
         }
         Ok(())
     }
 
-    pub fn to_shared(&mut self) -> Result<()> {
+    pub fn make_shared(&mut self) -> Result<()> {
         for value in self.buffers.values_mut() {
-            value.to_shared()?
+            value.make_shared()?
         }
         Ok(())
     }
@@ -1304,7 +1303,7 @@ pub struct SharedBuffers {
 }
 
 impl SharedBuffers {
-    pub fn get<T: Any>(&self, key: &str) -> Option<&T>
+    pub fn get<T>(&self, key: &str) -> Option<&T>
     where
         T: Any,
     {
@@ -1413,7 +1412,7 @@ fn alloc_array(
                 vec![data.into()],
                 vec![],
             )
-            .map_err(|e| Error::ArrayCreationFailed(e))?;
+            .map_err(Error::ArrayCreationFailed)?;
 
             Ok(aa::make_array(data))
         }
@@ -1520,10 +1519,7 @@ fn from_tdb_validity(
 ) -> Option<abuf::NullBuffer> {
     validity.as_ref().map(|v| {
         abuf::NullBuffer::from(
-            v.buffer
-                .iter()
-                .map(|f| if *f != 0 { true } else { false })
-                .collect::<Vec<_>>(),
+            v.buffer.iter().map(|f| *f != 0).collect::<Vec<_>>(),
         )
     })
 }
