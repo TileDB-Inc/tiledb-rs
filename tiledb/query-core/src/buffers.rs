@@ -153,62 +153,6 @@ trait NewBufferTraitThing {
             validity.resize();
         }
     }
-
-    /// Returns a mutable pointer to the data buffer
-    fn data_ptr(&mut self) -> *mut std::ffi::c_void {
-        self.data().buffer.as_mut_ptr() as *mut std::ffi::c_void
-    }
-
-    /// Returns a mutable pointer to the data size
-    fn data_size_ptr(&mut self) -> *mut u64 {
-        self.data().size.as_mut().get_mut()
-    }
-
-    /// Returns a mutable poiniter to the offsets buffer.
-    ///
-    /// For variants that don't have offsets, it returns a null pointer.
-    fn offsets_ptr(&mut self) -> *mut u64 {
-        let Some(offsets) = self.offsets() else {
-            return std::ptr::null_mut();
-        };
-
-        offsets.buffer.as_mut_ptr() as *mut u64
-    }
-
-    /// Returns a mutable pointer to the offsets size.
-    ///
-    /// For variants that don't have offsets, it returns a null pointer.
-    ///
-    /// FIXME: why does this not return `Option`
-    fn offsets_size_ptr(&mut self) -> *mut u64 {
-        let Some(offsets) = self.offsets() else {
-            return std::ptr::null_mut();
-        };
-
-        offsets.size.as_mut().get_mut()
-    }
-
-    /// Returns a mutable pointer to the validity buffer, when present
-    ///
-    /// When validity is not present, it returns a null pointer.
-    fn validity_ptr(&mut self) -> *mut u8 {
-        let Some(validity) = self.validity() else {
-            return std::ptr::null_mut();
-        };
-
-        validity.buffer.as_mut_ptr()
-    }
-
-    /// Returns a mutable pointer to the validity size, when present
-    ///
-    /// When validity is not present, it returns a null pointer.
-    fn validity_size_ptr(&mut self) -> *mut u64 {
-        let Some(validity) = self.validity() else {
-            return std::ptr::null_mut();
-        };
-
-        validity.size.as_mut().get_mut()
-    }
 }
 
 struct BooleanBuffers {
@@ -580,7 +524,7 @@ impl NewBufferTraitThing for FixedListBuffers {
     }
 }
 
-struct QueryBuffer {
+pub struct QueryBuffer {
     buffer: ArrowBufferMut,
     size: Pin<Box<u64>>,
 }
@@ -589,6 +533,22 @@ impl QueryBuffer {
     pub fn new(buffer: ArrowBufferMut) -> Self {
         let size = Box::pin(buffer.len() as u64);
         Self { buffer, size }
+    }
+
+    pub fn data_ptr(&mut self) -> *mut std::ffi::c_void {
+        self.buffer.as_mut_ptr() as *mut std::ffi::c_void
+    }
+
+    pub fn offsets_ptr(&mut self) -> *mut u64 {
+        self.buffer.as_mut_ptr() as *mut u64
+    }
+
+    pub fn validity_ptr(&mut self) -> *mut u8 {
+        self.buffer.as_mut_ptr() as *mut u8
+    }
+
+    pub fn size_ptr(&mut self) -> *mut u64 {
+        self.size.as_mut().get_mut()
     }
 
     pub fn reset(&mut self) {
@@ -1147,68 +1107,28 @@ impl BufferEntry {
         Ok(())
     }
 
-    pub fn data_ptr(&mut self) -> Result<*mut std::ffi::c_void> {
+    pub fn data_mut(&mut self) -> Result<&mut QueryBuffer> {
         let Some(mutable) = self.entry.mutable() else {
             return Err(Error::ImmutableBuffer);
         };
 
-        Ok(mutable.data_ptr())
+        Ok(mutable.data())
     }
 
-    pub fn data_size_ptr(&mut self) -> Result<*mut u64> {
+    pub fn offsets_mut(&mut self) -> Result<Option<&mut QueryBuffer>> {
         let Some(mutable) = self.entry.mutable() else {
             return Err(Error::ImmutableBuffer);
         };
 
-        Ok(mutable.data_size_ptr())
+        Ok(mutable.offsets())
     }
 
-    pub fn has_offsets(&mut self) -> Result<bool> {
+    pub fn validity_mut(&mut self) -> Result<Option<&mut QueryBuffer>> {
         let Some(mutable) = self.entry.mutable() else {
             return Err(Error::ImmutableBuffer);
         };
 
-        Ok(mutable.offsets_ptr() != std::ptr::null_mut())
-    }
-
-    pub fn offsets_ptr(&mut self) -> Result<*mut u64> {
-        let Some(mutable) = self.entry.mutable() else {
-            return Err(Error::ImmutableBuffer);
-        };
-
-        Ok(mutable.offsets_ptr())
-    }
-
-    pub fn offsets_size_ptr(&mut self) -> Result<*mut u64> {
-        let Some(mutable) = self.entry.mutable() else {
-            return Err(Error::ImmutableBuffer);
-        };
-
-        Ok(mutable.offsets_size_ptr())
-    }
-
-    pub fn has_validity(&mut self) -> Result<bool> {
-        let Some(mutable) = self.entry.mutable() else {
-            return Err(Error::ImmutableBuffer);
-        };
-
-        Ok(mutable.validity_ptr() != std::ptr::null_mut())
-    }
-
-    pub fn validity_ptr(&mut self) -> Result<*mut u8> {
-        let Some(mutable) = self.entry.mutable() else {
-            return Err(Error::ImmutableBuffer);
-        };
-
-        Ok(mutable.validity_ptr())
-    }
-
-    pub fn validity_size_ptr(&mut self) -> Result<*mut u64> {
-        let Some(mutable) = self.entry.mutable() else {
-            return Err(Error::ImmutableBuffer);
-        };
-
-        Ok(mutable.validity_size_ptr())
+        Ok(mutable.validity())
     }
 
     fn to_mutable(&mut self) -> Result<()> {

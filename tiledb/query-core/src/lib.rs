@@ -264,36 +264,43 @@ impl Query {
         for (field, buffer) in self.buffers.iter_mut() {
             let c_name = std::ffi::CString::new(field.as_bytes())?;
 
-            let c_data_ptr = buffer.data_ptr()?;
-            let c_data_size_ptr = buffer.data_size_ptr()?;
+            {
+                let data = buffer.data_mut()?;
+                let c_data_ptr = data.data_ptr();
+                let c_data_size_ptr = data.size_ptr();
 
-            self.context.capi_call(|ctx| unsafe {
-                ffi::tiledb_query_set_data_buffer(
-                    ctx,
-                    c_query,
-                    c_name.as_ptr(),
-                    c_data_ptr,
-                    c_data_size_ptr,
-                )
-            })?;
-
-            if buffer.has_offsets()? {
-                let c_offsets_ptr = buffer.offsets_ptr()?;
-                let c_offsets_size_ptr = buffer.offsets_size_ptr()?;
                 self.context.capi_call(|ctx| unsafe {
-                    ffi::tiledb_query_set_offsets_buffer(
+                    ffi::tiledb_query_set_data_buffer(
                         ctx,
                         c_query,
                         c_name.as_ptr(),
-                        c_offsets_ptr,
-                        c_offsets_size_ptr,
+                        c_data_ptr,
+                        c_data_size_ptr,
                     )
                 })?;
             }
 
-            if buffer.has_validity()? {
-                let c_validity_ptr = buffer.validity_ptr()?;
-                let c_validity_size_ptr = buffer.validity_size_ptr()?;
+            {
+                // NB: `if let` binding is longer than it looks
+                if let Some(offsets) = buffer.offsets_mut()? {
+                    let c_offsets_ptr = offsets.offsets_ptr();
+                    let c_offsets_size_ptr = offsets.size_ptr();
+
+                    self.context.capi_call(|ctx| unsafe {
+                        ffi::tiledb_query_set_offsets_buffer(
+                            ctx,
+                            c_query,
+                            c_name.as_ptr(),
+                            c_offsets_ptr,
+                            c_offsets_size_ptr,
+                        )
+                    })?;
+                }
+            }
+
+            if let Some(validity) = buffer.validity_mut()? {
+                let c_validity_ptr = validity.validity_ptr();
+                let c_validity_size_ptr = validity.size_ptr();
                 self.context.capi_call(|ctx| unsafe {
                     ffi::tiledb_query_set_validity_buffer(
                         ctx,
