@@ -423,7 +423,19 @@ impl QueryBuilder {
             ffi::tiledb_query_alloc(ctx, c_array, c_query_type, &mut c_query)
         })?;
 
-        Ok(RawQuery::Owned(c_query))
+        let raw = RawQuery::Owned(c_query);
+
+        // configure the query to use arrow-shaped offsets
+        let mut qconf = Config::new()?;
+        qconf.set("sm.var_offsets.bitsize", "64")?;
+        qconf.set("sm.var_offsets.mode", "elements")?;
+        qconf.set("sm.var_offsets.extra_element", "true")?;
+
+        self.capi_call(|c_context| unsafe {
+            ffi::tiledb_query_set_config(c_context, c_query, qconf.capi())
+        })?;
+
+        Ok(raw)
     }
 
     fn alloc_subarray(&self) -> Result<RawSubarray> {
