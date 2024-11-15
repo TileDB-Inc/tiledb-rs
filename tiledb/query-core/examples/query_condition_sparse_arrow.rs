@@ -9,10 +9,10 @@ use tiledb_api::array::{
 };
 use tiledb_api::context::Context;
 use tiledb_api::query::conditions::QueryConditionExpr as QC;
-use tiledb_api::query_arrow::{QueryBuilder, QueryLayout, QueryType};
 use tiledb_api::Result as TileDBResult;
 use tiledb_common::array::{ArrayType, CellOrder, Mode};
 use tiledb_common::Datatype;
+use tiledb_query_core::{QueryBuilder, QueryLayout, QueryType};
 
 const ARRAY_URI: &str = "query_condition_sparse";
 const NUM_ELEMS: i32 = 10;

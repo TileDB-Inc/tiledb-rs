@@ -39,23 +39,12 @@ default = []
 arrow = ["dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde", "tiledb-pod/serde"]
 pod = ["dep:tiledb-pod"]
 proptest-strategies = ["dep:cells", "dep:proptest"]
+raw = []
 serde = ["dep:serde", "dep:serde_json", "dep:tiledb-pod"]
 
 [[example]]
 name = "fragment_info"
 required-features = ["serde"]
-
-[[example]]
-name = "multi_range_subarray_arrow"
-required-features = ["pod"]
-
-[[example]]
-name = "quickstart_sparse_string_arrow"
-required-features = ["pod"]
-
-[[example]]
-name = "reading_incomplete_arrow"
-required-features = ["pod"]
 
 [[example]]
 name = "using_tiledb_stats"

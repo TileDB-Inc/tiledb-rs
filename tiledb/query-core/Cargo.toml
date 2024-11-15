@@ -1,0 +1,17 @@
+[package]
+name = "tiledb-query-core"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+arrow = { workspace = true }
+thiserror = { workspace = true }
+tiledb-api = { workspace = true, features = ["raw"] }
+tiledb-common = { workspace = true }
+tiledb-sys = { workspace = true }
+
+[dev-dependencies]
+itertools = { workspace = true }
+tiledb-api = { workspace = true, features = ["pod", "raw"] }
+tiledb-pod = { workspace = true }

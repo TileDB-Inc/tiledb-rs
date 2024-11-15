@@ -9,10 +9,10 @@ use tiledb_api::array::{
     SchemaBuilder,
 };
 use tiledb_api::context::Context;
-use tiledb_api::query_arrow::{QueryBuilder, QueryLayout, QueryType};
 use tiledb_api::Result as TileDBResult;
 use tiledb_common::array::{ArrayType, Mode};
 use tiledb_common::Datatype;
+use tiledb_query_core::{QueryBuilder, QueryLayout, QueryType};
 
 const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense";
 const QUICKSTART_ATTRIBUTE_NAME: &str = "a";

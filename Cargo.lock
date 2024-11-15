@@ -1879,6 +1879,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiledb-query-core"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "itertools 0.12.1",
+ "thiserror",
+ "tiledb-api",
+ "tiledb-common",
+ "tiledb-pod",
+ "tiledb-sys",
+]
+
+[[package]]
 name = "tiledb-sys"
 version = "0.1.0"
 dependencies = [

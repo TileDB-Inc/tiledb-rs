@@ -6,15 +6,15 @@ use itertools::izip;
 
 use tiledb_api::array::Array;
 use tiledb_api::context::Context;
-use tiledb_api::query_arrow::buffers::Error as BuffersError;
-use tiledb_api::query_arrow::fields::QueryFieldsBuilder;
-use tiledb_api::query_arrow::{
-    Error as QueryError, QueryBuilder, QueryLayout, QueryType, SharedBuffers,
-};
 use tiledb_api::{Factory, Result as TileDBResult};
 use tiledb_common::array::{ArrayType, CellOrder, CellValNum, Mode, TileOrder};
 use tiledb_common::Datatype;
 use tiledb_pod::array::{AttributeData, DimensionData, DomainData, SchemaData};
+use tiledb_query_core::buffers::Error as BuffersError;
+use tiledb_query_core::fields::QueryFieldsBuilder;
+use tiledb_query_core::{
+    Error as QueryError, QueryBuilder, QueryLayout, QueryType, SharedBuffers,
+};
 
 const ARRAY_URI: &str = "reading_incomplete";
 

@@ -10,11 +10,12 @@ use arrow::buffer::{
 use arrow::datatypes as adt;
 use arrow::error::ArrowError;
 use thiserror::Error;
+use tiledb_api::array::schema::{Field, Schema};
+use tiledb_api::error::Error as TileDBError;
+use tiledb_common::array::CellValNum;
 
 use super::arrow::ToArrowConverter;
 use super::fields::{QueryField, QueryFields};
-use crate::array::schema::{CellValNum, Field, Schema};
-use crate::error::Error as TileDBError;
 
 const AVERAGE_STRING_LENGTH: usize = 64;
 

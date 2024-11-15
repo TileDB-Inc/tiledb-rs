@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::range::Range;
+use tiledb_common::range::Range;
 
 use super::QueryBuilder;
 

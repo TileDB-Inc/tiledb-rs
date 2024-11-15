@@ -52,7 +52,6 @@ pub mod filter;
 pub mod group;
 pub mod metadata;
 pub mod query;
-pub mod query_arrow;
 pub mod stats;
 pub mod string;
 pub mod vfs;

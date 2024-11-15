@@ -6,12 +6,12 @@ use itertools::izip;
 
 use tiledb_api::array::Array;
 use tiledb_api::context::Context;
-use tiledb_api::query_arrow::{QueryBuilder, QueryLayout, QueryType};
 use tiledb_api::{Factory, Result as TileDBResult};
 use tiledb_common::array::dimension::DimensionConstraints;
 use tiledb_common::array::{ArrayType, CellOrder, Mode, TileOrder};
 use tiledb_common::Datatype;
 use tiledb_pod::array::{AttributeData, DimensionData, DomainData, SchemaData};
+use tiledb_query_core::{QueryBuilder, QueryLayout, QueryType};
 
 const ARRAY_URI: &str = "quickstart_sparse_string";
 

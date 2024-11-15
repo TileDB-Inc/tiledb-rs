@@ -4,8 +4,8 @@ use arrow::datatypes as adt;
 
 use thiserror::Error;
 
-use crate::array::schema::CellValNum;
-use crate::datatype::Datatype;
+use tiledb_common::array::CellValNum;
+use tiledb_common::Datatype;
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -152,8 +152,8 @@ impl ToArrowConverter {
     }
 
     fn default_arrow_type(&self, dtype: &Datatype) -> Option<adt::DataType> {
-        use crate::datatype::Datatype as tiledb;
         use arrow::datatypes::DataType as arrow;
+        use tiledb_common::Datatype as tiledb;
         let arrow_type = match dtype {
             // Any <-> Null, both indicate lack of a type
             tiledb::Any => Some(arrow::Null),
@@ -493,7 +493,6 @@ impl FromArrowConverter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Datatype;
 
     /// Test that a datatype is supported as a scalar type
     /// if and only if it is also supported as a list element type

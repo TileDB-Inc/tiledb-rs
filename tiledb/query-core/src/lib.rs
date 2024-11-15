@@ -1,17 +1,19 @@
 ///! The TileDB Query interface and supporting utilities
+extern crate tiledb_sys as ffi;
+
 use std::collections::HashMap;
 use std::ops::Deref;
 
 use thiserror::Error;
 use tiledb_common::{single_value_range_go, var_value_range_go};
 
-use crate::array::Array;
-use crate::config::Config;
-use crate::context::{CApiInterface, Context, ContextBound};
-use crate::error::Error as TileDBError;
-use crate::key::LookupKey;
-use crate::query::conditions::QueryConditionExpr;
-use crate::range::{Range, SingleValueRange, VarValueRange};
+use tiledb_api::array::Array;
+use tiledb_api::config::Config;
+use tiledb_api::context::{CApiInterface, Context, ContextBound};
+use tiledb_api::error::Error as TileDBError;
+use tiledb_api::key::LookupKey;
+use tiledb_api::query::conditions::QueryConditionExpr;
+use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
 
 use buffers::{Error as QueryBuffersError, QueryBuffers};
 use fields::{QueryFields, QueryFieldsBuilderForQuery};
@@ -24,8 +26,14 @@ pub mod buffers;
 pub mod fields;
 pub mod subarray;
 
-pub type QueryType = crate::array::Mode;
-pub type QueryLayout = crate::array::CellOrder;
+pub type QueryType = tiledb_common::array::Mode;
+pub type QueryLayout = tiledb_common::array::CellOrder;
+
+macro_rules! out_ptr {
+    () => {
+        unsafe { std::mem::MaybeUninit::zeroed().assume_init() }
+    };
+}
 
 /// Errors related to query creation and execution
 #[derive(Debug, Error)]
