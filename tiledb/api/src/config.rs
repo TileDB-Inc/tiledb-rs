@@ -55,7 +55,13 @@ pub struct ConfigIterator<'cfg> {
 }
 
 impl Config {
+    #[cfg(feature = "raw")]
     pub fn capi(&self) -> *mut ffi::tiledb_config_t {
+        *self.raw
+    }
+
+    #[cfg(not(feature = "raw"))]
+    pub(crate) fn capi(&self) -> *mut ffi::tiledb_config_t {
         *self.raw
     }
 
