@@ -15,3 +15,6 @@ tiledb-sys = { workspace = true }
 itertools = { workspace = true }
 tiledb-api = { workspace = true, features = ["pod", "raw"] }
 tiledb-pod = { workspace = true }
+
+[build-dependencies]
+tiledb-sys-cfg = { workspace = true }

@@ -1889,6 +1889,7 @@ dependencies = [
  "tiledb-common",
  "tiledb-pod",
  "tiledb-sys",
+ "tiledb-sys-cfg",
 ]
 
 [[package]]
