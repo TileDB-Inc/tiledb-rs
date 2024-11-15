@@ -89,23 +89,6 @@ where
     aa::downcast_array(&array)
 }
 
-#[derive(Clone)]
-struct SizeInfo {
-    data: Pin<Box<u64>>,
-    offsets: Pin<Box<u64>>,
-    validity: Pin<Box<u64>>,
-}
-
-impl Default for SizeInfo {
-    fn default() -> Self {
-        Self {
-            data: Box::pin(0),
-            offsets: Box::pin(0),
-            validity: Box::pin(0),
-        }
-    }
-}
-
 /// The return type for the NewBufferTraitThing's into_arrow method. This
 /// allows for fallible conversion without dropping the underlying buffers.
 type IntoArrowResult = std::result::Result<
@@ -128,16 +111,13 @@ trait NewBufferTraitThing {
     fn len(&self) -> usize;
 
     /// The data buffer
-    fn data(&mut self) -> &mut ArrowBufferMut;
+    fn data(&mut self) -> &mut QueryBuffer;
 
     /// The offsets buffer, for variants that have one
-    fn offsets(&mut self) -> Option<&mut ArrowBufferMut>;
+    fn offsets(&mut self) -> Option<&mut QueryBuffer>;
 
     /// The validity buffer, when present
-    fn validity(&mut self) -> Option<&mut ArrowBufferMut>;
-
-    /// The SizeInfo struct
-    fn sizes(&mut self) -> &mut SizeInfo;
+    fn validity(&mut self) -> Option<&mut QueryBuffer>;
 
     /// Check if another buffer is compatible with this buffer
     fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool;
@@ -151,56 +131,37 @@ trait NewBufferTraitThing {
     /// the entire available buffer rather than just whatever fit in the
     /// previous iteration.
     fn reset_len(&mut self) {
-        let data = self.data();
-        data.resize(data.capacity(), 0);
-        self.offsets().map(|o| {
-            // Arrow requires an extra offset that TileDB elides so we need
-            // to leave room for it later.
-            assert!(o.capacity() >= std::mem::size_of::<i64>());
-            o.resize(o.capacity() - std::mem::size_of::<i64>(), 0);
-        });
-        self.validity().map(|v| v.resize(v.capacity(), 0));
-
-        let data_size = self.data().len();
-        let offsets_size = self.offsets().map_or(0, |o| o.len());
-        let validity_size = self.validity().map_or(0, |v| v.len());
-        let sizes = self.sizes();
-        *sizes.data = data_size as u64;
-        *sizes.offsets = offsets_size as u64;
-        *sizes.validity = validity_size as u64;
+        self.data().reset();
+        if let Some(offsets) = self.offsets() {
+            offsets.reset();
+        }
+        if let Some(validity) = self.validity() {
+            validity.reset();
+        }
     }
 
     /// Shrink len to data
     ///
-    /// After a read query, this method is used to update the lenght of all
+    /// After a read query, this method is used to update the length of all
     /// buffers to match the number of bytes written by TileDB.
     fn shrink_len(&mut self) {
-        let sizes = self.sizes().clone();
-        assert!((*sizes.data as usize) <= self.data().capacity());
-        self.data().resize(*sizes.data as usize, 0);
-
-        self.offsets().map(|o| {
-            assert!(
-                (*sizes.offsets as usize)
-                    <= o.capacity() - std::mem::size_of::<i64>()
-            );
-            o.resize(*sizes.offsets as usize, 0);
-        });
-
-        self.validity().map(|v| {
-            assert!((*sizes.validity as usize) <= v.capacity());
-            v.resize(*sizes.validity as usize, 0);
-        });
+        self.data().resize();
+        if let Some(offsets) = self.offsets() {
+            offsets.resize();
+        }
+        if let Some(validity) = self.validity() {
+            validity.resize();
+        }
     }
 
     /// Returns a mutable pointer to the data buffer
     fn data_ptr(&mut self) -> *mut std::ffi::c_void {
-        self.data().as_mut_ptr() as *mut std::ffi::c_void
+        self.data().buffer.as_mut_ptr() as *mut std::ffi::c_void
     }
 
     /// Returns a mutable pointer to the data size
     fn data_size_ptr(&mut self) -> *mut u64 {
-        self.sizes().data.as_mut().get_mut()
+        self.data().size.as_mut().get_mut()
     }
 
     /// Returns a mutable poiniter to the offsets buffer.
@@ -211,18 +172,20 @@ trait NewBufferTraitThing {
             return std::ptr::null_mut();
         };
 
-        offsets.as_mut_ptr() as *mut u64
+        offsets.buffer.as_mut_ptr() as *mut u64
     }
 
     /// Returns a mutable pointer to the offsets size.
     ///
     /// For variants that don't have offsets, it returns a null pointer.
+    ///
+    /// FIXME: why does this not return `Option`
     fn offsets_size_ptr(&mut self) -> *mut u64 {
-        let Some(_) = self.offsets() else {
+        let Some(offsets) = self.offsets() else {
             return std::ptr::null_mut();
         };
 
-        self.sizes().offsets.as_mut().get_mut()
+        offsets.size.as_mut().get_mut()
     }
 
     /// Returns a mutable pointer to the validity buffer, when present
@@ -233,25 +196,24 @@ trait NewBufferTraitThing {
             return std::ptr::null_mut();
         };
 
-        validity.as_mut_ptr()
+        validity.buffer.as_mut_ptr()
     }
 
     /// Returns a mutable pointer to the validity size, when present
     ///
     /// When validity is not present, it returns a null pointer.
     fn validity_size_ptr(&mut self) -> *mut u64 {
-        let Some(_) = self.validity() else {
+        let Some(validity) = self.validity() else {
             return std::ptr::null_mut();
         };
 
-        self.sizes().validity.as_mut().get_mut()
+        validity.size.as_mut().get_mut()
     }
 }
 
 struct BooleanBuffers {
-    data: ArrowBufferMut,
-    validity: Option<ArrowBufferMut>,
-    sizes: SizeInfo,
+    data: QueryBuffer,
+    validity: Option<QueryBuffer>,
 }
 
 impl TryFrom<Arc<dyn aa::Array>> for BooleanBuffers {
@@ -264,13 +226,11 @@ impl TryFrom<Arc<dyn aa::Array>> for BooleanBuffers {
             .map(|v| if v { 1u8 } else { 0 })
             .collect::<Vec<_>>();
         let validity = to_tdb_validity(validity);
-        let mut sizes = SizeInfo::default();
-        *sizes.data = data.len() as u64;
-        *sizes.validity = validity.as_ref().map_or(0, |v| v.len()) as u64;
+
         Ok(BooleanBuffers {
-            data: abuf::MutableBuffer::from(data),
-            validity: validity.map(abuf::MutableBuffer::from),
-            sizes,
+            data: QueryBuffer::new(abuf::MutableBuffer::from(data)),
+            validity: validity
+                .map(|v| QueryBuffer::new(abuf::MutableBuffer::from(v))),
         })
     }
 }
@@ -281,23 +241,19 @@ impl NewBufferTraitThing for BooleanBuffers {
     }
 
     fn len(&self) -> usize {
-        self.data.len()
+        self.data.buffer.len()
     }
 
-    fn data(&mut self) -> &mut ArrowBufferMut {
+    fn data(&mut self) -> &mut QueryBuffer {
         &mut self.data
     }
 
-    fn offsets(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn offsets(&mut self) -> Option<&mut QueryBuffer> {
         None
     }
 
-    fn validity(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn validity(&mut self) -> Option<&mut QueryBuffer> {
         self.validity.as_mut()
-    }
-
-    fn sizes(&mut self) -> &mut SizeInfo {
-        &mut self.sizes
     }
 
     fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
@@ -309,21 +265,21 @@ impl NewBufferTraitThing for BooleanBuffers {
     }
 
     fn into_arrow(self: Box<Self>) -> IntoArrowResult {
-        let data =
-            abuf::BooleanBuffer::from_iter(self.data.iter().map(|b| *b != 0));
+        let data = abuf::BooleanBuffer::from_iter(
+            self.data.buffer.iter().map(|b| *b != 0),
+        );
         Ok(Arc::new(aa::BooleanArray::new(
             data,
-            from_tdb_validity(self.validity),
+            from_tdb_validity(&self.validity),
         )))
     }
 }
 
 struct ByteBuffers {
     dtype: adt::DataType,
-    data: ArrowBufferMut,
-    offsets: ArrowBufferMut,
-    validity: Option<ArrowBufferMut>,
-    sizes: SizeInfo,
+    data: QueryBuffer,
+    offsets: QueryBuffer,
+    validity: Option<QueryBuffer>,
 }
 
 macro_rules! to_byte_buffers {
@@ -335,20 +291,14 @@ macro_rules! to_byte_buffers {
         let offsets = offsets.into_inner().into_inner().into_mutable();
 
         if data.is_ok() && offsets.is_ok() {
-            let data = data.ok().unwrap();
-            let offsets = offsets.ok().unwrap();
-            let validity = to_tdb_validity(nulls);
-            let mut sizes = SizeInfo::default();
-            *sizes.data = data.len() as u64;
-            *sizes.offsets =
-                (offsets.len() - std::mem::size_of::<i64>()) as u64;
-            *sizes.validity = validity.as_ref().map_or(0, |v| v.len()) as u64;
+            let data = QueryBuffer::new(data.ok().unwrap());
+            let offsets = QueryBuffer::new(offsets.ok().unwrap());
+            let validity = to_tdb_validity(nulls).map(QueryBuffer::new);
             return Ok(ByteBuffers {
                 dtype: $ARROW_TYPE,
                 data,
                 offsets,
                 validity,
-                sizes,
             });
         }
 
@@ -402,23 +352,19 @@ impl NewBufferTraitThing for ByteBuffers {
     }
 
     fn len(&self) -> usize {
-        self.offsets.len() / std::mem::size_of::<i64>()
+        (self.offsets.buffer.len() / std::mem::size_of::<i64>()) - 1
     }
 
-    fn data(&mut self) -> &mut ArrowBufferMut {
+    fn data(&mut self) -> &mut QueryBuffer {
         &mut self.data
     }
 
-    fn offsets(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn offsets(&mut self) -> Option<&mut QueryBuffer> {
         Some(&mut self.offsets)
     }
 
-    fn validity(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn validity(&mut self) -> Option<&mut QueryBuffer> {
         self.validity.as_mut()
-    }
-
-    fn sizes(&mut self) -> &mut SizeInfo {
-        &mut self.sizes
     }
 
     fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
@@ -434,56 +380,57 @@ impl NewBufferTraitThing for ByteBuffers {
     }
 
     fn into_arrow(self: Box<Self>) -> IntoArrowResult {
-        // Make sure we add back the extra offsets element that arrow expects
-        // which TileDB doesn't use.
-        assert!(
-            self.offsets.len()
-                <= self.offsets.capacity() - std::mem::size_of::<i64>()
-        );
-
-        let mut offsets = self.offsets;
-        offsets.extend_from_slice(&[self.data.len() as i64]);
+        // NB: by default the offsets are not arrow-shaped.
+        // However we use the configuration options to make them so.
 
         let dtype = self.dtype;
-        let data = ArrowBuffer::from(self.data);
-        let offsets = ArrowBuffer::from(offsets);
-        let validity = from_tdb_validity(self.validity);
-        let sizes = self.sizes;
+        let data = ArrowBuffer::from(self.data.buffer);
+        let offsets = ArrowBuffer::from(self.offsets.buffer);
+        let validity = from_tdb_validity(&self.validity);
+
         // N.B., the calls to cloning the data/offsets/validity are as cheap
         // as an Arc::clone plus pointer and usize copy. They are *not* cloning
         // the underlying allocated data.
-        aa::ArrayData::try_new(
+        match aa::ArrayData::try_new(
             dtype.clone(),
-            *sizes.offsets as usize / std::mem::size_of::<i64>(),
+            (*self.offsets.size as usize / std::mem::size_of::<i64>()) - 1,
             validity.clone().map(|v| v.into_inner().into_inner()),
             0,
             vec![offsets.clone(), data.clone()],
             vec![],
         )
         .map(|data| aa::make_array(data))
-        .map_err(|e| {
-            // SAFETY: These unwraps are fine because the only other reference
-            // was consumed in the failed try_new call. Unless of course
-            // the ArrowError `e` ever ends up carrying a reference.
-            let boxed: Box<dyn NewBufferTraitThing> = Box::new(ByteBuffers {
-                dtype,
-                data: data.into_mutable().unwrap(),
-                offsets: offsets.into_mutable().unwrap(),
-                validity: to_tdb_validity(validity),
-                sizes,
-            });
+        {
+            Ok(arrow) => Ok(arrow),
+            Err(e) => {
+                // SAFETY: These unwraps are fine because the only other reference
+                // was consumed in the failed try_new call. Unless of course
+                // the ArrowError `e` ever ends up carrying a reference.
+                let boxed: Box<dyn NewBufferTraitThing> =
+                    Box::new(ByteBuffers {
+                        dtype,
+                        data: QueryBuffer {
+                            buffer: data.into_mutable().unwrap(),
+                            size: self.data.size,
+                        },
+                        offsets: QueryBuffer {
+                            buffer: offsets.into_mutable().unwrap(),
+                            size: self.offsets.size,
+                        },
+                        validity: self.validity,
+                    });
 
-            (boxed, Error::ArrayCreationFailed(e))
-        })
+                Err((boxed, Error::ArrayCreationFailed(e)))
+            }
+        }
     }
 }
 
 struct FixedListBuffers {
     field: Arc<adt::Field>,
     cell_val_num: CellValNum,
-    data: ArrowBufferMut,
-    validity: Option<ArrowBufferMut>,
-    sizes: SizeInfo,
+    data: QueryBuffer,
+    validity: Option<QueryBuffer>,
 }
 
 impl TryFrom<Arc<dyn aa::Array>> for FixedListBuffers {
@@ -517,17 +464,15 @@ impl TryFrom<Arc<dyn aa::Array>> for FixedListBuffers {
         }
 
         PrimitiveBuffers::try_from(array)
-            .map(|mut buffers| {
+            .map(|buffers| {
                 assert_eq!(buffers.dtype, dtype);
-                let validity = to_tdb_validity(nulls.clone());
-                *buffers.sizes.validity =
-                    validity.as_ref().map_or(0, |v| v.len()) as u64;
+                let validity =
+                    to_tdb_validity(nulls.clone()).map(QueryBuffer::new);
                 FixedListBuffers {
                     field: Arc::clone(&field),
                     cell_val_num: cvn,
                     data: buffers.data,
                     validity,
-                    sizes: buffers.sizes,
                 }
             })
             .map_err(|(array, e)| {
@@ -551,23 +496,19 @@ impl NewBufferTraitThing for FixedListBuffers {
     }
 
     fn len(&self) -> usize {
-        self.data.len() / u32::from(self.cell_val_num) as usize
+        self.data.buffer.len() / u32::from(self.cell_val_num) as usize
     }
 
-    fn data(&mut self) -> &mut ArrowBufferMut {
+    fn data(&mut self) -> &mut QueryBuffer {
         &mut self.data
     }
 
-    fn offsets(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn offsets(&mut self) -> Option<&mut QueryBuffer> {
         None
     }
 
-    fn validity(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn validity(&mut self) -> Option<&mut QueryBuffer> {
         self.validity.as_mut()
-    }
-
-    fn sizes(&mut self) -> &mut SizeInfo {
-        &mut self.sizes
     }
 
     fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
@@ -589,20 +530,19 @@ impl NewBufferTraitThing for FixedListBuffers {
     fn into_arrow(self: Box<Self>) -> IntoArrowResult {
         let field = self.field;
         let cell_val_num = self.cell_val_num;
-        let data = ArrowBuffer::from(self.data);
-        let validity = from_tdb_validity(self.validity);
-        let sizes = self.sizes;
+        let data = ArrowBuffer::from(self.data.buffer);
+        let validity = from_tdb_validity(&self.validity);
 
         assert!(field.data_type().is_primitive());
-        let num_values =
-            *sizes.data as usize / field.data_type().primitive_width().unwrap();
+        let num_values = *self.data.size as usize
+            / field.data_type().primitive_width().unwrap();
         let cvn = u32::from(cell_val_num) as i32;
         let len = num_values / cvn as usize;
 
         // N.B., data/validity clones are cheap. They are not cloning the
         // underlying data buffers. We have to clone so that we can put ourself
         // back together if the array conversion failes.
-        aa::ArrayData::try_new(
+        match aa::ArrayData::try_new(
             field.data_type().clone(),
             len,
             validity.clone().map(|v| v.into_inner().into_inner()),
@@ -619,28 +559,52 @@ impl NewBufferTraitThing for FixedListBuffers {
                     validity.clone(),
                 ));
             array
-        })
-        .map_err(|e| {
-            let boxed: Box<dyn NewBufferTraitThing> =
-                Box::new(FixedListBuffers {
-                    field,
-                    cell_val_num,
-                    data: data.into_mutable().unwrap(),
-                    validity: to_tdb_validity(validity),
-                    sizes,
-                });
+        }) {
+            Ok(arrow) => Ok(arrow),
+            Err(e) => {
+                let boxed: Box<dyn NewBufferTraitThing> =
+                    Box::new(FixedListBuffers {
+                        field,
+                        cell_val_num,
+                        data: QueryBuffer {
+                            buffer: data.into_mutable().unwrap(),
+                            size: self.data.size,
+                        },
+                        validity: self.validity,
+                    });
 
-            (boxed, Error::ArrayCreationFailed(e))
-        })
+                Err((boxed, Error::ArrayCreationFailed(e)))
+            }
+        }
+    }
+}
+
+struct QueryBuffer {
+    buffer: ArrowBufferMut,
+    size: Pin<Box<u64>>,
+}
+
+impl QueryBuffer {
+    pub fn new(buffer: ArrowBufferMut) -> Self {
+        let size = Box::pin(buffer.len() as u64);
+        Self { buffer, size }
+    }
+
+    pub fn reset(&mut self) {
+        *self.size = self.buffer.capacity() as u64;
+        self.resize()
+    }
+
+    pub fn resize(&mut self) {
+        self.buffer.resize(*self.size as usize, 0);
     }
 }
 
 struct ListBuffers {
     field: Arc<adt::Field>,
-    data: ArrowBufferMut,
-    offsets: ArrowBufferMut,
-    validity: Option<ArrowBufferMut>,
-    sizes: SizeInfo,
+    data: QueryBuffer,
+    offsets: QueryBuffer,
+    validity: Option<QueryBuffer>,
 }
 
 impl TryFrom<Arc<dyn aa::Array>> for ListBuffers {
@@ -680,49 +644,40 @@ impl TryFrom<Arc<dyn aa::Array>> for ListBuffers {
             return Err((array, err));
         }
 
-        let mut data = result.ok().unwrap();
+        let data = result.ok().unwrap();
 
-        let result = offsets.into_inner().into_inner().into_mutable();
-        if result.is_err() {
-            let offsets_buffer = result.err().unwrap();
-            let offsets = abuf::OffsetBuffer::new(
-                abuf::ScalarBuffer::<i64>::from(offsets_buffer),
-            );
-            let array: Arc<dyn aa::Array> = Arc::new(
-                aa::LargeListArray::try_new(
-                    Arc::clone(&field),
-                    offsets,
-                    // Safety: We just turned this into a mutable buffer, so
-                    // the inversion should never fail.
-                    Box::new(data).into_arrow().ok().unwrap(),
-                    nulls.clone(),
-                )
-                .unwrap(),
-            );
-            return Err((array, Error::ArrayInUse));
-        }
+        let offsets = match offsets.into_inner().into_inner().into_mutable() {
+            Ok(offsets) => offsets,
+            Err(e) => {
+                let offsets_buffer = e;
+                let offsets = abuf::OffsetBuffer::new(
+                    abuf::ScalarBuffer::<i64>::from(offsets_buffer),
+                );
+                let array: Arc<dyn aa::Array> = Arc::new(
+                    aa::LargeListArray::try_new(
+                        Arc::clone(&field),
+                        offsets,
+                        // Safety: We just turned this into a mutable buffer, so
+                        // the inversion should never fail.
+                        Box::new(data).into_arrow().ok().unwrap(),
+                        nulls.clone(),
+                    )
+                    .unwrap(),
+                );
+                return Err((array, Error::ArrayInUse));
+            }
+        };
 
-        // Safety: We already yeeted an error on non-primitive types.
-        let width = dtype.primitive_width().unwrap() as i64;
-        let mut offsets = result.ok().unwrap();
+        // NB: by default the offsets are not arrow-shaped.
+        // However we use the configuration options to make them so.
 
-        // TileDB works in offsets of bytes, so we re-map all of our arrow
-        // offsets here.
-        for elem in offsets.typed_data_mut::<i64>() {
-            *elem = *elem * width;
-        }
-
-        let validity = to_tdb_validity(nulls);
-        *data.sizes.offsets =
-            (offsets.len() - std::mem::size_of::<i64>()) as u64;
-        *data.sizes.validity = validity.as_ref().map_or(0, |v| v.len()) as u64;
+        let validity = to_tdb_validity(nulls).map(QueryBuffer::new);
 
         Ok(ListBuffers {
             field,
             data: data.data,
-            offsets,
+            offsets: QueryBuffer::new(offsets),
             validity,
-            sizes: data.sizes,
         })
     }
 }
@@ -733,23 +688,19 @@ impl NewBufferTraitThing for ListBuffers {
     }
 
     fn len(&self) -> usize {
-        self.offsets.len() / std::mem::size_of::<i64>()
+        (self.offsets.buffer.len() / std::mem::size_of::<i64>()) - 1
     }
 
-    fn data(&mut self) -> &mut ArrowBufferMut {
+    fn data(&mut self) -> &mut QueryBuffer {
         &mut self.data
     }
 
-    fn offsets(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn offsets(&mut self) -> Option<&mut QueryBuffer> {
         Some(&mut self.offsets)
     }
 
-    fn validity(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn validity(&mut self) -> Option<&mut QueryBuffer> {
         self.validity.as_mut()
-    }
-
-    fn sizes(&mut self) -> &mut SizeInfo {
-        &mut self.sizes
     }
 
     fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
@@ -768,35 +719,20 @@ impl NewBufferTraitThing for ListBuffers {
         let field = self.field;
 
         assert!(field.data_type().is_primitive());
-        let width = field.data_type().primitive_width().unwrap() as i64;
 
-        // Update the last offset to be the total number of bytes written
-        let mut offsets = self.offsets;
-        assert!(
-            offsets.len() <= offsets.capacity() - std::mem::size_of::<i64>()
-        );
-        offsets.extend_from_slice(&[self.data.len() as i64]);
+        // NB: by default the offsets are not arrow-shaped.
+        // However we use the configuration options to make them so.
 
-        // Arrow does offsets in terms of elements, not bytes. Here we rewrite
-        // that by dividing all offsets by the width of the primitive type in
-        // the data buffer.
-        let offset_slice = offsets.typed_data_mut::<i64>();
-        for elem in offset_slice {
-            assert!(*elem % width == 0);
-            *elem = *elem / width;
-        }
-
-        let data = ArrowBuffer::from(self.data);
-        let offsets = from_tdb_offsets(offsets);
-        let validity = from_tdb_validity(self.validity);
-        let sizes = self.sizes;
+        let data = ArrowBuffer::from(self.data.buffer);
+        let offsets = from_tdb_offsets(self.offsets.buffer);
+        let validity = from_tdb_validity(&self.validity);
 
         // N.B., the calls to cloning the data/offsets/validity are as cheap
         // as an Arc::clone plus pointer and usize copy. They are *not* cloning
         // the underlying allocated data.
-        aa::ArrayData::try_new(
+        match aa::ArrayData::try_new(
             field.data_type().clone(),
-            *sizes.offsets as usize / std::mem::size_of::<i64>(),
+            (*self.offsets.size as usize / std::mem::size_of::<i64>()) - 1,
             None,
             0,
             vec![data.clone().into()],
@@ -813,26 +749,33 @@ impl NewBufferTraitThing for ListBuffers {
         .map(|array| {
             let array: Arc<dyn aa::Array> = Arc::new(array);
             array
-        })
-        .map_err(|e| {
-            let boxed: Box<dyn NewBufferTraitThing> = Box::new(ListBuffers {
-                field,
-                data: data.into_mutable().unwrap(),
-                offsets: to_tdb_offsets(offsets).unwrap(),
-                validity: to_tdb_validity(validity),
-                sizes,
-            });
+        }) {
+            Ok(arrow) => Ok(arrow),
+            Err(e) => {
+                let boxed: Box<dyn NewBufferTraitThing> =
+                    Box::new(ListBuffers {
+                        field,
+                        data: QueryBuffer {
+                            buffer: data.into_mutable().unwrap(),
+                            size: self.data.size,
+                        },
+                        offsets: QueryBuffer {
+                            buffer: to_tdb_offsets(offsets).unwrap(),
+                            size: self.offsets.size,
+                        },
+                        validity: self.validity,
+                    });
 
-            (boxed, Error::ArrayCreationFailed(e))
-        })
+                Err((boxed, Error::ArrayCreationFailed(e)))
+            }
+        }
     }
 }
 
 struct PrimitiveBuffers {
     dtype: adt::DataType,
-    data: ArrowBufferMut,
-    validity: Option<ArrowBufferMut>,
-    sizes: SizeInfo,
+    data: QueryBuffer,
+    validity: Option<QueryBuffer>,
 }
 
 macro_rules! to_primitive {
@@ -845,16 +788,12 @@ macro_rules! to_primitive {
             .into_inner()
             .into_mutable()
             .map(|data| {
-                let validity = to_tdb_validity(nulls.clone());
-                let mut sizes = SizeInfo::default();
-                *sizes.data = data.len() as u64;
-                *sizes.validity =
-                    validity.as_ref().map_or(0, |v| v.len()) as u64;
+                let validity =
+                    to_tdb_validity(nulls.clone()).map(QueryBuffer::new);
                 PrimitiveBuffers {
                     dtype: dtype.clone(),
-                    data,
+                    data: QueryBuffer::new(data),
                     validity,
-                    sizes,
                 }
             })
             .map_err(|buffer| {
@@ -903,23 +842,19 @@ impl NewBufferTraitThing for PrimitiveBuffers {
 
     fn len(&self) -> usize {
         assert!(self.dtype.is_primitive());
-        self.data.len() / self.dtype.primitive_width().unwrap()
+        self.data.buffer.len() / self.dtype.primitive_width().unwrap()
     }
 
-    fn data(&mut self) -> &mut ArrowBufferMut {
+    fn data(&mut self) -> &mut QueryBuffer {
         &mut self.data
     }
 
-    fn offsets(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn offsets(&mut self) -> Option<&mut QueryBuffer> {
         None
     }
 
-    fn validity(&mut self) -> Option<&mut ArrowBufferMut> {
+    fn validity(&mut self) -> Option<&mut QueryBuffer> {
         self.validity.as_mut()
-    }
-
-    fn sizes(&mut self) -> &mut SizeInfo {
-        &mut self.sizes
     }
 
     fn is_compatible(&self, other: &Box<dyn NewBufferTraitThing>) -> bool {
@@ -935,36 +870,39 @@ impl NewBufferTraitThing for PrimitiveBuffers {
     }
 
     fn into_arrow(self: Box<Self>) -> IntoArrowResult {
-        let dtype = self.dtype;
-        let data = ArrowBuffer::from(self.data);
-        let validity = from_tdb_validity(self.validity);
-        let sizes = self.sizes;
+        let data = ArrowBuffer::from(self.data.buffer);
+        let validity = from_tdb_validity(&self.validity);
 
-        assert!(dtype.is_primitive());
+        assert!(self.dtype.is_primitive());
 
         // N.B., data/validity clones are cheap. They are not cloning the
         // underlying data buffers. We have to clone so that we can put ourself
         // back together if the array conversion failes.
-        aa::ArrayData::try_new(
-            dtype.clone(),
-            *sizes.data as usize / dtype.primitive_width().unwrap(),
+        match aa::ArrayData::try_new(
+            self.dtype.clone(),
+            *self.data.size as usize / self.dtype.primitive_width().unwrap(),
             validity.clone().map(|v| v.into_inner().into_inner()),
             0,
             vec![data.clone()],
             vec![],
         )
         .map(aa::make_array)
-        .map_err(|e| {
-            let boxed: Box<dyn NewBufferTraitThing> =
-                Box::new(PrimitiveBuffers {
-                    dtype,
-                    data: data.into_mutable().unwrap(),
-                    validity: to_tdb_validity(validity),
-                    sizes,
-                });
+        {
+            Ok(arrow) => Ok(arrow),
+            Err(e) => {
+                let boxed: Box<dyn NewBufferTraitThing> =
+                    Box::new(PrimitiveBuffers {
+                        dtype: self.dtype,
+                        data: QueryBuffer {
+                            buffer: data.into_mutable().unwrap(),
+                            size: self.data.size,
+                        },
+                        validity: self.validity,
+                    });
 
-            (boxed, Error::ArrayCreationFailed(e))
-        })
+                Err((boxed, Error::ArrayCreationFailed(e)))
+            }
+        }
     }
 }
 
@@ -1635,11 +1573,12 @@ fn from_tdb_offsets(offsets: ArrowBufferMut) -> abuf::OffsetBuffer<i64> {
 }
 
 fn from_tdb_validity(
-    validity: Option<ArrowBufferMut>,
+    validity: &Option<QueryBuffer>,
 ) -> Option<abuf::NullBuffer> {
-    validity.map(|v| {
+    validity.as_ref().map(|v| {
         abuf::NullBuffer::from(
-            v.into_iter()
+            v.buffer
+                .iter()
                 .map(|f| if *f != 0 { true } else { false })
                 .collect::<Vec<_>>(),
         )
