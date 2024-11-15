@@ -199,7 +199,7 @@ fn write_array(ctx: &Context) -> TileDBResult<()> {
         Some(10),
     ]));
     let b_data = Arc::new(aa::LargeStringArray::from(vec![
-        "alice", "bob", "craig", "daeve", "erin", "frank", "grace", "heidi",
+        "alice", "bob", "craig", "dave", "erin", "frank", "grace", "heidi",
         "ivan", "judy",
     ]));
     let c_data =
