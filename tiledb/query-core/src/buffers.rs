@@ -1067,6 +1067,10 @@ impl BufferEntry {
         Ok(Arc::clone(array))
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn len(&self) -> usize {
         if self.entry.shared.is_some() {
             return self.entry.shared.as_ref().unwrap().len();
@@ -1176,6 +1180,10 @@ impl QueryBuffers {
             array.shrink_len()?;
         }
         Ok(())
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn len(&self) -> usize {

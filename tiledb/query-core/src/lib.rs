@@ -199,7 +199,7 @@ impl Query {
             )),
             QueryStatus::Failed => Err(self.context.expect_last_error().into()),
             QueryStatus::Incomplete => {
-                if self.buffers.iter().any(|(_, b)| b.len() > 0) {
+                if self.buffers.iter().any(|(_, b)| !b.is_empty()) {
                     Ok(QueryStatus::Incomplete)
                 } else {
                     Ok(QueryStatus::BuffersTooSmall)
