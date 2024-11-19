@@ -94,6 +94,12 @@ pub struct tiledb_query_condition_t {
 }
 
 #[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_query_field_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct tiledb_string_t {
     _unused: [u8; 0],

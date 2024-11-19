@@ -185,6 +185,14 @@ pub const tiledb_query_type_t_TILEDB_UPDATE: tiledb_query_type_t = 3;
 pub const tiledb_query_type_t_TILEDB_MODIFY_EXCLUSIVE: tiledb_query_type_t = 4;
 pub type tiledb_query_type_t = ::std::os::raw::c_uint;
 
+pub const tiledb_field_origin_t_TILEDB_ATTRIBUTE_FIELD: tiledb_field_origin_t =
+    0;
+pub const tiledb_field_origin_t_TILEDB_DIMENSION_FIELD: tiledb_field_origin_t =
+    1;
+pub const tiledb_field_origin_t_TILEDB_AGGREGATE_FIELD: tiledb_field_origin_t =
+    2;
+pub type tiledb_field_origin_t = ::std::os::raw::c_uint;
+
 pub const tiledb_vfs_mode_t_TILEDB_VFS_READ: tiledb_vfs_mode_t = 0;
 pub const tiledb_vfs_mode_t_TILEDB_VFS_WRITE: tiledb_vfs_mode_t = 1;
 pub const tiledb_vfs_mode_t_TILEDB_VFS_APPEND: tiledb_vfs_mode_t = 2;
