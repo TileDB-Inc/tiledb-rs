@@ -1,7 +1,13 @@
 use std::ops::Deref;
+use std::str::Utf8Error;
 
-use crate::error::Error;
-use crate::Result as TileDBResult;
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Internal error reading string view from libtiledb")]
+    Internal,
+    #[error("String is not UTF-8")]
+    NonUtf8(Vec<u8>, Utf8Error),
+}
 
 pub(crate) enum RawTDBString {
     Owned(*mut ffi::tiledb_string_t),
@@ -33,7 +39,7 @@ impl TDBString {
         Self { raw }
     }
 
-    pub fn to_string(&self) -> TileDBResult<String> {
+    pub fn to_string(&self) -> Result<String, Error> {
         let mut c_str = out_ptr!();
         let mut c_len: usize = 0;
 
@@ -45,17 +51,12 @@ impl TDBString {
             let raw_slice: &[u8] = unsafe {
                 std::slice::from_raw_parts(c_str as *const u8, c_len)
             };
-            let c_str = std::str::from_utf8(raw_slice).map_err(|e| {
-                Error::LibTileDB(format!(
-                    "TileDB returned a string that is not UTF-8: {}",
-                    e
-                ))
-            })?;
-            Ok(c_str.to_owned())
+            match std::str::from_utf8(raw_slice) {
+                Ok(s) => Ok(s.to_owned()),
+                Err(e) => Err(Error::NonUtf8(raw_slice.to_vec(), e)),
+            }
         } else {
-            Err(Error::Internal(
-                "Error getting string view from core.".to_owned(),
-            ))
+            Err(Error::Internal)
         }
     }
 }

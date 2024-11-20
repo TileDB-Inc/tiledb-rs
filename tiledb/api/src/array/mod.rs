@@ -8,7 +8,9 @@ use anyhow::anyhow;
 
 use crate::array::enumeration::RawEnumeration;
 use crate::array::schema::RawSchema;
-use crate::context::{CApiInterface, Context, ContextBound};
+use crate::context::{
+    CApiInterface, CApiResult, Context, ContextBound, ObjectType,
+};
 use crate::datatype::PhysicalType;
 use crate::error::{DatatypeError, Error};
 use crate::key::LookupKey;
@@ -86,7 +88,9 @@ impl FromStr for Encryption {
             )
         };
         if c_ret == ffi::TILEDB_OK {
-            Self::try_from(c_encryption)
+            // SAFETY: libtiledb returned TILEDB_OK, hence c_ret must be valid
+            let encryption_type = Self::try_from(c_encryption).unwrap();
+            Ok(encryption_type)
         } else {
             Err(Error::InvalidArgument(anyhow!(format!(
                 "Invalid encryption type: {}",
@@ -110,9 +114,11 @@ impl From<Encryption> for ffi::tiledb_encryption_type_t {
 }
 
 impl TryFrom<ffi::tiledb_encryption_type_t> for Encryption {
-    type Error = crate::error::Error;
+    type Error = ffi::tiledb_encryption_type_t;
 
-    fn try_from(value: ffi::tiledb_encryption_type_t) -> TileDBResult<Self> {
+    fn try_from(
+        value: ffi::tiledb_encryption_type_t,
+    ) -> Result<Self, Self::Error> {
         match value {
             ffi::tiledb_encryption_type_t_TILEDB_NO_ENCRYPTION => {
                 Ok(Self::Unencrypted)
@@ -120,10 +126,7 @@ impl TryFrom<ffi::tiledb_encryption_type_t> for Encryption {
             ffi::tiledb_encryption_type_t_TILEDB_AES_256_GCM => {
                 Ok(Self::Aes256Gcm)
             }
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid encryption type: {}",
-                value
-            ))),
+            _ => Err(value),
         }
     }
 }
@@ -187,14 +190,13 @@ impl Array {
         Ok(())
     }
 
-    pub fn exists<S>(context: &Context, uri: S) -> TileDBResult<bool>
+    pub fn exists<S>(context: &Context, uri: S) -> CApiResult<bool>
     where
         S: AsRef<str>,
     {
-        Ok(matches!(
-            context.object_type(uri)?,
-            Some(crate::context::ObjectType::Array)
-        ))
+        context
+            .object_type(uri)
+            .map(|object_type| matches!(object_type, Some(ObjectType::Array)))
     }
 
     /// Returns the manner in which the array located at `uri` is encrypted.
@@ -213,7 +215,9 @@ impl Array {
             )
         })?;
 
-        Encryption::try_from(c_encryption_type)
+        // SAFETY: libtiledb returned TILEDB_OK hence c_encryption_type is valid
+        let encryption_type = Encryption::try_from(c_encryption_type).unwrap();
+        Ok(encryption_type)
     }
 
     /// Opens the array located at `uri` for queries of type `mode` using default configurations.
@@ -416,7 +420,8 @@ impl Array {
                 c_array_uri.as_ptr(),
                 unwrap_config_to_ptr(config),
             )
-        })
+        })?;
+        Ok(())
     }
 
     /// Upgrades an array to the latest format version.
@@ -435,7 +440,8 @@ impl Array {
                 c_array_uri.as_ptr(),
                 unwrap_config_to_ptr(config),
             )
-        })
+        })?;
+        Ok(())
     }
 
     /// Depending on the consolidation mode in the config, consolidates either the fragment files,
@@ -455,7 +461,8 @@ impl Array {
                 c_array_uri.as_ptr(),
                 unwrap_config_to_ptr(config),
             )
-        })
+        })?;
+        Ok(())
     }
 
     /// Consolidates the given fragment URIs into a single fragment.
@@ -488,7 +495,8 @@ impl Array {
                 fragment_names_ptr.len() as u64,
                 unwrap_config_to_ptr(config),
             )
-        })
+        })?;
+        Ok(())
     }
 
     /// Removes the array located at [array_uri].
@@ -503,7 +511,8 @@ impl Array {
 
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_array_delete(ctx, c_array_uri.as_ptr())
-        })
+        })?;
+        Ok(())
     }
 
     // Implements `dimension_nonempty_domain` for dimensions with CellValNum::Fixed

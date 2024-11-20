@@ -701,8 +701,8 @@ impl Builder {
         let c_schema = *self.schema.raw;
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_array_schema_check(ctx, c_schema)
-        })
-        .map(|_| self.schema)
+        })?;
+        Ok(self.schema)
     }
 }
 
@@ -736,6 +736,7 @@ mod tests {
     use crate::array::{
         AttributeBuilder, DimensionBuilder, DimensionConstraints, DomainBuilder,
     };
+    use crate::context::CApiError;
     use crate::filter::{
         CompressionData, CompressionType, FilterData, FilterListBuilder,
     };
@@ -1553,7 +1554,7 @@ mod tests {
             datatype,
         );
         assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
-        if let Err(Error::LibTileDB(s)) = r {
+        if let Err(Error::LibTileDB(CApiError::Error(s))) = r {
             assert!(
                 s.contains("not a valid Dimension Datatype")
                     || s.contains("do not support dimension datatype"),
@@ -1581,7 +1582,7 @@ mod tests {
             datatype,
         );
         assert_eq!(allowed, r.is_ok(), "try_construct => {:?}", r.err());
-        if let Err(Error::LibTileDB(s)) = r {
+        if let Err(Error::LibTileDB(CApiError::Error(s))) = r {
             assert!(
                 s.contains("not a valid Dimension Datatype")
                     || s.contains("do not support dimension datatype"),

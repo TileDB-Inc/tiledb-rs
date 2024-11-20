@@ -208,11 +208,12 @@ impl Attribute {
             return Ok(None);
         }
 
-        TDBString {
-            raw: RawTDBString::Owned(c_str),
-        }
-        .to_string()
-        .map(Some)
+        Ok(Some(
+            TDBString {
+                raw: RawTDBString::Owned(c_str),
+            }
+            .to_string()?,
+        ))
     }
 }
 

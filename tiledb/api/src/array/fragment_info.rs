@@ -192,7 +192,7 @@ impl FragmentInfoInternal {
         })?;
 
         let str = TDBString::from_raw(RawTDBString::Owned(c_str));
-        str.to_string()
+        Ok(str.to_string()?)
     }
 
     pub fn fragment_uri(&self, frag_idx: u32) -> TileDBResult<String> {

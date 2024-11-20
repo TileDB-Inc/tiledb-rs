@@ -1,17 +1,17 @@
 use std::ops::Deref;
 
 use crate::config::{Config, RawConfig};
+use crate::context::{CApiError, Context};
 use crate::context::{CApiInterface, ContextBound, ObjectType};
 use crate::error::Error;
 use crate::key::LookupKey;
 use crate::metadata;
-use crate::{Context, Datatype};
-
-extern crate tiledb_sys as ffi;
-use crate::string::{RawTDBString, TDBString};
-use crate::Result as TileDBResult;
-pub type QueryType = crate::array::Mode;
 use crate::metadata::Metadata;
+use crate::string::{RawTDBString, TDBString};
+use crate::Datatype;
+use crate::Result as TileDBResult;
+
+pub type QueryType = crate::array::Mode;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct GroupInfo {
@@ -73,7 +73,8 @@ impl Group {
         let c_name = cstring!(name.as_ref());
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_group_create(ctx, c_name.as_ptr())
-        })
+        })?;
+        Ok(())
     }
 
     pub fn open<S>(
@@ -112,10 +113,10 @@ impl Group {
         })?;
 
         if c_open < 0 {
-            return Err(Error::LibTileDB(
+            return Err(Error::LibTileDB(CApiError::Error(
                 "tiledb_group_open call does not successfully open group."
                     .to_string(),
-            ));
+            )));
         }
 
         Ok(Self::new(context, raw_group))
