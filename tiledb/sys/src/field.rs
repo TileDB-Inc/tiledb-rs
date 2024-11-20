@@ -29,6 +29,12 @@ extern "C" {
         cell_val_num: *mut u32,
     ) -> capi_return_t;
 
+    pub fn tiledb_field_get_nullable(
+        ctx: *mut tiledb_ctx_t,
+        field: *mut tiledb_query_field_t,
+        nullable: *mut u8,
+    ) -> capi_return_t;
+
     pub fn tiledb_field_origin(
         ctx: *mut tiledb_ctx_t,
         field: *mut tiledb_query_field_t,
