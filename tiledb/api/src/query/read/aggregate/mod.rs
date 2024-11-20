@@ -144,12 +144,22 @@ impl Display for AggregateFunction {
 }
 
 /// Encapsulates data needed to run an aggregate function in the C API.
+#[cfg(feature = "raw")]
+#[derive(Debug)]
+pub struct AggregateFunctionHandle {
+    function: AggregateFunction,
+    // NB: C API uses this memory location to store the attribute name if any
+    agg_name: CString,
+    field_name: Option<CString>,
+}
+
+#[cfg(not(feature = "raw"))]
 #[derive(Debug)]
 struct AggregateFunctionHandle {
-    pub function: AggregateFunction,
+    function: AggregateFunction,
     // NB: C API uses this memory location to store the attribute name if any
-    pub agg_name: CString,
-    pub field_name: Option<CString>,
+    agg_name: CString,
+    field_name: Option<CString>,
 }
 
 impl AggregateFunctionHandle {
@@ -165,6 +175,115 @@ impl AggregateFunctionHandle {
             function,
             agg_name,
             field_name,
+        })
+    }
+
+    pub fn aggregate(&self) -> &AggregateFunction {
+        &self.function
+    }
+
+    pub fn aggregate_name(&self) -> &std::ffi::CStr {
+        &self.agg_name
+    }
+
+    pub fn field_name(&self) -> Option<&std::ffi::CStr> {
+        self.field_name.as_ref().map(|c| c.deref())
+    }
+}
+
+impl AggregateFunctionHandle {
+    pub fn apply_to_raw_query(
+        &self,
+        context: &Context,
+        c_query: *mut ffi::tiledb_query_t,
+    ) -> TileDBResult<()> {
+        let mut c_channel: *mut tiledb_query_channel_t = out_ptr!();
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_default_channel(ctx, c_query, &mut c_channel)
+        })?;
+
+        // C API functionality
+        let mut c_agg_operator: *const tiledb_channel_operator_t = out_ptr!();
+        let mut c_agg_operation: *mut tiledb_channel_operation_t = out_ptr!();
+        let c_agg_name = self.agg_name.as_c_str().as_ptr();
+
+        // The if statement and match statement are in different arms because of the agg_operation
+        // variable takes in different types in the respective functions.
+        if self.function == AggregateFunction::Count {
+            context.capi_call(|ctx| unsafe {
+                ffi::tiledb_aggregate_count_get(
+                    ctx,
+                    core::ptr::addr_of_mut!(c_agg_operation)
+                        as *mut *const tiledb_channel_operation_t,
+                )
+            })?;
+        } else {
+            let c_field_name =
+                self.field_name.as_ref().unwrap().as_c_str().as_ptr();
+            match self.function {
+                AggregateFunction::Count => unreachable!(
+                    "AggregateFunction::Count handled in above case, found {:?}",
+                    self.function
+                ),
+                AggregateFunction::NullCount(_) => {
+                    context.capi_call(|ctx| unsafe {
+                        ffi::tiledb_channel_operator_null_count_get(
+                            ctx,
+                            &mut c_agg_operator,
+                        )
+                    })?;
+                }
+                AggregateFunction::Sum(_) => {
+                    context.capi_call(|ctx| unsafe {
+                        ffi::tiledb_channel_operator_sum_get(
+                            ctx,
+                            &mut c_agg_operator,
+                        )
+                    })?;
+                }
+                AggregateFunction::Max(_) => {
+                    context.capi_call(|ctx| unsafe {
+                        ffi::tiledb_channel_operator_max_get(
+                            ctx,
+                            &mut c_agg_operator,
+                        )
+                    })?;
+                }
+                AggregateFunction::Min(_) => {
+                    context.capi_call(|ctx| unsafe {
+                        ffi::tiledb_channel_operator_min_get(
+                            ctx,
+                            &mut c_agg_operator,
+                        )
+                    })?;
+                }
+                AggregateFunction::Mean(_) => {
+                    context.capi_call(|ctx| unsafe {
+                        ffi::tiledb_channel_operator_mean_get(
+                            ctx,
+                            &mut c_agg_operator,
+                        )
+                    })?;
+                }
+            };
+            context.capi_call(|ctx| unsafe {
+                ffi::tiledb_create_unary_aggregate(
+                    ctx,
+                    c_query,
+                    c_agg_operator,
+                    c_field_name,
+                    &mut c_agg_operation,
+                )
+            })?;
+        }
+
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_channel_apply_aggregate(
+                ctx,
+                c_channel,
+                c_agg_name,
+                c_agg_operation,
+            )
         })
     }
 }
@@ -328,94 +447,7 @@ pub trait AggregateQueryBuilder: QueryBuilder {
         let context = self.base().context();
         let c_query = **self.base().cquery();
 
-        let mut c_channel: *mut tiledb_query_channel_t = out_ptr!();
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_query_get_default_channel(ctx, c_query, &mut c_channel)
-        })?;
-
-        // C API functionality
-        let mut c_agg_operator: *const tiledb_channel_operator_t = out_ptr!();
-        let mut c_agg_operation: *mut tiledb_channel_operation_t = out_ptr!();
-        let c_agg_name = handle.agg_name.as_c_str().as_ptr();
-
-        // The if statement and match statement are in different arms because of the agg_operation
-        // variable takes in different types in the respective functions.
-        if handle.function == AggregateFunction::Count {
-            context.capi_call(|ctx| unsafe {
-                ffi::tiledb_aggregate_count_get(
-                    ctx,
-                    core::ptr::addr_of_mut!(c_agg_operation)
-                        as *mut *const tiledb_channel_operation_t,
-                )
-            })?;
-        } else {
-            let c_field_name =
-                handle.field_name.as_ref().unwrap().as_c_str().as_ptr();
-            match handle.function {
-                AggregateFunction::Count => unreachable!(
-                    "AggregateFunction::Count handled in above case, found {:?}",
-                    handle.function
-                ),
-                AggregateFunction::NullCount(_) => {
-                    context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_null_count_get(
-                            ctx,
-                            &mut c_agg_operator,
-                        )
-                    })?;
-                }
-                AggregateFunction::Sum(_) => {
-                    context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_sum_get(
-                            ctx,
-                            &mut c_agg_operator,
-                        )
-                    })?;
-                }
-                AggregateFunction::Max(_) => {
-                    context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_max_get(
-                            ctx,
-                            &mut c_agg_operator,
-                        )
-                    })?;
-                }
-                AggregateFunction::Min(_) => {
-                    context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_min_get(
-                            ctx,
-                            &mut c_agg_operator,
-                        )
-                    })?;
-                }
-                AggregateFunction::Mean(_) => {
-                    context.capi_call(|ctx| unsafe {
-                        ffi::tiledb_channel_operator_mean_get(
-                            ctx,
-                            &mut c_agg_operator,
-                        )
-                    })?;
-                }
-            };
-            context.capi_call(|ctx| unsafe {
-                ffi::tiledb_create_unary_aggregate(
-                    ctx,
-                    c_query,
-                    c_agg_operator,
-                    c_field_name,
-                    &mut c_agg_operation,
-                )
-            })?;
-        }
-
-        context.capi_call(|ctx| unsafe {
-            ffi::tiledb_channel_apply_aggregate(
-                ctx,
-                c_channel,
-                c_agg_name,
-                c_agg_operation,
-            )
-        })?;
+        handle.apply_to_raw_query(&context, c_query)?;
 
         Ok(AggregateBuilder::<T, Self> {
             base: self,
