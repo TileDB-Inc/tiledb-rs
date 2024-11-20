@@ -1,7 +1,6 @@
 extern crate tiledb_sys as ffi;
 
-use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
-use std::ops::Deref;
+use std::fmt::Debug;
 
 #[cfg(feature = "serde")]
 use serde::{Serialize, Serializer};
@@ -9,40 +8,6 @@ use serde::{Serialize, Serializer};
 use tiledb_common::array::CellValNum;
 
 pub use tiledb_common::datatype::Error as DatatypeError;
-
-pub(crate) enum RawError {
-    Owned(*mut ffi::tiledb_error_t),
-}
-
-impl Deref for RawError {
-    type Target = *mut ffi::tiledb_error_t;
-    fn deref(&self) -> &Self::Target {
-        let RawError::Owned(ref ffi) = *self;
-        ffi
-    }
-}
-
-impl Drop for RawError {
-    fn drop(&mut self) {
-        let RawError::Owned(ref mut ffi) = *self;
-        unsafe { ffi::tiledb_error_free(ffi) }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum ObjectTypeErrorKind {
-    InvalidDiscriminant(u64),
-}
-
-impl Display for ObjectTypeErrorKind {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            ObjectTypeErrorKind::InvalidDiscriminant(value) => {
-                write!(f, "Invalid object type: {}", value)
-            }
-        }
-    }
-}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -53,9 +18,16 @@ pub enum Error {
     /// Error locking the context mutex.
     #[error("Error locking context: {0}")]
     LockError(#[source] anyhow::Error),
+    #[error("Error creating libtiledb context: {0}")]
+    CreateContext(#[from] crate::context::CreateContextError),
     /// Error received from the libtiledb backend
     #[error("libtiledb error: {0}")]
-    LibTileDB(String),
+    LibTileDB(#[from] crate::context::CApiError),
+    /// Error retrieving a string from libtiledb
+    #[error("libtiledb string error: {0}")]
+    LibTileDBString(#[from] crate::string::Error),
+    #[error("libtiledb stats error: {0}")]
+    StatsError(#[from] crate::stats::Error),
     /// Error when a function has an invalid argument
     #[error("Invalid argument: {0}")]
     InvalidArgument(#[source] anyhow::Error),
@@ -67,7 +39,7 @@ pub enum Error {
     Datatype(#[from] DatatypeError),
     /// Error with ObjectType handling
     #[error("Object type error: {0}")]
-    ObjectType(ObjectTypeErrorKind),
+    ObjectType(#[from] crate::context::ObjectTypeError),
     #[error("Datatype interface error: {0}")]
     DatatypeFFIError(#[from] tiledb_common::datatype::TryFromFFIError),
     /// Error with Mode handling
@@ -123,25 +95,6 @@ pub enum Error {
     /// Any error which cannot be categorized as any of the above
     #[error("{0}")]
     Other(String),
-}
-
-impl From<RawError> for Error {
-    fn from(e: RawError) -> Self {
-        let mut c_msg: *const std::os::raw::c_char = out_ptr!();
-        let c_ret = unsafe {
-            ffi::tiledb_error_message(
-                *e,
-                &mut c_msg as *mut *const std::os::raw::c_char,
-            )
-        };
-        let message = if c_ret == ffi::TILEDB_OK && !c_msg.is_null() {
-            let c_message = unsafe { std::ffi::CStr::from_ptr(c_msg) };
-            String::from(c_message.to_string_lossy())
-        } else {
-            String::from("Failed to retrieve an error message from TileDB.")
-        };
-        Error::LibTileDB(message)
-    }
 }
 
 #[cfg(feature = "serde")]

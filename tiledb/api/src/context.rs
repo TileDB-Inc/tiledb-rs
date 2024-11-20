@@ -1,37 +1,71 @@
 use std::convert::From;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::ops::Deref;
 use std::rc::Rc;
 
 use crate::config::{Config, RawConfig};
-use crate::error::{Error, ObjectTypeErrorKind, RawError};
 use crate::filesystem::Filesystem;
 use crate::stats::RawStatsString;
 use crate::Result as TileDBResult;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ObjectType {
-    Array,
-    Group,
+#[derive(Debug, thiserror::Error)]
+pub enum CreateContextError {
+    #[error("Error configuring context: {0}")]
+    Config(CApiError),
+    #[error("Internal error: out of memory")]
+    OutOfMemory,
+    #[error("Internal error: unknown")]
+    Fatal,
+    #[error("Internal error: invalid return from libtiledb when allocating context: {0}")]
+    InternalInvalidReturnValue(i64),
 }
 
-impl ObjectType {
-    pub(crate) fn from_capi(
-        value: ffi::tiledb_object_t,
-    ) -> TileDBResult<Option<ObjectType>> {
-        match value {
-            ffi::tiledb_object_t_TILEDB_INVALID => Ok(None),
-            ffi::tiledb_object_t_TILEDB_ARRAY => Ok(Some(ObjectType::Array)),
-            ffi::tiledb_object_t_TILEDB_GROUP => Ok(Some(ObjectType::Group)),
-            other => Err(crate::error::Error::ObjectType(
-                ObjectTypeErrorKind::InvalidDiscriminant(other as u64),
-            )),
-        }
+#[derive(Debug, thiserror::Error)]
+pub enum CApiError {
+    #[error("Invalid string argument to C API: {0}")]
+    InvalidCString(std::ffi::NulError),
+    #[error("Error returned from libtiledb: {0}")]
+    Error(String),
+    #[error("Internal error retrieving error message from libtiledb")]
+    Internal,
+}
+
+pub type CApiResult<T> = Result<T, CApiError>;
+
+pub(crate) enum RawError {
+    Owned(*mut ffi::tiledb_error_t),
+}
+
+impl Deref for RawError {
+    type Target = *mut ffi::tiledb_error_t;
+    fn deref(&self) -> &Self::Target {
+        let RawError::Owned(ref ffi) = *self;
+        ffi
     }
 }
 
-impl Display for ObjectType {
-    fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        <Self as Debug>::fmt(self, f)
+impl Drop for RawError {
+    fn drop(&mut self) {
+        let RawError::Owned(ref mut ffi) = *self;
+        unsafe { ffi::tiledb_error_free(ffi) }
+    }
+}
+
+impl From<RawError> for CApiError {
+    fn from(value: RawError) -> Self {
+        let mut c_msg: *const std::os::raw::c_char = out_ptr!();
+        let c_ret = unsafe {
+            ffi::tiledb_error_message(
+                *value,
+                &mut c_msg as *mut *const std::os::raw::c_char,
+            )
+        };
+        if c_ret == ffi::TILEDB_OK && !c_msg.is_null() {
+            let c_message = unsafe { std::ffi::CStr::from_ptr(c_msg) };
+            Self::Error(c_message.to_string_lossy().into_owned())
+        } else {
+            Self::Internal
+        }
     }
 }
 
@@ -56,7 +90,7 @@ pub trait CApiInterface {
     // forces folks to avoid putting anything that can error into the callback.
     // This will hopefully lead to our collective decision to do as minimal
     // work as possible in unsafe blocks.
-    fn capi_call<Callable>(&self, action: Callable) -> TileDBResult<()>
+    fn capi_call<Callable>(&self, action: Callable) -> CApiResult<()>
     where
         Callable: FnOnce(*mut ffi::tiledb_ctx_t) -> i32;
 }
@@ -65,7 +99,7 @@ impl<T> CApiInterface for T
 where
     T: ContextBound,
 {
-    fn capi_call<Callable>(&self, action: Callable) -> TileDBResult<()>
+    fn capi_call<Callable>(&self, action: Callable) -> CApiResult<()>
     where
         Callable: FnOnce(*mut ffi::tiledb_ctx_t) -> i32,
     {
@@ -79,31 +113,37 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new() -> TileDBResult<Context> {
-        let cfg = Config::new()?;
+    pub fn new() -> Result<Context, CreateContextError> {
+        let cfg = Config::new().map_err(CreateContextError::Config)?;
         Context::from_config(&cfg)
     }
 
-    pub fn from_config(cfg: &Config) -> TileDBResult<Context> {
+    pub fn from_config(cfg: &Config) -> Result<Context, CreateContextError> {
         let mut c_ctx: *mut ffi::tiledb_ctx_t = out_ptr!();
         let res = unsafe { ffi::tiledb_ctx_alloc(cfg.capi(), &mut c_ctx) };
-        if res == ffi::TILEDB_OK {
-            Ok(Context {
+        match res {
+            ffi::TILEDB_OK => Ok(Context {
                 raw: Rc::new(RawContext { raw: c_ctx }),
-            })
-        } else {
-            Err(Error::LibTileDB(String::from("Could not create context")))
+            }),
+            ffi::TILEDB_OOM => Err(CreateContextError::OutOfMemory),
+            ffi::TILEDB_ERR => Err(CreateContextError::Fatal),
+            _ => {
+                Err(CreateContextError::InternalInvalidReturnValue(res as i64))
+            }
         }
     }
 
-    pub fn capi_call<Callable>(&self, action: Callable) -> TileDBResult<()>
+    pub fn capi_call<Callable>(&self, action: Callable) -> CApiResult<()>
     where
         Callable: FnOnce(*mut ffi::tiledb_ctx_t) -> i32,
     {
-        if action(self.raw.raw) == ffi::TILEDB_OK {
+        let c_ret = action(self.raw.raw);
+        if c_ret == ffi::TILEDB_OK {
             Ok(())
+        } else if let Some(e) = self.get_last_error() {
+            Err(e)
         } else {
-            Err(self.expect_last_error())
+            panic!("libtiledb context did not have error for error return value: {}", c_ret)
         }
     }
 
@@ -133,24 +173,17 @@ impl Context {
         })
     }
 
-    pub fn get_last_error(&self) -> Option<Error> {
+    pub fn get_last_error(&self) -> Option<CApiError> {
         let mut c_err: *mut ffi::tiledb_error_t = out_ptr!();
         let res = self.capi_call(|ctx| unsafe {
             ffi::tiledb_ctx_get_last_error(ctx, &mut c_err)
         });
 
         if res.is_ok() && !c_err.is_null() {
-            Some(Error::from(RawError::Owned(c_err)))
+            Some(CApiError::from(RawError::Owned(c_err)))
         } else {
             None
         }
-    }
-
-    pub fn expect_last_error(&self) -> Error {
-        self.get_last_error()
-            .unwrap_or(Error::Internal(String::from(
-                "libtiledb: expected error data but found none",
-            )))
     }
 
     pub fn is_supported_fs(&self, fs: Filesystem) -> TileDBResult<bool> {
@@ -184,7 +217,7 @@ impl Context {
     /// # Errors
     ///
     /// This function performs I/O operations which may result in a return of `Err`.
-    pub fn object_type<S>(&self, uri: S) -> TileDBResult<Option<ObjectType>>
+    pub fn object_type<S>(&self, uri: S) -> CApiResult<Option<ObjectType>>
     where
         S: AsRef<str>,
     {
@@ -195,8 +228,41 @@ impl Context {
             ffi::tiledb_object_type(ctx, c_uri.as_ptr(), &mut c_objtype)
         })?;
 
-        ObjectType::from_capi(c_objtype)
+        // SAFETY: libtiledb only returns TILEDB_OK if it finds a valid tiledb_object_type_t
+        let object_type = ObjectType::from_capi(c_objtype).unwrap();
+        Ok(object_type)
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ObjectType {
+    Array,
+    Group,
+}
+
+impl ObjectType {
+    pub(crate) fn from_capi(
+        value: ffi::tiledb_object_t,
+    ) -> Result<Option<ObjectType>, ObjectTypeError> {
+        match value {
+            ffi::tiledb_object_t_TILEDB_INVALID => Ok(None),
+            ffi::tiledb_object_t_TILEDB_ARRAY => Ok(Some(ObjectType::Array)),
+            ffi::tiledb_object_t_TILEDB_GROUP => Ok(Some(ObjectType::Group)),
+            other => Err(ObjectTypeError::InvalidDiscriminant(other as u64)),
+        }
+    }
+}
+
+impl Display for ObjectType {
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        <Self as Debug>::fmt(self, f)
+    }
+}
+
+#[derive(Clone, Debug, thiserror::Error)]
+pub enum ObjectTypeError {
+    #[error("Invalid discriminant for {}: {0}", std::any::type_name::<ObjectType>())]
+    InvalidDiscriminant(u64),
 }
 
 #[cfg(test)]
