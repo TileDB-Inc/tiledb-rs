@@ -8,6 +8,7 @@ use crate::filesystem::Filesystem;
 use crate::stats::RawStatsString;
 use crate::Result as TileDBResult;
 
+/// An error which can occur when creating a new `Context`.
 #[derive(Debug, thiserror::Error)]
 pub enum CreateContextError {
     #[error("Error configuring context: {0}")]
@@ -20,6 +21,7 @@ pub enum CreateContextError {
     InternalInvalidReturnValue(i64),
 }
 
+/// An error which can occur when calling a `libtiledb` C API function.
 #[derive(Debug, thiserror::Error)]
 pub enum CApiError {
     #[error("Invalid string argument to C API: {0}")]
