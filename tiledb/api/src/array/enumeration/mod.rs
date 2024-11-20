@@ -57,10 +57,10 @@ impl Enumeration {
             ffi::tiledb_enumeration_get_name(ctx, c_enmr, &mut c_str)
         })?;
 
-        TDBString {
+        Ok(TDBString {
             raw: RawTDBString::Owned(c_str),
         }
-        .to_string()
+        .to_string()?)
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
