@@ -10,25 +10,27 @@ use arrow::buffer::{
 use arrow::datatypes as adt;
 use arrow::error::ArrowError;
 use thiserror::Error;
-use tiledb_api::array::schema::{Field, Schema};
+use tiledb_api::array::schema::Schema;
 use tiledb_api::error::Error as TileDBError;
+use tiledb_api::query::read::aggregate::AggregateFunctionHandle;
+use tiledb_api::ContextBound;
 use tiledb_common::array::CellValNum;
 
 use super::arrow::ToArrowConverter;
-use super::fields::{QueryField, QueryFields};
+use super::field::QueryField;
+use super::fields::{QueryField as RequestField, QueryFields};
+use super::RawQuery;
 
 const AVERAGE_STRING_LENGTH: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Provided Arrow Array is externally referenced.")]
-    ArrayInUse,
     #[error("Error converting to Arrow for field '{0}': {1}")]
     ArrowConversionError(String, super::arrow::Error),
     #[error("Failed to convert Arrow Array for field '{0}': {1}")]
     FailedConversionFromArrow(String, Box<Error>),
-    #[error("Failed to allocate Arrow array: {0}")]
-    ArrayCreationFailed(ArrowError),
+    #[error("Failed to add field '{0}' to query: {1}")]
+    Field(String, #[source] FieldError),
     #[error("Capacity {0} is to small to hold {1} bytes per cell.")]
     CapacityTooSmall(usize, usize),
     #[error("Failed to convert owned buffers into a list array: {0}")]
@@ -41,43 +43,75 @@ pub enum Error {
     InvalidBufferNoOffsets,
     #[error("Invalid buffer, no validity present.")]
     InvalidBufferNoValidity,
-    #[error("Invalid data type for bytes array: {0}")]
-    InvalidBytesType(adt::DataType),
-    #[error("Invalid fixed sized list length {0} is less than 2")]
-    InvalidFixedSizeListLength(i32),
-    #[error("TileDB does not support nullable list elements")]
-    InvalidNullableListElements,
-    #[error("Invalid data type for primitive data: {0}")]
-    InvalidPrimitiveType(adt::DataType),
-    #[error("Internal error: Converted primitive array is not scalar")]
-    InternalListTypeMismatch,
     #[error("Internal string type mismatch error")]
     InternalStringType,
     #[error("Error converting var sized buffers to arrow: {0}")]
     InvalidVarBuffers(ArrowError),
-    #[error("Only the large variant is supported: {0}")]
-    LargeVariantOnly(adt::DataType),
     #[error("Failed to convert internal list array: {0}")]
     ListSubarrayConversion(Box<Error>),
-    #[error("Provided array had external references to its offsets buffer.")]
-    OffsetsInUse,
     #[error("Internal TileDB Error: {0}")]
     TileDB(#[from] TileDBError),
     #[error("Unexpected var sized arrow type: {0}")]
     UnexpectedArrowVarType(adt::DataType),
     #[error("Mutable buffers are not shareable.")]
     UnshareableMutableBuffer,
-    #[error("Unsupported arrow array type: {0}")]
-    UnsupportedArrowType(adt::DataType),
-    #[error(
-        "TileDB only supports fixed size lists of primtiive types, not {0}"
-    )]
-    UnsupportedFixedSizeListType(adt::DataType),
-    #[error("TileDB does not support timezones")]
-    UnsupportedTimeZones,
 }
 
 type Result<T> = std::result::Result<T, Error>;
+
+/// An error that occurred when adding a field to the query.
+#[derive(Debug, Error)]
+pub enum FieldError {
+    #[error("Error reading query field: {0}")]
+    QueryField(#[from] crate::field::Error),
+    #[error("Type mismatch for requested field: {0}")]
+    TypeMismatch(crate::arrow::Error),
+    #[error("Failed to allocate buffer: {0}")]
+    BufferAllocation(ArrowError),
+    #[error("Unsupported arrow array: {0}")]
+    UnsupportedArrowArray(#[from] UnsupportedArrowArrayError),
+}
+
+type FieldResult<T> = std::result::Result<T, FieldError>;
+
+#[derive(Debug, Error)]
+pub enum UnsupportedArrowArrayError {
+    #[error("Unsupported arrow array type: {0}")]
+    UnsupportedArrowType(adt::DataType),
+    #[error("TileDB does not support nullable list elements")]
+    InvalidNullableListElements,
+    #[error("Invalid fixed sized list length {0} is less than 2")]
+    InvalidFixedSizeListLength(i32),
+    #[error(
+        "TileDB only supports fixed size lists of primitive types, not {0}"
+    )]
+    UnsupportedFixedSizeListType(adt::DataType),
+    #[error("Invalid data type for bytes array: {0}")]
+    InvalidBytesType(adt::DataType),
+    #[error("Invalid data type for primitive data: {0}")]
+    InvalidPrimitiveType(adt::DataType),
+    #[error("TileDB does not support timezones")]
+    UnsupportedTimeZones,
+    #[error("Only the large variant is supported: {0}")]
+    LargeVariantOnly(adt::DataType),
+    #[error("Failed to create arrow array: {0}")]
+    ArrayCreationFailed(ArrowError),
+    #[error("Array is in use: {0}")]
+    InUse(#[from] ArrayInUseError),
+}
+
+type UnsupportedArrowArrayResult<T> =
+    std::result::Result<T, UnsupportedArrowArrayError>;
+
+#[derive(Debug, Error)]
+pub enum ArrayInUseError {
+    #[error("External references to offsets buffer")]
+    Offsets,
+    #[error("External references to array")]
+    Array,
+}
+
+type ArrayInUseResult<T> = std::result::Result<T, ArrayInUseError>;
 
 // The Arrow downcast_array function doesn't take an Arc which leaves us
 // with an outstanding reference when we attempt the Buffer::into_mutable
@@ -93,11 +127,11 @@ where
 /// allows for fallible conversion without dropping the underlying buffers.
 type IntoArrowResult = std::result::Result<
     Arc<dyn aa::Array>,
-    (Box<dyn NewBufferTraitThing>, Error),
+    (Box<dyn NewBufferTraitThing>, UnsupportedArrowArrayError),
 >;
 
 /// The error type to use on TryFrom<Arc<dyn aa::Arrrow>> implementations
-type FromArrowError = (Arc<dyn aa::Array>, Error);
+type FromArrowError = (Arc<dyn aa::Array>, UnsupportedArrowArrayError);
 
 /// The return type to use when implementing TryFrom<Arc<dyn aa::Array>
 type FromArrowResult<T> = std::result::Result<T, FromArrowError>;
@@ -268,7 +302,7 @@ macro_rules! to_byte_buffers {
         let array: Arc<dyn aa::Array> = Arc::new(
             aa::LargeBinaryArray::try_new(offsets, data.into(), nulls).unwrap(),
         );
-        Err((array, Error::OffsetsInUse))
+        Err((array, ArrayInUseError::Offsets.into()))
     }};
 }
 
@@ -284,7 +318,7 @@ impl TryFrom<Arc<dyn aa::Array>> for ByteBuffers {
             adt::DataType::LargeUtf8 => {
                 to_byte_buffers!(array, dtype.clone(), aa::LargeStringArray)
             }
-            t => Err((array, Error::InvalidBytesType(t))),
+            t => Err((array, UnsupportedArrowArrayError::InvalidBytesType(t))),
         }
     }
 }
@@ -364,7 +398,7 @@ impl NewBufferTraitThing for ByteBuffers {
                         validity: self.validity,
                     });
 
-                Err((boxed, Error::ArrayCreationFailed(e)))
+                Err((boxed, UnsupportedArrowArrayError::ArrayCreationFailed(e)))
             }
         }
     }
@@ -390,11 +424,17 @@ impl TryFrom<Arc<dyn aa::Array>> for FixedListBuffers {
         let (field, cvn, array, nulls) = array.into_parts();
 
         if field.is_nullable() {
-            return Err((array, Error::InvalidNullableListElements));
+            return Err((
+                array,
+                UnsupportedArrowArrayError::InvalidNullableListElements,
+            ));
         }
 
         if cvn < 2 {
-            return Err((array, Error::InvalidFixedSizeListLength(cvn)));
+            return Err((
+                array,
+                UnsupportedArrowArrayError::InvalidFixedSizeListLength(cvn),
+            ));
         }
 
         // SAFETY: We just showed cvn >= 2 && cvn is i32 whicih means
@@ -404,7 +444,10 @@ impl TryFrom<Arc<dyn aa::Array>> for FixedListBuffers {
 
         let dtype = field.data_type().clone();
         if !dtype.is_primitive() {
-            return Err((array, Error::UnsupportedFixedSizeListType(dtype)));
+            return Err((
+                array,
+                UnsupportedArrowArrayError::UnsupportedFixedSizeListType(dtype),
+            ));
         }
 
         PrimitiveBuffers::try_from(array)
@@ -517,7 +560,7 @@ impl NewBufferTraitThing for FixedListBuffers {
                         validity: self.validity,
                     });
 
-                Err((boxed, Error::ArrayCreationFailed(e)))
+                Err((boxed, UnsupportedArrowArrayError::ArrayCreationFailed(e)))
             }
         }
     }
@@ -597,12 +640,18 @@ impl TryFrom<Arc<dyn aa::Array>> for ListBuffers {
         let (field, offsets, array, nulls) = array.into_parts();
 
         if field.is_nullable() {
-            return Err((array, Error::InvalidNullableListElements));
+            return Err((
+                array,
+                UnsupportedArrowArrayError::InvalidNullableListElements,
+            ));
         }
 
         let dtype = field.data_type().clone();
         if !dtype.is_primitive() {
-            return Err((array, Error::UnsupportedFixedSizeListType(dtype)));
+            return Err((
+                array,
+                UnsupportedArrowArrayError::UnsupportedFixedSizeListType(dtype),
+            ));
         }
 
         // N.B., I really, really tried to make this a fancy map/map_err
@@ -644,7 +693,7 @@ impl TryFrom<Arc<dyn aa::Array>> for ListBuffers {
                     )
                     .unwrap(),
                 );
-                return Err((array, Error::ArrayInUse));
+                return Err((array, ArrayInUseError::Array.into()));
             }
         };
 
@@ -748,7 +797,7 @@ impl NewBufferTraitThing for ListBuffers {
                         validity: self.validity,
                     });
 
-                Err((boxed, Error::ArrayCreationFailed(e)))
+                Err((boxed, UnsupportedArrowArrayError::ArrayCreationFailed(e)))
             }
         }
     }
@@ -791,7 +840,7 @@ macro_rules! to_primitive {
                     vec![],
                 )
                 .unwrap();
-                (aa::make_array(data), Error::ArrayInUse)
+                (aa::make_array(data), ArrayInUseError::Array.into())
             })
     }};
 }
@@ -812,7 +861,10 @@ impl TryFrom<Arc<dyn aa::Array>> for PrimitiveBuffers {
             adt::DataType::UInt64 => to_primitive!(array, aa::UInt64Array),
             adt::DataType::Float32 => to_primitive!(array, aa::Float32Array),
             adt::DataType::Float64 => to_primitive!(array, aa::Float64Array),
-            t => Err((array, Error::InvalidPrimitiveType(t))),
+            t => Err((
+                array,
+                UnsupportedArrowArrayError::InvalidPrimitiveType(t),
+            )),
         }
     }
 }
@@ -882,7 +934,7 @@ impl NewBufferTraitThing for PrimitiveBuffers {
                         validity: self.validity,
                     });
 
-                Err((boxed, Error::ArrayCreationFailed(e)))
+                Err((boxed, UnsupportedArrowArrayError::ArrayCreationFailed(e)))
             }
         }
     }
@@ -936,14 +988,15 @@ impl TryFrom<Arc<dyn aa::Array>> for Box<dyn NewBufferTraitThing> {
                 }),
 
             adt::DataType::Timestamp(_, Some(_)) => {
-                Err((array, Error::UnsupportedTimeZones))
+                Err((array, UnsupportedArrowArrayError::UnsupportedTimeZones))
             }
 
             adt::DataType::Binary
             | adt::DataType::List(_)
-            | adt::DataType::Utf8 => {
-                Err((array, Error::LargeVariantOnly(dtype)))
-            }
+            | adt::DataType::Utf8 => Err((
+                array,
+                UnsupportedArrowArrayError::LargeVariantOnly(dtype),
+            )),
 
             adt::DataType::FixedSizeBinary(_) => {
                 todo!("This can probably be supported.")
@@ -966,9 +1019,10 @@ impl TryFrom<Arc<dyn aa::Array>> for Box<dyn NewBufferTraitThing> {
             | adt::DataType::Decimal128(_, _)
             | adt::DataType::Decimal256(_, _)
             | adt::DataType::Map(_, _)
-            | adt::DataType::RunEndEncoded(_, _) => {
-                Err((array, Error::UnsupportedArrowType(dtype)))
-            }
+            | adt::DataType::RunEndEncoded(_, _) => Err((
+                array,
+                UnsupportedArrowArrayError::UnsupportedArrowType(dtype),
+            )),
         }
     }
 }
@@ -999,22 +1053,21 @@ impl MutableOrShared {
         self.shared.as_ref().map(Arc::clone)
     }
 
-    pub fn make_mut(&mut self) -> Result<()> {
+    pub fn make_mut(&mut self) -> UnsupportedArrowArrayResult<()> {
         self.validate();
 
         if self.mutable.is_some() {
             return Ok(());
         }
 
-        let shared = self.shared.take().unwrap();
-        let mutable: FromArrowResult<Box<dyn NewBufferTraitThing>> =
-            shared.try_into();
+        let shared: Arc<dyn aa::Array> = self.shared.take().unwrap();
+        let maybe_mutable = Box::<dyn NewBufferTraitThing>::try_from(shared);
 
-        let ret = if mutable.is_ok() {
-            self.mutable = mutable.ok();
+        let ret = if maybe_mutable.is_ok() {
+            self.mutable = maybe_mutable.ok();
             Ok(())
         } else {
-            let (array, err) = mutable.err().unwrap();
+            let (array, err) = maybe_mutable.err().unwrap();
             self.shared = Some(array);
             Err(err)
         };
@@ -1023,7 +1076,7 @@ impl MutableOrShared {
         ret
     }
 
-    pub fn make_shared(&mut self) -> Result<()> {
+    pub fn make_shared(&mut self) -> UnsupportedArrowArrayResult<()> {
         self.validate();
 
         if self.shared.is_some() {
@@ -1056,6 +1109,7 @@ impl MutableOrShared {
 
 pub struct BufferEntry {
     entry: MutableOrShared,
+    aggregate: Option<AggregateFunctionHandle>,
 }
 
 impl BufferEntry {
@@ -1134,12 +1188,16 @@ impl BufferEntry {
         Ok(mutable.validity())
     }
 
-    fn make_mut(&mut self) -> Result<()> {
+    fn make_mut(&mut self) -> UnsupportedArrowArrayResult<()> {
         self.entry.make_mut()
     }
 
-    fn make_shared(&mut self) -> Result<()> {
+    fn make_shared(&mut self) -> UnsupportedArrowArrayResult<()> {
         self.entry.make_shared()
+    }
+
+    pub fn aggregate(&self) -> Option<&AggregateFunctionHandle> {
+        self.aggregate.as_ref()
     }
 }
 
@@ -1147,6 +1205,7 @@ impl From<Arc<dyn aa::Array>> for BufferEntry {
     fn from(array: Arc<dyn aa::Array>) -> Self {
         Self {
             entry: MutableOrShared::new(array),
+            aggregate: None,
         }
     }
 }
@@ -1202,44 +1261,39 @@ impl QueryBuffers {
         self.buffers.get_mut(key)
     }
 
-    pub fn from_fields(schema: Schema, fields: QueryFields) -> Result<Self> {
-        let conv = ToArrowConverter::strict();
-        let mut ret = HashMap::with_capacity(fields.fields.len());
-        for (name, field) in fields.fields.into_iter() {
-            let tdb_field = schema.field(name.clone())?;
+    pub(crate) fn from_fields(
+        schema: Schema,
+        raw: &RawQuery,
+        fields: QueryFields,
+    ) -> Result<Self> {
+        let mut buffers = HashMap::with_capacity(fields.fields.len());
+        for (name, request_field) in fields.fields.into_iter() {
+            let query_field = QueryField::get(&schema.context(), raw, &name)
+                .map_err(|e| Error::Field(name.clone(), e.into()))?;
+            let array = to_array(request_field, query_field)
+                .map_err(|e| Error::Field(name.clone(), e))?;
 
-            if let QueryField::Buffer(array) = field {
-                Self::validate_buffer(&tdb_field, &array)?;
-                ret.insert(name.clone(), array);
-                continue;
-            }
-
-            // ToDo: Clean these error conversions up so they clearly indicate
-            // a failed buffer creation.
-            let tdb_dtype = tdb_field.datatype()?;
-            let tdb_cvn = tdb_field.cell_val_num()?;
-            let tdb_nullable = tdb_field.nullability()?;
-            let arrow_type = if let Some(dtype) = field.target_type() {
-                conv.convert_datatype_to(
-                    &tdb_dtype,
-                    &tdb_cvn,
-                    tdb_nullable,
-                    dtype,
-                )
-            } else {
-                conv.convert_datatype(&tdb_dtype, &tdb_cvn, tdb_nullable)
-            }
-            .map_err(|e| Error::ArrowConversionError(name.clone(), e))?;
-
-            let array = alloc_array(
-                arrow_type,
-                tdb_nullable,
-                field.capacity().unwrap(),
-            )?;
-            ret.insert(name.clone(), array);
+            buffers.insert(name.clone(), BufferEntry::from(array));
         }
 
-        Ok(Self::new(ret))
+        for (name, (function, request_field)) in fields.aggregates.into_iter() {
+            let handle = AggregateFunctionHandle::new(function)?;
+
+            let query_field = QueryField::get(&schema.context(), raw, &name)
+                .map_err(|e| Error::Field(name.clone(), e.into()))?;
+            let array = to_array(request_field, query_field)
+                .map_err(|e| Error::Field(name.clone(), e))?;
+
+            buffers.insert(
+                name.to_owned(),
+                BufferEntry {
+                    entry: MutableOrShared::new(array),
+                    aggregate: Some(handle),
+                },
+            );
+        }
+
+        Ok(Self { buffers })
     }
 
     pub fn is_compatible(&self, other: &Self) -> bool {
@@ -1279,27 +1333,47 @@ impl QueryBuffers {
     }
 
     pub fn make_mut(&mut self) -> Result<()> {
-        for value in self.buffers.values_mut() {
-            value.make_mut()?
+        for (name, value) in self.buffers.iter_mut() {
+            value
+                .make_mut()
+                .map_err(|e| Error::Field(name.clone(), e.into()))?;
         }
         Ok(())
     }
 
     pub fn make_shared(&mut self) -> Result<()> {
-        for value in self.buffers.values_mut() {
-            value.make_shared()?
+        for (name, value) in self.buffers.iter_mut() {
+            value
+                .make_shared()
+                .map_err(|e| Error::Field(name.clone(), e.into()))?;
         }
         Ok(())
     }
+}
 
-    /// When I get to it, this needs to ensure that the provided array matches
-    /// the field's TileDB datatype.
-    fn validate_buffer(
-        _field: &Field,
-        _buffer: &Arc<dyn aa::Array>,
-    ) -> Result<()> {
-        Ok(())
+fn to_array(
+    field: RequestField,
+    tiledb_field: QueryField,
+) -> FieldResult<Arc<dyn aa::Array>> {
+    let conv = ToArrowConverter::strict();
+
+    let tdb_dtype = tiledb_field.datatype()?;
+    let tdb_cvn = tiledb_field.cell_val_num()?;
+    let tdb_nullable = tiledb_field.nullable()?;
+
+    if let RequestField::Buffer(array) = field {
+        // FIXME: validate data type and nullability
+        return Ok(array);
     }
+
+    let arrow_type = if let Some(dtype) = field.target_type() {
+        conv.convert_datatype_to(&tdb_dtype, &tdb_cvn, tdb_nullable, dtype)
+    } else {
+        conv.convert_datatype(&tdb_dtype, &tdb_cvn, tdb_nullable)
+    }
+    .map_err(FieldError::TypeMismatch)?;
+
+    alloc_array(arrow_type, tdb_nullable, field.capacity().unwrap())
 }
 
 /// A small helper for users writing code directly against the TileDB API
@@ -1335,7 +1409,7 @@ fn alloc_array(
     dtype: adt::DataType,
     nullable: bool,
     capacity: usize,
-) -> Result<Arc<dyn aa::Array>> {
+) -> FieldResult<Arc<dyn aa::Array>> {
     let num_cells = calculate_num_cells(dtype.clone(), nullable, capacity)?;
 
     match dtype {
@@ -1355,7 +1429,7 @@ fn alloc_array(
             };
             Ok(Arc::new(
                 aa::LargeListArray::try_new(field, offsets, values, nulls)
-                    .map_err(Error::ArrayCreationFailed)?,
+                    .map_err(FieldError::BufferAllocation)?,
             ))
         }
         adt::DataType::FixedSizeList(field, cvn) => {
@@ -1368,7 +1442,7 @@ fn alloc_array(
                 alloc_array(field.data_type().clone(), false, capacity)?;
             Ok(Arc::new(
                 aa::FixedSizeListArray::try_new(field, cvn, values, nulls)
-                    .map_err(Error::ArrayCreationFailed)?,
+                    .map_err(FieldError::BufferAllocation)?,
             ))
         }
         adt::DataType::LargeUtf8 => {
@@ -1383,7 +1457,7 @@ fn alloc_array(
             };
             Ok(Arc::new(
                 aa::LargeStringArray::try_new(offsets, values.into(), nulls)
-                    .map_err(Error::ArrayCreationFailed)?,
+                    .map_err(FieldError::BufferAllocation)?,
             ))
         }
         adt::DataType::LargeBinary => {
@@ -1398,7 +1472,7 @@ fn alloc_array(
             };
             Ok(Arc::new(
                 aa::LargeBinaryArray::try_new(offsets, values.into(), nulls)
-                    .map_err(Error::ArrayCreationFailed)?,
+                    .map_err(FieldError::BufferAllocation)?,
             ))
         }
         _ if dtype.is_primitive() => {
@@ -1420,7 +1494,7 @@ fn alloc_array(
                 vec![data.into()],
                 vec![],
             )
-            .map_err(Error::ArrayCreationFailed)?;
+            .map_err(FieldError::BufferAllocation)?;
 
             Ok(aa::make_array(data))
         }
@@ -1432,7 +1506,7 @@ fn calculate_num_cells(
     dtype: adt::DataType,
     nullable: bool,
     capacity: usize,
-) -> Result<usize> {
+) -> FieldResult<usize> {
     match dtype {
         adt::DataType::Boolean => {
             if nullable {
@@ -1443,7 +1517,10 @@ fn calculate_num_cells(
         }
         adt::DataType::LargeList(ref field) => {
             if !field.data_type().is_primitive() {
-                return Err(Error::UnsupportedArrowType(dtype.clone()));
+                return Err(UnsupportedArrowArrayError::UnsupportedArrowType(
+                    dtype.clone(),
+                )
+                .into());
             }
 
             // Todo: Figure out a better way to approximate values to offsets ratios
@@ -1460,11 +1537,17 @@ fn calculate_num_cells(
         }
         adt::DataType::FixedSizeList(ref field, cvn) => {
             if !field.data_type().is_primitive() {
-                return Err(Error::UnsupportedArrowType(dtype));
+                return Err(UnsupportedArrowArrayError::UnsupportedArrowType(
+                    dtype,
+                )
+                .into());
             }
 
             if cvn < 2 {
-                return Err(Error::InvalidFixedSizeListLength(cvn));
+                return Err(
+                    UnsupportedArrowArrayError::InvalidFixedSizeListLength(cvn)
+                        .into(),
+                );
             }
 
             let cvn = cvn as usize;
@@ -1492,18 +1575,23 @@ fn calculate_num_cells(
             let bytes_per_cell = width + if nullable { 1 } else { 0 };
             Ok(capacity / bytes_per_cell)
         }
-        _ => Err(Error::UnsupportedArrowType(dtype.clone())),
+        _ => Err(UnsupportedArrowArrayError::UnsupportedArrowType(
+            dtype.clone(),
+        )
+        .into()),
     }
 }
 
 // Private utility functions
 
-fn to_tdb_offsets(offsets: abuf::OffsetBuffer<i64>) -> Result<ArrowBufferMut> {
+fn to_tdb_offsets(
+    offsets: abuf::OffsetBuffer<i64>,
+) -> ArrayInUseResult<ArrowBufferMut> {
     offsets
         .into_inner()
         .into_inner()
         .into_mutable()
-        .map_err(|_| Error::ArrayInUse)
+        .map_err(|_| ArrayInUseError::Offsets)
 }
 
 fn to_tdb_validity(nulls: Option<abuf::NullBuffer>) -> Option<ArrowBufferMut> {

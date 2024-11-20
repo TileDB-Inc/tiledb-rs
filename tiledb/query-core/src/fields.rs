@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use arrow::array as aa;
 use arrow::datatypes as adt;
+use tiledb_api::query::read::aggregate::AggregateFunction;
 
 use super::QueryBuilder;
 
@@ -44,6 +45,7 @@ impl QueryField {
 #[derive(Debug, Default)]
 pub struct QueryFields {
     pub fields: HashMap<String, QueryField>,
+    pub aggregates: HashMap<String, (AggregateFunction, QueryField)>,
 }
 
 impl QueryFields {
@@ -99,6 +101,17 @@ impl QueryFieldsBuilder {
 
     pub fn field_with_type(mut self, name: &str, dtype: adt::DataType) -> Self {
         self.fields.insert(name, QueryField::WithType(dtype));
+        self
+    }
+
+    pub fn aggregate(
+        mut self,
+        function: AggregateFunction,
+        name: Option<String>,
+        buffering: QueryField,
+    ) -> Self {
+        let name = name.unwrap_or(function.aggregate_name());
+        self.fields.aggregates.insert(name, (function, buffering));
         self
     }
 }
@@ -164,6 +177,20 @@ impl QueryFieldsBuilderForQuery {
     pub fn field_with_type(self, name: &str, dtype: adt::DataType) -> Self {
         Self {
             fields_builder: self.fields_builder.field_with_type(name, dtype),
+            ..self
+        }
+    }
+
+    pub fn aggregate(
+        self,
+        function: AggregateFunction,
+        name: Option<String>,
+        buffering: QueryField,
+    ) -> Self {
+        Self {
+            fields_builder: self
+                .fields_builder
+                .aggregate(function, name, buffering),
             ..self
         }
     }

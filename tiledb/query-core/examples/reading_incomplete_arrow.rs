@@ -10,7 +10,9 @@ use tiledb_api::{Factory, Result as TileDBResult};
 use tiledb_common::array::{ArrayType, CellOrder, CellValNum, Mode, TileOrder};
 use tiledb_common::Datatype;
 use tiledb_pod::array::{AttributeData, DimensionData, DomainData, SchemaData};
-use tiledb_query_core::buffers::Error as BuffersError;
+use tiledb_query_core::buffers::{
+    Error as BuffersError, FieldError, UnsupportedArrowArrayError,
+};
 use tiledb_query_core::fields::QueryFieldsBuilder;
 use tiledb_query_core::{
     Error as QueryError, QueryBuilder, QueryLayout, QueryType, SharedBuffers,
@@ -148,7 +150,12 @@ fn read_array(ctx: &Context) -> TileDBResult<()> {
 
             if matches!(
                 err,
-                QueryError::QueryBuffersError(BuffersError::ArrayInUse)
+                QueryError::QueryBuffersError(BuffersError::Field(
+                    _,
+                    FieldError::UnsupportedArrowArray(
+                        UnsupportedArrowArrayError::InUse(_)
+                    )
+                ))
             ) {
                 drop(external_ref.take());
                 continue;

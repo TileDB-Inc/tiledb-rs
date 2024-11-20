@@ -21,19 +21,20 @@ use subarray::{SubarrayBuilderForQuery, SubarrayData};
 
 pub use buffers::SharedBuffers;
 
-pub mod arrow;
-pub mod buffers;
-pub mod fields;
-pub mod subarray;
-
-pub type QueryType = tiledb_common::array::Mode;
-pub type QueryLayout = tiledb_common::array::CellOrder;
-
 macro_rules! out_ptr {
     () => {
         unsafe { std::mem::MaybeUninit::zeroed().assume_init() }
     };
 }
+
+pub mod arrow;
+pub mod buffers;
+pub mod field;
+pub mod fields;
+pub mod subarray;
+
+pub type QueryType = tiledb_common::array::Mode;
+pub type QueryLayout = tiledb_common::array::CellOrder;
 
 /// Errors related to query creation and execution
 #[derive(Debug, Error)]
@@ -176,7 +177,7 @@ impl Query {
     }
 
     pub fn submit(&mut self) -> Result<QueryStatus> {
-        self.buffers.make_mut()?;
+        self.buffers.make_mut().map_err(QueryBuffersError::from)?;
         if matches!(self.query_type, QueryType::Read) {
             self.buffers.reset_lengths()?;
         }
@@ -245,7 +246,7 @@ impl Query {
         fields: QueryFields,
     ) -> Result<QueryBuffers> {
         let mut tmp_buffers =
-            QueryBuffers::from_fields(self.array.schema()?, fields)?;
+            QueryBuffers::from_fields(self.array.schema()?, &self.raw, fields)?;
         tmp_buffers.make_mut()?;
         if self.buffers.is_compatible(&tmp_buffers) {
             std::mem::swap(&mut self.buffers, &mut tmp_buffers);
@@ -371,12 +372,14 @@ impl QueryBuilder {
         self.set_subarray(&raw)?;
         self.set_query_condition(&raw)?;
 
+        let buffers = QueryBuffers::from_fields(schema, &raw, self.fields)?;
+
         Ok(Query {
             context: self.array.context(),
             raw,
             query_type: self.query_type,
             array: self.array,
-            buffers: QueryBuffers::from_fields(schema, self.fields)?,
+            buffers,
         })
     }
 
