@@ -18,6 +18,7 @@ tiledb-proptest-config = { workspace = true, optional = true }
 [dev-dependencies]
 tiledb-common = { workspace = true, features = ["proptest-strategies"] }
 tiledb-pod = { workspace = true, features = ["proptest-strategies"] }
+tiledb-proptest-config = { workspace = true }
 
 [features]
 default = []
