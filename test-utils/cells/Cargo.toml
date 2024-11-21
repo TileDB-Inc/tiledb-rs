@@ -5,6 +5,9 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+arrow-array = { workspace = true, optional = true }
+arrow-buffer = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
 paste = { workspace = true }
 proptest = { workspace = true }
 strategy-ext = { workspace = true }
@@ -18,4 +21,5 @@ tiledb-pod = { workspace = true, features = ["proptest-strategies"] }
 
 [features]
 default = []
+arrow = ["dep:arrow-array", "dep:arrow-buffer", "dep:arrow-schema"]
 proptest-strategies = ["dep:tiledb-proptest-config", "tiledb-common/proptest-strategies", "tiledb-pod/proptest-strategies"]

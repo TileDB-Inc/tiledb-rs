@@ -1,6 +1,9 @@
 pub mod field;
 pub mod write;
 
+#[cfg(feature = "arrow")]
+pub mod arrow;
+
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy;
 
