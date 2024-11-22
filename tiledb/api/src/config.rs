@@ -294,6 +294,21 @@ impl Iterator for ConfigIterator<'_> {
 pub enum CommonOption {
     /// Sets an AES256GCM encryption key.
     Aes256GcmEncryptionKey(Vec<u8>),
+
+    // URL for REST server to use for remote arrays.
+    RestServerAddress(String),
+
+    /// Username for login to REST server.
+    RestUsername(String),
+
+    /// Password for login to REST server.
+    RestPassword(String),
+
+    /// Authentication token for REST server (used instead of username/password).
+    RestToken(String),
+
+    /// Have curl ignore ssl peer and host validation for REST server.
+    RestIgnoreSslValidation(bool),
 }
 
 impl CommonOption {
@@ -303,6 +318,24 @@ impl CommonOption {
                 config.set("sm.encryption_type", "AES_256_GCM")?;
                 config.set("sm.encryption_key", key)
             }
+            Self::RestServerAddress(ref address) => {
+                config.set("rest.server_address", address)
+            }
+            Self::RestUsername(ref username) => {
+                config.set("rest.username", username)
+            }
+            Self::RestPassword(ref password) => {
+                config.set("rest.password", password)
+            }
+            Self::RestToken(ref token) => config.set("rest.token", token),
+            Self::RestIgnoreSslValidation(ignore_ssl_validation) => config.set(
+                "rest.ignore_ssl_validation",
+                if *ignore_ssl_validation {
+                    "true"
+                } else {
+                    "false"
+                },
+            ),
         }
     }
 }
@@ -310,7 +343,7 @@ impl CommonOption {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
+    use std::{collections::HashMap, path::Path};
 
     #[test]
     fn config_alloc() {
@@ -387,5 +420,49 @@ mod tests {
             .get("sm.encryption_type")
             .expect("Error getting config key.");
         assert_eq!(val.unwrap(), "NO_ENCRYPTION");
+    }
+
+    #[test]
+    fn config_with_common_options() {
+        let common_options = vec![
+            CommonOption::Aes256GcmEncryptionKey("xyz".as_bytes().to_vec()),
+            CommonOption::RestServerAddress(
+                "http://localhost:8080".to_string(),
+            ),
+            CommonOption::RestUsername("foo".to_string()),
+            CommonOption::RestPassword("bar".to_string()),
+            CommonOption::RestToken("baz".to_string()),
+            CommonOption::RestIgnoreSslValidation(true),
+        ];
+
+        let mut cfg = Config::new().expect("Error creating config instance.");
+        for opt in common_options {
+            cfg = cfg
+                .with_common_option(&opt)
+                .expect("Error setting common option.");
+        }
+
+        let key_to_val = [
+            ("sm.encryption_type", "AES_256_GCM"),
+            ("sm.encryption_key", "xyz"),
+            ("rest.server_address", "http://localhost:8080"),
+            ("rest.username", "foo"),
+            ("rest.password", "bar"),
+            ("rest.token", "baz"),
+            ("rest.ignore_ssl_validation", "true"),
+        ];
+
+        for (key, val) in key_to_val {
+            let result: Option<String> =
+                cfg.get(key).expect("Error getting config key.");
+            println!("result: {:?}", result);
+            assert_eq!(result.unwrap(), val);
+
+            cfg.set(key, "new").expect("Error setting config key.");
+
+            let result: Option<String> =
+                cfg.get(key).expect("Error getting config key.");
+            assert_eq!(result.unwrap(), "new");
+        }
     }
 }
