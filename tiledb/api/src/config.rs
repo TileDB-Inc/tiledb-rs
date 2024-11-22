@@ -343,7 +343,7 @@ impl CommonOption {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{collections::HashMap, path::Path};
+    use std::path::Path;
 
     #[test]
     fn config_alloc() {
