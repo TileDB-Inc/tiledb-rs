@@ -531,6 +531,7 @@ dependencies = [
  "arrow-array",
  "arrow-buffer",
  "arrow-schema",
+ "itertools 0.12.1",
  "paste",
  "proptest",
  "strategy-ext",
@@ -1885,14 +1886,18 @@ dependencies = [
 name = "tiledb-query-core"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "arrow",
+ "cells",
  "itertools 0.12.1",
+ "proptest",
  "thiserror",
  "tiledb-api",
  "tiledb-common",
  "tiledb-pod",
  "tiledb-sys",
  "tiledb-sys-cfg",
+ "uri",
 ]
 
 [[package]]

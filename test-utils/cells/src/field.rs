@@ -388,6 +388,13 @@ impl FieldData {
     }
 }
 
+#[cfg(feature = "arrow")]
+impl FieldData {
+    pub fn to_arrow(&self) -> std::sync::Arc<dyn arrow_array::Array> {
+        crate::arrow::to_column(self)
+    }
+}
+
 impl BitsEq for FieldData {
     fn bits_eq(&self, other: &Self) -> bool {
         typed_field_data_cmp!(

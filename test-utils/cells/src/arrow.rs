@@ -1,16 +1,17 @@
+use itertools::Itertools;
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use arrow_array::types::{
-    Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
-    UInt16Type, UInt32Type, UInt64Type, UInt8Type,
-};
+use arrow_array::cast::downcast_array;
+use arrow_array::types::*;
 use arrow_array::{
-    Array, ArrowPrimitiveType, LargeListArray, PrimitiveArray, RecordBatch,
+    downcast_primitive_array, Array, ArrowPrimitiveType, LargeBinaryArray,
+    LargeListArray, LargeStringArray, PrimitiveArray, RecordBatch,
 };
 use arrow_buffer::{ArrowNativeType, OffsetBuffer};
 use arrow_schema::{DataType, Field, Fields, Schema};
 
-use crate::{Cells, FieldData};
+use crate::{typed_field_data_go, Cells, FieldData};
 
 pub fn to_record_batch(cells: &Cells) -> RecordBatch {
     let (fnames, columns) = cells
@@ -39,7 +40,18 @@ pub fn to_record_batch(cells: &Cells) -> RecordBatch {
     RecordBatch::try_new(schema.into(), columns).unwrap()
 }
 
-fn to_column(fdata: &FieldData) -> Arc<dyn Array> {
+pub fn from_record_batch(batch: &RecordBatch) -> Option<Cells> {
+    batch
+        .schema()
+        .fields
+        .iter()
+        .zip_eq(batch.columns().iter())
+        .map(|(f, c)| from_column(c).map(|fdata| (f.name().to_owned(), fdata)))
+        .collect::<Option<HashMap<String, FieldData>>>()
+        .map(Cells::new)
+}
+
+pub fn to_column(fdata: &FieldData) -> Arc<dyn Array> {
     match fdata {
         FieldData::Int8(cells) => to_column_primitive::<i8, Int8Type>(cells),
         FieldData::Int16(cells) => to_column_primitive::<i16, Int16Type>(cells),
@@ -101,16 +113,134 @@ where
 
     Arc::new(
         LargeListArray::try_new(
-            Field::new(
-                "unused",
-                DataType::new_large_list(values.data_type().clone(), false),
-                false,
-            )
-            .into(),
+            Field::new("unused", values.data_type().clone(), false).into(),
             offsets,
             Arc::new(values),
             None,
         )
         .unwrap(),
     )
+}
+
+pub fn from_column(column: &dyn Array) -> Option<FieldData> {
+    downcast_primitive_array!(
+        column => {
+            column.maybe_to_field_data()
+        },
+        DataType::LargeUtf8 => {
+            let column = downcast_array::<LargeStringArray>(column);
+            column.maybe_to_field_data()
+        }
+        DataType::LargeBinary => {
+            let column = downcast_array::<LargeBinaryArray>(column);
+            column.maybe_to_field_data()
+        }
+        DataType::LargeList(_) => {
+            let column = downcast_array::<LargeListArray>(column);
+            column.maybe_to_field_data()
+        },
+        _ => None
+    )
+}
+
+trait MaybeToFieldData {
+    fn maybe_to_field_data(&self) -> Option<FieldData>;
+}
+
+macro_rules! to_field_data {
+    ($($primitive:ty),+) => {
+        $(
+            impl MaybeToFieldData for PrimitiveArray<$primitive> {
+                fn maybe_to_field_data(&self) -> Option<FieldData> {
+                    Some(self.values().to_vec().into())
+                }
+            }
+        )+
+    };
+}
+
+macro_rules! not_to_field_data {
+    ($($array:ty),+) => {
+        $(
+            impl MaybeToFieldData for PrimitiveArray<$array> {
+                fn maybe_to_field_data(&self) -> Option<FieldData> {
+                    None
+                }
+            }
+        )+
+    };
+}
+
+to_field_data!(
+    Int8Type,
+    Int16Type,
+    Int32Type,
+    Int64Type,
+    UInt8Type,
+    UInt16Type,
+    UInt32Type,
+    UInt64Type,
+    Float32Type,
+    Float64Type,
+    TimestampSecondType,
+    TimestampMillisecondType,
+    TimestampMicrosecondType,
+    TimestampNanosecondType,
+    Time64MicrosecondType,
+    Time64NanosecondType,
+    DurationSecondType,
+    DurationMillisecondType,
+    DurationMicrosecondType,
+    DurationNanosecondType,
+    Date64Type
+);
+
+not_to_field_data!(
+    Float16Type,
+    Time32SecondType,
+    Time32MillisecondType,
+    Date32Type,
+    Decimal128Type,
+    Decimal256Type,
+    IntervalYearMonthType,
+    IntervalDayTimeType,
+    IntervalMonthDayNanoType
+);
+
+impl MaybeToFieldData for LargeStringArray {
+    fn maybe_to_field_data(&self) -> Option<FieldData> {
+        self.iter()
+            .map(|s| s.map(|s| s.bytes().collect::<Vec<_>>()))
+            .collect::<Option<Vec<_>>>()
+            .map(|v| v.into())
+    }
+}
+
+impl MaybeToFieldData for LargeBinaryArray {
+    fn maybe_to_field_data(&self) -> Option<FieldData> {
+        self.iter()
+            .map(|s| s.map(|s| s.to_vec()))
+            .collect::<Option<Vec<_>>>()
+            .map(|v| v.into())
+    }
+}
+
+impl MaybeToFieldData for LargeListArray {
+    fn maybe_to_field_data(&self) -> Option<FieldData> {
+        typed_field_data_go!(
+            from_column(self.values())?,
+            _DT,
+            _values,
+            {
+                Some(
+                    self.offsets()
+                        .windows(2)
+                        .map(|w| _values[w[0] as usize..w[1] as usize].to_vec())
+                        .collect::<Vec<_>>()
+                        .into(),
+                )
+            },
+            None
+        )
+    }
 }

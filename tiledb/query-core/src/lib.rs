@@ -3,7 +3,11 @@ extern crate tiledb_sys as ffi;
 
 use std::collections::HashMap;
 use std::ops::Deref;
+use std::sync::Arc;
 
+use arrow::datatypes::{Field as ArrowField, Schema as ArrowSchema};
+use arrow::error::ArrowError;
+use arrow::record_batch::RecordBatch;
 use thiserror::Error;
 use tiledb_common::{single_value_range_go, var_value_range_go};
 
@@ -55,6 +59,8 @@ pub enum Error {
     ),
     #[error("Encountered internal libtiledb error: {0}")]
     TileDBError(#[from] TileDBError),
+    #[error("Internal error constructing RecordBatch: {0}")]
+    RecordBatch(ArrowError),
 }
 
 impl From<Error> for TileDBError {
@@ -69,6 +75,7 @@ type Result<T> = std::result::Result<T, Error>;
 ///
 /// Note that BuffersTooSmall is a Rust invention. But given that we never
 /// attempt to translate this status object back into a capi value its fine.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum QueryStatus {
     Uninitialized,
     Initialized,
@@ -245,6 +252,29 @@ impl Query {
         }
 
         Ok(ret.into())
+    }
+
+    pub fn records(&mut self) -> Result<RecordBatch> {
+        let (fields, columns) = self
+            .buffers()?
+            .into_iter()
+            .map(|(fname, fdata)| {
+                let field = ArrowField::new(
+                    fname,
+                    fdata.data_type().clone(),
+                    fdata.is_nullable(),
+                );
+                (field, fdata)
+            })
+            .collect::<(Vec<_>, Vec<_>)>();
+
+        let schema = ArrowSchema {
+            fields: fields.into(),
+            metadata: Default::default(),
+        };
+
+        RecordBatch::try_new(Arc::new(schema), columns)
+            .map_err(Error::RecordBatch)
     }
 
     /// Replace this queries buffers with a new set specified by fields
@@ -619,3 +649,6 @@ impl QueryBuilder {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests;
