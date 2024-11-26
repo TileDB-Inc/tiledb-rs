@@ -284,8 +284,12 @@ impl Query {
         &mut self,
         fields: QueryFields,
     ) -> Result<QueryBuffers> {
-        let mut tmp_buffers =
-            QueryBuffers::from_fields(self.array.schema()?, &self.raw, fields)?;
+        let mut tmp_buffers = QueryBuffers::from_fields(
+            self.array.schema()?,
+            self.query_type,
+            &self.raw,
+            fields,
+        )?;
         tmp_buffers.make_mut()?;
         if self.buffers.is_compatible(&tmp_buffers) {
             std::mem::swap(&mut self.buffers, &mut tmp_buffers);
@@ -411,7 +415,12 @@ impl QueryBuilder {
         self.set_subarray(&raw)?;
         self.set_query_condition(&raw)?;
 
-        let buffers = QueryBuffers::from_fields(schema, &raw, self.fields)?;
+        let buffers = QueryBuffers::from_fields(
+            schema,
+            self.query_type,
+            &raw,
+            self.fields,
+        )?;
 
         Ok(Query {
             context: self.array.context(),

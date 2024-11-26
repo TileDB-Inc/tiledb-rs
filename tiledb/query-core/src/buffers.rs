@@ -13,12 +13,13 @@ use thiserror::Error;
 use tiledb_api::array::schema::Schema;
 use tiledb_api::error::Error as TileDBError;
 use tiledb_api::query::read::aggregate::AggregateFunctionHandle;
-use tiledb_api::ContextBound;
+use tiledb_api::{Context, ContextBound};
 use tiledb_common::array::CellValNum;
 
 use super::datatype::ToArrowConverter;
 use super::field::QueryField;
 use super::fields::{QueryField as RequestField, QueryFields};
+use super::QueryType;
 use super::RawQuery;
 
 const AVERAGE_STRING_LENGTH: usize = 64;
@@ -189,21 +190,28 @@ trait NewBufferTraitThing {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BufferTarget {
+    Read,
+    Write(bool),
+}
+
 struct BooleanBuffers {
     data: QueryBuffer,
     validity: Option<QueryBuffer>,
 }
 
-impl TryFrom<Arc<dyn aa::Array>> for BooleanBuffers {
-    type Error = FromArrowError;
-    fn try_from(array: Arc<dyn aa::Array>) -> FromArrowResult<Self> {
-        let array: aa::BooleanArray = downcast_consume(array);
+impl BooleanBuffers {
+    pub fn try_new(
+        target: &BufferTarget,
+        array: aa::BooleanArray,
+    ) -> FromArrowResult<Self> {
         let (data, validity) = array.into_parts();
         let data = data
             .iter()
             .map(|v| if v { 1u8 } else { 0 })
             .collect::<Vec<_>>();
-        let validity = to_tdb_validity(validity);
+        let validity = to_tdb_validity(target, data.len(), validity);
 
         Ok(BooleanBuffers {
             data: QueryBuffer::new(abuf::MutableBuffer::from(data)),
@@ -260,7 +268,8 @@ struct ByteBuffers {
 }
 
 macro_rules! to_byte_buffers {
-    ($ARRAY:expr, $ARROW_TYPE:expr, $ARROW_DT:ty) => {{
+    ($TARGET:expr, $ARRAY:expr, $ARROW_TYPE:expr, $ARROW_DT:ty) => {{
+        let target = $TARGET;
         let array: $ARROW_DT = downcast_consume($ARRAY);
         let (offsets, data, nulls) = array.into_parts();
 
@@ -268,9 +277,12 @@ macro_rules! to_byte_buffers {
         let offsets = offsets.into_inner().into_inner().into_mutable();
 
         if data.is_ok() && offsets.is_ok() {
+            let offsets = offsets.unwrap();
+            let num_cells = offsets.len() - 1;
             let data = QueryBuffer::new(data.ok().unwrap());
-            let offsets = QueryBuffer::new(offsets.ok().unwrap());
-            let validity = to_tdb_validity(nulls).map(QueryBuffer::new);
+            let offsets = QueryBuffer::new(offsets);
+            let validity =
+                to_tdb_validity(target, num_cells, nulls).map(QueryBuffer::new);
             return Ok(ByteBuffers {
                 dtype: $ARROW_TYPE,
                 data,
@@ -306,17 +318,28 @@ macro_rules! to_byte_buffers {
     }};
 }
 
-impl TryFrom<Arc<dyn aa::Array>> for ByteBuffers {
-    type Error = FromArrowError;
-
-    fn try_from(array: Arc<dyn aa::Array>) -> FromArrowResult<Self> {
+impl ByteBuffers {
+    pub fn try_new(
+        target: &BufferTarget,
+        array: Arc<dyn aa::Array>,
+    ) -> FromArrowResult<Self> {
         let dtype = array.data_type().clone();
         match dtype {
             adt::DataType::LargeBinary => {
-                to_byte_buffers!(array, dtype.clone(), aa::LargeBinaryArray)
+                to_byte_buffers!(
+                    target,
+                    array,
+                    dtype.clone(),
+                    aa::LargeBinaryArray
+                )
             }
             adt::DataType::LargeUtf8 => {
-                to_byte_buffers!(array, dtype.clone(), aa::LargeStringArray)
+                to_byte_buffers!(
+                    target,
+                    array,
+                    dtype.clone(),
+                    aa::LargeStringArray
+                )
             }
             t => Err((array, UnsupportedArrowArrayError::InvalidBytesType(t))),
         }
@@ -411,16 +434,19 @@ struct FixedListBuffers {
     validity: Option<QueryBuffer>,
 }
 
-impl TryFrom<Arc<dyn aa::Array>> for FixedListBuffers {
-    type Error = FromArrowError;
-
-    fn try_from(array: Arc<dyn aa::Array>) -> FromArrowResult<Self> {
+impl FixedListBuffers {
+    pub fn try_new(
+        target: &BufferTarget,
+        array: Arc<dyn aa::Array>,
+    ) -> FromArrowResult<Self> {
         assert!(matches!(
             array.data_type(),
             adt::DataType::FixedSizeList(_, _)
         ));
 
         let array: aa::FixedSizeListArray = downcast_consume(array);
+        let num_cells = aa::Array::len(&array);
+
         let (field, cvn, array, nulls) = array.into_parts();
 
         if field.is_nullable() {
@@ -450,11 +476,12 @@ impl TryFrom<Arc<dyn aa::Array>> for FixedListBuffers {
             ));
         }
 
-        PrimitiveBuffers::try_from(array)
+        PrimitiveBuffers::try_new(target, array)
             .map(|buffers| {
                 assert_eq!(buffers.dtype, dtype);
                 let validity =
-                    to_tdb_validity(nulls.clone()).map(QueryBuffer::new);
+                    to_tdb_validity(target, num_cells, nulls.clone())
+                        .map(QueryBuffer::new);
                 FixedListBuffers {
                     field: Arc::clone(&field),
                     cell_val_num: cvn,
@@ -630,10 +657,11 @@ struct ListBuffers {
     validity: Option<QueryBuffer>,
 }
 
-impl TryFrom<Arc<dyn aa::Array>> for ListBuffers {
-    type Error = FromArrowError;
-
-    fn try_from(array: Arc<dyn aa::Array>) -> FromArrowResult<Self> {
+impl ListBuffers {
+    pub fn try_new(
+        target: &BufferTarget,
+        array: Arc<dyn aa::Array>,
+    ) -> FromArrowResult<Self> {
         assert!(matches!(array.data_type(), adt::DataType::LargeList(_)));
 
         let array: aa::LargeListArray = downcast_consume(array);
@@ -654,11 +682,13 @@ impl TryFrom<Arc<dyn aa::Array>> for ListBuffers {
             ));
         }
 
+        let num_cells = array.len();
+
         // N.B., I really, really tried to make this a fancy map/map_err
         // cascade like all of the others. But it turns out that keeping the
         // proper refcounts on either array or offsets turns into a bit of
         // an issue when passing things through multiple closures.
-        let result = PrimitiveBuffers::try_from(array);
+        let result = PrimitiveBuffers::try_new(target, array);
         if result.is_err() {
             let (array, err) = result.err().unwrap();
             let array: Arc<dyn aa::Array> = Arc::new(
@@ -700,7 +730,8 @@ impl TryFrom<Arc<dyn aa::Array>> for ListBuffers {
         // NB: by default the offsets are not arrow-shaped.
         // However we use the configuration options to make them so.
 
-        let validity = to_tdb_validity(nulls).map(QueryBuffer::new);
+        let validity =
+            to_tdb_validity(target, num_cells, nulls).map(QueryBuffer::new);
 
         Ok(ListBuffers {
             field,
@@ -810,9 +841,10 @@ struct PrimitiveBuffers {
 }
 
 macro_rules! to_primitive {
-    ($ARRAY:expr, $ARROW_DT:ty) => {{
+    ($TARGET:expr, $ARRAY:expr, $ARROW_DT:ty) => {{
+        let target = $TARGET;
         let array: $ARROW_DT = downcast_consume($ARRAY);
-        let len = array.len();
+        let num_cells = array.len();
         let (dtype, buffer, nulls) = array.into_parts();
 
         buffer
@@ -820,7 +852,8 @@ macro_rules! to_primitive {
             .into_mutable()
             .map(|data| {
                 let validity =
-                    to_tdb_validity(nulls.clone()).map(QueryBuffer::new);
+                    to_tdb_validity(target, num_cells, nulls.clone())
+                        .map(QueryBuffer::new);
                 PrimitiveBuffers {
                     dtype: dtype.clone(),
                     data: QueryBuffer::new(data),
@@ -833,7 +866,7 @@ macro_rules! to_primitive {
                 // right back together again. Sorry, Humpty.
                 let data = aa::ArrayData::try_new(
                     dtype,
-                    len,
+                    num_cells,
                     nulls.map(|n| n.into_inner().into_inner()),
                     0,
                     vec![buffer],
@@ -845,22 +878,42 @@ macro_rules! to_primitive {
     }};
 }
 
-impl TryFrom<Arc<dyn aa::Array>> for PrimitiveBuffers {
-    type Error = FromArrowError;
-    fn try_from(array: Arc<dyn aa::Array>) -> FromArrowResult<Self> {
+impl PrimitiveBuffers {
+    pub fn try_new(
+        target: &BufferTarget,
+        array: Arc<dyn aa::Array>,
+    ) -> FromArrowResult<Self> {
         assert!(array.data_type().is_primitive());
 
         match array.data_type().clone() {
-            adt::DataType::Int8 => to_primitive!(array, aa::Int8Array),
-            adt::DataType::Int16 => to_primitive!(array, aa::Int16Array),
-            adt::DataType::Int32 => to_primitive!(array, aa::Int32Array),
-            adt::DataType::Int64 => to_primitive!(array, aa::Int64Array),
-            adt::DataType::UInt8 => to_primitive!(array, aa::UInt8Array),
-            adt::DataType::UInt16 => to_primitive!(array, aa::UInt16Array),
-            adt::DataType::UInt32 => to_primitive!(array, aa::UInt32Array),
-            adt::DataType::UInt64 => to_primitive!(array, aa::UInt64Array),
-            adt::DataType::Float32 => to_primitive!(array, aa::Float32Array),
-            adt::DataType::Float64 => to_primitive!(array, aa::Float64Array),
+            adt::DataType::Int8 => to_primitive!(target, array, aa::Int8Array),
+            adt::DataType::Int16 => {
+                to_primitive!(target, array, aa::Int16Array)
+            }
+            adt::DataType::Int32 => {
+                to_primitive!(target, array, aa::Int32Array)
+            }
+            adt::DataType::Int64 => {
+                to_primitive!(target, array, aa::Int64Array)
+            }
+            adt::DataType::UInt8 => {
+                to_primitive!(target, array, aa::UInt8Array)
+            }
+            adt::DataType::UInt16 => {
+                to_primitive!(target, array, aa::UInt16Array)
+            }
+            adt::DataType::UInt32 => {
+                to_primitive!(target, array, aa::UInt32Array)
+            }
+            adt::DataType::UInt64 => {
+                to_primitive!(target, array, aa::UInt64Array)
+            }
+            adt::DataType::Float32 => {
+                to_primitive!(target, array, aa::Float32Array)
+            }
+            adt::DataType::Float64 => {
+                to_primitive!(target, array, aa::Float64Array)
+            }
             t => Err((
                 array,
                 UnsupportedArrowArrayError::InvalidPrimitiveType(t),
@@ -941,30 +994,32 @@ impl NewBufferTraitThing for PrimitiveBuffers {
 }
 
 fn to_target_buffers(
-    _target: &QueryField,
+    target: &BufferTarget,
     array: Arc<dyn aa::Array>,
 ) -> FromArrowResult<Box<dyn NewBufferTraitThing>> {
     let dtype = array.data_type().clone();
     match dtype {
         adt::DataType::Boolean => {
-            BooleanBuffers::try_from(array).map(|buffers| {
+            let array = downcast_consume::<aa::BooleanArray>(array);
+            BooleanBuffers::try_new(target, array).map(|buffers| {
                 let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
                 boxed
             })
         }
         adt::DataType::LargeBinary | adt::DataType::LargeUtf8 => {
-            ByteBuffers::try_from(array).map(|buffers| {
+            ByteBuffers::try_new(target, array).map(|buffers| {
                 let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
                 boxed
             })
         }
-        adt::DataType::FixedSizeList(_, _) => FixedListBuffers::try_from(array)
-            .map(|buffers| {
+        adt::DataType::FixedSizeList(_, _) => {
+            FixedListBuffers::try_new(target, array).map(|buffers| {
                 let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
                 boxed
-            }),
+            })
+        }
         adt::DataType::LargeList(_) => {
-            ListBuffers::try_from(array).map(|buffers| {
+            ListBuffers::try_new(target, array).map(|buffers| {
                 let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
                 boxed
             })
@@ -980,12 +1035,11 @@ fn to_target_buffers(
         | adt::DataType::Float32
         | adt::DataType::Float64
         | adt::DataType::Timestamp(_, None)
-        | adt::DataType::Time64(_) => {
-            PrimitiveBuffers::try_from(array).map(|buffers| {
+        | adt::DataType::Time64(_) => PrimitiveBuffers::try_new(target, array)
+            .map(|buffers| {
                 let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
                 boxed
-            })
-        }
+            }),
 
         adt::DataType::Timestamp(_, Some(_)) => {
             Err((array, UnsupportedArrowArrayError::UnsupportedTimeZones))
@@ -1031,13 +1085,13 @@ fn to_target_buffers(
 /// a thing that can be done safely, so we have a specialized utility struct
 /// that does the same idea, at the cost of an extra None in the struct.
 struct MutableOrShared {
-    target: QueryField,
+    target: BufferTarget,
     mutable: Option<Box<dyn NewBufferTraitThing>>,
     shared: Option<Arc<dyn aa::Array>>,
 }
 
 impl MutableOrShared {
-    pub fn new(target: QueryField, value: Arc<dyn aa::Array>) -> Self {
+    pub fn new(target: BufferTarget, value: Arc<dyn aa::Array>) -> Self {
         Self {
             target,
             mutable: None,
@@ -1113,7 +1167,7 @@ pub struct BufferEntry {
 }
 
 impl BufferEntry {
-    pub fn new(target: QueryField, buffer: Arc<dyn aa::Array>) -> Self {
+    fn new(target: BufferTarget, buffer: Arc<dyn aa::Array>) -> Self {
         Self {
             entry: MutableOrShared::new(target, buffer),
             aggregate: None,
@@ -1258,30 +1312,38 @@ impl QueryBuffers {
 
     pub(crate) fn from_fields(
         schema: Schema,
+        query_type: QueryType,
         raw: &RawQuery,
         fields: QueryFields,
     ) -> Result<Self> {
         let mut buffers = HashMap::with_capacity(fields.fields.len());
         for (name, request_field) in fields.fields.into_iter() {
-            let query_field = QueryField::get(&schema.context(), raw, &name)
-                .map_err(|e| Error::Field(name.clone(), e.into()))?;
-            let array = request_to_buffers(request_field, &query_field)
-                .map_err(|e| Error::Field(name.clone(), e))?;
-
-            buffers.insert(name.clone(), BufferEntry::new(query_field, array));
+            buffers.insert(
+                name.clone(),
+                make_buffer_entry(
+                    &schema.context(),
+                    query_type,
+                    raw,
+                    &name,
+                    request_field,
+                    None,
+                )
+                .map_err(|e| Error::Field(name.clone(), e))?,
+            );
         }
 
         for (name, (function, request_field)) in fields.aggregates.into_iter() {
-            let handle = AggregateFunctionHandle::new(function)?;
-
-            let query_field = QueryField::get(&schema.context(), raw, &name)
-                .map_err(|e| Error::Field(name.clone(), e.into()))?;
-            let array = request_to_buffers(request_field, &query_field)
-                .map_err(|e| Error::Field(name.clone(), e))?;
-
             buffers.insert(
-                name.to_owned(),
-                BufferEntry::new(query_field, array).with_aggregate(handle),
+                name.clone(),
+                make_buffer_entry(
+                    &schema.context(),
+                    query_type,
+                    raw,
+                    &name,
+                    request_field,
+                    Some(AggregateFunctionHandle::new(function)?),
+                )
+                .map_err(|e| Error::Field(name.clone(), e))?,
             );
         }
 
@@ -1341,6 +1403,33 @@ impl QueryBuffers {
         }
         Ok(())
     }
+}
+
+fn make_buffer_entry(
+    context: &Context,
+    query_type: QueryType,
+    raw: &RawQuery,
+    name: &str,
+    request: RequestField,
+    aggregate: Option<AggregateFunctionHandle>,
+) -> FieldResult<BufferEntry> {
+    let query_field = QueryField::get(context, raw, &name)?;
+    let array = request_to_buffers(request, &query_field)?;
+
+    let target = match query_type {
+        QueryType::Read => BufferTarget::Read,
+        QueryType::Write => BufferTarget::Write(query_field.nullable()?),
+        QueryType::Delete => unimplemented!(),
+        QueryType::Update => unimplemented!(),
+        QueryType::ModifyExclusive => unimplemented!(),
+    };
+
+    let entry = BufferEntry::new(target, array);
+    Ok(if let Some(aggregate) = aggregate {
+        entry.with_aggregate(aggregate)
+    } else {
+        entry
+    })
 }
 
 fn request_to_buffers(
@@ -1559,15 +1648,26 @@ fn to_tdb_offsets(
         .map_err(|_| ArrayInUseError::Offsets)
 }
 
-fn to_tdb_validity(nulls: Option<abuf::NullBuffer>) -> Option<ArrowBufferMut> {
-    nulls.map(|nulls| {
+fn to_tdb_validity(
+    target: &BufferTarget,
+    num_cells: usize,
+    nulls: Option<abuf::NullBuffer>,
+) -> Option<ArrowBufferMut> {
+    let arrow_validity = nulls.map(|nulls| {
         ArrowBufferMut::from(
             nulls
                 .iter()
                 .map(|v| if v { 1u8 } else { 0 })
                 .collect::<Vec<_>>(),
         )
-    })
+    });
+    if arrow_validity.is_some() {
+        arrow_validity
+    } else if matches!(target, BufferTarget::Write(true)) {
+        Some(ArrowBufferMut::from(vec![1u8; num_cells]))
+    } else {
+        None
+    }
 }
 
 fn from_tdb_offsets(offsets: ArrowBufferMut) -> abuf::OffsetBuffer<i64> {
