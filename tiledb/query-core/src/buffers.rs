@@ -940,90 +940,88 @@ impl NewBufferTraitThing for PrimitiveBuffers {
     }
 }
 
-impl TryFrom<Arc<dyn aa::Array>> for Box<dyn NewBufferTraitThing> {
-    type Error = FromArrowError;
-
-    fn try_from(array: Arc<dyn aa::Array>) -> FromArrowResult<Self> {
-        let dtype = array.data_type().clone();
-        match dtype {
-            adt::DataType::Boolean => {
-                BooleanBuffers::try_from(array).map(|buffers| {
-                    let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
-                    boxed
-                })
-            }
-            adt::DataType::LargeBinary | adt::DataType::LargeUtf8 => {
-                ByteBuffers::try_from(array).map(|buffers| {
-                    let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
-                    boxed
-                })
-            }
-            adt::DataType::FixedSizeList(_, _) => {
-                FixedListBuffers::try_from(array).map(|buffers| {
-                    let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
-                    boxed
-                })
-            }
-            adt::DataType::LargeList(_) => {
-                ListBuffers::try_from(array).map(|buffers| {
-                    let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
-                    boxed
-                })
-            }
-            adt::DataType::Int8
-            | adt::DataType::Int16
-            | adt::DataType::Int32
-            | adt::DataType::Int64
-            | adt::DataType::UInt8
-            | adt::DataType::UInt16
-            | adt::DataType::UInt32
-            | adt::DataType::UInt64
-            | adt::DataType::Float32
-            | adt::DataType::Float64
-            | adt::DataType::Timestamp(_, None)
-            | adt::DataType::Time64(_) => PrimitiveBuffers::try_from(array)
-                .map(|buffers| {
-                    let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
-                    boxed
-                }),
-
-            adt::DataType::Timestamp(_, Some(_)) => {
-                Err((array, UnsupportedArrowArrayError::UnsupportedTimeZones))
-            }
-
-            adt::DataType::Binary
-            | adt::DataType::List(_)
-            | adt::DataType::Utf8 => Err((
-                array,
-                UnsupportedArrowArrayError::LargeVariantOnly(dtype),
-            )),
-
-            adt::DataType::FixedSizeBinary(_) => {
-                todo!("This can probably be supported.")
-            }
-
-            adt::DataType::Null
-            | adt::DataType::Float16
-            | adt::DataType::Date32
-            | adt::DataType::Date64
-            | adt::DataType::Time32(_)
-            | adt::DataType::Duration(_)
-            | adt::DataType::Interval(_)
-            | adt::DataType::BinaryView
-            | adt::DataType::Utf8View
-            | adt::DataType::ListView(_)
-            | adt::DataType::LargeListView(_)
-            | adt::DataType::Struct(_)
-            | adt::DataType::Union(_, _)
-            | adt::DataType::Dictionary(_, _)
-            | adt::DataType::Decimal128(_, _)
-            | adt::DataType::Decimal256(_, _)
-            | adt::DataType::Map(_, _)
-            | adt::DataType::RunEndEncoded(_, _) => Err((
-                array,
-                UnsupportedArrowArrayError::UnsupportedArrowType(dtype),
-            )),
+fn to_target_buffers(
+    _target: &QueryField,
+    array: Arc<dyn aa::Array>,
+) -> FromArrowResult<Box<dyn NewBufferTraitThing>> {
+    let dtype = array.data_type().clone();
+    match dtype {
+        adt::DataType::Boolean => {
+            BooleanBuffers::try_from(array).map(|buffers| {
+                let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
+                boxed
+            })
         }
+        adt::DataType::LargeBinary | adt::DataType::LargeUtf8 => {
+            ByteBuffers::try_from(array).map(|buffers| {
+                let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
+                boxed
+            })
+        }
+        adt::DataType::FixedSizeList(_, _) => FixedListBuffers::try_from(array)
+            .map(|buffers| {
+                let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
+                boxed
+            }),
+        adt::DataType::LargeList(_) => {
+            ListBuffers::try_from(array).map(|buffers| {
+                let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
+                boxed
+            })
+        }
+        adt::DataType::Int8
+        | adt::DataType::Int16
+        | adt::DataType::Int32
+        | adt::DataType::Int64
+        | adt::DataType::UInt8
+        | adt::DataType::UInt16
+        | adt::DataType::UInt32
+        | adt::DataType::UInt64
+        | adt::DataType::Float32
+        | adt::DataType::Float64
+        | adt::DataType::Timestamp(_, None)
+        | adt::DataType::Time64(_) => {
+            PrimitiveBuffers::try_from(array).map(|buffers| {
+                let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
+                boxed
+            })
+        }
+
+        adt::DataType::Timestamp(_, Some(_)) => {
+            Err((array, UnsupportedArrowArrayError::UnsupportedTimeZones))
+        }
+
+        adt::DataType::Binary
+        | adt::DataType::List(_)
+        | adt::DataType::Utf8 => {
+            Err((array, UnsupportedArrowArrayError::LargeVariantOnly(dtype)))
+        }
+
+        adt::DataType::FixedSizeBinary(_) => {
+            todo!("This can probably be supported.")
+        }
+
+        adt::DataType::Null
+        | adt::DataType::Float16
+        | adt::DataType::Date32
+        | adt::DataType::Date64
+        | adt::DataType::Time32(_)
+        | adt::DataType::Duration(_)
+        | adt::DataType::Interval(_)
+        | adt::DataType::BinaryView
+        | adt::DataType::Utf8View
+        | adt::DataType::ListView(_)
+        | adt::DataType::LargeListView(_)
+        | adt::DataType::Struct(_)
+        | adt::DataType::Union(_, _)
+        | adt::DataType::Dictionary(_, _)
+        | adt::DataType::Decimal128(_, _)
+        | adt::DataType::Decimal256(_, _)
+        | adt::DataType::Map(_, _)
+        | adt::DataType::RunEndEncoded(_, _) => Err((
+            array,
+            UnsupportedArrowArrayError::UnsupportedArrowType(dtype),
+        )),
     }
 }
 
@@ -1033,13 +1031,15 @@ impl TryFrom<Arc<dyn aa::Array>> for Box<dyn NewBufferTraitThing> {
 /// a thing that can be done safely, so we have a specialized utility struct
 /// that does the same idea, at the cost of an extra None in the struct.
 struct MutableOrShared {
+    target: QueryField,
     mutable: Option<Box<dyn NewBufferTraitThing>>,
     shared: Option<Arc<dyn aa::Array>>,
 }
 
 impl MutableOrShared {
-    pub fn new(value: Arc<dyn aa::Array>) -> Self {
+    pub fn new(target: QueryField, value: Arc<dyn aa::Array>) -> Self {
         Self {
+            target,
             mutable: None,
             shared: Some(value),
         }
@@ -1061,7 +1061,7 @@ impl MutableOrShared {
         }
 
         let shared: Arc<dyn aa::Array> = self.shared.take().unwrap();
-        let maybe_mutable = Box::<dyn NewBufferTraitThing>::try_from(shared);
+        let maybe_mutable = to_target_buffers(&self.target, shared);
 
         let ret = if maybe_mutable.is_ok() {
             self.mutable = maybe_mutable.ok();
@@ -1113,6 +1113,20 @@ pub struct BufferEntry {
 }
 
 impl BufferEntry {
+    pub fn new(target: QueryField, buffer: Arc<dyn aa::Array>) -> Self {
+        Self {
+            entry: MutableOrShared::new(target, buffer),
+            aggregate: None,
+        }
+    }
+
+    pub fn with_aggregate(self, aggregate: AggregateFunctionHandle) -> Self {
+        Self {
+            aggregate: Some(aggregate),
+            ..self
+        }
+    }
+
     pub fn as_shared(&self) -> Result<Arc<dyn aa::Array>> {
         let Some(ref array) = self.entry.shared() else {
             return Err(Error::UnshareableMutableBuffer);
@@ -1201,30 +1215,11 @@ impl BufferEntry {
     }
 }
 
-impl From<Arc<dyn aa::Array>> for BufferEntry {
-    fn from(array: Arc<dyn aa::Array>) -> Self {
-        Self {
-            entry: MutableOrShared::new(array),
-            aggregate: None,
-        }
-    }
-}
-
 pub struct QueryBuffers {
     buffers: HashMap<String, BufferEntry>,
 }
 
 impl QueryBuffers {
-    pub fn new(buffers: HashMap<String, Arc<dyn aa::Array>>) -> Self {
-        let mut new_buffers = HashMap::with_capacity(buffers.len());
-        for (field, array) in buffers.into_iter() {
-            new_buffers.insert(field, BufferEntry::from(array));
-        }
-        Self {
-            buffers: new_buffers,
-        }
-    }
-
     /// Reset all mutable buffers' len to match its total capacity.
     pub fn reset_lengths(&mut self) -> Result<()> {
         for array in self.buffers.values_mut() {
@@ -1270,10 +1265,10 @@ impl QueryBuffers {
         for (name, request_field) in fields.fields.into_iter() {
             let query_field = QueryField::get(&schema.context(), raw, &name)
                 .map_err(|e| Error::Field(name.clone(), e.into()))?;
-            let array = to_array(request_field, query_field)
+            let array = request_to_buffers(request_field, &query_field)
                 .map_err(|e| Error::Field(name.clone(), e))?;
 
-            buffers.insert(name.clone(), BufferEntry::from(array));
+            buffers.insert(name.clone(), BufferEntry::new(query_field, array));
         }
 
         for (name, (function, request_field)) in fields.aggregates.into_iter() {
@@ -1281,15 +1276,12 @@ impl QueryBuffers {
 
             let query_field = QueryField::get(&schema.context(), raw, &name)
                 .map_err(|e| Error::Field(name.clone(), e.into()))?;
-            let array = to_array(request_field, query_field)
+            let array = request_to_buffers(request_field, &query_field)
                 .map_err(|e| Error::Field(name.clone(), e))?;
 
             buffers.insert(
                 name.to_owned(),
-                BufferEntry {
-                    entry: MutableOrShared::new(array),
-                    aggregate: Some(handle),
-                },
+                BufferEntry::new(query_field, array).with_aggregate(handle),
             );
         }
 
@@ -1351,9 +1343,9 @@ impl QueryBuffers {
     }
 }
 
-fn to_array(
+fn request_to_buffers(
     field: RequestField,
-    tiledb_field: QueryField,
+    tiledb_field: &QueryField,
 ) -> FieldResult<Arc<dyn aa::Array>> {
     let conv = ToArrowConverter::strict();
 
