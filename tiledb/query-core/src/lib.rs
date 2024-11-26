@@ -27,8 +27,8 @@ macro_rules! out_ptr {
     };
 }
 
-pub mod arrow;
 pub mod buffers;
+pub mod datatype;
 pub mod field;
 pub mod fields;
 pub mod subarray;

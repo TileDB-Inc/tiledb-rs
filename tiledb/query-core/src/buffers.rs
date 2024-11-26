@@ -16,7 +16,7 @@ use tiledb_api::query::read::aggregate::AggregateFunctionHandle;
 use tiledb_api::ContextBound;
 use tiledb_common::array::CellValNum;
 
-use super::arrow::ToArrowConverter;
+use super::datatype::ToArrowConverter;
 use super::field::QueryField;
 use super::fields::{QueryField as RequestField, QueryFields};
 use super::RawQuery;
@@ -26,7 +26,7 @@ const AVERAGE_STRING_LENGTH: usize = 64;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("Error converting to Arrow for field '{0}': {1}")]
-    ArrowConversionError(String, super::arrow::Error),
+    ArrowConversionError(String, crate::datatype::Error),
     #[error("Failed to convert Arrow Array for field '{0}': {1}")]
     FailedConversionFromArrow(String, Box<Error>),
     #[error("Failed to add field '{0}' to query: {1}")]
@@ -65,7 +65,7 @@ pub enum FieldError {
     #[error("Error reading query field: {0}")]
     QueryField(#[from] crate::field::Error),
     #[error("Type mismatch for requested field: {0}")]
-    TypeMismatch(crate::arrow::Error),
+    TypeMismatch(crate::datatype::Error),
     #[error("Failed to allocate buffer: {0}")]
     BufferAllocation(ArrowError),
     #[error("Unsupported arrow array: {0}")]
