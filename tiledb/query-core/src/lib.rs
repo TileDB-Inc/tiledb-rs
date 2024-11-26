@@ -13,6 +13,8 @@ use tiledb_api::context::{CApiInterface, Context, ContextBound};
 use tiledb_api::error::Error as TileDBError;
 use tiledb_api::key::LookupKey;
 use tiledb_api::query::conditions::QueryConditionExpr;
+use tiledb_api::query::subarray::{RawSubarray, Subarray};
+use tiledb_api::Result as TileDBResult;
 use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
 
 use buffers::{Error as QueryBuffersError, QueryBuffers};
@@ -134,26 +136,6 @@ impl Drop for RawQuery {
     }
 }
 
-pub(crate) enum RawSubarray {
-    Owned(*mut ffi::tiledb_subarray_t),
-}
-
-impl Deref for RawSubarray {
-    type Target = *mut ffi::tiledb_subarray_t;
-    fn deref(&self) -> &Self::Target {
-        match *self {
-            RawSubarray::Owned(ref ffi) => ffi,
-        }
-    }
-}
-
-impl Drop for RawSubarray {
-    fn drop(&mut self) {
-        let RawSubarray::Owned(ref mut ffi) = *self;
-        unsafe { ffi::tiledb_subarray_free(ffi) };
-    }
-}
-
 /// The main Query interface
 ///
 /// This struct is responsible for executing queries against TileDB arrays.
@@ -174,6 +156,33 @@ impl ContextBound for Query {
 impl Query {
     pub(crate) fn capi(&mut self) -> *mut ffi::tiledb_query_t {
         *self.raw
+    }
+
+    /// Get the subarray for this query.
+    ///
+    /// The returned [Subarray] is tied to the lifetime of the Query.
+    ///
+    /// ```compile_fail,E0505
+    /// # use tiledb_api::query::{Query, QueryBase, Subarray};
+    /// fn invalid_use(query: QueryBase) {
+    ///     let subarray = query.subarray().unwrap();
+    ///     drop(query);
+    ///     /// The subarray should not be usable after the query is dropped.
+    ///     let _ = subarray.ranges();
+    /// }
+    /// ```
+    pub fn subarray(&self) -> TileDBResult<Subarray> {
+        let ctx = self.context();
+        let c_query = *self.raw;
+        let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
+        ctx.capi_call(|ctx| unsafe {
+            ffi::tiledb_query_get_subarray_t(ctx, c_query, &mut c_subarray)
+        })?;
+
+        Ok(Subarray::new(
+            self.array.schema()?,
+            RawSubarray::Owned(c_subarray),
+        ))
     }
 
     pub fn submit(&mut self) -> Result<QueryStatus> {
