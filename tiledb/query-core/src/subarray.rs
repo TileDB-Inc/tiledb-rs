@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
+use tiledb_common::array::dimension::DimensionKey;
 use tiledb_common::range::Range;
 
 use super::QueryBuilder;
 
-pub type SubarrayData = HashMap<String, Vec<Range>>;
+pub type SubarrayData = HashMap<DimensionKey, Vec<Range>>;
 
 #[derive(Default)]
 pub struct SubarrayBuilder {
@@ -16,13 +17,13 @@ impl SubarrayBuilder {
         Self::default()
     }
 
-    pub fn add_range<IntoRange: Into<Range>>(
+    pub fn add_range<IntoKey: Into<DimensionKey>, IntoRange: Into<Range>>(
         mut self,
-        dimension: &str,
+        dimension: IntoKey,
         range: IntoRange,
     ) -> Self {
         self.subarray
-            .entry(dimension.to_string())
+            .entry(dimension.into())
             .or_default()
             .push(range.into());
         self
@@ -51,9 +52,9 @@ impl SubarrayBuilderForQuery {
             .with_subarray_data(self.subarray_builder.build())
     }
 
-    pub fn add_range<IntoRange: Into<Range>>(
+    pub fn add_range<IntoKey: Into<DimensionKey>, IntoRange: Into<Range>>(
         mut self,
-        dimension: &str,
+        dimension: IntoKey,
         range: IntoRange,
     ) -> Self {
         self.subarray_builder =

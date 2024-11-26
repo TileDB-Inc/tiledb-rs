@@ -493,7 +493,7 @@ impl QueryBuilder {
         let raw_subarray = self.alloc_subarray()?;
         for (key, ranges) in subarray_data.iter() {
             for range in ranges {
-                self.set_subarray_range(*raw_subarray, &key.into(), range)?;
+                self.set_subarray_range(*raw_subarray, &key, range)?;
             }
         }
 
