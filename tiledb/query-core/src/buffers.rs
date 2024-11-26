@@ -1376,34 +1376,7 @@ fn to_array(
     alloc_array(arrow_type, tdb_nullable, field.capacity().unwrap())
 }
 
-/// A small helper for users writing code directly against the TileDB API
-///
-/// This struct is freely convertible to and from a HashMap of Arrow arrays.
-#[derive(Clone)]
-pub struct SharedBuffers {
-    buffers: HashMap<String, Arc<dyn aa::Array>>,
-}
-
-impl SharedBuffers {
-    pub fn get<T>(&self, key: &str) -> Option<&T>
-    where
-        T: Any,
-    {
-        self.buffers.get(key)?.as_any().downcast_ref::<T>()
-    }
-}
-
-impl From<HashMap<String, Arc<dyn aa::Array>>> for SharedBuffers {
-    fn from(buffers: HashMap<String, Arc<dyn aa::Array>>) -> Self {
-        Self { buffers }
-    }
-}
-
-impl From<SharedBuffers> for HashMap<String, Arc<dyn aa::Array>> {
-    fn from(buffers: SharedBuffers) -> Self {
-        buffers.buffers
-    }
-}
+pub type SharedBuffers = HashMap<String, Arc<dyn aa::Array>>;
 
 fn alloc_array(
     dtype: adt::DataType,
