@@ -13,6 +13,7 @@ tiledb-sys = { workspace = true }
 
 [dev-dependencies]
 anyhow = { workspace = true }
+arrow-proptest-strategies = { workspace = true }
 cells = { workspace = true, features = ["arrow", "proptest-strategies"] }
 itertools = { workspace = true }
 proptest = { workspace = true }

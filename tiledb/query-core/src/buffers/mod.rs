@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use arrow::array as aa;
+use arrow::array::{self as aa, Array};
 use arrow::buffer::{
     self as abuf, Buffer as ArrowBuffer, MutableBuffer as ArrowBufferMut,
+    OffsetBuffer,
 };
 use arrow::datatypes as adt;
 use arrow::error::ArrowError;
@@ -86,6 +87,8 @@ pub enum UnsupportedArrowArrayError {
         "TileDB only supports fixed size lists of primitive types, not {0}"
     )]
     UnsupportedFixedSizeListType(adt::DataType),
+    #[error("Offsets do not match target query field: expected fixed-size values of length {0}, found {1} at cell {2}")]
+    FixedOffsets(usize, usize, usize),
     #[error("Invalid data type for bytes array: {0}")]
     InvalidBytesType(adt::DataType),
     #[error("Invalid data type for primitive data: {0}")]
@@ -582,27 +585,32 @@ impl NewBufferTraitThing for FixedListBuffers {
         let cvn = u32::from(cell_val_num) as i32;
         let len = num_values / cvn as usize;
 
-        // N.B., data/validity clones are cheap. They are not cloning the
-        // underlying data buffers. We have to clone so that we can put ourself
-        // back together if the array conversion failes.
-        match aa::ArrayData::try_new(
-            field.data_type().clone(),
-            len,
-            validity.clone().map(|v| v.into_inner().into_inner()),
-            0,
-            vec![data.clone()],
-            vec![],
-        ) {
+        let into_arrow = self
+            .fixed_offsets
+            .as_ref()
+            .map(|fixed_offsets| {
+                check_fixed_offset_compatibility(
+                    cvn as usize,
+                    fixed_offsets.buffer.typed_data::<i64>(),
+                )
+            })
+            .unwrap_or(Ok(()))
+            .and_then(|_| {
+                // N.B., data/validity clones are cheap. They are not cloning the
+                // underlying data buffers. We have to clone so that we can put ourself
+                // back together if the array conversion failes.
+                aa::ArrayData::try_new(
+                    field.data_type().clone(),
+                    len,
+                    validity.clone().map(|v| v.into_inner().into_inner()),
+                    0,
+                    vec![data.clone()],
+                    vec![],
+                )
+                .map_err(UnsupportedArrowArrayError::ArrayCreationFailed)
+            });
+        match into_arrow {
             Ok(data) => {
-                // validate fixed offsets (if any)
-                if let Some(fixed_offsets) = self.fixed_offsets {
-                    let offsets = from_tdb_offsets(fixed_offsets.buffer);
-                    for w in offsets.windows(2) {
-                        if w[1] - w[0] != (cvn as i64) {
-                            todo!()
-                        }
-                    }
-                }
                 let array: Arc<dyn aa::Array> =
                     Arc::new(aa::FixedSizeListArray::new(
                         Arc::clone(&field),
@@ -625,7 +633,7 @@ impl NewBufferTraitThing for FixedListBuffers {
                         validity: self.validity,
                     });
 
-                Err((boxed, UnsupportedArrowArrayError::ArrayCreationFailed(e)))
+                Err((boxed, e))
             }
         }
     }
@@ -688,52 +696,117 @@ impl QueryBuffer {
     }
 }
 
+/// Buffers representing an arrow `LargeList` array.
+///
+/// These may be used to target a tiledb field with any [CellValNum].
+/// For [CellValNum::Var] the mapping is obvious.
+/// For [CellValNum::Fixed]:
+/// * Read queries will generate offsets using the fixed size of each cell.
+/// * Write queries will validate that the offsets are of fixed size
+///   and return `Err` if they are not.
 struct ListBuffers {
     field: Arc<adt::Field>,
     data: QueryBuffer,
-    offsets: QueryBuffer,
+    /// Offsets are optional in case the target field is fixed size
+    offsets: ListBuffersOffsets,
     validity: Option<QueryBuffer>,
+}
+
+enum ListBuffersOffsets {
+    ArrowOnly(OffsetBuffer<i64>),
+    Shared(QueryBuffer),
 }
 
 impl ListBuffers {
     pub fn try_new(
         target: &BufferTarget,
-        array: Arc<dyn aa::Array>,
+        array: aa::LargeListArray,
     ) -> FromArrowResult<Self> {
-        assert!(matches!(array.data_type(), adt::DataType::LargeList(_)));
-
-        let array: aa::LargeListArray = downcast_consume(array);
-        let (field, offsets, array, nulls) = array.into_parts();
-
-        if field.is_nullable() {
-            return Err((
-                array,
-                UnsupportedArrowArrayError::InvalidNullableListElements,
-            ));
-        }
-
-        let dtype = field.data_type().clone();
-        if !dtype.is_primitive() {
-            return Err((
-                array,
-                UnsupportedArrowArrayError::UnsupportedFixedSizeListType(dtype),
-            ));
-        }
-
         let num_cells = array.len();
 
-        // N.B., I really, really tried to make this a fancy map/map_err
-        // cascade like all of the others. But it turns out that keeping the
-        // proper refcounts on either array or offsets turns into a bit of
-        // an issue when passing things through multiple closures.
-        let result = PrimitiveBuffers::try_new(target, array);
+        let (field, offsets, values, nulls) = array.into_parts();
+
+        // NB: this function has to be very careful with map/map_err
+        // as moving arrays or offsets into closures affects refcounts.
+
+        // validation
+        let valid = {
+            if field.is_nullable() {
+                // FIXME: this depends on read/write
+                Err(UnsupportedArrowArrayError::InvalidNullableListElements)
+            } else if !field.data_type().is_primitive() {
+                Err(UnsupportedArrowArrayError::UnsupportedFixedSizeListType(
+                    field.data_type().clone(),
+                ))
+            } else if let CellValNum::Fixed(nz) = target.cell_val_num {
+                if matches!(target.query_type, QueryType::Write) {
+                    // validate that offsets match
+                    check_fixed_offset_compatibility(
+                        nz.get() as usize,
+                        &offsets,
+                    )
+                } else {
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            }
+        };
+
+        if let Err(e) = valid {
+            let array = aa::LargeListArray::try_new(
+                field,
+                offsets,
+                values,
+                nulls.clone(),
+            )
+            .unwrap();
+            return Err((Arc::new(array), e.into()));
+        }
+
+        let offsets = if let CellValNum::Fixed(_) = target.cell_val_num {
+            // NB: validated to match above
+            ListBuffersOffsets::ArrowOnly(offsets)
+        } else {
+            match offsets.into_inner().into_inner().into_mutable() {
+                Ok(offsets) => {
+                    ListBuffersOffsets::Shared(QueryBuffer::new(offsets))
+                }
+                Err(e) => {
+                    let offsets_buffer = e;
+                    let offsets = abuf::OffsetBuffer::new(
+                        abuf::ScalarBuffer::<i64>::from(offsets_buffer),
+                    );
+                    let array: Arc<dyn aa::Array> = Arc::new(
+                        aa::LargeListArray::try_new(
+                            Arc::clone(&field),
+                            offsets,
+                            values,
+                            nulls.clone(),
+                        )
+                        .unwrap(),
+                    );
+                    return Err((array, ArrayInUseError::Array.into()));
+                }
+            }
+        };
+
+        // NB: by default the offsets are not arrow-shaped.
+        // However we use the configuration options to make them so.
+
+        let result = PrimitiveBuffers::try_new(target, values);
         if result.is_err() {
-            let (array, err) = result.err().unwrap();
+            let (values, err) = result.err().unwrap();
             let array: Arc<dyn aa::Array> = Arc::new(
                 aa::LargeListArray::try_new(
                     Arc::clone(&field),
-                    offsets,
-                    array,
+                    match offsets {
+                        ListBuffersOffsets::ArrowOnly(offsets) => offsets,
+                        ListBuffersOffsets::Shared(qb) => {
+                            from_tdb_offsets(qb.buffer)
+                        }
+                    },
+                    values,
                     nulls.clone(),
                 )
                 .unwrap(),
@@ -742,39 +815,13 @@ impl ListBuffers {
         }
 
         let data = result.ok().unwrap();
-
-        let offsets = match offsets.into_inner().into_inner().into_mutable() {
-            Ok(offsets) => offsets,
-            Err(e) => {
-                let offsets_buffer = e;
-                let offsets = abuf::OffsetBuffer::new(
-                    abuf::ScalarBuffer::<i64>::from(offsets_buffer),
-                );
-                let array: Arc<dyn aa::Array> = Arc::new(
-                    aa::LargeListArray::try_new(
-                        Arc::clone(&field),
-                        offsets,
-                        // Safety: We just turned this into a mutable buffer, so
-                        // the inversion should never fail.
-                        Box::new(data).into_arrow().ok().unwrap(),
-                        nulls.clone(),
-                    )
-                    .unwrap(),
-                );
-                return Err((array, ArrayInUseError::Array.into()));
-            }
-        };
-
-        // NB: by default the offsets are not arrow-shaped.
-        // However we use the configuration options to make them so.
-
         let validity =
             to_tdb_validity(target, num_cells, nulls).map(QueryBuffer::new);
 
         Ok(ListBuffers {
             field,
             data: data.data,
-            offsets: QueryBuffer::new(offsets),
+            offsets,
             validity,
         })
     }
@@ -786,7 +833,10 @@ impl NewBufferTraitThing for ListBuffers {
     }
 
     fn len(&self) -> usize {
-        self.offsets.num_var_cells()
+        match &self.offsets {
+            ListBuffersOffsets::ArrowOnly(offsets) => offsets.len() - 1,
+            ListBuffersOffsets::Shared(qb) => qb.num_var_cells(),
+        }
     }
 
     fn data(&mut self) -> &mut QueryBuffer {
@@ -794,7 +844,10 @@ impl NewBufferTraitThing for ListBuffers {
     }
 
     fn offsets(&mut self) -> Option<&mut QueryBuffer> {
-        Some(&mut self.offsets)
+        match self.offsets {
+            ListBuffersOffsets::ArrowOnly(_) => None,
+            ListBuffersOffsets::Shared(ref mut qb) => Some(qb),
+        }
     }
 
     fn validity(&mut self) -> Option<&mut QueryBuffer> {
@@ -818,13 +871,37 @@ impl NewBufferTraitThing for ListBuffers {
 
         assert!(field.data_type().is_primitive());
 
-        let num_cells = self.offsets.num_var_cells();
+        let num_values = match self.offsets {
+            ListBuffersOffsets::ArrowOnly(ref offsets) => {
+                // SAFETY: [OffsetBuffer] is always non-empty
+                *offsets.last().unwrap() as usize
+            }
+            ListBuffersOffsets::Shared(ref qb) => {
+                let num_offsets = qb.num_var_cells() + 1;
+                // SAFETY: offsets came from arrow and are thus non-NULL,
+                // and are owned by `self.offsets`
+                let offsets = unsafe {
+                    std::slice::from_raw_parts(
+                        qb.buffer.as_ptr() as *const i64,
+                        num_offsets,
+                    )
+                };
+                // SAFETY: offsets is always non-empty
+                // TODO: this might not be true for tiledb actually, though it is for arrow
+                *offsets.last().unwrap() as usize
+            }
+        };
 
         // NB: by default the offsets are not arrow-shaped.
         // However we use the configuration options to make them so.
 
         let data = ArrowBuffer::from(self.data.buffer);
-        let offsets = from_tdb_offsets(self.offsets.buffer);
+        let (offsets, offsets_size) = match self.offsets {
+            ListBuffersOffsets::ArrowOnly(offsets) => (offsets, None),
+            ListBuffersOffsets::Shared(qb) => {
+                (from_tdb_offsets(qb.buffer), Some(qb.size))
+            }
+        };
         let validity = from_tdb_validity(&self.validity);
 
         // N.B., the calls to cloning the data/offsets/validity are as cheap
@@ -832,7 +909,7 @@ impl NewBufferTraitThing for ListBuffers {
         // the underlying allocated data.
         match aa::ArrayData::try_new(
             field.data_type().clone(),
-            num_cells,
+            num_values,
             None,
             0,
             vec![data.clone()],
@@ -859,9 +936,14 @@ impl NewBufferTraitThing for ListBuffers {
                             buffer: data.into_mutable().unwrap(),
                             size: self.data.size,
                         },
-                        offsets: QueryBuffer {
-                            buffer: to_tdb_offsets(offsets).unwrap(),
-                            size: self.offsets.size,
+                        offsets: if let Some(offsets_size) = offsets_size {
+                            // SAFETY: this was constructed via `from_tdb_offsets`
+                            ListBuffersOffsets::Shared(QueryBuffer {
+                                buffer: to_tdb_offsets(offsets).unwrap(),
+                                size: offsets_size,
+                            })
+                        } else {
+                            ListBuffersOffsets::ArrowOnly(offsets)
                         },
                         validity: self.validity,
                     });
@@ -1057,6 +1139,7 @@ fn to_target_buffers(
             })
         }
         adt::DataType::LargeList(_) => {
+            let array = downcast_consume::<aa::LargeListArray>(array);
             ListBuffers::try_new(target, array).map(|buffers| {
                 let boxed: Box<dyn NewBufferTraitThing> = Box::new(buffers);
                 boxed
@@ -1709,8 +1792,11 @@ fn to_tdb_validity(
     }
 }
 
-fn from_tdb_offsets(offsets: ArrowBufferMut) -> abuf::OffsetBuffer<i64> {
-    let buffer = abuf::ScalarBuffer::<i64>::from(offsets);
+fn from_tdb_offsets<B>(offsets: B) -> abuf::OffsetBuffer<i64>
+where
+    B: Into<ArrowBuffer>,
+{
+    let buffer = abuf::ScalarBuffer::<i64>::from(offsets.into());
     abuf::OffsetBuffer::new(buffer)
 }
 
@@ -1723,3 +1809,21 @@ fn from_tdb_validity(
         )
     })
 }
+
+fn check_fixed_offset_compatibility(
+    fixed_cvn: usize,
+    offsets: &[i64],
+) -> UnsupportedArrowArrayResult<()> {
+    for (i, w) in offsets.windows(2).enumerate() {
+        let length = (w[1] - w[0]) as usize;
+        if length != fixed_cvn {
+            return Err(UnsupportedArrowArrayError::FixedOffsets(
+                fixed_cvn, length, i,
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests;

@@ -1900,6 +1900,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrow",
+ "arrow-proptest-strategies",
  "cells",
  "itertools 0.12.1",
  "proptest",
