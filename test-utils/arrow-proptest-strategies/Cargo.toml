@@ -1,0 +1,13 @@
+[package]
+name = "arrow-proptest-strategies"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+arrow-array = { workspace = true }
+arrow-buffer = { workspace = true }
+arrow-schema = { workspace = true }
+half = { workspace = true }
+proptest = { workspace = true }
+strategy-ext = { workspace = true }

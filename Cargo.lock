@@ -330,6 +330,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-proptest-strategies"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-buffer",
+ "arrow-schema",
+ "half",
+ "proptest",
+ "strategy-ext",
+]
+
+[[package]]
 name = "arrow-row"
 version = "52.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
