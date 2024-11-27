@@ -190,9 +190,23 @@ trait NewBufferTraitThing {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum BufferTarget {
-    Read,
-    Write(bool),
+struct BufferTarget {
+    query_type: QueryType,
+    cell_val_num: CellValNum,
+    is_nullable: bool,
+}
+
+impl BufferTarget {
+    pub fn new(
+        query_type: QueryType,
+        target: QueryField,
+    ) -> crate::field::Result<Self> {
+        Ok(Self {
+            query_type,
+            cell_val_num: target.cell_val_num()?,
+            is_nullable: target.nullable()?,
+        })
+    }
 }
 
 struct BooleanBuffers {
@@ -430,6 +444,8 @@ struct FixedListBuffers {
     field: Arc<adt::Field>,
     cell_val_num: CellValNum,
     data: QueryBuffer,
+    /// Optional offsets buffer when targeting a variable-size field.
+    fixed_offsets: Option<QueryBuffer>,
     validity: Option<QueryBuffer>,
 }
 
@@ -462,6 +478,19 @@ impl FixedListBuffers {
             ));
         }
 
+        let fixed_offsets = match target.cell_val_num {
+            CellValNum::Fixed(_) => None,
+            CellValNum::Var => {
+                let offsets = abuf::OffsetBuffer::<i64>::from_lengths(vec![
+                    cvn as usize;
+                    num_cells
+                ]);
+                // SAFETY: just created a new one, it is definitely not in use
+                let tdb_offsets = to_tdb_offsets(offsets).unwrap();
+                Some(QueryBuffer::new(tdb_offsets))
+            }
+        };
+
         // SAFETY: We just showed cvn >= 2 && cvn is i32 whicih means
         // it can't be u32::MAX
         let cvn = CellValNum::try_from(cvn as u32)
@@ -485,6 +514,7 @@ impl FixedListBuffers {
                     field: Arc::clone(&field),
                     cell_val_num: cvn,
                     data: buffers.data,
+                    fixed_offsets,
                     validity,
                 }
             })
@@ -562,18 +592,26 @@ impl NewBufferTraitThing for FixedListBuffers {
             0,
             vec![data.clone()],
             vec![],
-        )
-        .map(|data| {
-            let array: Arc<dyn aa::Array> =
-                Arc::new(aa::FixedSizeListArray::new(
-                    Arc::clone(&field),
-                    u32::from(cell_val_num) as i32,
-                    aa::make_array(data),
-                    validity.clone(),
-                ));
-            array
-        }) {
-            Ok(arrow) => Ok(arrow),
+        ) {
+            Ok(data) => {
+                // validate fixed offsets (if any)
+                if let Some(fixed_offsets) = self.fixed_offsets {
+                    let offsets = from_tdb_offsets(fixed_offsets.buffer);
+                    for w in offsets.windows(2) {
+                        if w[1] - w[0] != (cvn as i64) {
+                            todo!()
+                        }
+                    }
+                }
+                let array: Arc<dyn aa::Array> =
+                    Arc::new(aa::FixedSizeListArray::new(
+                        Arc::clone(&field),
+                        u32::from(cell_val_num) as i32,
+                        aa::make_array(data),
+                        validity.clone(),
+                    ));
+                Ok(array)
+            }
             Err(e) => {
                 let boxed: Box<dyn NewBufferTraitThing> =
                     Box::new(FixedListBuffers {
@@ -583,6 +621,7 @@ impl NewBufferTraitThing for FixedListBuffers {
                             buffer: data.into_mutable().unwrap(),
                             size: self.data.size,
                         },
+                        fixed_offsets: self.fixed_offsets,
                         validity: self.validity,
                     });
 
@@ -1415,13 +1454,7 @@ fn make_buffer_entry(
     let query_field = QueryField::get(context, raw, &name)?;
     let array = request_to_buffers(request, &query_field)?;
 
-    let target = match query_type {
-        QueryType::Read => BufferTarget::Read,
-        QueryType::Write => BufferTarget::Write(query_field.nullable()?),
-        QueryType::Delete => unimplemented!(),
-        QueryType::Update => unimplemented!(),
-        QueryType::ModifyExclusive => unimplemented!(),
-    };
+    let target = BufferTarget::new(query_type, query_field)?;
 
     let entry = BufferEntry::new(target, array);
     Ok(if let Some(aggregate) = aggregate {
@@ -1667,7 +1700,9 @@ fn to_tdb_validity(
     });
     if arrow_validity.is_some() {
         arrow_validity
-    } else if matches!(target, BufferTarget::Write(true)) {
+    } else if target.is_nullable
+        && matches!(target.query_type, QueryType::Write)
+    {
         Some(ArrowBufferMut::from(vec![1u8; num_cells]))
     } else {
         None

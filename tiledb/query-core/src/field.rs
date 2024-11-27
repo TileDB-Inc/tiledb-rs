@@ -20,7 +20,7 @@ pub enum Error {
     LibTileDB(#[from] tiledb_api::error::Error),
 }
 
-type Result<T, E = Error> = std::result::Result<T, E>;
+pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 pub enum RawQueryField {
     Owned(Context, *mut ffi::tiledb_query_field_t),
