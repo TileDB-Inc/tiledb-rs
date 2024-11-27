@@ -239,6 +239,43 @@ pub fn prop_array(
                         .expect("Invalid precision and scale")
                 )
             }
+            DataType::FixedSizeList(element, flen) => {
+                let flen = *flen;
+                let element = Arc::clone(&element);
+
+                let values_parameters = ArrayParameters {
+                    num_rows: Just(num_rows * (flen as usize)).boxed(),
+                    allow_null_values: params.allow_null_collection_element,
+                    ..params.clone()
+                };
+
+                (
+                    prop_array(values_parameters, Arc::clone(&element)),
+                    if field.is_nullable() {
+                        strat_vec(
+                            proptest::bool::weighted(
+                                1.0 - DEFAULT_NONE_PROBABILITY,
+                            ),
+                            num_rows,
+                        )
+                        .prop_map(Some)
+                        .boxed()
+                    } else {
+                        Just(None).boxed()
+                    },
+                )
+                    .prop_map(move |(values, nulls)| {
+                        FixedSizeListArray::new(
+                            Arc::clone(&element),
+                            flen,
+                            values,
+                            nulls
+                                .map(|n| n.into_iter().collect::<NullBuffer>()),
+                        )
+                    })
+                    .prop_map(to_arc_dyn)
+                    .boxed()
+            }
             DataType::LargeList(element) => {
                 let field = Arc::clone(&field);
                 let element = Arc::clone(element);
