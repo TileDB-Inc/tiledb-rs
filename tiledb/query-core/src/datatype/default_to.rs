@@ -126,10 +126,8 @@ fn single_valued_type(tiledb: Datatype) -> TypeConversion<ArrowDataType> {
         tiledb::DateTimeNanosecond => {
             LogicalMatch(arrow::Timestamp(TimeUnit::Nanosecond, None))
         }
-        tiledb::TimeSecond => LogicalMatch(arrow::Time64(TimeUnit::Second)),
-        tiledb::TimeMillisecond => {
-            LogicalMatch(arrow::Time64(TimeUnit::Millisecond))
-        }
+        tiledb::TimeSecond => PhysicalMatch(arrow::Int64),
+        tiledb::TimeMillisecond => PhysicalMatch(arrow::Int64),
         tiledb::TimeMicrosecond => {
             LogicalMatch(arrow::Time64(TimeUnit::Microsecond))
         }

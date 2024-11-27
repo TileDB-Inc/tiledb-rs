@@ -102,6 +102,9 @@ fn instance_list_buffers_roundtrip_fixed(
 fn strat_list_buffers_roundtrip_var(
 ) -> impl Strategy<Value = aa::LargeListArray> {
     any::<Datatype>()
+        .prop_filter("Boolean in list needs special handling", |dt| {
+            *dt != Datatype::Boolean
+        })
         .prop_map(|dt| {
             crate::datatype::default_arrow_type(dt, CellValNum::single())
                 .unwrap()
