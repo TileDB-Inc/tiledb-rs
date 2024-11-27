@@ -17,7 +17,7 @@ use uri::TestArrayUri;
 use super::*;
 
 #[test]
-fn query_roundtrip() -> anyhow::Result<()> {
+fn query_roundtrip_once() -> anyhow::Result<()> {
     let ctx = Context::new()?;
 
     let schema_req = query_write_schema_requirements(None);
