@@ -960,42 +960,45 @@ struct PrimitiveBuffers {
     validity: Option<QueryBuffer>,
 }
 
-macro_rules! to_primitive {
-    ($TARGET:expr, $ARRAY:expr, $ARROW_DT:ty) => {{
-        let target = $TARGET;
-        let array: $ARROW_DT = downcast_consume($ARRAY);
-        let num_cells = array.len();
-        let (dtype, buffer, nulls) = array.into_parts();
+fn to_primitive_buffers<T>(
+    target: &BufferTarget,
+    array: Arc<dyn aa::Array>,
+) -> FromArrowResult<PrimitiveBuffers>
+where
+    T: aa::ArrowPrimitiveType,
+{
+    let array = downcast_consume::<aa::PrimitiveArray<T>>(array);
 
-        buffer
-            .into_inner()
-            .into_mutable()
-            .map(|data| {
-                let validity =
-                    to_tdb_validity(target, num_cells, nulls.clone())
-                        .map(QueryBuffer::new);
-                PrimitiveBuffers {
-                    dtype: dtype.clone(),
-                    data: QueryBuffer::new(data),
-                    validity,
-                }
-            })
-            .map_err(|buffer| {
-                // Safety: We just broke an array open to get these so
-                // unless someone did something unsafe they should go
-                // right back together again. Sorry, Humpty.
-                let data = aa::ArrayData::try_new(
-                    dtype,
-                    num_cells,
-                    nulls.map(|n| n.into_inner().into_inner()),
-                    0,
-                    vec![buffer],
-                    vec![],
-                )
-                .unwrap();
-                (aa::make_array(data), ArrayInUseError::Array.into())
-            })
-    }};
+    let num_cells = array.len();
+    let (dtype, buffer, nulls) = array.into_parts();
+
+    buffer
+        .into_inner()
+        .into_mutable()
+        .map(|data| {
+            let validity = to_tdb_validity(target, num_cells, nulls.clone())
+                .map(QueryBuffer::new);
+            PrimitiveBuffers {
+                dtype: dtype.clone(),
+                data: QueryBuffer::new(data),
+                validity,
+            }
+        })
+        .map_err(|buffer| {
+            // SAFETY: We just broke an array open to get these so
+            // unless someone did something unsafe they should go
+            // right back together again. Sorry, Humpty.
+            let data = aa::ArrayData::try_new(
+                dtype,
+                num_cells,
+                nulls.map(|n| n.into_inner().into_inner()),
+                0,
+                vec![buffer],
+                vec![],
+            )
+            .unwrap();
+            (aa::make_array(data), ArrayInUseError::Array.into())
+        })
 }
 
 impl PrimitiveBuffers {
@@ -1005,40 +1008,18 @@ impl PrimitiveBuffers {
     ) -> FromArrowResult<Self> {
         assert!(array.data_type().is_primitive());
 
-        match array.data_type().clone() {
-            adt::DataType::Int8 => to_primitive!(target, array, aa::Int8Array),
-            adt::DataType::Int16 => {
-                to_primitive!(target, array, aa::Int16Array)
-            }
-            adt::DataType::Int32 => {
-                to_primitive!(target, array, aa::Int32Array)
-            }
-            adt::DataType::Int64 => {
-                to_primitive!(target, array, aa::Int64Array)
-            }
-            adt::DataType::UInt8 => {
-                to_primitive!(target, array, aa::UInt8Array)
-            }
-            adt::DataType::UInt16 => {
-                to_primitive!(target, array, aa::UInt16Array)
-            }
-            adt::DataType::UInt32 => {
-                to_primitive!(target, array, aa::UInt32Array)
-            }
-            adt::DataType::UInt64 => {
-                to_primitive!(target, array, aa::UInt64Array)
-            }
-            adt::DataType::Float32 => {
-                to_primitive!(target, array, aa::Float32Array)
-            }
-            adt::DataType::Float64 => {
-                to_primitive!(target, array, aa::Float64Array)
-            }
-            t => Err((
-                array,
-                UnsupportedArrowArrayError::InvalidPrimitiveType(t),
-            )),
+        macro_rules! go {
+            ($ARROWTYPE:ty) => {
+                to_primitive_buffers::<$ARROWTYPE>(target, array)
+            };
         }
+
+        use adt as arrow_schema;
+        let dtype = array.data_type();
+        aa::downcast_primitive!(
+            dtype => (go),
+            _ => todo!()
+        )
     }
 }
 
