@@ -14,7 +14,7 @@ use proptest::strategy::BoxedStrategy;
 pub const DEFAULT_NONE_PROBABILITY: f64 = 0.0625f64;
 
 #[derive(Clone, Debug)]
-pub struct ColumnParameters {
+pub struct ArrayParameters {
     /// Strategy for choosing the number of rows in the column.
     pub num_rows: BoxedStrategy<usize>,
     /// Strategy for choosing the number of elements in variable-length column elements.
@@ -26,8 +26,19 @@ pub struct ColumnParameters {
     pub allow_null_collection_element: bool,
 }
 
+impl Default for ArrayParameters {
+    fn default() -> Self {
+        Self {
+            num_rows: (0..=8usize).boxed(),
+            num_collection_elements: (0..=8).into(),
+            allow_null_values: true,
+            allow_null_collection_element: false,
+        }
+    }
+}
+
 pub fn prop_array(
-    params: ColumnParameters,
+    params: ArrayParameters,
     field: Arc<Field>,
 ) -> impl Strategy<Value = Arc<dyn Array>> {
     fn to_arc_dyn<T>(array: T) -> Arc<dyn Array>
@@ -235,7 +246,7 @@ pub fn prop_array(
                     let r = params.num_collection_elements.clone();
                     (num_rows * r.start(), num_rows * r.end_incl())
                 };
-                let values_parameters = ColumnParameters {
+                let values_parameters = ArrayParameters {
                     num_rows: (min_values..=max_values).boxed(),
                     allow_null_values: params.allow_null_collection_element,
                     ..params.clone()

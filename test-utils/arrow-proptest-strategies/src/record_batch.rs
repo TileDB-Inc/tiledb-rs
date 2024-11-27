@@ -5,7 +5,7 @@ use arrow_schema::{Schema, SchemaRef};
 use proptest::collection::SizeRange;
 use proptest::prelude::*;
 
-use crate::array::{prop_array, ColumnParameters};
+use crate::array::{prop_array, ArrayParameters};
 
 #[derive(Clone, Debug)]
 pub struct RecordBatchParameters {
@@ -19,8 +19,8 @@ pub struct RecordBatchParameters {
 }
 
 impl RecordBatchParameters {
-    pub fn column_parameters(&self) -> ColumnParameters {
-        ColumnParameters {
+    pub fn column_parameters(&self) -> ArrayParameters {
+        ArrayParameters {
             num_rows: self.num_rows.clone(),
             num_collection_elements: self.num_collection_elements.clone(),
             allow_null_values: true,
@@ -56,7 +56,7 @@ pub fn prop_record_batch_for_schema(
         .num_rows
         .clone()
         .prop_flat_map(move |num_rows| {
-            let column_params = ColumnParameters {
+            let column_params = ArrayParameters {
                 num_rows: Just(num_rows).boxed(),
                 ..params.column_parameters()
             };
