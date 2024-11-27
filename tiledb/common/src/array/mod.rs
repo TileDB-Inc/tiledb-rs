@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 pub use dimension::DimensionConstraints;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
     Read,
     Write,
