@@ -167,6 +167,12 @@ fn unwrap_config_to_ptr(context: Option<&Config>) -> *mut tiledb_config_t {
 }
 
 impl Array {
+    #[cfg(feature = "raw")]
+    pub fn capi(&self) -> &RawArray {
+        &self.raw
+    }
+
+    #[cfg(not(feature = "raw"))]
     pub(crate) fn capi(&self) -> &RawArray {
         &self.raw
     }

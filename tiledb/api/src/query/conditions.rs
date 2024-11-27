@@ -795,10 +795,20 @@ impl QueryConditionExpr {
         }
     }
 
+    #[cfg(feature = "raw")]
+    pub fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
+        self.build_impl(ctx)
+    }
+
+    #[cfg(not(feature = "raw"))]
     pub(crate) fn build(
         &self,
         ctx: &Context,
     ) -> TileDBResult<RawQueryCondition> {
+        self.build_impl(ctx)
+    }
+
+    fn build_impl(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         match self {
             Self::Cond(cond) => cond.build(ctx),
             Self::Comb { lhs, rhs, op } => {
@@ -885,7 +895,7 @@ impl Display for QueryConditionExpr {
     }
 }
 
-pub(crate) enum RawQueryCondition {
+pub enum RawQueryCondition {
     Owned(*mut ffi::tiledb_query_condition_t),
 }
 

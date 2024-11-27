@@ -9,7 +9,7 @@ path = "src/lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-arrow = { workspace = true, optional = true }
+arrow = { workspace = true }
 cells = { workspace = true, features = ["proptest-strategies"], optional = true }
 itertools = { workspace = true }
 num-traits = { workspace = true, optional = true }
@@ -18,7 +18,7 @@ proptest = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
-tiledb-common = { workspace = true }
+tiledb-common = { workspace = true, features = ["arrow"] }
 tiledb-pod = { workspace = true, optional = true, features = ["serde"] }
 tiledb-sys = { workspace = true }
 
@@ -36,9 +36,10 @@ tiledb-sys-cfg = { workspace = true }
 
 [features]
 default = []
-arrow = ["dep:arrow", "dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde", "tiledb-pod/serde"]
+arrow = ["dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde", "tiledb-pod/serde"]
 pod = ["dep:tiledb-pod"]
 proptest-strategies = ["dep:cells", "dep:proptest"]
+raw = []
 serde = ["dep:serde", "dep:serde_json", "dep:tiledb-pod"]
 
 [[example]]

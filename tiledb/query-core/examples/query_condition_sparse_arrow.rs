@@ -1,0 +1,229 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use arrow::array as aa;
+use itertools::izip;
+
+use tiledb_api::array::{
+    Array, AttributeBuilder, DimensionBuilder, DomainBuilder, SchemaBuilder,
+};
+use tiledb_api::context::Context;
+use tiledb_api::query::conditions::QueryConditionExpr as QC;
+use tiledb_api::Result as TileDBResult;
+use tiledb_common::array::{ArrayType, CellOrder, Mode};
+use tiledb_common::Datatype;
+use tiledb_query_core::{QueryBuilder, QueryLayout, QueryType};
+
+const ARRAY_URI: &str = "query_condition_sparse";
+const NUM_ELEMS: i32 = 10;
+const C_FILL_VALUE: i32 = -1;
+const D_FILL_VALUE: f32 = 0.0;
+
+/// Demonstrate reading sparse arrays with query conditions.
+fn main() -> TileDBResult<()> {
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let _ = std::env::set_current_dir(
+            PathBuf::from(manifest_dir).join("examples").join("output"),
+        );
+    }
+
+    let ctx = Context::new()?;
+    if Array::exists(&ctx, ARRAY_URI)? {
+        Array::delete(&ctx, ARRAY_URI)?;
+    }
+
+    create_array(&ctx)?;
+    write_array(&ctx)?;
+
+    println!("Reading the entire array:");
+    read_array(&ctx, None)?;
+
+    println!("Reading: a is null");
+    let qc = QC::field("a").is_null();
+    read_array(&ctx, Some(qc))?;
+
+    println!("Reading: b < \"eve\"");
+    let qc = QC::field("b").lt("eve");
+    read_array(&ctx, Some(qc))?;
+
+    println!("Reading: c >= 1");
+    let qc = QC::field("c").ge(1i32);
+    read_array(&ctx, Some(qc))?;
+
+    println!("Reading: 3.0 <= d <= 4.0");
+    let qc = QC::field("d").ge(3.0f32) & QC::field("d").le(4.0f32);
+    read_array(&ctx, Some(qc))?;
+
+    println!("Reading: (a is not null) && (b < \"eve\") && (3.0 <= d <= 4.0)");
+    let qc = QC::field("a").not_null()
+        & QC::field("b").lt("eve")
+        & QC::field("d").ge(3.0f32)
+        & QC::field("d").le(4.0f32);
+    read_array(&ctx, Some(qc))?;
+
+    Ok(())
+}
+
+/// Read the array with the optional query condition and print the results
+/// to stdout.
+fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
+    let array = Array::open(ctx, ARRAY_URI, Mode::Read)?;
+    let mut query = QueryBuilder::new(array, QueryType::Read)
+        .with_layout(QueryLayout::RowMajor)
+        .start_fields()
+        .field("index")
+        .field("a")
+        .field("b")
+        .field("c")
+        .field("d")
+        .end_fields()
+        .start_subarray()
+        .add_range("index", &[0i32, NUM_ELEMS - 1])
+        .end_subarray();
+
+    query = if let Some(qc) = qc {
+        query.with_query_condition(qc)
+    } else {
+        query
+    };
+
+    let mut query = query.build()?;
+    let status = query.submit()?;
+    assert!(status.is_complete());
+
+    let buffers = query.buffers()?;
+    let index = buffers.get::<aa::Int32Array>("index").unwrap();
+    let a = buffers.get::<aa::Int32Array>("a").unwrap();
+    let b = buffers.get::<aa::LargeStringArray>("b").unwrap();
+    let c = buffers.get::<aa::Int32Array>("c").unwrap();
+    let d = buffers.get::<aa::Float32Array>("d").unwrap();
+
+    for (index, a, b, c, d) in izip!(index, a, b, c, d) {
+        if a.is_some() {
+            println!(
+                "{}: '{}' '{}' '{}', '{}'",
+                index.unwrap(),
+                a.unwrap(),
+                b.unwrap(),
+                c.unwrap(),
+                d.unwrap()
+            )
+        } else {
+            println!(
+                "{}: null '{}', '{}', '{}'",
+                index.unwrap(),
+                b.unwrap(),
+                c.unwrap(),
+                d.unwrap()
+            )
+        }
+    }
+
+    Ok(())
+}
+
+/// Function to create the TileDB array used in this example.
+/// The array will be 1D with size 1 with dimension "index".
+/// The bounds on the index will be 0 through 9, inclusive.
+///
+/// The array has four attributes. The four attributes are
+///  - "a" (type i32)
+///  - "b" (type String)
+///  - "c" (type i32)
+///  - "d" (type f32)
+fn create_array(ctx: &Context) -> TileDBResult<()> {
+    let domain = {
+        let index = DimensionBuilder::new(
+            ctx,
+            "index",
+            Datatype::Int32,
+            ([0, NUM_ELEMS - 1], 4),
+        )?
+        .build();
+
+        DomainBuilder::new(ctx)?.add_dimension(index)?.build()
+    };
+
+    let attr_a = AttributeBuilder::new(ctx, "a", Datatype::Int32)?
+        .nullability(true)?
+        .build();
+
+    let attr_b = AttributeBuilder::new(ctx, "b", Datatype::StringAscii)?
+        .var_sized()?
+        .build();
+
+    let attr_c = AttributeBuilder::new(ctx, "c", Datatype::Int32)?
+        .fill_value(C_FILL_VALUE)?
+        .build();
+
+    let attr_d = AttributeBuilder::new(ctx, "d", Datatype::Float32)?
+        .fill_value(D_FILL_VALUE)?
+        .build();
+
+    let schema = SchemaBuilder::new(ctx, ArrayType::Sparse, domain)?
+        .cell_order(CellOrder::RowMajor)?
+        .add_attribute(attr_a)?
+        .add_attribute(attr_b)?
+        .add_attribute(attr_c)?
+        .add_attribute(attr_d)?
+        .build()?;
+
+    Array::create(ctx, ARRAY_URI, schema)
+}
+
+/// Write the following data to the array:
+///
+/// index |  a   |   b   | c |  d
+/// -------------------------------
+///   0   | null | alice | 0 | 4.1
+///   1   | 2    | bob   | 0 | 3.4
+///   2   | null | craig | 0 | 5.6
+///   3   | 4    | dave  | 0 | 3.7
+///   4   | null | erin  | 0 | 2.3
+///   5   | 6    | frank | 0 | 1.7
+///   6   | null | grace | 1 | 3.8
+///   7   | 8    | heidi | 2 | 4.9
+///   8   | null | ivan  | 3 | 3.2
+///   9   | 10   | judy  | 4 | 3.1
+fn write_array(ctx: &Context) -> TileDBResult<()> {
+    let index_data =
+        Arc::new(aa::Int32Array::from(vec![0i32, 1, 2, 3, 4, 5, 6, 7, 8, 9]));
+    let a_data = Arc::new(aa::Int32Array::from(vec![
+        None,
+        Some(2i32),
+        None,
+        Some(4),
+        None,
+        Some(6),
+        None,
+        Some(8),
+        None,
+        Some(10),
+    ]));
+    let b_data = Arc::new(aa::LargeStringArray::from(vec![
+        "alice", "bob", "craig", "dave", "erin", "frank", "grace", "heidi",
+        "ivan", "judy",
+    ]));
+    let c_data =
+        Arc::new(aa::Int32Array::from(vec![0i32, 0, 0, 0, 0, 0, 1, 2, 3, 4]));
+    let d_data = Arc::new(aa::Float32Array::from(vec![
+        4.1f32, 3.4, 5.6, 3.7, 2.3, 1.7, 3.8, 4.9, 3.2, 3.1,
+    ]));
+
+    let array = Array::open(ctx, ARRAY_URI, Mode::Write)?;
+
+    let mut query = QueryBuilder::new(array, QueryType::Write)
+        .with_layout(QueryLayout::Unordered)
+        .start_fields()
+        .field_with_buffer("index", index_data)
+        .field_with_buffer("a", a_data)
+        .field_with_buffer("b", b_data)
+        .field_with_buffer("c", c_data)
+        .field_with_buffer("d", d_data)
+        .end_fields()
+        .build()?;
+
+    query.submit().and_then(|_| query.finalize())?;
+
+    Ok(())
+}

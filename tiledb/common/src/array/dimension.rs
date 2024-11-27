@@ -10,6 +10,8 @@ use crate::array::CellValNum;
 use crate::datatype::{Datatype, Error as DatatypeError};
 use crate::range::SingleValueRange;
 
+pub use crate::key::LookupKey as DimensionKey;
+
 #[derive(Clone, Debug, Error)]
 pub enum Error {
     #[error("Invalid datatype: {0}")]

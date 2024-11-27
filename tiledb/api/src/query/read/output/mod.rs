@@ -12,7 +12,6 @@ use crate::query::CellValue;
 use crate::Result as TileDBResult;
 use crate::{typed_query_buffers_go, Datatype};
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[cfg(any(test, feature = "proptest-strategies"))]

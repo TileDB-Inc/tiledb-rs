@@ -56,7 +56,6 @@ pub mod stats;
 pub mod string;
 pub mod vfs;
 
-#[cfg(feature = "arrow")]
 pub mod arrow;
 
 #[cfg(test)]

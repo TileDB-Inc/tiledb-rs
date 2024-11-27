@@ -6,6 +6,7 @@ members = [
   "tiledb/pod",
   "tiledb/proc-macro",
   "tiledb/queries",
+  "tiledb/query-core",
   "tiledb/sys",
   "tiledb/sys-cfg",
   "tiledb/sys-defs",
@@ -15,7 +16,7 @@ members = [
   "test-utils/signal",
   "test-utils/strategy-ext",
   "test-utils/uri",
-  "tools/api-coverage"
+  "tools/api-coverage",
 ]
 default-members = [
   "tiledb/api",
@@ -23,6 +24,7 @@ default-members = [
   "tiledb/pod",
   "tiledb/proc-macro",
   "tiledb/queries",
+  "tiledb/query-core",
   "tiledb/utils",
 ]
 
@@ -35,6 +37,8 @@ version = "0.1.0"
 anyhow = "1.0"
 armerge = "2"
 arrow = { version = "52.0.0", features = ["prettyprint"] }
+arrow-array = { version = "52.0.0" }
+arrow-buffer = { version = "52.0.0" }
 arrow-schema = { version = "52.0.0" }
 bindgen = "0.70"
 cells = { path = "test-utils/cells", version = "0.1.0" }

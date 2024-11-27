@@ -1,0 +1,24 @@
+[package]
+name = "tiledb-query-core"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+arrow = { workspace = true }
+thiserror = { workspace = true }
+tiledb-api = { workspace = true, features = ["raw"] }
+tiledb-common = { workspace = true }
+tiledb-sys = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+cells = { workspace = true, features = ["arrow", "proptest-strategies"] }
+itertools = { workspace = true }
+proptest = { workspace = true }
+tiledb-api = { workspace = true, features = ["pod", "proptest-strategies", "raw"] }
+tiledb-pod = { workspace = true, features = ["proptest-strategies"] }
+uri = { workspace = true }
+
+[build-dependencies]
+tiledb-sys-cfg = { workspace = true }

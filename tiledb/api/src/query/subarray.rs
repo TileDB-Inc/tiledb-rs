@@ -16,7 +16,7 @@ use tiledb_common::{
     physical_type_go, single_value_range_go, var_value_range_go,
 };
 
-pub(crate) enum RawSubarray {
+pub enum RawSubarray {
     Owned(*mut ffi::tiledb_subarray_t),
 }
 
@@ -53,7 +53,7 @@ impl Subarray<'_> {
         *self.raw
     }
 
-    pub(crate) fn new(schema: Schema, raw: RawSubarray) -> Self {
+    pub fn new(schema: Schema, raw: RawSubarray) -> Self {
         Subarray {
             schema,
             raw,
