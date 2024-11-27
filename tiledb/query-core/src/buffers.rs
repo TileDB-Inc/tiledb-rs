@@ -16,7 +16,6 @@ use tiledb_api::query::read::aggregate::AggregateFunctionHandle;
 use tiledb_api::{Context, ContextBound};
 use tiledb_common::array::CellValNum;
 
-use super::datatype::ToArrowConverter;
 use super::field::QueryField;
 use super::fields::{QueryField as RequestField, QueryFields};
 use super::QueryType;
@@ -26,8 +25,6 @@ const AVERAGE_STRING_LENGTH: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("Error converting to Arrow for field '{0}': {1}")]
-    ArrowConversionError(String, crate::datatype::Error),
     #[error("Failed to convert Arrow Array for field '{0}': {1}")]
     FailedConversionFromArrow(String, Box<Error>),
     #[error("Failed to add field '{0}' to query: {1}")]
@@ -65,8 +62,10 @@ type Result<T> = std::result::Result<T, Error>;
 pub enum FieldError {
     #[error("Error reading query field: {0}")]
     QueryField(#[from] crate::field::Error),
-    #[error("Type mismatch for requested field: {0}")]
-    TypeMismatch(crate::datatype::Error),
+    #[error("Type mismatch: arrow type '{0}' is not compatible with tiledb type '({1}, {2})'")]
+    TypeMismatch(adt::DataType, tiledb_common::Datatype, CellValNum),
+    #[error("No default arrow type: {0}")]
+    TargetTypeRequired(crate::datatype::DefaultArrowTypeError),
     #[error("Failed to allocate buffer: {0}")]
     BufferAllocation(ArrowError),
     #[error("Unsupported arrow array: {0}")]
@@ -1436,8 +1435,6 @@ fn request_to_buffers(
     field: RequestField,
     tiledb_field: &QueryField,
 ) -> FieldResult<Arc<dyn aa::Array>> {
-    let conv = ToArrowConverter::strict();
-
     let tdb_dtype = tiledb_field.datatype()?;
     let tdb_cvn = tiledb_field.cell_val_num()?;
     let tdb_nullable = tiledb_field.nullable()?;
@@ -1447,13 +1444,20 @@ fn request_to_buffers(
         return Ok(array);
     }
 
-    let arrow_type = if let Some(dtype) = field.target_type() {
-        conv.convert_datatype_to(&tdb_dtype, &tdb_cvn, tdb_nullable, dtype)
+    let arrow_type = if let Some(atype) = field.target_type() {
+        if !crate::datatype::is_physically_compatible(
+            &atype, tdb_dtype, tdb_cvn,
+        ) {
+            return Err(FieldError::TypeMismatch(atype, tdb_dtype, tdb_cvn));
+        }
+        atype
     } else {
-        conv.convert_datatype(&tdb_dtype, &tdb_cvn, tdb_nullable)
-    }
-    .map_err(FieldError::TypeMismatch)?;
+        crate::datatype::default_arrow_type(tdb_dtype, tdb_cvn)
+            .map_err(FieldError::TargetTypeRequired)?
+            .into_inner()
+    };
 
+    // SAFETY: I dunno this unwrap looks sketchy
     alloc_array(arrow_type, tdb_nullable, field.capacity().unwrap())
 }
 
