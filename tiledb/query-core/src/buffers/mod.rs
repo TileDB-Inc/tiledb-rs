@@ -18,11 +18,9 @@ use tiledb_api::{Context, ContextBound};
 use tiledb_common::array::CellValNum;
 
 use super::field::QueryField;
-use super::fields::{QueryField as RequestField, QueryFields};
+use super::fields::{Capacity, QueryField as RequestField, QueryFields};
 use super::QueryType;
 use super::RawQuery;
-
-const AVERAGE_STRING_LENGTH: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -69,6 +67,8 @@ pub enum FieldError {
     TargetTypeRequired(crate::datatype::DefaultArrowTypeError),
     #[error("Failed to allocate buffer: {0}")]
     BufferAllocation(ArrowError),
+    #[error("Cannot calculate number of cells: {0}")]
+    Capacity(#[from] super::fields::CapacityNumCellsError),
     #[error("Unsupported arrow array: {0}")]
     UnsupportedArrowArray(#[from] UnsupportedArrowArrayError),
 }
@@ -1554,29 +1554,33 @@ fn request_to_buffers(
             .into_inner()
     };
 
-    // SAFETY: I dunno this unwrap looks sketchy
-    alloc_array(arrow_type, tdb_nullable, field.capacity().unwrap())
+    // SAFETY: `QueryField::capacity` returns `None` only if there is no buffer
+    // already, which is ruled out by the time we get here
+    let capacity = field.capacity().unwrap();
+
+    alloc_array(arrow_type, tdb_nullable, capacity)
 }
 
 pub type SharedBuffers = HashMap<String, Arc<dyn aa::Array>>;
 
 fn alloc_array(
-    dtype: adt::DataType,
+    target_type: adt::DataType,
     nullable: bool,
-    capacity: usize,
+    capacity: Capacity,
 ) -> FieldResult<Arc<dyn aa::Array>> {
-    let num_cells = calculate_num_cells(dtype.clone(), nullable, capacity)?;
-
-    match dtype {
+    let num_cells = capacity.num_cells(&target_type, nullable)?;
+    let num_values = capacity.num_values(&target_type, nullable)?;
+    match target_type {
         adt::DataType::Boolean => {
             Ok(Arc::new(aa::BooleanArray::new_null(num_cells)))
         }
         adt::DataType::LargeList(field) => {
             let offsets = abuf::OffsetBuffer::<i64>::new_zeroed(num_cells);
-            let value_capacity =
-                capacity - (num_cells * std::mem::size_of::<i64>());
-            let values =
-                alloc_array(field.data_type().clone(), false, value_capacity)?;
+            let values = alloc_array(
+                field.data_type().clone(),
+                false,
+                Capacity::Values(num_values),
+            )?;
             let nulls = if nullable {
                 Some(abuf::NullBuffer::new_null(num_cells))
             } else {
@@ -1593,8 +1597,12 @@ fn alloc_array(
             } else {
                 None
             };
-            let values =
-                alloc_array(field.data_type().clone(), false, capacity)?;
+            let num_values = num_cells * (cvn as usize);
+            let values = alloc_array(
+                field.data_type().clone(),
+                false,
+                Capacity::Values(num_values),
+            )?;
             Ok(Arc::new(
                 aa::FixedSizeListArray::try_new(field, cvn, values, nulls)
                     .map_err(FieldError::BufferAllocation)?,
@@ -1602,9 +1610,7 @@ fn alloc_array(
         }
         adt::DataType::LargeUtf8 => {
             let offsets = abuf::OffsetBuffer::<i64>::new_zeroed(num_cells);
-            let values = ArrowBufferMut::from_len_zeroed(
-                capacity - (num_cells * std::mem::size_of::<i64>()),
-            );
+            let values = ArrowBufferMut::from_len_zeroed(num_values);
             let nulls = if nullable {
                 Some(abuf::NullBuffer::new_null(num_cells))
             } else {
@@ -1617,9 +1623,7 @@ fn alloc_array(
         }
         adt::DataType::LargeBinary => {
             let offsets = abuf::OffsetBuffer::<i64>::new_zeroed(num_cells);
-            let values = ArrowBufferMut::from_len_zeroed(
-                capacity - (num_cells * std::mem::size_of::<i64>()),
-            );
+            let values = ArrowBufferMut::from_len_zeroed(num_values);
             let nulls = if nullable {
                 Some(abuf::NullBuffer::new_null(num_cells))
             } else {
@@ -1630,10 +1634,11 @@ fn alloc_array(
                     .map_err(FieldError::BufferAllocation)?,
             ))
         }
-        _ if dtype.is_primitive() => {
-            let data = ArrowBufferMut::from_len_zeroed(
-                num_cells * dtype.primitive_width().unwrap(),
-            );
+        _ if target_type.is_primitive() => {
+            // SAFETY: we know that `target_type.is_primitive()` per match arm
+            let width = target_type.primitive_width().unwrap();
+
+            let data = ArrowBufferMut::from_len_zeroed(num_cells * width);
 
             let nulls = if nullable {
                 Some(ArrowBufferMut::from_len_zeroed(num_cells).into())
@@ -1642,7 +1647,7 @@ fn alloc_array(
             };
 
             let data = aa::ArrayData::try_new(
-                dtype,
+                target_type,
                 num_cells,
                 nulls,
                 0,
@@ -1654,86 +1659,6 @@ fn alloc_array(
             Ok(aa::make_array(data))
         }
         _ => todo!(),
-    }
-}
-
-fn calculate_num_cells(
-    dtype: adt::DataType,
-    nullable: bool,
-    capacity: usize,
-) -> FieldResult<usize> {
-    match dtype {
-        adt::DataType::Boolean => {
-            if nullable {
-                Ok(capacity * 8 / 2)
-            } else {
-                Ok(capacity * 8)
-            }
-        }
-        adt::DataType::LargeList(ref field) => {
-            if !field.data_type().is_primitive() {
-                return Err(UnsupportedArrowArrayError::UnsupportedArrowType(
-                    dtype.clone(),
-                )
-                .into());
-            }
-
-            // Todo: Figure out a better way to approximate values to offsets ratios
-            // based on whatever Python does or some such.
-            //
-            // For now, I'll pull a guess at of the ether and assume on average a
-            // var sized primitive array averages two values per cell. Becuase why
-            // not?
-            let width = field.data_type().primitive_width().unwrap();
-            let bytes_per_cell = (width * 2)
-                + std::mem::size_of::<i64>()
-                + if nullable { 1 } else { 0 };
-            Ok(capacity / bytes_per_cell)
-        }
-        adt::DataType::FixedSizeList(ref field, cvn) => {
-            if !field.data_type().is_primitive() {
-                return Err(UnsupportedArrowArrayError::UnsupportedArrowType(
-                    dtype,
-                )
-                .into());
-            }
-
-            if cvn < 2 {
-                return Err(
-                    UnsupportedArrowArrayError::InvalidFixedSizeListLength(cvn)
-                        .into(),
-                );
-            }
-
-            let cvn = cvn as usize;
-            let width = field.data_type().primitive_width().unwrap();
-            let bytes_per_cell = capacity / (width * cvn);
-            let bytes_per_cell = if nullable {
-                bytes_per_cell + 1
-            } else {
-                bytes_per_cell
-            };
-            Ok(capacity / bytes_per_cell)
-        }
-        adt::DataType::LargeUtf8 | adt::DataType::LargeBinary => {
-            let bytes_per_cell =
-                AVERAGE_STRING_LENGTH + std::mem::size_of::<i64>();
-            let bytes_per_cell = if nullable {
-                bytes_per_cell + 1
-            } else {
-                bytes_per_cell
-            };
-            Ok(capacity / bytes_per_cell)
-        }
-        _ if dtype.is_primitive() => {
-            let width = dtype.primitive_width().unwrap();
-            let bytes_per_cell = width + if nullable { 1 } else { 0 };
-            Ok(capacity / bytes_per_cell)
-        }
-        _ => Err(UnsupportedArrowArrayError::UnsupportedArrowType(
-            dtype.clone(),
-        )
-        .into()),
     }
 }
 
