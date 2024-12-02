@@ -295,7 +295,7 @@ pub enum CommonOption {
     /// Sets an AES256GCM encryption key.
     Aes256GcmEncryptionKey(Vec<u8>),
 
-    // URL for REST server to use for remote arrays.
+    /// URL for REST server to use for remote arrays.
     RestServerAddress(String),
 
     /// Username for login to REST server.
@@ -455,7 +455,6 @@ mod tests {
         for (key, val) in key_to_val {
             let result: Option<String> =
                 cfg.get(key).expect("Error getting config key.");
-            println!("result: {:?}", result);
             assert_eq!(result.unwrap(), val);
 
             cfg.set(key, "new").expect("Error setting config key.");
