@@ -102,22 +102,13 @@ pub fn dump() -> Result<Option<String>, Error> {
 }
 
 #[cfg(feature = "serde")]
-mod __serde {
+pub fn dump_json() -> Result<Option<Vec<Metrics>>, Error> {
     use anyhow::anyhow;
-
-    use super::*;
-
-    #[cfg(feature = "serde")]
-    pub fn dump_json() -> Result<Option<Vec<Metrics>>, Error> {
-        if let Some(dump) = dump()? {
-            Ok(serde_json::from_str::<Vec<Metrics>>(dump.as_str())
-                .map(Some)
-                .map_err(|e| Error::ToJson(anyhow!(e)))?)
-        } else {
-            Ok(None)
-        }
+    if let Some(dump) = dump()? {
+        Ok(serde_json::from_str::<Vec<Metrics>>(dump.as_str())
+            .map(Some)
+            .map_err(|e| Error::ToJson(anyhow!(e)))?)
+    } else {
+        Ok(None)
     }
 }
-
-#[cfg(feature = "serde")]
-pub use __serde::*;
