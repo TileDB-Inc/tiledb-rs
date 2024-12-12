@@ -1,7 +1,6 @@
 use std::ops::Deref;
 
-use crate::error::{Error, RawError};
-use crate::Result as TileDBResult;
+use crate::context::{CApiError, CApiResult, RawError};
 
 pub(crate) enum RawConfig {
     Owned(*mut ffi::tiledb_config_t),
@@ -59,7 +58,7 @@ impl Config {
         *self.raw
     }
 
-    pub fn new() -> TileDBResult<Config> {
+    pub fn new() -> CApiResult<Config> {
         let mut c_cfg: *mut ffi::tiledb_config_t = out_ptr!();
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
         let res = unsafe { ffi::tiledb_config_alloc(&mut c_cfg, &mut c_err) };
@@ -68,7 +67,7 @@ impl Config {
                 raw: RawConfig::Owned(c_cfg),
             })
         } else {
-            Err(Error::from(RawError::Owned(c_err)))
+            Err(CApiError::from(RawError::Owned(c_err)))
         }
     }
 
@@ -76,7 +75,7 @@ impl Config {
         Self { raw }
     }
 
-    pub fn set<B>(&mut self, key: &str, val: B) -> TileDBResult<()>
+    pub fn set<B>(&mut self, key: &str, val: B) -> CApiResult<()>
     where
         B: AsRef<[u8]>,
     {
@@ -96,11 +95,11 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(RawError::Owned(c_err)))
+            Err(CApiError::from(RawError::Owned(c_err)))
         }
     }
 
-    pub fn with<B>(self, key: &str, val: B) -> TileDBResult<Self>
+    pub fn with<B>(self, key: &str, val: B) -> CApiResult<Self>
     where
         B: AsRef<[u8]>,
     {
@@ -109,7 +108,7 @@ impl Config {
         Ok(s)
     }
 
-    pub fn get(&self, key: &str) -> TileDBResult<Option<String>> {
+    pub fn get(&self, key: &str) -> CApiResult<Option<String>> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");
         let mut val = std::ptr::null::<std::os::raw::c_char>();
@@ -128,24 +127,21 @@ impl Config {
         } else if res == ffi::TILEDB_OK {
             Ok(None)
         } else {
-            Err(Error::from(RawError::Owned(c_err)))
+            Err(CApiError::from(RawError::Owned(c_err)))
         }
     }
 
-    pub fn set_common_option(
-        &mut self,
-        opt: &CommonOption,
-    ) -> TileDBResult<()> {
+    pub fn set_common_option(&mut self, opt: &CommonOption) -> CApiResult<()> {
         opt.apply(self)
     }
 
-    pub fn with_common_option(self, opt: &CommonOption) -> TileDBResult<Self> {
+    pub fn with_common_option(self, opt: &CommonOption) -> CApiResult<Self> {
         let mut s = self;
         s.set_common_option(opt)?;
         Ok(s)
     }
 
-    pub fn unset(&mut self, key: &str) -> TileDBResult<()> {
+    pub fn unset(&mut self, key: &str) -> CApiResult<()> {
         let c_key =
             std::ffi::CString::new(key).expect("Error creating CString");
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
@@ -159,11 +155,11 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(RawError::Owned(c_err)))
+            Err(CApiError::from(RawError::Owned(c_err)))
         }
     }
 
-    pub fn load(&mut self, path: &str) -> TileDBResult<()> {
+    pub fn load(&mut self, path: &str) -> CApiResult<()> {
         let c_path =
             std::ffi::CString::new(path).expect("Error creating CString");
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
@@ -177,11 +173,11 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(RawError::Owned(c_err)))
+            Err(CApiError::from(RawError::Owned(c_err)))
         }
     }
 
-    pub fn save(&mut self, path: &str) -> TileDBResult<()> {
+    pub fn save(&mut self, path: &str) -> CApiResult<()> {
         let c_path =
             std::ffi::CString::new(path).expect("Error creating CString");
         let mut c_err: *mut ffi::tiledb_error_t = std::ptr::null_mut();
@@ -195,7 +191,7 @@ impl Config {
         if res == ffi::TILEDB_OK {
             Ok(())
         } else {
-            Err(Error::from(RawError::Owned(c_err)))
+            Err(CApiError::from(RawError::Owned(c_err)))
         }
     }
 }
@@ -312,7 +308,7 @@ pub enum CommonOption {
 }
 
 impl CommonOption {
-    fn apply(&self, config: &mut Config) -> TileDBResult<()> {
+    fn apply(&self, config: &mut Config) -> CApiResult<()> {
         match self {
             Self::Aes256GcmEncryptionKey(ref key) => {
                 config.set("sm.encryption_type", "AES_256_GCM")?;

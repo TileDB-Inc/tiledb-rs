@@ -6,16 +6,11 @@ extern crate tiledb_sys as ffi;
 extern crate tiledb_utils as utils;
 
 macro_rules! cstring {
-    ($arg:expr) => {
-        match std::ffi::CString::new($arg) {
-            Ok(c_arg) => c_arg,
-            Err(nullity) => {
-                return Err(crate::error::Error::InvalidArgument(
-                    anyhow::anyhow!(nullity),
-                ))
-            }
-        }
-    };
+    ($arg:expr) => {{
+        let arg = $arg;
+        std::ffi::CString::new(arg)
+            .map_err(|e| crate::context::CApiError::InvalidCString(e))?
+    }};
 }
 
 macro_rules! eq_helper {

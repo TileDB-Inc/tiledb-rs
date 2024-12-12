@@ -125,8 +125,8 @@ impl QueryBase {
         let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_get_status(ctx, c_query, &mut c_status)
-        })
-        .map(|_| c_status)
+        })?;
+        Ok(c_status)
     }
 
     pub fn array(&self) -> &Array {
@@ -160,7 +160,8 @@ impl ReadQuery for QueryBase {
 
         match self.capi_status()? {
             ffi::tiledb_query_status_t_TILEDB_FAILED => {
-                Err(self.context().expect_last_error())
+                Err(Error::from(self.context().get_last_error()
+                        .expect("libtiledb context did not have error for failed query status")))
             }
             ffi::tiledb_query_status_t_TILEDB_COMPLETED => {
                 Ok(ReadStepOutput::Final(()))

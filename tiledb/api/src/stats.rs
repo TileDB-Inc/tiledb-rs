@@ -4,8 +4,19 @@ use std::ops::Deref;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::error::Error;
-use crate::Result as TileDBResult;
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Internal error enabling stats")]
+    Enable,
+    #[error("Internal error disabling stats")]
+    Disable,
+    #[error("Internal error resetting stats")]
+    Reset,
+    #[error("Internal error retrieving stats")]
+    ToString,
+    #[error("Error parsing stats to json: {0}")]
+    ToJson(anyhow::Error),
+}
 
 pub(crate) enum RawStatsString {
     Owned(*mut std::ffi::c_char),
@@ -38,37 +49,37 @@ pub struct Metrics {
     pub counters: HashMap<String, u64>,
 }
 
-pub fn enable() -> TileDBResult<()> {
+pub fn enable() -> Result<(), Error> {
     let c_ret = unsafe { ffi::tiledb_stats_enable() };
 
     if c_ret == ffi::TILEDB_OK {
         Ok(())
     } else {
-        Err(Error::LibTileDB(String::from("Failed to enable stats.")))
+        Err(Error::Enable)
     }
 }
 
-pub fn disable() -> TileDBResult<()> {
+pub fn disable() -> Result<(), Error> {
     let c_ret = unsafe { ffi::tiledb_stats_disable() };
 
     if c_ret == ffi::TILEDB_OK {
         Ok(())
     } else {
-        Err(Error::LibTileDB(String::from("Failed to disable stats.")))
+        Err(Error::Disable)
     }
 }
 
-pub fn reset() -> TileDBResult<()> {
+pub fn reset() -> Result<(), Error> {
     let c_ret = unsafe { ffi::tiledb_stats_reset() };
 
     if c_ret == ffi::TILEDB_OK {
         Ok(())
     } else {
-        Err(Error::LibTileDB(String::from("Failed to reset stats.")))
+        Err(Error::Reset)
     }
 }
 
-pub fn dump() -> TileDBResult<Option<String>> {
+pub fn dump() -> Result<Option<String>, Error> {
     let mut c_str = std::ptr::null_mut::<std::ffi::c_char>();
 
     let c_ret = unsafe {
@@ -76,9 +87,7 @@ pub fn dump() -> TileDBResult<Option<String>> {
     };
 
     if c_ret != ffi::TILEDB_OK {
-        return Err(Error::LibTileDB(String::from(
-            "Failed to retrieve stats.",
-        )));
+        return Err(Error::ToString);
     }
 
     assert!(!c_str.is_null());
@@ -93,20 +102,13 @@ pub fn dump() -> TileDBResult<Option<String>> {
 }
 
 #[cfg(feature = "serde")]
-pub fn dump_json() -> TileDBResult<Option<Vec<Metrics>>> {
+pub fn dump_json() -> Result<Option<Vec<Metrics>>, Error> {
     use anyhow::anyhow;
-
     if let Some(dump) = dump()? {
-        let datas: Vec<Metrics> = serde_json::from_str::<Vec<Metrics>>(
-            dump.as_str(),
-        )
-        .map_err(|e| {
-            Error::Deserialization(
-                format!("Failed to deserialize stats JSON value {}", dump),
-                anyhow!(e),
-            )
-        })?;
-        return Ok(Some(datas));
+        Ok(serde_json::from_str::<Vec<Metrics>>(dump.as_str())
+            .map(Some)
+            .map_err(|e| Error::ToJson(anyhow!(e)))?)
+    } else {
+        Ok(None)
     }
-    Ok(None)
 }

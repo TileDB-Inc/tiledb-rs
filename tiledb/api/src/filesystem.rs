@@ -1,6 +1,3 @@
-use crate::error::Error;
-use crate::Result as TileDBResult;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum Filesystem {
     Hdfs,
@@ -9,6 +6,9 @@ pub enum Filesystem {
     Gcs,
     Memfs,
 }
+
+#[derive(Debug)]
+pub struct ParseFilesystemError;
 
 impl Filesystem {
     pub(crate) fn capi_enum(&self) -> ffi::tiledb_filesystem_t {
@@ -35,7 +35,7 @@ impl Filesystem {
         }
     }
 
-    pub fn from_string(fs: &str) -> TileDBResult<Filesystem> {
+    pub fn from_string(fs: &str) -> Result<Filesystem, ParseFilesystemError> {
         let c_fs = std::ffi::CString::new(fs).expect("Error creating CString");
         let mut c_ret: u32 = 0;
         let res = unsafe {
@@ -46,28 +46,32 @@ impl Filesystem {
         };
 
         if res == ffi::TILEDB_OK {
-            Filesystem::try_from(c_ret)
+            // SAFETY: `c_ret` came from core as a valid filesystem
+            Ok(Filesystem::try_from(c_ret).unwrap())
         } else {
-            Err(Error::LibTileDB(format!("Invalid filesystem type: {}", fs)))
+            Err(ParseFilesystemError)
         }
     }
 }
 
 impl TryFrom<u32> for Filesystem {
-    type Error = crate::error::Error;
-    fn try_from(value: u32) -> TileDBResult<Filesystem> {
+    type Error = FilesystemFFIError;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             ffi::tiledb_filesystem_t_TILEDB_HDFS => Ok(Filesystem::Hdfs),
             ffi::tiledb_filesystem_t_TILEDB_S3 => Ok(Filesystem::S3),
             ffi::tiledb_filesystem_t_TILEDB_AZURE => Ok(Filesystem::Azure),
             ffi::tiledb_filesystem_t_TILEDB_GCS => Ok(Filesystem::Gcs),
             ffi::tiledb_filesystem_t_TILEDB_MEMFS => Ok(Filesystem::Memfs),
-            _ => Err(Self::Error::LibTileDB(format!(
-                "Invalid filesystem type: {}",
-                value
-            ))),
+            _ => Err(FilesystemFFIError::InvalidDiscriminant(value as u64)),
         }
     }
+}
+
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum FilesystemFFIError {
+    #[error("Invalid discriminant for {}: {0}", std::any::type_name::<Filesystem>())]
+    InvalidDiscriminant(u64),
 }
 
 #[cfg(test)]
