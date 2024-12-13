@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "stdx/binary-search",
   "tiledb/api",
   "tiledb/common",
   "tiledb/pod",

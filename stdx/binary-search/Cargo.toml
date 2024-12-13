@@ -1,0 +1,11 @@
+[package]
+name = "stdx-binary-search"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+num-traits = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
