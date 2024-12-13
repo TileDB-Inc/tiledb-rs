@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -140,7 +141,7 @@ type FromArrowError = (Arc<dyn aa::Array>, UnsupportedArrowArrayError);
 type FromArrowResult<T> = std::result::Result<T, FromArrowError>;
 
 /// An interface to our mutable buffer implementations.
-trait NewBufferTraitThing {
+trait NewBufferTraitThing: Debug {
     /// Return this trait object as any for downcasting.
     fn as_any(&self) -> &dyn Any;
 
@@ -212,6 +213,7 @@ impl BufferTarget {
     }
 }
 
+#[derive(Debug)]
 struct BooleanBuffers {
     data: QueryBuffer,
     validity: Option<QueryBuffer>,
@@ -276,6 +278,7 @@ impl NewBufferTraitThing for BooleanBuffers {
     }
 }
 
+#[derive(Debug)]
 struct ByteBuffers {
     dtype: adt::DataType,
     data: QueryBuffer,
@@ -443,6 +446,7 @@ impl NewBufferTraitThing for ByteBuffers {
     }
 }
 
+#[derive(Debug)]
 struct FixedListBuffers {
     field: Arc<adt::Field>,
     cell_val_num: CellValNum,
@@ -639,6 +643,7 @@ impl NewBufferTraitThing for FixedListBuffers {
     }
 }
 
+#[derive(Debug)]
 pub struct QueryBuffer {
     buffer: ArrowBufferMut,
     size: Pin<Box<u64>>,
@@ -704,6 +709,7 @@ impl QueryBuffer {
 /// * Read queries will generate offsets using the fixed size of each cell.
 /// * Write queries will validate that the offsets are of fixed size
 ///   and return `Err` if they are not.
+#[derive(Debug)]
 struct ListBuffers {
     field: Arc<adt::Field>,
     data: QueryBuffer,
@@ -712,6 +718,7 @@ struct ListBuffers {
     validity: Option<QueryBuffer>,
 }
 
+#[derive(Debug)]
 enum ListBuffersOffsets {
     ArrowOnly(OffsetBuffer<i64>),
     Shared(QueryBuffer),
@@ -954,6 +961,7 @@ impl NewBufferTraitThing for ListBuffers {
     }
 }
 
+#[derive(Debug)]
 struct PrimitiveBuffers {
     dtype: adt::DataType,
     data: QueryBuffer,
@@ -1563,7 +1571,7 @@ fn request_to_buffers(
 
 pub type SharedBuffers = HashMap<String, Arc<dyn aa::Array>>;
 
-fn alloc_array(
+pub fn alloc_array(
     target_type: adt::DataType,
     nullable: bool,
     capacity: Capacity,
@@ -1572,7 +1580,15 @@ fn alloc_array(
     let num_values = capacity.num_values(&target_type, nullable)?;
     match target_type {
         adt::DataType::Boolean => {
-            Ok(Arc::new(aa::BooleanArray::new_null(num_cells)))
+            if nullable {
+                Ok(Arc::new(aa::BooleanArray::new_null(num_cells)))
+            } else {
+                Ok(Arc::new(
+                    std::iter::repeat(Some(false))
+                        .take(num_cells)
+                        .collect::<aa::BooleanArray>(),
+                ))
+            }
         }
         adt::DataType::LargeList(field) => {
             let offsets = abuf::OffsetBuffer::<i64>::new_zeroed(num_cells);
@@ -1590,6 +1606,18 @@ fn alloc_array(
                 aa::LargeListArray::try_new(field, offsets, values, nulls)
                     .map_err(FieldError::BufferAllocation)?,
             ))
+        }
+        adt::DataType::FixedSizeBinary(cvn) => {
+            let nulls = if nullable {
+                Some(abuf::NullBuffer::new_null(num_cells))
+            } else {
+                None
+            };
+
+            let values =
+                abuf::Buffer::from_vec(vec![0u8; num_cells * (cvn as usize)]);
+
+            Ok(Arc::new(aa::FixedSizeBinaryArray::new(cvn, values, nulls)))
         }
         adt::DataType::FixedSizeList(field, cvn) => {
             let nulls = if nullable {
@@ -1641,7 +1669,12 @@ fn alloc_array(
             let data = ArrowBufferMut::from_len_zeroed(num_cells * width);
 
             let nulls = if nullable {
-                Some(ArrowBufferMut::from_len_zeroed(num_cells).into())
+                Some(
+                    abuf::NullBuffer::new_null(num_cells)
+                        .into_inner()
+                        .into_inner()
+                        .into(),
+                )
             } else {
                 None
             };

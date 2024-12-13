@@ -42,6 +42,11 @@ pub fn default_arrow_type(
             LogicalMatch(ArrowDataType::LargeBinary)
         }
 
+        (Datatype::Boolean, cvn) if !cvn.is_single_valued() => {
+            // FIXME: not implemented in capacity/alloc
+            default_arrow_type(Datatype::UInt8, CellValNum::Var)?
+        }
+
         // then the general cases
         (_, CellValNum::Fixed(nz)) if nz.get() == 1 => {
             single_valued_type(dtype)

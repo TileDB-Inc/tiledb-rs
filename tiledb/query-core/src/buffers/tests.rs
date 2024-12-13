@@ -1,14 +1,37 @@
 use arrow_proptest_strategies::array::{prop_array, ArrayParameters};
-use arrow_proptest_strategies::schema::prop_arrow_field;
+use arrow_proptest_strategies::schema::{
+    prop_arrow_datatype, prop_arrow_field,
+};
 use proptest::prelude::*;
 use tiledb_common::Datatype;
 
 use super::*;
 
+impl Arbitrary for BufferTarget {
+    type Parameters = ();
+    type Strategy = BoxedStrategy<Self>;
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        let query_type =
+            prop_oneof![Just(QueryType::Read), Just(QueryType::Write)];
+        (query_type, any::<CellValNum>(), any::<bool>())
+            .prop_map(|(query_type, cell_val_num, is_nullable)| Self {
+                query_type,
+                cell_val_num,
+                is_nullable,
+            })
+            .boxed()
+    }
+}
+
+/// Returns a deep copy of `buffer`.
 fn copy_buffer(buffer: &abuf::Buffer) -> abuf::Buffer {
     abuf::Buffer::from(buffer.as_slice().to_vec())
 }
 
+/// Returns a deep copy of `array_data`.
+///
+/// The returned [ArrayData] does not share any buffers with `array_data`.
 fn copy_array_data(array_data: &aa::ArrayData) -> aa::ArrayData {
     let nulls = array_data
         .nulls()
@@ -35,6 +58,9 @@ fn copy_array_data(array_data: &aa::ArrayData) -> aa::ArrayData {
     .expect("Error copying array data")
 }
 
+/// Returns a deep copy of `array`.
+///
+/// The returned [Array] does not share any buffers with `array`.
 fn copy_array(array: &dyn aa::Array) -> Arc<dyn aa::Array> {
     let data_ref = array.to_data();
     let data_copy = copy_array_data(&data_ref);
@@ -187,5 +213,40 @@ proptest! {
     #[test]
     fn proptest_list_buffers_roundtrip_fixed((cvn, array) in strat_list_buffers_roundtrip_fixed()) {
         instance_list_buffers_roundtrip_fixed(cvn, array)
+    }
+}
+
+/// Test that if a data type can be used to alloc an array then it also
+/// can be converted to a mutable buffer
+fn instance_make_mut(
+    target_type: adt::DataType,
+    capacity: Capacity,
+    target: BufferTarget,
+) {
+    let Ok(array) = alloc_array(target_type, target.is_nullable, capacity)
+    else {
+        return;
+    };
+
+    let array_expect = copy_array(&array);
+
+    let entry_mut = to_target_buffers(&target, array)
+        .expect("alloc_array succeeded but to_target_buffers failed");
+
+    let array_out = entry_mut
+        .into_arrow()
+        .expect("to_target_buffers succeeded but into_array failed");
+
+    assert_eq!(array_expect.as_ref(), array_out.as_ref());
+}
+
+proptest! {
+    #[test]
+    fn proptest_make_mut(
+        target_type in prop_arrow_datatype(Default::default()),
+        capacity in any::<Capacity>(),
+        target in any::<BufferTarget>()
+    ) {
+        instance_make_mut(target_type, capacity, target)
     }
 }

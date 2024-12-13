@@ -3,15 +3,16 @@ use std::sync::Arc;
 
 use arrow::array as aa;
 use arrow::datatypes as adt;
+use stdx_binary_search::{Bisect, Search};
 use tiledb_api::query::read::aggregate::AggregateFunction;
 
 use super::QueryBuilder;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CapacityNumCellsError {
-    #[error("")]
+    #[error("Invalid fixed size data type with fixed size '{0}'")]
     InvalidFixedSize(i32),
-    #[error("")]
+    #[error("Unsupported arrow data type: {0}")]
     UnsupportedArrowType(adt::DataType),
 }
 
@@ -26,16 +27,19 @@ pub enum Capacity {
     /// The amount of space allocated for variable-length query
     /// fields is determined by estimating the size of each variable-length cell.
     Cells(usize),
-    /// Request a maximum number of total value of the target field.
+    /// Request a maximum number of total values of the target field.
     ///
-    /// The amount of memory allocated for fixed-length query
-    /// fields is the exact amount needed to hold the requested number
-    /// of values. This behavior is identical to that of [Self::Cells].
+    /// For fixed-length query fields, the requested number of values
+    /// is an upper bound on the number of values which will fit
+    /// in the allocated space. For single-valued fields, this behavior
+    /// is identical to that of [Self::Cells]. For multi-valued fixed-length
+    /// fields, space is allocated for the maximum number of cells
+    /// which fit within the upper bound.
     ///
-    /// The amount of memory allocated for variable-length query
-    /// fields is the exact amount needed to hold the requested number
-    /// of values, plus an additional amount needed to hold an estimated
-    /// number of cell offsets.
+    /// For variable-length query fields, the exact amount of memory
+    /// needed to hold the requested number of values is allocated,
+    /// and additional memory is allocated to hold an estimated number
+    /// of cell offsets.
     Values(usize),
     /// Request whatever fits within a fixed memory limit.
     ///
@@ -94,6 +98,7 @@ fn calculate_num_cells_by_values(
     target_type: &adt::DataType,
 ) -> Result<usize, CapacityNumCellsError> {
     match target_type {
+        adt::DataType::Boolean => Ok(num_values),
         adt::DataType::FixedSizeBinary(fl) => {
             if *fl < 1 {
                 Err(CapacityNumCellsError::InvalidFixedSize(*fl))
@@ -112,8 +117,12 @@ fn calculate_num_cells_by_values(
         adt::DataType::LargeUtf8
         | adt::DataType::LargeBinary
         | adt::DataType::LargeList(_) => {
-            Ok(num_values
-                / estimate_average_variable_length_values(target_type))
+            // SAFETY: obvious from definition of `estimate_average_variable_length_values`
+            let est =
+                estimate_average_variable_length_values(target_type).unwrap();
+
+            // NB: round up
+            Ok((num_values + est - 1) / est)
         }
         _ if target_type.is_primitive() => Ok(num_values),
         _ => todo!(),
@@ -125,6 +134,7 @@ fn calculate_num_values_by_cells(
     target_type: &adt::DataType,
 ) -> Result<usize, CapacityNumCellsError> {
     match target_type {
+        adt::DataType::Boolean => Ok(num_cells),
         adt::DataType::FixedSizeBinary(fl) => {
             if *fl < 1 {
                 Err(CapacityNumCellsError::InvalidFixedSize(*fl))
@@ -142,9 +152,12 @@ fn calculate_num_values_by_cells(
         }
         adt::DataType::LargeUtf8
         | adt::DataType::LargeBinary
-        | adt::DataType::LargeList(_) => Ok(
-            num_cells * estimate_average_variable_length_values(target_type)
-        ),
+        | adt::DataType::LargeList(_) => {
+            // SAFETY: obvious from definition of `estimate_average_variable_length_values`
+            let est =
+                estimate_average_variable_length_values(target_type).unwrap();
+            Ok(num_cells * est)
+        }
         _ if target_type.is_primitive() => Ok(num_cells),
         _ => todo!(),
     }
@@ -157,12 +170,33 @@ fn calculate_by_memory(
 ) -> Result<(usize, usize), CapacityNumCellsError> {
     match target_type {
         adt::DataType::Boolean => {
-            let num_cells = if nullable {
-                memory_limit * 8 / 2
-            } else {
-                memory_limit * 8
+            // need space for the translation buffer as well as the bit-packed arrow array
+            let num_cells_memory = |num_cells: usize| -> usize {
+                let mem_values = num_cells + (num_cells + 7) / 8;
+                let mem_nulls = if nullable { mem_values } else { 0 };
+                mem_values + mem_nulls
             };
+            let num_cells =
+                match (1..u32::MAX as usize).upper_bound(|num_cells: &usize| {
+                    num_cells_memory(*num_cells) <= memory_limit
+                }) {
+                    Bisect::NeverTrue => 0,
+                    Bisect::AlwaysTrue => u32::MAX as usize,
+                    Bisect::UpperBound(max_num_cells) => max_num_cells,
+                };
             Ok((num_cells, num_cells))
+        }
+        adt::DataType::FixedSizeBinary(cvn) => {
+            if *cvn < 1 {
+                return Err(CapacityNumCellsError::InvalidFixedSize(*cvn));
+            }
+
+            Ok(calculate_by_memory_fixed_length(
+                memory_limit,
+                nullable,
+                *cvn as usize,
+                1,
+            ))
         }
         adt::DataType::LargeList(ref field) => {
             if !field.data_type().is_primitive() {
@@ -171,31 +205,17 @@ fn calculate_by_memory(
                 ));
             }
 
+            // SAFETY: obvious from definition of `estimate_average_variable_length_values`
             let estimate_values_per_cell =
-                estimate_average_variable_length_values(target_type);
+                estimate_average_variable_length_values(target_type).unwrap();
+            let value_width = field.data_type().primitive_width().unwrap();
 
-            // TODO: Figure out a better way to approximate values to offsets ratios
-            // based on whatever Python does or some such.
-            //
-            // For now, I'll pull a guess at of the ether and assume on average a
-            // var sized primitive array averages two values per cell. Becuase why
-            // not?
-            let width = field.data_type().primitive_width().unwrap();
-            let bytes_per_cell = (width * estimate_values_per_cell)
-                + std::mem::size_of::<i64>()
-                + if nullable { 1 } else { 0 };
-
-            let num_cells = memory_limit / bytes_per_cell;
-            let num_values = num_cells * estimate_values_per_cell;
-            assert!(
-                num_cells
-                    * (std::mem::size_of::<i64>()
-                        + if nullable { 1 } else { 0 })
-                    + num_values * width
-                    <= memory_limit
-            );
-
-            Ok((num_cells, num_values))
+            Ok(calculate_by_memory_var_length(
+                memory_limit,
+                nullable,
+                estimate_values_per_cell,
+                value_width,
+            ))
         }
         adt::DataType::FixedSizeList(ref field, cvn) => {
             if !field.data_type().is_primitive() {
@@ -208,47 +228,36 @@ fn calculate_by_memory(
                 return Err(CapacityNumCellsError::InvalidFixedSize(*cvn));
             }
 
-            let cvn = *cvn as usize;
-            let width = field.data_type().primitive_width().unwrap();
-            let bytes_per_cell = memory_limit / (width * cvn);
-            let bytes_per_cell = if nullable {
-                bytes_per_cell + 1
-            } else {
-                bytes_per_cell
-            };
+            let value_width = field.data_type().primitive_width().unwrap();
 
-            let num_cells = memory_limit / bytes_per_cell;
-            let num_values = num_cells * cvn;
-            assert!(
-                num_cells * if nullable { 1 } else { 0 } + num_values * width
-                    <= memory_limit
-            );
-            Ok((num_cells, num_values))
+            Ok(calculate_by_memory_fixed_length(
+                memory_limit,
+                nullable,
+                *cvn as usize,
+                value_width,
+            ))
         }
         adt::DataType::LargeUtf8 | adt::DataType::LargeBinary => {
-            let values_per_cell =
-                estimate_average_variable_length_values(target_type);
-            let bytes_per_cell = values_per_cell
-                + std::mem::size_of::<i64>()
-                + if nullable { 1 } else { 0 };
+            // SAFETY: obvious from definition of `estimate_average_variable_length_values`
+            let estimate_values_per_cell =
+                estimate_average_variable_length_values(target_type).unwrap();
+            let value_width = 1;
 
-            let num_cells = memory_limit / bytes_per_cell;
-            let num_values = num_cells * values_per_cell;
-            assert!(
-                num_cells
-                    * (std::mem::size_of::<i64>()
-                        + if nullable { 1 } else { 0 })
-                    + num_values
-                    <= memory_limit
-            );
-            Ok((num_cells, num_values))
+            Ok(calculate_by_memory_var_length(
+                memory_limit,
+                nullable,
+                estimate_values_per_cell,
+                value_width,
+            ))
         }
         _ if target_type.is_primitive() => {
-            let width = target_type.primitive_width().unwrap();
-            let bytes_per_cell = width + if nullable { 1 } else { 0 };
-            let num_cells = memory_limit / bytes_per_cell;
-            let num_values = num_cells;
-            Ok((num_cells, num_values))
+            let value_width = target_type.primitive_width().unwrap();
+            Ok(calculate_by_memory_fixed_length(
+                memory_limit,
+                nullable,
+                1,
+                value_width,
+            ))
         }
         _ => Err(CapacityNumCellsError::UnsupportedArrowType(
             target_type.clone(),
@@ -257,10 +266,92 @@ fn calculate_by_memory(
     }
 }
 
+fn estimate_num_cells_memory(
+    num_cells: usize,
+    nullable: bool,
+    per_cell_overhead: usize,
+    cell_value_memory: usize,
+) -> usize {
+    // NB: arrow bit-packs the null values but tiledb does not, which
+    // requires a translation buffer between them.
+    let mem_nulls = if nullable {
+        num_cells + (num_cells + 7) / 8
+    } else {
+        0
+    };
+
+    let mem_overhead = num_cells * per_cell_overhead;
+
+    let mem_values = num_cells * cell_value_memory;
+
+    mem_values + mem_overhead + mem_nulls
+}
+
+fn calculate_by_memory_fixed_length(
+    memory_limit: usize,
+    nullable: bool,
+    cvn: usize,
+    value_width: usize,
+) -> (usize, usize) {
+    let estimate_memory = |num_cells: usize| {
+        estimate_num_cells_memory(num_cells, nullable, 0, cvn * value_width)
+    };
+
+    let num_cells =
+        match (1..u32::MAX as usize).upper_bound(|num_cells: &usize| {
+            estimate_memory(*num_cells) <= memory_limit
+        }) {
+            Bisect::NeverTrue => 0,
+            Bisect::AlwaysTrue => u32::MAX as usize,
+            Bisect::UpperBound(max_num_cells) => max_num_cells,
+        };
+    let num_values = cvn * num_cells;
+
+    (num_cells, num_values)
+}
+
+fn calculate_by_memory_var_length(
+    memory_limit: usize,
+    nullable: bool,
+    estimate_values_per_cell: usize,
+    value_width: usize,
+) -> (usize, usize) {
+    let estimate_memory = |num_cells: usize| {
+        estimate_num_cells_memory(
+            num_cells,
+            nullable,
+            std::mem::size_of::<i64>(),
+            estimate_values_per_cell * value_width,
+        )
+    };
+
+    let num_cells =
+        match (1..u32::MAX as usize).upper_bound(|num_cells: &usize| {
+            estimate_memory(*num_cells)
+                <= memory_limit - std::mem::size_of::<i64>()
+        }) {
+            Bisect::NeverTrue => 0,
+            Bisect::AlwaysTrue => u32::MAX as usize,
+            Bisect::UpperBound(max_num_cells) => max_num_cells,
+        };
+
+    let cell_overhead_memory = (num_cells + 1) * std::mem::size_of::<i64>();
+    let null_overhead_memory = if nullable {
+        num_cells + (num_cells + 7) / 8
+    } else {
+        0
+    };
+
+    let num_values =
+        (memory_limit - cell_overhead_memory - null_overhead_memory)
+            / value_width;
+    (num_cells, num_values)
+}
+
 /// Returns a guess for how many variable-length values the average cell has.
 fn estimate_average_variable_length_values(
     target_type: &adt::DataType,
-) -> usize {
+) -> Option<usize> {
     // A bad value here will lead to poor memory utilization.
     // - if this estimate is too small then the results will fill up the variable-length
     //   data buffers quickly, and the fixed-size data buffers will be under-utilized.
@@ -286,17 +377,17 @@ fn estimate_average_variable_length_values(
             //
             // But of course what makes sense is domain-specific.
             // A username is probably short, an email is probably longer than this.
-            16
+            Some(16)
         }
         adt::DataType::LargeBinary => {
             // this can be literally anything, so go with 1KiB?
-            1024
+            Some(1024)
         }
         adt::DataType::LargeList(_) => {
             // also pulling a number out of thin air
-            4
+            Some(4)
         }
-        _ => unreachable!(),
+        _ => None,
     }
 }
 
@@ -517,3 +608,6 @@ impl QueryFieldsBuilderForQuery {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

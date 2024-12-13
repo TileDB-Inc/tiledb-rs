@@ -6,6 +6,7 @@ version.workspace = true
 
 [dependencies]
 arrow = { workspace = true }
+stdx-binary-search = { workspace = true }
 thiserror = { workspace = true }
 tiledb-api = { workspace = true, features = ["raw"] }
 tiledb-common = { workspace = true }

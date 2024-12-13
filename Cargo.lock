@@ -1912,6 +1912,7 @@ dependencies = [
  "cells",
  "itertools 0.12.1",
  "proptest",
+ "stdx-binary-search",
  "thiserror",
  "tiledb-api",
  "tiledb-common",

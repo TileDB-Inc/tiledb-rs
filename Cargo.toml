@@ -18,7 +18,7 @@ members = [
   "test-utils/signal",
   "test-utils/strategy-ext",
   "test-utils/uri",
-  "tools/api-coverage",
+  "tools/api-coverage"
 ]
 default-members = [
   "tiledb/api",
@@ -55,6 +55,7 @@ regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 signal = { path = "test-utils/signal", version = "0.1.0" }
+stdx-binary-search = { path = "stdx/binary-search", version = "0.1.0" }
 strategy-ext = { path = "test-utils/strategy-ext", version = "0.1.0" }
 tempfile = { version = "3" }
 thiserror = { version = "1" }
