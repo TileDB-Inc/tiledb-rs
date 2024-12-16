@@ -10,6 +10,8 @@ pub enum Error {
     Enable,
     #[error("Internal error disabling stats")]
     Disable,
+    #[error("Internal error checking whether stats enabled")]
+    IsEnabled,
     #[error("Internal error resetting stats")]
     Reset,
     #[error("Internal error retrieving stats")]
@@ -69,6 +71,17 @@ pub fn disable() -> Result<(), Error> {
     }
 }
 
+pub fn is_enabled() -> Result<bool, Error> {
+    let mut c_enabled = out_ptr!();
+    let c_ret = unsafe { ffi::tiledb_stats_is_enabled(&mut c_enabled) };
+
+    if c_ret == ffi::TILEDB_OK {
+        Ok(c_enabled != 0)
+    } else {
+        Err(Error::IsEnabled)
+    }
+}
+
 pub fn reset() -> Result<(), Error> {
     let c_ret = unsafe { ffi::tiledb_stats_reset() };
 
@@ -110,5 +123,44 @@ pub fn dump_json() -> Result<Option<Vec<Metrics>>, Error> {
             .map_err(|e| Error::ToJson(anyhow!(e)))?)
     } else {
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct ScopedStats {
+        was_enabled: bool,
+    }
+
+    impl ScopedStats {
+        pub fn new() -> Result<Self, Error> {
+            let was_enabled = is_enabled()?;
+            enable()?;
+            Ok(Self { was_enabled })
+        }
+    }
+
+    impl Drop for ScopedStats {
+        fn drop(&mut self) {
+            if !self.was_enabled {
+                disable().expect("Error disabling stats");
+            }
+        }
+    }
+
+    #[test]
+    fn scoped_stats() -> anyhow::Result<()> {
+        assert!(!is_enabled()?);
+
+        {
+            let _stats = ScopedStats::new()?;
+            assert!(is_enabled()?);
+        }
+
+        assert!(!is_enabled()?);
+
+        Ok(())
     }
 }
