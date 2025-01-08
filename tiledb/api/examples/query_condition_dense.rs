@@ -10,7 +10,7 @@ use tiledb::array::{
     SchemaBuilder,
 };
 use tiledb::query::buffer::{BufferMut, QueryBuffersMut};
-use tiledb::query::conditions::QueryConditionExpr as QC;
+use tiledb::query::condition::QueryConditionExpr as QC;
 use tiledb::query::{
     Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
 };
