@@ -38,7 +38,7 @@ tiledb-sys-cfg = { workspace = true }
 default = []
 arrow = ["dep:arrow", "dep:serde", "dep:serde_json", "tiledb-common/arrow", "tiledb-common/serde", "tiledb-pod/serde"]
 pod = ["dep:tiledb-pod"]
-proptest-strategies = ["dep:cells", "dep:proptest"]
+proptest-strategies = ["dep:cells", "dep:proptest", "dep:tiledb-pod"]
 serde = ["dep:serde", "dep:serde_json", "dep:tiledb-pod"]
 
 [[example]]
