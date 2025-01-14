@@ -71,6 +71,7 @@ impl Builder {
         })
     }
 
+    /// Registers a new [Attribute] to add to the target array.
     pub fn add_attribute(self, attribute: Attribute) -> TileDBResult<Self> {
         let c_evolution = *self.inner.raw;
         let c_attribute = attribute.capi();
@@ -86,6 +87,7 @@ impl Builder {
         Ok(self)
     }
 
+    /// Registers the name of an attribute to drop from the target array.
     pub fn drop_attribute(self, name: &str) -> TileDBResult<Self> {
         let c_evolution = *self.inner.raw;
         let c_name = cstring!(name);
@@ -101,6 +103,7 @@ impl Builder {
         Ok(self)
     }
 
+    /// Registers an [Enumeration] to add to the target array.
     pub fn add_enumeration(
         self,
         enumeration: Enumeration,
@@ -119,6 +122,8 @@ impl Builder {
         Ok(self)
     }
 
+    // TODO: the C API doc says that the arg must be returned from
+    // `tiledb_enumeration_extend`, we can enforce that
     pub fn extend_enumeration(
         self,
         enumeration: Enumeration,
@@ -137,6 +142,7 @@ impl Builder {
         Ok(self)
     }
 
+    /// Registers an enumeration name to drop from the target array.
     pub fn drop_enumeration(self, name: &str) -> TileDBResult<Self> {
         let c_evolution = *self.inner.raw;
         let c_name = cstring!(name);
@@ -152,6 +158,7 @@ impl Builder {
         Ok(self)
     }
 
+    /// Sets the timestamp for the evolved schema.
     pub fn timestamp_range(self, t: u64) -> TileDBResult<Self> {
         let c_evolution = *self.inner.raw;
 
