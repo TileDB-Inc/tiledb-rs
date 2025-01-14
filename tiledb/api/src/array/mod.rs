@@ -7,7 +7,7 @@ use std::str::FromStr;
 use anyhow::anyhow;
 
 use crate::array::enumeration::RawEnumeration;
-use crate::array::schema::RawSchema;
+use crate::array::schema::{RawSchema, SchemaEvolution};
 use crate::context::{
     CApiInterface, CApiResult, Context, ContextBound, ObjectType,
 };
@@ -511,6 +511,31 @@ impl Array {
 
         context.capi_call(|ctx| unsafe {
             ffi::tiledb_array_delete(ctx, c_array_uri.as_ptr())
+        })?;
+        Ok(())
+    }
+
+    /// Evolves the schema of an array.
+    pub fn evolve<S>(
+        context: &Context,
+        array_uri: S,
+        evolution: SchemaEvolution,
+    ) -> TileDBResult<()>
+    where
+        S: AsRef<str>,
+    {
+        Self::evolve_impl(context, array_uri.as_ref(), evolution)
+    }
+
+    fn evolve_impl(
+        context: &Context,
+        array_uri: &str,
+        evolution: SchemaEvolution,
+    ) -> TileDBResult<()> {
+        let c_uri = cstring!(array_uri);
+        let c_evolution = evolution.capi();
+        context.capi_call(|ctx| unsafe {
+            ffi::tiledb_array_evolve(ctx, c_uri.as_ptr(), c_evolution)
         })?;
         Ok(())
     }

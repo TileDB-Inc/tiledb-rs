@@ -1,3 +1,5 @@
+pub mod evolution;
+
 use std::borrow::Borrow;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
@@ -21,6 +23,7 @@ use crate::query::read::output::FieldScratchAllocator;
 use crate::Datatype;
 use crate::Result as TileDBResult;
 
+pub use self::evolution::{Builder as SchemaEvolutionBuilder, SchemaEvolution};
 pub use tiledb_common::array::{ArrayType, CellValNum};
 
 /// Wrapper for the CAPI handle.
