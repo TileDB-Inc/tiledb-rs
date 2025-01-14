@@ -171,3 +171,6 @@ impl Builder {
         self.inner
     }
 }
+
+#[cfg(test)]
+mod tests;
