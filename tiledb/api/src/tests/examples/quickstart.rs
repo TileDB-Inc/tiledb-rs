@@ -3,7 +3,7 @@
 use crate::tests::prelude::*;
 
 pub struct Builder {
-    schema: SchemaData,
+    pub schema: SchemaData,
 }
 
 impl Builder {

@@ -140,3 +140,15 @@ pub struct tiledb_channel_operation_t {
 pub struct tiledb_channel_operator_t {
     _unused: [u8; 0],
 }
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_array_schema_evolution_t {
+    _unused: [u8; 0],
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct tiledb_current_domain_t {
+    _unused: [u8; 0],
+}

@@ -193,3 +193,7 @@ pub type tiledb_vfs_mode_t = ::std::os::raw::c_uint;
 pub const tiledb_walk_order_t_TILEDB_PREORDER: tiledb_walk_order_t = 0;
 pub const tiledb_walk_order_t_TILEDB_POSTORDER: tiledb_walk_order_t = 1;
 pub type tiledb_walk_order_t = ::std::os::raw::c_uint;
+
+pub const tiledb_current_domain_type_t_TILEDB_NDRECTANGLE:
+    tiledb_current_domain_type_t = 0;
+pub type tiledb_current_domain_type_t = ::std::os::raw::c_uint;
