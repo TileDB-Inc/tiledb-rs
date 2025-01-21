@@ -196,5 +196,4 @@ pub type tiledb_walk_order_t = ::std::os::raw::c_uint;
 
 pub const tiledb_current_domain_type_t_TILEDB_NDRECTANGLE:
     tiledb_current_domain_type_t = 0;
-#[doc = " The current domain type"]
 pub type tiledb_current_domain_type_t = ::std::os::raw::c_uint;

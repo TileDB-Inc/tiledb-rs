@@ -107,11 +107,11 @@ fn add_enumeration() -> anyhow::Result<()> {
         datatype: Datatype::StringAscii,
         cell_val_num: Some(CellValNum::Var),
         ordered: None,
-        data: "newhampshirenewjerseynewyork"
+        data: "newhampshirenewjerseynewmexiconewyork"
             .as_bytes()
             .to_vec()
             .into_boxed_slice(),
-        offsets: Some(vec![0, 12, 21].into_boxed_slice()),
+        offsets: Some(vec![0, 12, 21, 30].into_boxed_slice()),
     };
 
     let evolution = Builder::new(&array.context)?
@@ -141,8 +141,9 @@ fn add_enumeration() -> anyhow::Result<()> {
 fn extend_enumeration() -> anyhow::Result<()> {
     let ename = "states_enumeration";
 
-    let pre_variants = "newhampshirenewjerseynewyork".as_bytes().to_vec();
-    let pre_offsets = vec![0u64, 12, 21];
+    let pre_variants =
+        "newhampshirenewjerseynewmexiconewyork".as_bytes().to_vec();
+    let pre_offsets = vec![0u64, 12, 21, 30];
 
     let extension_variants = "northcarolinanorthdakota".as_bytes().to_vec();
     let extension_offsets = vec![0u64, 13];
@@ -222,11 +223,11 @@ fn drop_enumeration() -> anyhow::Result<()> {
         datatype: Datatype::StringAscii,
         cell_val_num: Some(CellValNum::Var),
         ordered: None,
-        data: "newhampshirenewjerseynewyork"
+        data: "newhampshirenewjerseynewmexiconewyork"
             .as_bytes()
             .to_vec()
             .into_boxed_slice(),
-        offsets: Some(vec![0, 12, 21].into_boxed_slice()),
+        offsets: Some(vec![0, 12, 21, 30].into_boxed_slice()),
     };
 
     let array = TestArray::new("extend_enumeration", {
