@@ -5,12 +5,12 @@ use crate::error::Error;
 use crate::{array::RawArray, Array, Result as TileDBResult};
 
 pub mod buffer;
-pub mod conditions;
+pub mod condition;
 pub mod read;
 pub mod subarray;
 pub mod write;
 
-pub use self::conditions::QueryConditionExpr;
+pub use self::condition::QueryConditionExpr;
 pub use self::read::{
     ReadBuilder, ReadQuery, ReadQueryBuilder, ReadStepOutput, TypedReadBuilder,
 };

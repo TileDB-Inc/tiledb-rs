@@ -1,3 +1,6 @@
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
+
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::hash::{Hash, Hasher};
 use std::ops::{BitAnd, BitOr, Deref, Not};
