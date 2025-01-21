@@ -135,3 +135,79 @@ fn add_enumeration() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn extend_enumeration() -> anyhow::Result<()> {
+    let ename = "states_enumeration";
+
+    let pre_variants = "newhampshirenewjerseynewyork".as_bytes().to_vec();
+    let pre_offsets = vec![0u64, 12, 21];
+
+    let extension_variants = "northcarolinanorthdakota".as_bytes().to_vec();
+    let extension_offsets = vec![0u64, 13];
+
+    let extended_variants = pre_variants
+        .iter()
+        .chain(extension_variants.iter())
+        .copied()
+        .collect::<Vec<_>>();
+    let extended_offsets = pre_offsets
+        .iter()
+        .copied()
+        .chain(
+            extension_offsets
+                .iter()
+                .map(|o| *o + pre_variants.len() as u64),
+        )
+        .collect::<Vec<u64>>();
+
+    let states_enumeration = EnumerationData {
+        name: ename.to_owned(),
+        datatype: Datatype::StringAscii,
+        cell_val_num: Some(CellValNum::Var),
+        ordered: None,
+        data: pre_variants.into_boxed_slice(),
+        offsets: Some(pre_offsets.into_boxed_slice()),
+    };
+
+    let array = TestArray::new("extend_enumeration", {
+        let mut b = quickstart::Builder::new(ArrayType::Sparse);
+        b.schema.attributes[0].enumeration = Some(ename.to_owned());
+        b.schema.enumerations.push(states_enumeration);
+        b.build().into()
+    })?;
+
+    let old_schema = array.for_read()?.schema()?;
+    assert_eq!(1, old_schema.num_attributes()?);
+    assert_eq!(
+        Some(ename),
+        old_schema.attribute(0)?.enumeration_name()?.as_deref()
+    );
+
+    let extended_states = old_schema
+        .enumeration(EnumerationKey::EnumerationName(ename))?
+        .extend(&extension_variants, Some(&extension_offsets))?;
+
+    let evolution = Builder::new(&array.context)?
+        .extend_enumeration(extended_states)?
+        .build();
+    Array::evolve(&array.context, &array.uri, evolution)?;
+
+    let new_schema = array.for_read()?.schema()?;
+    assert_eq!(1, new_schema.num_attributes()?);
+    assert_eq!(
+        Some(ename),
+        new_schema.attribute(0)?.enumeration_name()?.as_deref()
+    );
+
+    let new_enumeration = EnumerationData::try_from(
+        new_schema.enumeration(EnumerationKey::EnumerationName(ename))?,
+    )?;
+    assert_eq!(extended_variants.deref(), new_enumeration.data.deref());
+    assert_eq!(
+        Some(extended_offsets).as_deref(),
+        new_enumeration.offsets.as_deref()
+    );
+
+    Ok(())
+}

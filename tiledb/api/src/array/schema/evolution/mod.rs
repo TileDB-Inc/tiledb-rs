@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::array::{Attribute, Enumeration};
+use crate::array::{Attribute, Enumeration, ExtendedEnumeration};
 use crate::{Context, ContextBound, Result as TileDBResult};
 
 enum RawSchemaEvolution {
@@ -122,11 +122,10 @@ impl Builder {
         Ok(self)
     }
 
-    // TODO: the C API doc says that the arg must be returned from
-    // `tiledb_enumeration_extend`, we can enforce that
+    /// Registers an extension to an existing [Enumeration].
     pub fn extend_enumeration(
         self,
-        enumeration: Enumeration,
+        enumeration: ExtendedEnumeration,
     ) -> TileDBResult<Self> {
         let c_evolution = *self.inner.raw;
         let c_enumeration = enumeration.capi();

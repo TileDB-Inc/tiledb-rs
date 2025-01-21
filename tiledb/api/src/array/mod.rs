@@ -36,7 +36,9 @@ pub use dimension::{
     Builder as DimensionBuilder, Dimension, DimensionConstraints,
 };
 pub use domain::{Builder as DomainBuilder, Domain};
-pub use enumeration::{Builder as EnumerationBuilder, Enumeration};
+pub use enumeration::{
+    Builder as EnumerationBuilder, Enumeration, ExtendedEnumeration,
+};
 use ffi::tiledb_config_t;
 pub use fragment_info::{
     Builder as FragmentInfoBuilder, FragmentInfo, FragmentInfoList,

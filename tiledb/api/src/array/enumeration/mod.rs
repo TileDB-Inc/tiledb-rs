@@ -153,7 +153,7 @@ impl Enumeration {
         &self,
         data: &[T],
         offsets: Option<&[u64]>,
-    ) -> TileDBResult<Enumeration> {
+    ) -> TileDBResult<ExtendedEnumeration> {
         let c_enmr = self.capi();
         let mut c_new_enmr: *mut ffi::tiledb_enumeration_t = out_ptr!();
 
@@ -185,10 +185,10 @@ impl Enumeration {
             )
         })?;
 
-        Ok(Enumeration {
+        Ok(ExtendedEnumeration(Enumeration {
             context: self.context.clone(),
             raw: RawEnumeration::Owned(c_new_enmr),
-        })
+        }))
     }
 }
 
@@ -229,6 +229,25 @@ impl Debug for Enumeration {
                 )
             }
         }
+    }
+}
+
+/// Wraps an [Enumeration] which has been created by [Enumeration::extend].
+/// This can be added to a [SchemaEvolution].
+#[derive(Debug)]
+pub struct ExtendedEnumeration(Enumeration);
+
+impl ExtendedEnumeration {
+    pub fn into_inner(self) -> Enumeration {
+        self.0
+    }
+}
+
+impl Deref for ExtendedEnumeration {
+    type Target = Enumeration;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -448,7 +467,7 @@ mod tests {
         assert_eq!(enmr1.datatype()?, enmr2.datatype()?);
         assert_eq!(enmr1.cell_val_num()?, enmr2.cell_val_num()?);
         assert_eq!(enmr1.ordered()?, enmr2.ordered()?);
-        assert_ne!(enmr1, enmr2);
+        assert_ne!(enmr1, enmr2.into_inner());
 
         Ok(())
     }
