@@ -7,6 +7,7 @@ use tiledb_utils::assert_option_subset;
 
 use crate::array::schema::EnumerationKey;
 use crate::array::Array;
+use crate::error::Error;
 use crate::tests::examples::{quickstart, TestArray};
 use crate::Factory;
 
@@ -208,6 +209,52 @@ fn extend_enumeration() -> anyhow::Result<()> {
         Some(extended_offsets).as_deref(),
         new_enumeration.offsets.as_deref()
     );
+
+    Ok(())
+}
+
+#[test]
+fn drop_enumeration() -> anyhow::Result<()> {
+    let ename = "states_enumeration";
+
+    let states_enumeration = EnumerationData {
+        name: ename.to_owned(),
+        datatype: Datatype::StringAscii,
+        cell_val_num: Some(CellValNum::Var),
+        ordered: None,
+        data: "newhampshirenewjerseynewyork"
+            .as_bytes()
+            .to_vec()
+            .into_boxed_slice(),
+        offsets: Some(vec![0, 12, 21].into_boxed_slice()),
+    };
+
+    let array = TestArray::new("extend_enumeration", {
+        let mut b = quickstart::Builder::new(ArrayType::Sparse);
+        b.schema.attributes[0].enumeration = Some(ename.to_owned());
+        b.schema.enumerations.push(states_enumeration);
+        b.build().into()
+    })?;
+
+    let old_schema = array.for_read()?.schema()?;
+    assert!(old_schema
+        .enumeration(EnumerationKey::EnumerationName(ename))
+        .is_ok());
+    assert_eq!(1, old_schema.num_attributes()?);
+    assert_eq!(
+        Some(ename),
+        old_schema.attribute(0)?.enumeration_name()?.as_deref()
+    );
+
+    let evolution = Builder::new(&array.context)?
+        .drop_enumeration(ename)?
+        .build();
+
+    let evolve = Array::evolve(&array.context, &array.uri, evolution);
+    assert!(matches!(evolve, Err(Error::LibTileDB(_))));
+
+    let msg = evolve.unwrap_err().to_string();
+    assert!(msg.contains("Unable to drop enumeration 'states_enumeration' as it is used by attribute 'a'"));
 
     Ok(())
 }
