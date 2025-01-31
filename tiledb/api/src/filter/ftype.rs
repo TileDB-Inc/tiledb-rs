@@ -135,8 +135,8 @@ impl From<&FilterData> for FilterType {
     fn from(value: &FilterData) -> Self {
         match value {
             FilterData::None => FilterType::None,
-            FilterData::BitShuffle { .. } => FilterType::BitShuffle,
-            FilterData::ByteShuffle { .. } => FilterType::ByteShuffle,
+            FilterData::BitShuffle => FilterType::BitShuffle,
+            FilterData::ByteShuffle => FilterType::ByteShuffle,
             FilterData::BitWidthReduction { .. } => {
                 FilterType::BitWidthReduction
             }
