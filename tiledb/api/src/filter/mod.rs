@@ -80,8 +80,8 @@ impl Filter {
 
         match *filter_data {
             FilterData::None => (),
-            FilterData::BitShuffle { .. } => (),
-            FilterData::ByteShuffle { .. } => (),
+            FilterData::BitShuffle => (),
+            FilterData::ByteShuffle => (),
             FilterData::BitWidthReduction { max_window } => {
                 if let Some(max_window) = max_window {
                     let c_size = max_window as std::ffi::c_uint;
