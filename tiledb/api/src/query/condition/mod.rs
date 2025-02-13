@@ -474,6 +474,18 @@ pub struct EqualityPredicate {
 }
 
 impl EqualityPredicate {
+    pub fn field(&self) -> &str {
+        &self.field
+    }
+
+    pub fn operation(&self) -> EqualityOp {
+        self.op
+    }
+
+    pub fn value(&self) -> &Literal {
+        &self.value
+    }
+
     fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
@@ -518,6 +530,18 @@ pub struct SetMembershipPredicate {
 }
 
 impl SetMembershipPredicate {
+    pub fn field(&self) -> &str {
+        &self.field
+    }
+
+    pub fn operation(&self) -> SetMembershipOp {
+        self.op
+    }
+
+    pub fn members(&self) -> &SetMembers {
+        &self.members
+    }
+
     fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         // First things first, sets require a non-zero length vector. I would
         // prefer if we couldn't even create SetMemberValues with zero length
@@ -629,6 +653,14 @@ pub struct NullnessPredicate {
 }
 
 impl NullnessPredicate {
+    pub fn field(&self) -> &str {
+        &self.field
+    }
+
+    pub fn operation(&self) -> NullnessOp {
+        self.op
+    }
+
     fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition> {
         let mut c_cond: *mut ffi::tiledb_query_condition_t = out_ptr!();
         ctx.capi_call(|ctx| unsafe {
