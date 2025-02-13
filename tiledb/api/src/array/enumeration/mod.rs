@@ -234,7 +234,7 @@ impl Debug for Enumeration {
 
 /// Wraps an [Enumeration] which has been created by [Enumeration::extend].
 /// This can be added to a [SchemaEvolution].
-#[derive(Debug)]
+#[cfg_attr(any(test, feature = "pod"), derive(Debug))]
 pub struct ExtendedEnumeration(Enumeration);
 
 impl ExtendedEnumeration {
