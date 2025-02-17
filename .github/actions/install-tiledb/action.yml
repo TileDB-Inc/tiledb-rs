@@ -1,30 +1,200 @@
-
 name: Install TileDB
+description: Install TileDB
 
 inputs:
-  token:
-    description: 'A Github PAT'
+  version:
+    description: "The version of TileDB to install"
     required: true
+  linkage:
+    description: "Whether to dynamically or statically link TileDB"
+    required: true
+  platform:
+    description: "Override automatica platform detection."
+    required: false
 
 runs:
   using: "composite"
   steps:
-    - name: Set Tarball Name
-      shell: bash
-      run: |
-        OS=$(uname -o | tr '[:upper:]' '[:lower:]' | tr '/' '-')
-        ARCH=$(uname -m)
-        echo "TDB_TARBALL_NAME=libtiledb-$OS-$ARCH.tar.gz" >> $GITHUB_ENV
-    - uses: robinraju/release-downloader@v1
+    - name: Setup Python
+      uses: actions/setup-python@v4
       with:
-        repository: 'TileDB-Inc/tiledb-rs'
-        tag: nightly-libtiledb
-        fileName: ${{ env.TDB_TARBALL_NAME }}
-        extract: false
-        token: ${{ inputs.token }}
+        python-version: "3.11"
+    - name: Install Requests
+      run: pip install requests
+      shell: bash
+    - name: Detect Platform
+      id: platform
+      env:
+        TDB_PLATFORM: ${{ inputs.platform }}
+      shell: python
+      run: |
+        import os
+
+        platform = os.environ.get("TDB_PLATFORM")
+
+        if not platform:
+          osname = os.uname().sysname.lower()
+          if osname == "darwin":
+            osname = "macos"
+
+          arch = os.uname().machine.lower()
+          if arch == "aarch64":
+            arch = "arm64"
+
+          platform = "{}-{}".format(osname, arch)
+
+        with open(os.environ["GITHUB_OUTPUT"], 'w') as handle:
+          handle.write("platform={}\n".format(platform))
+    - name: Locate Upstream TileDB Tarball
+      id: upstream-tarball
+      if: ${{ inputs.version != 'main' && inputs.linkage != 'static' }}
+      env:
+        TDB_VERSION: ${{ inputs.version }}
+        TDB_LINKAGE: ${{ inputs.linkage }}
+        TDB_PLATFORM: ${{ steps.platform.outputs.platform }}
+      shell: python
+      run: |
+        import os
+        import requests
+
+        version = os.environ["TDB_VERSION"]
+        platform = os.environ["TDB_PLATFORM"]
+
+        BASE_URL = "https://github.com/TileDB-Inc/TileDB/releases/download/{}/releases.csv"
+        resp = requests.get(BASE_URL.format(version))
+        resp.raise_for_status()
+
+        candidates = []
+        for line in resp.text.splitlines():
+          bits = line.split(",")
+          if platform.upper() == bits[0].upper():
+            candidates.append((bits[1], bits[2]))
+
+        if not candidates:
+          print("Missing release for version '{}' on platform '{}'".format(version, platform))
+          exit(1)
+
+        if len(candidates) > 1:
+          print("Multiple matches for version '{}' on platform '{}'".format(version, platform))
+          exit(1)
+
+        with open(os.environ["GITHUB_OUTPUT"], 'w') as handle:
+          handle.write("url={}\n".format(candidates[0][0]))
+          handle.write("sha256={}\n".format(candidates[0][1]))
+    - name: Locate Custom TileDB Tarball
+      id: custom-tarball
+      if: ${{ inputs.version == 'main' || inputs.linkage == 'static' }}
+      env:
+        TDB_VERSION: ${{ inputs.version }}
+        TDB_LINKAGE: ${{ inputs.linkage }}
+        TDB_PLATFORM: ${{ steps.platform.outputs.platform }}
+      shell: python
+      run: |
+        import os
+        import requests
+
+        version = os.environ["TDB_VERSION"]
+        linkage = os.environ["TDB_LINKAGE"]
+        platform = os.environ["TDB_PLATFORM"]
+
+        URL = "https://github.com/TileDB-Inc/tiledb-rs/releases/download/nightlies/releases.csv"
+        resp = requests.get(URL)
+        resp.raise_for_status()
+
+        candidates = []
+        for line in resp.text.splitlines():
+          bits = line.split(",")
+
+          if platform.upper() != bits[0].upper():
+            continue
+          if version.upper() != bits[1].upper():
+            continue
+          if linkage.upper() != bits[2].upper():
+            continue
+
+          candidates.append((bits[3], bits[4]))
+
+        if not candidates:
+          print("Missing release for version '{}' on platform '{}'".format(version, platform))
+          exit(1)
+
+        if len(candidates) > 1:
+          print("Multiple matches for version '{}' on platform '{}'".format(version, platform))
+          exit(1)
+
+        with open(os.environ["GITHUB_OUTPUT"], 'w') as handle:
+          handle.write("url={}\n".format(candidates[0][0]))
+          handle.write("sha256={}\n".format(candidates[0][1]))
+    - name: Downlaod TileDB
+      id: download
+      env:
+        UPSTREAM_URL: ${{ steps.upstream-tarball.outputs.url }}
+        UPSTREAM_SHA256: ${{ steps.upstream-tarball.outputs.sha256 }}
+        CUSTOM_URL: ${{ steps.custom-tarball.outputs.url }}
+        CUSTOM_SHA256: ${{ steps.custom-tarball.outputs.sha256 }}
+      shell: python
+      run: |
+        import os
+        import requests
+        import hashlib
+
+        url = os.environ["UPSTREAM_URL"] or os.environ["CUSTOM_URL"]
+        expected_sha256 = os.environ["UPSTREAM_SHA256"] or os.environ["CUSTOM_SHA256"]
+
+        if not url:
+          print("Missing tarball URL")
+          exit(1)
+
+        if not expected_sha256:
+          print("Missing expected sha256")
+          exit(1)
+
+        fname = os.path.basename(url)
+        with requests.get(url, stream=True) as r:
+          r.raise_for_status()
+          with open(fname, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+              f.write(chunk)
+
+        with open(fname, 'rb') as handle:
+          digest = hashlib.file_digest(handle, "sha256")
+
+        found_sha256 = digest.hexdigest()
+
+        if found_sha256 != expected_sha256:
+          print("SHA256 hashes don't match. Found: {}, Expected {}".format(found_sha256, expected_sha256))
+          exit(1)
+
+        with open(os.environ["GITHUB_OUTPUT"], 'w') as handle:
+          handle.write("tarball={}\n".format(fname))
     - name: Install TileDB
       shell: bash
       run: |
-        mkdir -p /opt/github-actions
-        tar -C /opt/github-actions -xzf ${{ env.TDB_TARBALL_NAME }}
-        echo "PKG_CONFIG_PATH=/opt/github-actions/lib/pkgconfig" >> $GITHUB_ENV
+        mkdir -p ~/pkg/tiledb
+        tar -C ~/pkg/tiledb -xzf ${{ steps.download.outputs.tarball }}
+    - name: Fix tiledb.pc
+      shell: python
+      run: |
+        import os
+
+        install_dir = os.path.expanduser("~/pkg/tiledb")
+        pc_fname = os.path.join(install_dir, "lib", "pkgconfig", "tiledb.pc")
+
+        lines = []
+        with open(pc_fname) as handle:
+          for line in handle:
+            if line.startswith("prefix="):
+              lines.append('prefix="{}"\n'.format(install_dir))
+            else:
+              lines.append(line)
+
+        with open(pc_fname, 'w') as handle:
+          handle.write("".join(lines))
+
+        pkg_config_dir = os.path.join(install_dir, "lib", "pkgconfig")
+        with open(os.environ["GITHUB_ENV"], 'w') as handle:
+          handle.write("PKG_CONFIG_PATH={}\n".format(pkg_config_dir))
+    - name: Debug tiledb.pc
+      shell: bash
+      run: |
+        cat ~/pkg/tiledb/lib/pkgconfig/tiledb.pc
