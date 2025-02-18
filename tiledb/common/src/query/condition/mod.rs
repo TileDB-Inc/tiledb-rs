@@ -392,6 +392,12 @@ macro_rules! set_member_value_impl {
                 $constructor(value.to_vec())
             }
         }
+
+        impl From<Vec<$ty>> for SetMembers {
+            fn from(value: Vec<$ty>) -> SetMembers {
+                $constructor(value)
+            }
+        }
     };
 }
 
