@@ -108,7 +108,11 @@ impl Arbitrary for Literal {
                 _DT,
                 lb,
                 ub,
-                (lb..=ub).prop_map(|point| Literal::from(point)).boxed()
+                if lb.bits_eq(&ub) {
+                    Just(Literal::from(lb)).boxed()
+                } else {
+                    (lb..=ub).prop_map(|point| Literal::from(point)).boxed()
+                }
             ),
             Range::Multi(_) => unimplemented!(),
             Range::Var(VarValueRange::UInt8(lb, ub)) => Between::new(&lb, &ub)
@@ -141,9 +145,16 @@ impl Arbitrary for SetMembers {
                 _DT,
                 lb,
                 ub,
-                proptest::collection::vec(lb..=ub, params.1)
-                    .prop_map(SetMembers::from)
-                    .boxed()
+                proptest::collection::vec(
+                    if lb.bits_eq(&ub) {
+                        Just(lb).boxed()
+                    } else {
+                        (lb..=ub).boxed()
+                    },
+                    params.1
+                )
+                .prop_map(SetMembers::from)
+                .boxed()
             ),
             Range::Multi(_) => unimplemented!(),
             Range::Var(VarValueRange::UInt8(lb, ub)) => {
