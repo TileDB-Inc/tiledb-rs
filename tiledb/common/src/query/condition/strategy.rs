@@ -10,7 +10,7 @@ use crate::range::{Range, SingleValueRange, VarValueRange};
 use crate::{single_value_range_go, Datatype};
 
 pub trait Schema {
-    fn fields(&self) -> Vec<(String, Range)>;
+    fn fields(&self) -> Vec<(String, Option<Range>)>;
 }
 
 #[derive(Clone, Default)]
@@ -133,7 +133,12 @@ impl Arbitrary for SetMembers {
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         let Some(range) = params.0 else {
-            unimplemented!()
+            return prop_oneof![
+                8 => any::<SingleValueRange>().prop_map(Range::Single),
+                2 => any_with::<VarValueRange>(Some(Datatype::StringUtf8)).prop_map(Range::Var)
+            ]
+            .prop_flat_map(move |range| Self::arbitrary_with((Some(range), params.1.clone())))
+            .boxed();
         };
 
         match range {
@@ -175,7 +180,7 @@ impl Arbitrary for EqualityPredicate {
             any::<EqualityOp>(),
         )
             .prop_flat_map(|((field, range), op)| {
-                (Just(field), Just(op), any_with::<Literal>(Some(range)))
+                (Just(field), Just(op), any_with::<Literal>(range))
             })
             .prop_map(|(field, op, value)| EqualityPredicate {
                 field,
@@ -203,7 +208,7 @@ impl Arbitrary for SetMembershipPredicate {
                     Just(field),
                     Just(op),
                     any_with::<SetMembers>((
-                        Some(range),
+                        range,
                         params.num_set_members.clone(),
                     )),
                 )
