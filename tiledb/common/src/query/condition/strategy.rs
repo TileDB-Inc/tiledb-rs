@@ -14,6 +14,30 @@ pub struct Parameters {
     pub recursion: RecursionParameters,
 }
 
+impl Parameters {
+    fn query_condition_compatible_domain(
+        &self,
+    ) -> Option<Vec<(String, Range)>> {
+        self.domain.as_ref().map(|d| {
+            d.iter()
+                .filter_map(|(fname, range)| {
+                    if matches!(
+                        range,
+                        Some(
+                            Range::Single(_)
+                                | Range::Var(VarValueRange::UInt8(_, _))
+                        )
+                    ) {
+                        Some((fname.clone(), range.clone().unwrap()))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        })
+    }
+}
+
 #[derive(Clone)]
 pub struct RecursionParameters {
     pub max_depth: u32,
@@ -79,7 +103,7 @@ impl Arbitrary for Field {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(domain) = params.domain else {
+        let Some(domain) = params.query_condition_compatible_domain() else {
             unimplemented!()
         };
         proptest::sample::select(domain)
@@ -177,12 +201,12 @@ impl Arbitrary for EqualityPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(domain) = params.domain else {
+        let Some(domain) = params.query_condition_compatible_domain() else {
             unimplemented!()
         };
         (proptest::sample::select(domain), any::<EqualityOp>())
             .prop_flat_map(|((field, range), op)| {
-                (Just(field), Just(op), any_with::<Literal>(range))
+                (Just(field), Just(op), any_with::<Literal>(Some(range)))
             })
             .prop_map(|(field, op, value)| EqualityPredicate {
                 field,
@@ -198,7 +222,7 @@ impl Arbitrary for SetMembershipPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(domain) = params.domain else {
+        let Some(domain) = params.query_condition_compatible_domain() else {
             unimplemented!()
         };
         (proptest::sample::select(domain), any::<SetMembershipOp>())
@@ -207,7 +231,7 @@ impl Arbitrary for SetMembershipPredicate {
                     Just(field),
                     Just(op),
                     any_with::<SetMembers>((
-                        range,
+                        Some(range),
                         params.num_set_members.clone(),
                     )),
                 )
@@ -258,8 +282,21 @@ impl Arbitrary for QueryConditionExpr {
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         let rec = params.recursion.clone();
-        any_with::<Predicate>(params)
-            .prop_map(QueryConditionExpr::Cond)
+
+        let leaf = if params
+            .query_condition_compatible_domain()
+            .map(|d| d.is_empty())
+            .unwrap_or(true)
+        {
+            // can only do null-ness predicates
+            any_with::<NullnessPredicate>(params)
+                .prop_map(Predicate::Nullness)
+                .boxed()
+        } else {
+            any_with::<Predicate>(params).boxed()
+        };
+
+        leaf.prop_map(QueryConditionExpr::Cond)
             .prop_recursive(rec.max_depth, rec.desired_size, 2, |leaf| {
                 prop_oneof![
                     (leaf.clone(), any::<CombinationOp>(), leaf.clone())
