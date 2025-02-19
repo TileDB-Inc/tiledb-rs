@@ -3,6 +3,7 @@ use proptest::bits::{BitSetLike, VarBitSet};
 use strategy_ext::records::Records;
 use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
 use tiledb_common::datatype::Error as DatatypeError;
+use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
 
 /// Represents the write query input for a single field.
 ///
@@ -386,6 +387,36 @@ impl FieldData {
             }
         )
     }
+
+    /// Returns the bounding range of the data in this field.
+    pub fn domain(&self) -> Option<Range> {
+        typed_field_data_go!(
+            self,
+            _DT,
+            cells,
+            {
+                cells
+                    .iter()
+                    .min_by(|l, r| l.bits_cmp(r))
+                    .zip(cells.iter().max_by(|l, r| l.bits_cmp(r)))
+                    .map(|(min, max)| {
+                        Range::Single(SingleValueRange::from(&[*min, *max]))
+                    })
+            },
+            {
+                cells
+                    .iter()
+                    .min_by(|l, r| l.bits_cmp(r))
+                    .zip(cells.iter().max_by(|l, r| l.bits_cmp(r)))
+                    .map(|(min, max)| {
+                        Range::Var(VarValueRange::from((
+                            min.to_vec().into_boxed_slice(),
+                            max.to_vec().into_boxed_slice(),
+                        )))
+                    })
+            }
+        )
+    }
 }
 
 impl BitsEq for FieldData {
@@ -404,6 +435,8 @@ impl BitsEq for FieldData {
 
 #[cfg(test)]
 mod tests {
+    use std::ops::Deref;
+
     use proptest::prelude::*;
     use tiledb_common::array::CellValNum;
     use tiledb_common::datatype::Datatype;
@@ -441,6 +474,189 @@ mod tests {
             (any_with::<FieldData>(params.clone()), any_with::<FieldData>(params.clone()))
         })) {
             do_field_data_extend(dst, src)
+        }
+    }
+
+    fn do_field_domain(field_data: FieldData) {
+        let Some(domain) = field_data.domain() else {
+            assert!(field_data.is_empty());
+            return;
+        };
+
+        macro_rules! check_correctness {
+            ($min:expr, $max:expr, $values:expr) => {{
+                // must be a proper bound
+                for value in $values.iter() {
+                    assert!($min.bits_le(value));
+                    assert!(value.bits_le($max));
+                }
+
+                // the value must be in the field data
+                assert!($values.iter().any(|value| value.bits_eq($min)));
+                assert!($values.iter().any(|value| value.bits_eq($max)));
+            }};
+        }
+
+        match field_data {
+            FieldData::UInt8(values) => {
+                let Range::Single(SingleValueRange::UInt8(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::UInt16(values) => {
+                let Range::Single(SingleValueRange::UInt16(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::UInt32(values) => {
+                let Range::Single(SingleValueRange::UInt32(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::UInt64(values) => {
+                let Range::Single(SingleValueRange::UInt64(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::Int8(values) => {
+                let Range::Single(SingleValueRange::Int8(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::Int16(values) => {
+                let Range::Single(SingleValueRange::Int16(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::Int32(values) => {
+                let Range::Single(SingleValueRange::Int32(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::Int64(values) => {
+                let Range::Single(SingleValueRange::Int64(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::Float32(values) => {
+                let Range::Single(SingleValueRange::Float32(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::Float64(values) => {
+                let Range::Single(SingleValueRange::Float64(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                check_correctness!(&min, &max, &values)
+            }
+            FieldData::VecUInt8(values) => {
+                let Range::Var(VarValueRange::UInt8(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecUInt16(values) => {
+                let Range::Var(VarValueRange::UInt16(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecUInt32(values) => {
+                let Range::Var(VarValueRange::UInt32(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecUInt64(values) => {
+                let Range::Var(VarValueRange::UInt64(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecInt8(values) => {
+                let Range::Var(VarValueRange::Int8(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecInt16(values) => {
+                let Range::Var(VarValueRange::Int16(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecInt32(values) => {
+                let Range::Var(VarValueRange::Int32(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecInt64(values) => {
+                let Range::Var(VarValueRange::Int64(min, max)) = domain else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecFloat32(values) => {
+                let Range::Var(VarValueRange::Float32(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+            FieldData::VecFloat64(values) => {
+                let Range::Var(VarValueRange::Float64(min, max)) = domain
+                else {
+                    unreachable!()
+                };
+                let slices =
+                    values.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
+                check_correctness!(min.deref(), max.deref(), slices)
+            }
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn field_domain(field_data in any::<FieldData>()) {
+            do_field_domain(field_data)
         }
     }
 }
