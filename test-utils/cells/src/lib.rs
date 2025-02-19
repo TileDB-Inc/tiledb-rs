@@ -84,6 +84,13 @@ impl Cells {
         &self.fields
     }
 
+    pub fn domain(&self) -> Vec<(String, Option<tiledb_common::range::Range>)> {
+        self.fields
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.domain()))
+            .collect::<Vec<_>>()
+    }
+
     /// Copies data from the argument.
     /// Overwrites data at common indices and extends `self` where necessary.
     pub fn copy_from(&mut self, cells: Self) {

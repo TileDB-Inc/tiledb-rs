@@ -10,22 +10,11 @@ use proptest::test_runner::TestRunner;
 use strategy_ext::records::RecordsValueTree;
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::{Datatype, PhysicalType};
-use tiledb_common::query::condition::strategy::Schema as QueryConditionSchema;
-use tiledb_common::range::Range;
 use tiledb_common::{dimension_constraints_go, physical_type_go};
 use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 
 use super::field::FieldData;
 use super::Cells;
-
-impl QueryConditionSchema for Cells {
-    fn fields(&self) -> Vec<(String, Option<Range>)> {
-        self.fields
-            .iter()
-            .map(|(k, v)| (k.to_owned(), v.domain()))
-            .collect::<Vec<_>>()
-    }
-}
 
 trait IntegralType: Eq + Ord + PhysicalType {}
 

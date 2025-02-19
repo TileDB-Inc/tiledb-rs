@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use proptest::prelude::*;
 use proptest::sample::SizeRange;
 use proptest::strategy::ValueTree;
@@ -9,13 +7,9 @@ use super::*;
 use crate::range::{Range, SingleValueRange, VarValueRange};
 use crate::{single_value_range_go, Datatype};
 
-pub trait Schema {
-    fn fields(&self) -> Vec<(String, Option<Range>)>;
-}
-
 #[derive(Clone, Default)]
 pub struct Parameters {
-    pub schema: Option<Rc<dyn Schema>>,
+    pub domain: Option<Vec<(String, Option<Range>)>>,
     pub num_set_members: SizeRange,
     pub recursion: RecursionParameters,
 }
@@ -85,10 +79,10 @@ impl Arbitrary for Field {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(schema) = params.schema else {
+        let Some(domain) = params.domain else {
             unimplemented!()
         };
-        proptest::sample::select(schema.fields())
+        proptest::sample::select(domain)
             .prop_map(|f| QueryConditionExpr::field(f.0))
             .boxed()
     }
@@ -172,13 +166,10 @@ impl Arbitrary for EqualityPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(schema) = params.schema else {
+        let Some(domain) = params.domain else {
             unimplemented!()
         };
-        (
-            proptest::sample::select(schema.fields()),
-            any::<EqualityOp>(),
-        )
+        (proptest::sample::select(domain), any::<EqualityOp>())
             .prop_flat_map(|((field, range), op)| {
                 (Just(field), Just(op), any_with::<Literal>(range))
             })
@@ -196,13 +187,10 @@ impl Arbitrary for SetMembershipPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(schema) = params.schema else {
+        let Some(domain) = params.domain else {
             unimplemented!()
         };
-        (
-            proptest::sample::select(schema.fields()),
-            any::<SetMembershipOp>(),
-        )
+        (proptest::sample::select(domain), any::<SetMembershipOp>())
             .prop_flat_map(move |((field, range), op)| {
                 (
                     Just(field),
@@ -227,13 +215,10 @@ impl Arbitrary for NullnessPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(schema) = params.schema else {
+        let Some(domain) = params.domain else {
             unimplemented!()
         };
-        (
-            proptest::sample::select(schema.fields()),
-            any::<NullnessOp>(),
-        )
+        (proptest::sample::select(domain), any::<NullnessOp>())
             .prop_map(|((field, _), op)| NullnessPredicate { field, op })
             .boxed()
     }
