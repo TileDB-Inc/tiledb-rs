@@ -1,6 +1,280 @@
+use std::rc::Rc;
+
+use proptest::prelude::*;
+use proptest::sample::SizeRange;
 use proptest::strategy::ValueTree;
+use strategy_ext::lexicographic::Between;
 
 use super::*;
+use crate::range::{Range, SingleValueRange, VarValueRange};
+use crate::{single_value_range_go, Datatype};
+
+pub trait Schema {
+    fn fields(&self) -> Vec<(String, Range)>;
+}
+
+#[derive(Clone, Default)]
+pub struct Parameters {
+    pub schema: Option<Rc<dyn Schema>>,
+    pub num_set_members: SizeRange,
+    pub recursion: RecursionParameters,
+}
+
+#[derive(Clone)]
+pub struct RecursionParameters {
+    pub max_depth: u32,
+    pub desired_size: u32,
+}
+
+impl Default for RecursionParameters {
+    fn default() -> Self {
+        Self {
+            max_depth: 3,
+            desired_size: 4,
+        }
+    }
+}
+
+impl Arbitrary for EqualityOp {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = ();
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        prop_oneof![
+            Just(EqualityOp::Less),
+            Just(EqualityOp::LessEqual),
+            Just(EqualityOp::Equal),
+            Just(EqualityOp::Greater),
+            Just(EqualityOp::GreaterEqual),
+            Just(EqualityOp::NotEqual),
+        ]
+        .boxed()
+    }
+}
+
+impl Arbitrary for SetMembershipOp {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = ();
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        prop_oneof![Just(SetMembershipOp::In), Just(SetMembershipOp::NotIn)]
+            .boxed()
+    }
+}
+
+impl Arbitrary for NullnessOp {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = ();
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        prop_oneof![Just(NullnessOp::IsNull), Just(NullnessOp::NotNull)].boxed()
+    }
+}
+
+impl Arbitrary for CombinationOp {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = ();
+
+    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+        prop_oneof![Just(CombinationOp::And), Just(CombinationOp::Or)].boxed()
+    }
+}
+
+impl Arbitrary for Field {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Parameters;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let Some(schema) = params.schema else {
+            unimplemented!()
+        };
+        proptest::sample::select(schema.fields())
+            .prop_map(|f| QueryConditionExpr::field(f.0))
+            .boxed()
+    }
+}
+
+impl Arbitrary for Literal {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Option<Range>;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let Some(range) = params else {
+            return prop_oneof![
+                8 => any::<SingleValueRange>().prop_map(Range::Single),
+                2 => any_with::<VarValueRange>(Some(Datatype::StringUtf8)).prop_map(Range::Var)
+            ]
+            .prop_flat_map(|range| Self::arbitrary_with(Some(range)))
+            .boxed();
+        };
+
+        match range {
+            Range::Single(svr) => single_value_range_go!(
+                svr,
+                _DT,
+                lb,
+                ub,
+                (lb..=ub).prop_map(|point| Literal::from(point)).boxed()
+            ),
+            Range::Multi(_) => unimplemented!(),
+            Range::Var(VarValueRange::UInt8(lb, ub)) => Between::new(&lb, &ub)
+                .prop_map(|bytes| {
+                    Literal::from(String::from_utf8_lossy(&bytes).into_owned())
+                })
+                .boxed(),
+            Range::Var(_) => unimplemented!(),
+        }
+    }
+}
+
+impl Arbitrary for SetMembers {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = (Option<Range>, SizeRange);
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let Some(range) = params.0 else {
+            unimplemented!()
+        };
+
+        match range {
+            Range::Single(svr) => single_value_range_go!(
+                svr,
+                _DT,
+                lb,
+                ub,
+                proptest::collection::vec(lb..=ub, params.1)
+                    .prop_map(SetMembers::from)
+                    .boxed()
+            ),
+            Range::Multi(_) => unimplemented!(),
+            Range::Var(VarValueRange::UInt8(lb, ub)) => {
+                proptest::collection::vec(
+                    Between::new(&lb, &ub).prop_map(|bytes| {
+                        String::from_utf8_lossy(&bytes).into_owned()
+                    }),
+                    params.1,
+                )
+                .prop_map(SetMembers::from)
+                .boxed()
+            }
+            Range::Var(_) => unimplemented!(),
+        }
+    }
+}
+
+impl Arbitrary for EqualityPredicate {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Parameters;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let Some(schema) = params.schema else {
+            unimplemented!()
+        };
+        (
+            proptest::sample::select(schema.fields()),
+            any::<EqualityOp>(),
+        )
+            .prop_flat_map(|((field, range), op)| {
+                (Just(field), Just(op), any_with::<Literal>(Some(range)))
+            })
+            .prop_map(|(field, op, value)| EqualityPredicate {
+                field,
+                op,
+                value,
+            })
+            .boxed()
+    }
+}
+
+impl Arbitrary for SetMembershipPredicate {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Parameters;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let Some(schema) = params.schema else {
+            unimplemented!()
+        };
+        (
+            proptest::sample::select(schema.fields()),
+            any::<SetMembershipOp>(),
+        )
+            .prop_flat_map(move |((field, range), op)| {
+                (
+                    Just(field),
+                    Just(op),
+                    any_with::<SetMembers>((
+                        Some(range),
+                        params.num_set_members.clone(),
+                    )),
+                )
+            })
+            .prop_map(|(field, op, members)| SetMembershipPredicate {
+                field,
+                op,
+                members,
+            })
+            .boxed()
+    }
+}
+
+impl Arbitrary for NullnessPredicate {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Parameters;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let Some(schema) = params.schema else {
+            unimplemented!()
+        };
+        (
+            proptest::sample::select(schema.fields()),
+            any::<NullnessOp>(),
+        )
+            .prop_map(|((field, _), op)| NullnessPredicate { field, op })
+            .boxed()
+    }
+}
+
+impl Arbitrary for Predicate {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Parameters;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        prop_oneof![
+            any_with::<EqualityPredicate>(params.clone())
+                .prop_map(Predicate::Equality),
+            any_with::<SetMembershipPredicate>(params.clone())
+                .prop_map(Predicate::SetMembership),
+            any_with::<NullnessPredicate>(params.clone())
+                .prop_map(Predicate::Nullness)
+        ]
+        .boxed()
+    }
+}
+
+impl Arbitrary for QueryConditionExpr {
+    type Strategy = BoxedStrategy<Self>;
+    type Parameters = Parameters;
+
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let rec = params.recursion.clone();
+        any_with::<Predicate>(params)
+            .prop_map(QueryConditionExpr::Cond)
+            .prop_recursive(rec.max_depth, rec.desired_size, 2, |leaf| {
+                prop_oneof![
+                    (leaf.clone(), any::<CombinationOp>(), leaf.clone())
+                        .prop_map(|(lhs, op, rhs)| QueryConditionExpr::Comb {
+                            lhs: Box::new(lhs),
+                            op,
+                            rhs: Box::new(rhs)
+                        }),
+                    leaf.prop_map(|pred| QueryConditionExpr::Negate(Box::new(
+                        pred
+                    )))
+                ]
+            })
+            .boxed()
+    }
+}
 
 #[derive(Debug)]
 enum CombinationOpState {

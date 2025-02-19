@@ -1833,6 +1833,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "strategy-ext",
  "thiserror",
  "tiledb-proc-macro",
  "tiledb-sys-defs",
