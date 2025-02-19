@@ -307,6 +307,15 @@ where
 
 impl<T> Eq for BitsKeyAdapter<T> where T: BitsEq {}
 
+impl<T> PartialEq<BitsKeyAdapter<&T>> for BitsKeyAdapter<T>
+where
+    T: BitsEq,
+{
+    fn eq(&self, other: &BitsKeyAdapter<&T>) -> bool {
+        self.0.bits_eq(other.0)
+    }
+}
+
 impl<T> Hash for BitsKeyAdapter<T>
 where
     T: BitsHash,
@@ -334,6 +343,15 @@ where
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.0.bits_cmp(&other.0)
+    }
+}
+
+impl<T> PartialOrd<BitsKeyAdapter<&T>> for BitsKeyAdapter<T>
+where
+    T: BitsEq + BitsOrd,
+{
+    fn partial_cmp(&self, other: &BitsKeyAdapter<&T>) -> Option<Ordering> {
+        Some(self.0.bits_cmp(other.0))
     }
 }
 
