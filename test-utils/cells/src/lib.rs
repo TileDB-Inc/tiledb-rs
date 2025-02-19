@@ -310,6 +310,17 @@ impl Cells {
         &self,
         query_condition: &QueryConditionExpr,
     ) -> VarBitSet {
+        fn collect_bitmap(
+            num_records: usize,
+            idx: impl Iterator<Item = usize>,
+        ) -> VarBitSet {
+            let mut b = VarBitSet::new_bitset(num_records);
+            for i in idx {
+                b.set(i);
+            }
+            b
+        }
+
         match query_condition {
             QueryConditionExpr::Cond(predicate) => {
                 match predicate {
@@ -340,28 +351,32 @@ impl Cells {
                             fdata,
                             ref cells,
                             {
-                                cells
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(_, c)| {
-                                        compare(*c, eq.operation(), literal)
-                                    })
-                                    .map(|(i, _)| i)
-                                    .collect::<VarBitSet>()
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            compare(*c, eq.operation(), literal)
+                                        })
+                                        .map(|(i, _)| i),
+                                )
                             },
                             {
-                                cells
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(_, c)| {
-                                        compare(
-                                            c.as_slice(),
-                                            eq.operation(),
-                                            literal.as_bytes(),
-                                        )
-                                    })
-                                    .map(|(i, _)| i)
-                                    .collect::<VarBitSet>()
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            compare(
+                                                c.as_slice(),
+                                                eq.operation(),
+                                                literal.as_bytes(),
+                                            )
+                                        })
+                                        .map(|(i, _)| i),
+                                )
                             }
                         )
                     }
@@ -380,17 +395,26 @@ impl Cells {
                                             .iter()
                                             .map(|m| BitsKeyAdapter(*m)),
                                     );
-                                cells
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(_, c)| match set.operation() {
-                                        SetMembershipOp::In => members
-                                            .contains(&BitsKeyAdapter(**c)),
-                                        SetMembershipOp::NotIn => !members
-                                            .contains(&BitsKeyAdapter(**c)),
-                                    })
-                                    .map(|(i, _)| i)
-                                    .collect::<VarBitSet>()
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            match set.operation() {
+                                                SetMembershipOp::In => members
+                                                    .contains(&BitsKeyAdapter(
+                                                        **c,
+                                                    )),
+                                                SetMembershipOp::NotIn => {
+                                                    !members.contains(
+                                                        &BitsKeyAdapter(**c),
+                                                    )
+                                                }
+                                            }
+                                        })
+                                        .map(|(i, _)| i),
+                                )
                             },
                             {
                                 let members = HashSet::<Vec<u8>>::from_iter(
@@ -398,19 +422,23 @@ impl Cells {
                                         .iter()
                                         .map(|s| s.as_bytes().to_vec()),
                                 );
-                                cells
-                                    .iter()
-                                    .enumerate()
-                                    .filter(|(_, c)| match set.operation() {
-                                        SetMembershipOp::In => {
-                                            members.contains(c.as_slice())
-                                        }
-                                        SetMembershipOp::NotIn => {
-                                            !members.contains(c.as_slice())
-                                        }
-                                    })
-                                    .map(|(i, _)| i)
-                                    .collect::<VarBitSet>()
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            match set.operation() {
+                                                SetMembershipOp::In => members
+                                                    .contains(c.as_slice()),
+                                                SetMembershipOp::NotIn => {
+                                                    !members
+                                                        .contains(c.as_slice())
+                                                }
+                                            }
+                                        })
+                                        .map(|(i, _)| i),
+                                )
                             }
                         )
                     }
@@ -1328,6 +1356,42 @@ mod tests {
         })
     }
 
+    fn do_query_condition_and(
+        cells: Cells,
+        lhs: QueryConditionExpr,
+        rhs: QueryConditionExpr,
+    ) {
+        let lhs_bitmap = cells.query_condition_bitmap(&lhs);
+        let rhs_bitmap = cells.query_condition_bitmap(&rhs);
+        let and_bitmap = cells.query_condition_bitmap(&(lhs & rhs));
+
+        assert_eq!(lhs_bitmap.len(), rhs_bitmap.len());
+        assert_eq!(lhs_bitmap.len(), and_bitmap.len());
+
+        for i in 0..lhs_bitmap.len() {
+            assert_eq!(
+                lhs_bitmap.test(i) && rhs_bitmap.test(i),
+                and_bitmap.test(i)
+            );
+        }
+    }
+
+    fn strat_query_condition_combination_op(
+    ) -> impl Strategy<Value = (Cells, QueryConditionExpr, QueryConditionExpr)>
+    {
+        strat_cells_with_qc_fields().prop_flat_map(|c| {
+            let domain = c.domain();
+            let params = QueryConditionParameters {
+                domain: Some(domain),
+                ..Default::default()
+            };
+            let strat_qc = any_with::<Predicate>(params.clone())
+                .prop_map(QueryConditionExpr::Cond)
+                .boxed();
+            (Just(c), strat_qc.clone(), strat_qc.clone())
+        })
+    }
+
     proptest! {
         #[test]
         fn cells_extend((dst, src) in any::<SchemaData>().prop_flat_map(|s| {
@@ -1493,6 +1557,11 @@ mod tests {
         #[test]
         fn query_condition_set_membership_not_in((cells, field, member_idx) in strat_cells_for_qc_set_membership()) {
             do_query_condition_set_membership_not_in(cells, field, member_idx)
+        }
+
+        #[test]
+        fn query_condition_and((cells, lhs, rhs) in strat_query_condition_combination_op()) {
+            do_query_condition_and(cells, lhs, rhs)
         }
     }
 }
