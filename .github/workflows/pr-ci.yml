@@ -8,7 +8,7 @@ on:
 
   pull_request:
     branches:
-      - '*'  # Quotes required because * is reserved by YAML
+      - "*" # Quotes required because * is reserved by YAML
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
@@ -16,10 +16,90 @@ concurrency:
 
 jobs:
   build-and-test:
-    uses: ./.github/workflows/pr-build-and-test.yml
+    name: "Build and Test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+        with:
+          version: "main"
+          linkage: "dynamic"
+      - name: Build
+        run: cargo build --all-targets --all-features
+      - name: Test
+        run: |
+          cargo test --all-targets --all-features
+          status=$?
+          echo "Process exited with status ${status}"
 
   lint:
-    uses: ./.github/workflows/pr-lint.yml
+    name: "Lint - Stable"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+        with:
+          version: "main"
+          linkage: "dynamic"
+      - name: Check Formatting
+        run: cargo fmt --quiet --check
+      - name: Lint
+        run: cargo clippy --no-deps --all-targets --all-features -- -Dwarnings
+
+  lint-nightly:
+    name: "Lint - Nightly"
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+        with:
+          version: "main"
+          linkage: "dynamic"
+      - name: Check Formatting
+        run: cargo fmt --quiet --check
+      - name: Lint
+        run: cargo clippy --no-deps --all-targets --all-features -- -Dwarnings
 
   check-api-coverage:
-    uses: ./.github/workflows/pr-api-coverage.yml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install Cargo Expand
+        run: cargo install cargo-expand
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+        with:
+          version: "main"
+          linkage: "dynamic"
+      - name: Build API Coverage Tool
+        run: cd tools/api-coverage && cargo build
+      - name: Calculate Coverage
+        run: ./target/debug/api-coverage 2>&1 >> $GITHUB_STEP_SUMMARY
