@@ -83,7 +83,26 @@ jobs:
       - name: Lint
         run: cargo clippy --no-deps --all-targets --all-features -- -Dwarnings
 
+  check-pr-title:
+    name: "Check Title Format"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Check Title Format"
+        shell: python
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          import os
+          import re
+
+          PAT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\([\w\-\.]+\))?(!)?: ([\w ])+([\s\S]*)")
+          if not PAT.match(os.environ["PR_TITLE"]):
+            print("The pull request title does not match Conventional Commits syntax")
+            print("See: https://www.conventionalcommits.org/en/v1.0.0/")
+            exit(1)
+
   check-api-coverage:
+    name: "Check API Coverage"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout tiledb-rs
