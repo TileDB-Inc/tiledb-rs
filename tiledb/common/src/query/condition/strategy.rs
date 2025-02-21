@@ -106,6 +106,9 @@ impl Arbitrary for Field {
         let Some(domain) = params.query_condition_compatible_domain() else {
             unimplemented!()
         };
+        if domain.is_empty() {
+            unimplemented!()
+        }
         proptest::sample::select(domain)
             .prop_map(|f| QueryConditionExpr::field(f.0))
             .boxed()
@@ -204,6 +207,9 @@ impl Arbitrary for EqualityPredicate {
         let Some(domain) = params.query_condition_compatible_domain() else {
             unimplemented!()
         };
+        if domain.is_empty() {
+            unimplemented!()
+        }
         (proptest::sample::select(domain), any::<EqualityOp>())
             .prop_flat_map(|((field, range), op)| {
                 (Just(field), Just(op), any_with::<Literal>(Some(range)))
@@ -225,6 +231,9 @@ impl Arbitrary for SetMembershipPredicate {
         let Some(domain) = params.query_condition_compatible_domain() else {
             unimplemented!()
         };
+        if domain.is_empty() {
+            unimplemented!()
+        }
         (proptest::sample::select(domain), any::<SetMembershipOp>())
             .prop_flat_map(move |((field, range), op)| {
                 (
@@ -253,6 +262,9 @@ impl Arbitrary for NullnessPredicate {
         let Some(domain) = params.domain else {
             unimplemented!()
         };
+        if domain.is_empty() {
+            unimplemented!()
+        }
         (proptest::sample::select(domain), any::<NullnessOp>())
             .prop_map(|((field, _), op)| NullnessPredicate { field, op })
             .boxed()
