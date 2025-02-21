@@ -22,17 +22,8 @@ jobs:
     steps:
       - name: Checkout tiledb-rs
         uses: actions/checkout@v4
-      - name: Get libtiledb Version
-        id: tiledb-version
-        shell: bash
-        run: |
-          VERSION=$(cargo metadata --format-version 1 | jq -r '.metadata.libtiledb.version')
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
       - name: Install TileDB
         uses: ./.github/actions/install-tiledb
-        with:
-          version: ${{ steps.tiledb-version.outputs.version }}
-          linkage: dynamic
       - name: Install Rust ${{ matrix.rust }}
         uses: dtolnay/rust-toolchain@stable
         with:
