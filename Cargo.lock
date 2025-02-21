@@ -1813,6 +1813,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "strategy-ext",
  "thiserror",
  "tiledb-common",
  "tiledb-pod",

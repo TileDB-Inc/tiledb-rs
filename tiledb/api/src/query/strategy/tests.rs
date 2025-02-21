@@ -520,7 +520,7 @@ fn strat_query_condition() -> impl Strategy<
                 Just(schema),
                 Just(write_sequence),
                 Just(acc),
-                proptest::collection::vec(
+                strategy_ext::records::vec_records_strategy(
                     any_with::<QueryConditionExpr>(qc_params),
                     1..=32,
                 ),

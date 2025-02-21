@@ -182,7 +182,7 @@ impl Arbitrary for SetMembers {
                 _DT,
                 lb,
                 ub,
-                proptest::collection::vec(
+                strategy_ext::records::vec_records_strategy(
                     if lb.bits_eq(&ub) {
                         Just(lb).boxed()
                     } else {
@@ -195,7 +195,7 @@ impl Arbitrary for SetMembers {
             ),
             Range::Multi(_) => unimplemented!(),
             Range::Var(VarValueRange::UInt8(lb, ub)) => {
-                proptest::collection::vec(
+                strategy_ext::records::vec_records_strategy(
                     Between::new(&lb, &ub).prop_map(|bytes| {
                         String::from_utf8_lossy(&bytes).into_owned()
                     }),
