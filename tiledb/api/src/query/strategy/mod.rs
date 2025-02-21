@@ -7,6 +7,7 @@ use cells::write::{
 use cells::{typed_field_data_go, Cells, FieldData};
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::physical_type_go;
+use tiledb_pod::array::attribute::strategy::Requirements as AttributeRequirements;
 use tiledb_pod::array::dimension::strategy::Requirements as DimensionRequirements;
 use tiledb_pod::array::domain::strategy::Requirements as DomainRequirements;
 use tiledb_pod::array::schema::strategy::Requirements as SchemaRequirements;
@@ -72,7 +73,10 @@ pub fn query_write_schema_requirements(
             }),
             ..Default::default()
         })),
-        attribute_filters: Some(Rc::new(query_write_filter_requirements())),
+        attributes: Some(AttributeRequirements {
+            filters: Some(Rc::new(query_write_filter_requirements())),
+            ..Default::default()
+        }),
         coordinates_filters: Some(Rc::new(query_write_filter_requirements())),
         offsets_filters: Some(Rc::new(query_write_filter_requirements())),
         validity_filters: Some(Rc::new(query_write_filter_requirements())),
