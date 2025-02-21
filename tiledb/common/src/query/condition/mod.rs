@@ -238,7 +238,7 @@ macro_rules! slice_to_ptr_and_size {
     ($val:expr) => {
         Some((
             $val.as_ptr() as *const std::ffi::c_void,
-            std::mem::size_of_val($val) as u64,
+            std::mem::size_of_val($val.as_slice()) as u64,
         ))
     };
 }

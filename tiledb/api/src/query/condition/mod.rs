@@ -130,7 +130,8 @@ impl QueryConditionBuilder for SetMembershipPredicate {
             }
 
             let c_offsets = offsets.as_ptr() as *const std::ffi::c_void;
-            let c_offsets_size = std::mem::size_of_val(&offsets) as u64;
+            let c_offsets_size =
+                std::mem::size_of_val(offsets.as_slice()) as u64;
 
             // Create the query condition
             let c_name = cstring!(self.field());
