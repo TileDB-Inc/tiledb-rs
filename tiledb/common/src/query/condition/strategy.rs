@@ -7,7 +7,7 @@ use super::*;
 use crate::range::{Range, SingleValueRange, VarValueRange};
 use crate::{single_value_range_go, Datatype};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Parameters {
     pub domain: Option<Vec<(String, Option<Range>)>>,
     pub num_set_members: SizeRange,
@@ -35,6 +35,16 @@ impl Parameters {
                 })
                 .collect::<Vec<_>>()
         })
+    }
+}
+
+impl Default for Parameters {
+    fn default() -> Self {
+        Self {
+            domain: None,
+            num_set_members: (1..=(SizeRange::default().end_incl())).into(),
+            recursion: Default::default(),
+        }
     }
 }
 
