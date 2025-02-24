@@ -31,34 +31,37 @@ edition = "2021"
 rust-version = "1.80"
 version = "0.1.0"
 
+[workspace.metadata.libtiledb]
+version = "main"
+
 [workspace.dependencies]
 anyhow = "1.0"
 armerge = "2"
 arrow = { version = "52.0.0", features = ["prettyprint"] }
-arrow-schema = { version = "52.0.0" }
+arrow-schema = "52.0.0"
 bindgen = "0.70"
-cells = { path = "test-utils/cells", version = "0.1.0" }
+cells = { path = "test-utils/cells" }
 cmake = "0.1"
 itertools = "0"
 num-traits = "0.2"
 paste = "1.0"
-proptest = { version = "1.0.0" }
+pkg-config = "0.3.30"
+proptest = "1.0.0"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
-signal = { path = "test-utils/signal", version = "0.1.0" }
-strategy-ext = { path = "test-utils/strategy-ext", version = "0.1.0" }
+signal = { path = "test-utils/signal" }
+strategy-ext = { path = "test-utils/strategy-ext" }
 tempfile = { version = "3" }
 thiserror = { version = "1" }
-tiledb-api = { path = "tiledb/api", version = "0.1.0" }
-tiledb-common = { path = "tiledb/common", version = "0.1.0" }
-tiledb-pod = { path = "tiledb/pod", version = "0.1.0" }
-tiledb-proc-macro = { path = "tiledb/proc-macro", version = "0.1.0" }
-tiledb-proptest-config = { path = "test-utils/proptest-config", version = "0.1.0" }
-tiledb-sys = { path = "tiledb/sys", version = "0.1.0" }
-tiledb-sys-cfg = { path = "tiledb/sys-cfg", version = "0.1.0" }
-tiledb-sys-defs = { path = "tiledb/sys-defs", version = "0.1.0" }
-tiledb-test-utils = { path = "tiledb/test-utils", version = "0.1.0" }
-tiledb-utils = { path = "tiledb/utils", version = "0.1.0" }
-pkg-config = "0.3.30"
-uri = { path = "test-utils/uri", version = "0.1.0" }
+tiledb-api = { path = "tiledb/api" }
+tiledb-common = { path = "tiledb/common" }
+tiledb-pod = { path = "tiledb/pod" }
+tiledb-proc-macro = { path = "tiledb/proc-macro" }
+tiledb-proptest-config = { path = "test-utils/proptest-config" }
+tiledb-sys = { path = "tiledb/sys" }
+tiledb-sys-cfg = { path = "tiledb/sys-cfg" }
+tiledb-sys-defs = { path = "tiledb/sys-defs" }
+tiledb-test-utils = { path = "tiledb/test-utils" }
+tiledb-utils = { path = "tiledb/utils" }
+uri = { path = "test-utils/uri" }
