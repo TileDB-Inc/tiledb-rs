@@ -294,7 +294,26 @@ impl PhysicalType for f64 {}
 
 /// Adapts a generic type to use as a key in `std` collections via
 /// the `BitsEq`, `BitsOrd`, or `BitsHash` traits.
+#[derive(Clone, Copy)]
 pub struct BitsKeyAdapter<T>(pub T);
+
+impl<T> Debug for BitsKeyAdapter<T>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        self.0.fmt(f)
+    }
+}
+
+impl<T> Display for BitsKeyAdapter<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        self.0.fmt(f)
+    }
+}
 
 impl<T> PartialEq for BitsKeyAdapter<T>
 where
