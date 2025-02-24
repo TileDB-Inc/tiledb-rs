@@ -37,7 +37,14 @@ jobs:
 
   lint:
     name: "Lint - Stable"
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - "ubuntu-latest"
+          - "linux-arm64-ubuntu24"
+          - "macos-13"
+          - "macos-latest"
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout tiledb-rs
         uses: actions/checkout@v4
@@ -57,7 +64,14 @@ jobs:
   lint-nightly:
     name: "Lint - Nightly"
     continue-on-error: true
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os:
+          - "ubuntu-latest"
+          - "linux-arm64-ubuntu24"
+          - "macos-13"
+          - "macos-latest"
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout tiledb-rs
         uses: actions/checkout@v4
@@ -76,6 +90,7 @@ jobs:
 
   check-pr-title:
     name: "Check Title Format"
+    if: ${{ github.ref != 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
       - name: "Check Title Format"

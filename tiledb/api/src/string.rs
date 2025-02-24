@@ -48,9 +48,16 @@ impl TDBString {
         };
 
         if res == ffi::TILEDB_OK {
-            let raw_slice: &[u8] = unsafe {
-                std::slice::from_raw_parts(c_str as *const u8, c_len)
-            };
+            // The type of `c_str` is platform dependent which means that we
+            // have to cast anything that might use i8 to u8. However, this
+            // means that platforms (i.e., Ubuntu arm64) that have a u8
+            // c_char type will generate a clippy error about an unnecessary
+            // cast from u8 to u8. Hence why we're ignoring the lint here.
+            #[allow(clippy::unnecessary_cast)]
+            let c_u8_str = c_str as *const u8;
+
+            let raw_slice: &[u8] =
+                unsafe { std::slice::from_raw_parts(c_u8_str, c_len) };
             match std::str::from_utf8(raw_slice) {
                 Ok(s) => Ok(s.to_owned()),
                 Err(e) => Err(Error::NonUtf8(raw_slice.to_vec(), e)),

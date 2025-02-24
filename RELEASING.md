@@ -21,6 +21,7 @@ which just means you get to skip a few chore steps.
 1. Create a new `release-x.y` branch
 2. Perform any maintenance actions
 3. Run `./scripts/make-release.sh`
+4. When the Release workflow succeeds, publish the release using the GitHub UI
 
 ### 1. Create a new `release-x.y` Branch
 
