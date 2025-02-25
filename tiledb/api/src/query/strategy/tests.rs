@@ -11,7 +11,9 @@ use tiledb_common::query::condition::{
 };
 use tiledb_common::range::{NonEmptyDomain, Range, VarValueRange};
 use tiledb_common::Datatype;
-use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
+use tiledb_pod::array::schema::{
+    EnumerationData, FieldData as SchemaField, SchemaData,
+};
 use uri::TestArrayUri;
 
 use super::*;
@@ -468,7 +470,23 @@ fn instance_query_condition(
             .map(|f| f.name().to_owned())
             .collect::<Vec<String>>(),
     };
-    let expect_cells_unfiltered = accumulated_write.cells().sorted(&sort_keys);
+    let expect_cells_unfiltered = accumulated_write
+        .cells()
+        .sorted(&sort_keys)
+        .with_enumerations(
+            schema_spec
+                .attributes
+                .iter()
+                .filter_map(|a| {
+                    schema_spec
+                        .enumeration(EnumerationKey::AttributeName(&a.name))
+                        .zip(Some(a.name.clone()))
+                })
+                .map(|(enumeration, key)| {
+                    (key, FieldData::from(enumeration.clone()))
+                })
+                .collect::<HashMap<String, FieldData>>(),
+        );
 
     let mut a = Array::open(&ctx, &uri, Mode::Read)?;
 
@@ -634,50 +652,48 @@ impl QueryConditionField for FieldWithDomain {
                 else {
                     return None;
                 };
-                let records = edata.records();
-                if matches!(
-                    edata.datatype,
-                    Datatype::StringAscii | Datatype::StringUtf8
-                ) && !matches!(
-                    edata.cell_val_num,
-                    Some(CellValNum::Fixed(_))
-                ) {
-                    Some(
-                        records
-                            .into_iter()
-                            .map(|v| {
-                                String::from_utf8_lossy(v.as_slice())
-                                    .into_owned()
-                            })
-                            .collect::<Vec<String>>()
-                            .into(),
-                    )
-                } else if edata
-                    .cell_val_num
-                    .map(|c| c.is_single_valued())
-                    .unwrap_or(true)
-                {
-                    physical_type_go!(edata.datatype, DT, {
-                        const WIDTH: usize = std::mem::size_of::<DT>();
-                        type ByteArray = [u8; WIDTH];
-                        Some(SetMembers::from(
-                            records
-                                .into_iter()
-                                .map(|v| {
-                                    assert_eq!(WIDTH, v.len());
-                                    DT::from_le_bytes(
-                                        ByteArray::try_from(v.as_slice())
-                                            .unwrap(),
-                                    )
-                                })
-                                .collect::<Vec<_>>(),
-                        ))
-                    })
-                } else {
-                    None
-                }
+                enumeration_records_to_set_members(edata)
             }
         }
+    }
+}
+
+fn enumeration_records_to_set_members(
+    edata: &EnumerationData,
+) -> Option<SetMembers> {
+    let records = edata.records();
+    if matches!(edata.datatype, Datatype::StringAscii | Datatype::StringUtf8)
+        && !matches!(edata.cell_val_num, Some(CellValNum::Fixed(_)))
+    {
+        Some(
+            records
+                .into_iter()
+                .map(|v| String::from_utf8_lossy(v.as_slice()).into_owned())
+                .collect::<Vec<String>>()
+                .into(),
+        )
+    } else if edata
+        .cell_val_num
+        .map(|c| c.is_single_valued())
+        .unwrap_or(true)
+    {
+        physical_type_go!(edata.datatype, DT, {
+            const WIDTH: usize = std::mem::size_of::<DT>();
+            type ByteArray = [u8; WIDTH];
+            Some(SetMembers::from(
+                records
+                    .into_iter()
+                    .map(|v| {
+                        assert_eq!(WIDTH, v.len());
+                        DT::from_le_bytes(
+                            ByteArray::try_from(v.as_slice()).unwrap(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            ))
+        })
+    } else {
+        None
     }
 }
 
