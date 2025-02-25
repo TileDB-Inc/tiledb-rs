@@ -1,9 +1,12 @@
 use paste::paste;
 use proptest::bits::{BitSetLike, VarBitSet};
 use strategy_ext::records::Records;
+use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
 use tiledb_common::datatype::Error as DatatypeError;
+use tiledb_common::physical_type_go;
 use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
+use tiledb_pod::array::EnumerationData;
 
 /// Represents the write query input for a single field.
 ///
@@ -86,6 +89,43 @@ impl From<Vec<String>> for FieldData {
                 .map(|s| s.into_bytes())
                 .collect::<Vec<Vec<u8>>>(),
         )
+    }
+}
+
+impl From<EnumerationData> for FieldData {
+    fn from(value: EnumerationData) -> Self {
+        physical_type_go!(value.datatype, DT, {
+            const WIDTH: usize = std::mem::size_of::<DT>();
+            type ByteArray = [u8; WIDTH];
+
+            let dts = value.records().into_iter().map(|v| {
+                assert_eq!(0, v.len() % WIDTH);
+                v.chunks(WIDTH)
+                    .map(|c| DT::from_le_bytes(ByteArray::try_from(c).unwrap()))
+                    .collect::<Vec<_>>()
+            });
+            if value.cell_val_num.is_none()
+                || matches!(value.cell_val_num, Some(CellValNum::Fixed(nz)) if nz.get() == 1)
+            {
+                FieldData::from(
+                    dts.map(|v| {
+                        assert_eq!(1, v.len());
+                        v[0]
+                    })
+                    .collect::<Vec<DT>>(),
+                )
+            } else if let Some(CellValNum::Fixed(nz)) = value.cell_val_num {
+                FieldData::from(
+                    dts.map(|v| {
+                        assert_eq!(nz.get() as usize, v.len());
+                        v
+                    })
+                    .collect::<Vec<Vec<DT>>>(),
+                )
+            } else {
+                FieldData::from(dts.collect::<Vec<Vec<DT>>>())
+            }
+        })
     }
 }
 
