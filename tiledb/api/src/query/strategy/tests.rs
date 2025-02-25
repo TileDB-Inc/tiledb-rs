@@ -548,10 +548,7 @@ fn strat_query_condition_value_datatype(
         (Datatype::TimeFemtosecond, CellValNum::single()),
         (Datatype::TimeAttosecond, CellValNum::single()),
     ];
-    proptest::strategy::Union::new(
-        valid.into_iter().map(|datatype| Just(datatype)),
-    )
-    .boxed()
+    proptest::strategy::Union::new(valid.into_iter().map(Just)).boxed()
 }
 
 struct SchemaWithDomain {
@@ -614,16 +611,14 @@ impl QueryConditionField for FieldWithDomain {
                     } else {
                         Some(vec![EqualityOp::Equal, EqualityOp::NotEqual])
                     }
+                } else if !ASTField::is_allowed_type(
+                    a.datatype,
+                    a.cell_val_num.unwrap_or(CellValNum::single()),
+                ) {
+                    // only null test allowed for these
+                    Some(vec![])
                 } else {
-                    if !ASTField::is_allowed_type(
-                        a.datatype,
-                        a.cell_val_num.unwrap_or(CellValNum::single()),
-                    ) {
-                        // only null test allowed for these
-                        Some(vec![])
-                    } else {
-                        None
-                    }
+                    None
                 }
             }
         }

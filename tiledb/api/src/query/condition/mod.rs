@@ -103,7 +103,7 @@ impl QueryConditionBuilder for SetMembershipPredicate {
         // prefer if we couldn't even create SetMemberValues with zero length
         // vectors, but that would make creation fallible which would make the
         // API rather clunky.
-        if self.members().len() == 0 {
+        if self.members().is_empty() {
             return Err(Error::InvalidArgument(anyhow!(
                 "Set member values must have non-zero length."
             )));
