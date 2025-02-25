@@ -13,7 +13,9 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::key::LookupKey;
 
-use crate::array::{AttributeData, DimensionData, DomainData, EnumerationData};
+pub use crate::array::{
+    AttributeData, DimensionData, DomainData, EnumerationData,
+};
 
 /// Encapsulation of data needed to construct a Schema
 #[derive(Clone, Default, Debug, PartialEq)]
