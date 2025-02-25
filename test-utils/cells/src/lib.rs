@@ -98,6 +98,30 @@ impl Cells {
         &self.fields
     }
 
+    pub fn field_resolve_enumeration(&self, name: &str) -> Option<FieldData> {
+        self.enumeration_values.get(name).map(|e| {
+            let idx = typed_field_data_go!(
+                self.fields.get(name).unwrap(),
+                _DT,
+                ref _keys,
+                _keys.iter().map(|k| *k as usize).collect::<Vec<_>>(),
+                unreachable!(),
+                unreachable!(),
+                unreachable!()
+            );
+
+            typed_field_data_go!(
+                e,
+                ref variants,
+                FieldData::from(
+                    idx.into_iter()
+                        .map(|i| variants[i].clone())
+                        .collect::<Vec<_>>()
+                )
+            )
+        })
+    }
+
     pub fn domain(&self) -> Vec<(String, Option<tiledb_common::range::Range>)> {
         self.fields
             .iter()
@@ -357,9 +381,9 @@ impl Cells {
                             }
                         }
 
-                        let fdata = self
-                            .enumeration_values
-                            .get(eq.field())
+                        let fdata = self.field_resolve_enumeration(eq.field());
+                        let fdata = fdata
+                            .as_ref()
                             .or(self.fields.get(eq.field()))
                             .unwrap();
                         typed_thing_zip!(
@@ -399,9 +423,9 @@ impl Cells {
                         )
                     }
                     Predicate::SetMembership(set) => {
-                        let fdata = self
-                            .enumeration_values
-                            .get(set.field())
+                        let fdata = self.field_resolve_enumeration(set.field());
+                        let fdata = fdata
+                            .as_ref()
                             .or(self.fields.get(set.field()))
                             .unwrap();
                         typed_thing_zip!(
