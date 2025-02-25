@@ -52,6 +52,7 @@ macro_rules! typed_thing_zip {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cells {
+    enumeration_values: HashMap<String, FieldData>,
     fields: HashMap<String, FieldData>,
 }
 
@@ -69,7 +70,20 @@ impl Cells {
             }
         }
 
-        Cells { fields }
+        Cells {
+            enumeration_values: Default::default(),
+            fields,
+        }
+    }
+
+    pub fn with_enumerations(
+        self,
+        enumeration_values: HashMap<String, FieldData>,
+    ) -> Self {
+        Cells {
+            enumeration_values,
+            ..self
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -343,7 +357,11 @@ impl Cells {
                             }
                         }
 
-                        let fdata = self.fields.get(eq.field()).unwrap();
+                        let fdata = self
+                            .enumeration_values
+                            .get(eq.field())
+                            .or(self.fields.get(eq.field()))
+                            .unwrap();
                         typed_thing_zip!(
                             Literal,
                             eq.value(),
@@ -381,7 +399,11 @@ impl Cells {
                         )
                     }
                     Predicate::SetMembership(set) => {
-                        let fdata = self.fields.get(set.field()).unwrap();
+                        let fdata = self
+                            .enumeration_values
+                            .get(set.field())
+                            .or(self.fields.get(set.field()))
+                            .unwrap();
                         typed_thing_zip!(
                             SetMembers,
                             set.members(),
