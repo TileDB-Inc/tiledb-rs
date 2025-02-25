@@ -236,6 +236,62 @@ pub enum SetMembers {
     String(Vec<String>),
 }
 
+#[macro_export]
+macro_rules! set_members_go {
+    ($expr:expr, $DT:ident, $members:pat, $integral:expr, $float:expr, $str:expr) => {{
+        match $expr {
+            SetMembers::UInt8($members) => {
+                type $DT = u8;
+                $integral
+            }
+            SetMembers::UInt16($members) => {
+                type $DT = u16;
+                $integral
+            }
+            SetMembers::UInt32($members) => {
+                type $DT = u32;
+                $integral
+            }
+            SetMembers::UInt64($members) => {
+                type $DT = u64;
+                $integral
+            }
+            SetMembers::Int8($members) => {
+                type $DT = i8;
+                $integral
+            }
+            SetMembers::Int16($members) => {
+                type $DT = i16;
+                $integral
+            }
+            SetMembers::Int32($members) => {
+                type $DT = i32;
+                $integral
+            }
+            SetMembers::Int64($members) => {
+                type $DT = i64;
+                $integral
+            }
+            SetMembers::Float32($members) => {
+                type $DT = f32;
+                $float
+            }
+            SetMembers::Float64($members) => {
+                type $DT = f64;
+                $float
+            }
+            SetMembers::String($members) => {
+                type $DT = String;
+                $str
+            }
+        }
+    }};
+
+    ($expr:expr, $members:pat, $then:expr) => {
+        set_members_go!($expr, __DT__, $members, $then, $then, $then)
+    };
+}
+
 macro_rules! slice_to_ptr_and_size {
     ($val:expr) => {
         Some((
