@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use proptest::prelude::*;
 use proptest::sample::SizeRange;
 use proptest::strategy::ValueTree;
@@ -5,36 +7,85 @@ use strategy_ext::lexicographic::Between;
 
 use super::*;
 use crate::range::{Range, SingleValueRange, VarValueRange};
-use crate::{single_value_range_go, Datatype};
+use crate::{set_members_go, single_value_range_go, Datatype};
+
+pub trait QueryConditionSchema {
+    /// Returns a list of fields which can have query conditions applied to them.
+    fn fields(&self) -> Vec<&dyn QueryConditionField>;
+}
+
+pub trait QueryConditionField {
+    /// Returns the name of this field.
+    fn name(&self) -> &str;
+
+    /// Returns the equality ops which can be used to filter this field.
+    ///
+    /// A return of `None` means all ops are allowed.
+    fn equality_ops(&self) -> Option<Vec<EqualityOp>>;
+
+    /// Returns the domain of this field.
+    fn domain(&self) -> Option<Range>;
+
+    /// Returns the set of set members of this field if it is a sparse range.
+    fn set_members(&self) -> Option<SetMembers>;
+}
 
 #[derive(Clone)]
 pub struct Parameters {
-    pub domain: Option<Vec<(String, Option<Range>)>>,
+    pub domain: Option<Rc<dyn QueryConditionSchema>>,
     pub num_set_members: SizeRange,
     pub recursion: RecursionParameters,
 }
 
 impl Parameters {
-    fn query_condition_compatible_domain(
+    fn nullness_op_domain(&self) -> Option<Vec<String>> {
+        self.domain
+            .as_ref()
+            .map(|d| {
+                d.fields()
+                    .into_iter()
+                    .map(|f| f.name().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .and_then(|v| (!v.is_empty()).then_some(v))
+    }
+
+    fn equality_op_domain(
         &self,
-    ) -> Option<Vec<(String, Range)>> {
-        self.domain.as_ref().map(|d| {
-            d.iter()
-                .filter_map(|(fname, range)| {
-                    if matches!(
-                        range,
-                        Some(
-                            Range::Single(_)
-                                | Range::Var(VarValueRange::UInt8(_, _))
-                        )
-                    ) {
-                        Some((fname.clone(), range.clone().unwrap()))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
+    ) -> Option<Vec<(String, Range, Option<Vec<EqualityOp>>)>> {
+        self.domain
+            .as_ref()
+            .map(|d| {
+                d.fields()
+                    .into_iter()
+                    .filter_map(|f| {
+                        f.domain().map(|domain| {
+                            (f.name().to_owned(), domain, f.equality_ops())
+                        })
+                    })
+                    .filter(|(_, _, ops)| {
+                        ops.as_ref().map(|ops| !ops.is_empty()).unwrap_or(true)
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .and_then(|v| (!v.is_empty()).then_some(v))
+    }
+
+    fn set_membership_op_domain(
+        &self,
+    ) -> Option<Vec<(String, Option<Range>, Option<SetMembers>)>> {
+        self.domain
+            .as_ref()
+            .map(|d| {
+                d.fields()
+                    .into_iter()
+                    .map(|f| (f.name().to_owned(), f.domain(), f.set_members()))
+                    .filter(|(_, domain, members)| {
+                        domain.is_some() || members.is_some()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .and_then(|v| (!v.is_empty()).then_some(v))
     }
 }
 
@@ -113,14 +164,19 @@ impl Arbitrary for Field {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(domain) = params.query_condition_compatible_domain() else {
+        let Some(fnames) = params.domain.map(|d| {
+            d.fields()
+                .into_iter()
+                .map(|f| f.name().to_owned())
+                .collect::<Vec<_>>()
+        }) else {
             unimplemented!()
         };
-        if domain.is_empty() {
+        if fnames.is_empty() {
             unimplemented!()
         }
-        proptest::sample::select(domain)
-            .prop_map(|f| QueryConditionExpr::field(f.0))
+        proptest::sample::select(fnames)
+            .prop_map(|fname| QueryConditionExpr::field(fname))
             .boxed()
     }
 }
@@ -214,15 +270,23 @@ impl Arbitrary for EqualityPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(domain) = params.query_condition_compatible_domain() else {
+        let Some(domain) = params.equality_op_domain() else {
             unimplemented!()
         };
         if domain.is_empty() {
             unimplemented!()
         }
-        (proptest::sample::select(domain), any::<EqualityOp>())
-            .prop_flat_map(|((field, range), op)| {
-                (Just(field), Just(op), any_with::<Literal>(Some(range)))
+        proptest::sample::select(domain)
+            .prop_flat_map(|(fname, domain, ops)| {
+                (
+                    Just(fname),
+                    if let Some(ops) = ops {
+                        proptest::sample::select(ops).boxed()
+                    } else {
+                        any::<EqualityOp>().boxed()
+                    },
+                    any_with::<Literal>(Some(domain)),
+                )
             })
             .prop_map(|(field, op, value)| EqualityPredicate {
                 field,
@@ -238,22 +302,37 @@ impl Arbitrary for SetMembershipPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(domain) = params.query_condition_compatible_domain() else {
+        let Some(domain) = params.set_membership_op_domain() else {
             unimplemented!()
         };
         if domain.is_empty() {
             unimplemented!()
         }
         (proptest::sample::select(domain), any::<SetMembershipOp>())
-            .prop_flat_map(move |((field, range), op)| {
-                (
-                    Just(field),
-                    Just(op),
+            .prop_flat_map(move |((fname, domain, members), op)| {
+                let strat_members = if let Some(members) = members {
+                    let num_set_members = params.num_set_members.clone();
+                    set_members_go!(members, ref m, {
+                        Just(m.to_vec())
+                            .prop_shuffle()
+                            .prop_flat_map(move |m| {
+                                proptest::sample::subsequence(
+                                    m,
+                                    num_set_members.clone(),
+                                )
+                            })
+                            .prop_map(SetMembers::from)
+                            .boxed()
+                    })
+                } else if let Some(domain) = domain {
                     any_with::<SetMembers>((
-                        Some(range),
+                        Some(domain),
                         params.num_set_members.clone(),
-                    )),
-                )
+                    ))
+                } else {
+                    unimplemented!()
+                };
+                (Just(fname), Just(op), strat_members)
             })
             .prop_map(|(field, op, members)| SetMembershipPredicate {
                 field,
@@ -269,14 +348,15 @@ impl Arbitrary for NullnessPredicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        let Some(domain) = params.domain else {
+        let Some(fnames) = params.nullness_op_domain() else {
             unimplemented!()
         };
-        if domain.is_empty() {
+        // all fields should support null test
+        if fnames.is_empty() {
             unimplemented!()
         }
-        (proptest::sample::select(domain), any::<NullnessOp>())
-            .prop_map(|((field, _), op)| NullnessPredicate { field, op })
+        (proptest::sample::select(fnames), any::<NullnessOp>())
+            .prop_map(|(field, op)| NullnessPredicate { field, op })
             .boxed()
     }
 }
@@ -286,15 +366,29 @@ impl Arbitrary for Predicate {
     type Parameters = Parameters;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
-        prop_oneof![
-            any_with::<EqualityPredicate>(params.clone())
-                .prop_map(Predicate::Equality),
-            any_with::<SetMembershipPredicate>(params.clone())
-                .prop_map(Predicate::SetMembership),
-            any_with::<NullnessPredicate>(params.clone())
-                .prop_map(Predicate::Nullness)
-        ]
-        .boxed()
+        let mut preds = Vec::new();
+        if params.nullness_op_domain().is_some() {
+            preds.push(
+                any_with::<NullnessPredicate>(params.clone())
+                    .prop_map(Predicate::Nullness)
+                    .boxed(),
+            )
+        }
+        if params.equality_op_domain().is_some() {
+            preds.push(
+                any_with::<EqualityPredicate>(params.clone())
+                    .prop_map(Predicate::Equality)
+                    .boxed(),
+            )
+        }
+        if params.set_membership_op_domain().is_some() {
+            preds.push(
+                any_with::<SetMembershipPredicate>(params.clone())
+                    .prop_map(Predicate::SetMembership)
+                    .boxed(),
+            )
+        }
+        proptest::strategy::Union::new(preds).boxed()
     }
 }
 
@@ -305,20 +399,9 @@ impl Arbitrary for QueryConditionExpr {
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         let rec = params.recursion.clone();
 
-        let leaf = if params
-            .query_condition_compatible_domain()
-            .map(|d| d.is_empty())
-            .unwrap_or(true)
-        {
-            // can only do null-ness predicates
-            any_with::<NullnessPredicate>(params)
-                .prop_map(Predicate::Nullness)
-                .boxed()
-        } else {
-            any_with::<Predicate>(params).boxed()
-        };
-
-        leaf.prop_map(QueryConditionExpr::Cond)
+        any_with::<Predicate>(params)
+            .boxed()
+            .prop_map(QueryConditionExpr::Cond)
             .prop_recursive(rec.max_depth, rec.desired_size, 2, |leaf| {
                 prop_oneof![
                     (leaf.clone(), any::<CombinationOp>(), leaf.clone())

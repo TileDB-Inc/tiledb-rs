@@ -1,9 +1,17 @@
 use cells::write::strategy::{WriteParameters, WriteSequenceParameters};
 use cells::write::{DenseWriteInput, SparseWriteInput, WriteSequence};
 use proptest::prelude::*;
-use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
-use tiledb_common::range::{NonEmptyDomain, Range};
-use tiledb_pod::array::schema::SchemaData;
+use tiledb_common::array::schema::EnumerationKey;
+use tiledb_common::query::condition::strategy::{
+    Parameters as QueryConditionParameters, QueryConditionField,
+    QueryConditionSchema,
+};
+use tiledb_common::query::condition::{
+    EqualityOp, Field as ASTField, SetMembers,
+};
+use tiledb_common::range::{NonEmptyDomain, Range, VarValueRange};
+use tiledb_common::Datatype;
+use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 use uri::TestArrayUri;
 
 use super::*;
@@ -484,6 +492,195 @@ fn instance_query_condition(
     Ok(())
 }
 
+fn strat_query_condition_value_datatype(
+) -> impl Strategy<Value = (Datatype, CellValNum)> {
+    let valid = vec![
+        (Datatype::Char, CellValNum::Var),
+        (Datatype::StringAscii, CellValNum::Var),
+        (Datatype::StringUtf8, CellValNum::Var),
+        (Datatype::UInt8, CellValNum::single()),
+        (Datatype::UInt16, CellValNum::single()),
+        (Datatype::UInt32, CellValNum::single()),
+        (Datatype::UInt64, CellValNum::single()),
+        (Datatype::Int8, CellValNum::single()),
+        (Datatype::Int16, CellValNum::single()),
+        (Datatype::Int32, CellValNum::single()),
+        (Datatype::Int64, CellValNum::single()),
+        (Datatype::Float32, CellValNum::single()),
+        (Datatype::Float64, CellValNum::single()),
+        (Datatype::UInt8, CellValNum::single()),
+        (Datatype::DateTimeYear, CellValNum::single()),
+        (Datatype::DateTimeMonth, CellValNum::single()),
+        (Datatype::DateTimeWeek, CellValNum::single()),
+        (Datatype::DateTimeDay, CellValNum::single()),
+        (Datatype::DateTimeHour, CellValNum::single()),
+        (Datatype::DateTimeMinute, CellValNum::single()),
+        (Datatype::DateTimeSecond, CellValNum::single()),
+        (Datatype::DateTimeMillisecond, CellValNum::single()),
+        (Datatype::DateTimeMicrosecond, CellValNum::single()),
+        (Datatype::DateTimeNanosecond, CellValNum::single()),
+        (Datatype::DateTimePicosecond, CellValNum::single()),
+        (Datatype::DateTimeFemtosecond, CellValNum::single()),
+        (Datatype::DateTimeAttosecond, CellValNum::single()),
+        (Datatype::TimeHour, CellValNum::single()),
+        (Datatype::TimeMinute, CellValNum::single()),
+        (Datatype::TimeSecond, CellValNum::single()),
+        (Datatype::TimeMillisecond, CellValNum::single()),
+        (Datatype::TimeMicrosecond, CellValNum::single()),
+        (Datatype::TimeNanosecond, CellValNum::single()),
+        (Datatype::TimePicosecond, CellValNum::single()),
+        (Datatype::TimeFemtosecond, CellValNum::single()),
+        (Datatype::TimeAttosecond, CellValNum::single()),
+    ];
+    proptest::strategy::Union::new(
+        valid.into_iter().map(|datatype| Just(datatype)),
+    )
+    .boxed()
+}
+
+struct SchemaWithDomain {
+    fields: Vec<FieldWithDomain>,
+}
+
+impl SchemaWithDomain {
+    pub fn new(schema: Rc<SchemaData>, cells: &Cells) -> Self {
+        Self {
+            fields: cells
+                .domain()
+                .into_iter()
+                .map(|(f, domain)| FieldWithDomain {
+                    schema: Rc::clone(&schema),
+                    field: schema.field(f).unwrap(),
+                    domain,
+                })
+                .collect::<Vec<_>>(),
+        }
+    }
+}
+
+struct FieldWithDomain {
+    schema: Rc<SchemaData>,
+    field: SchemaField,
+    domain: Option<Range>,
+}
+
+impl QueryConditionSchema for SchemaWithDomain {
+    fn fields(&self) -> Vec<&dyn QueryConditionField> {
+        self.fields
+            .iter()
+            .map(|f| f as &dyn QueryConditionField)
+            .collect::<Vec<_>>()
+    }
+}
+
+impl QueryConditionField for FieldWithDomain {
+    fn name(&self) -> &str {
+        self.field.name()
+    }
+
+    fn equality_ops(&self) -> Option<Vec<EqualityOp>> {
+        match self.field {
+            SchemaField::Dimension(_) => None,
+            SchemaField::Attribute(ref a) => {
+                if let Some(edata) = self
+                    .schema
+                    .enumeration(EnumerationKey::AttributeName(&a.name))
+                {
+                    if !ASTField::is_allowed_type(
+                        edata.datatype,
+                        edata.cell_val_num.unwrap_or(CellValNum::single()),
+                    ) {
+                        // only null test allowed for these
+                        Some(vec![])
+                    } else if matches!(edata.ordered, Some(true)) {
+                        // anything goes
+                        None
+                    } else {
+                        Some(vec![EqualityOp::Equal, EqualityOp::NotEqual])
+                    }
+                } else {
+                    if !ASTField::is_allowed_type(
+                        a.datatype,
+                        a.cell_val_num.unwrap_or(CellValNum::single()),
+                    ) {
+                        // only null test allowed for these
+                        Some(vec![])
+                    } else {
+                        None
+                    }
+                }
+            }
+        }
+    }
+
+    fn domain(&self) -> Option<Range> {
+        if matches!(
+            self.domain,
+            Some(Range::Single(_) | Range::Var(VarValueRange::UInt8(_, _)))
+        ) {
+            self.domain.clone()
+        } else {
+            None
+        }
+    }
+
+    fn set_members(&self) -> Option<SetMembers> {
+        match self.field {
+            SchemaField::Dimension(_) => None,
+            SchemaField::Attribute(ref a) => {
+                let Some(edata) = self
+                    .schema
+                    .enumeration(EnumerationKey::AttributeName(&a.name))
+                else {
+                    return None;
+                };
+                let records = edata.records();
+                if matches!(
+                    edata.datatype,
+                    Datatype::StringAscii | Datatype::StringUtf8
+                ) && !matches!(
+                    edata.cell_val_num,
+                    Some(CellValNum::Fixed(_))
+                ) {
+                    Some(
+                        records
+                            .into_iter()
+                            .map(|v| {
+                                String::from_utf8_lossy(v.as_slice())
+                                    .into_owned()
+                            })
+                            .collect::<Vec<String>>()
+                            .into(),
+                    )
+                } else if edata
+                    .cell_val_num
+                    .map(|c| c.is_single_valued())
+                    .unwrap_or(true)
+                {
+                    physical_type_go!(edata.datatype, DT, {
+                        const WIDTH: usize = std::mem::size_of::<DT>();
+                        type ByteArray = [u8; WIDTH];
+                        Some(SetMembers::from(
+                            records
+                                .into_iter()
+                                .map(|v| {
+                                    assert_eq!(WIDTH, v.len());
+                                    DT::from_le_bytes(
+                                        ByteArray::try_from(v.as_slice())
+                                            .unwrap(),
+                                    )
+                                })
+                                .collect::<Vec<_>>(),
+                        ))
+                    })
+                } else {
+                    None
+                }
+            }
+        }
+    }
+}
+
 fn strat_query_condition() -> impl Strategy<
     Value = (
         Rc<SchemaData>,
@@ -492,7 +689,10 @@ fn strat_query_condition() -> impl Strategy<
         Vec<QueryConditionExpr>,
     ),
 > {
-    let schema_req = query_write_schema_requirements(Some(ArrayType::Sparse));
+    let mut schema_req =
+        query_write_schema_requirements(Some(ArrayType::Sparse));
+    schema_req.attributes.as_mut().unwrap().datatype =
+        Some(strat_query_condition_value_datatype().boxed());
 
     any_with::<SchemaData>(Rc::new(schema_req))
         .prop_flat_map(|schema| {
@@ -513,7 +713,10 @@ fn strat_query_condition() -> impl Strategy<
         })
         .prop_flat_map(|(schema, write_sequence, acc)| {
             let qc_params = QueryConditionParameters {
-                domain: Some(acc.cells().domain()),
+                domain: Some(Rc::new(SchemaWithDomain::new(
+                    Rc::clone(&schema),
+                    acc.cells(),
+                ))),
                 ..Default::default()
             };
             (
