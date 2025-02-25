@@ -302,20 +302,12 @@ macro_rules! slice_to_ptr_and_size {
 }
 
 impl SetMembers {
+    pub fn is_empty(&self) -> bool {
+        set_members_go!(self, ref members, members.is_empty())
+    }
+
     pub fn len(&self) -> usize {
-        match self {
-            Self::UInt8(val) => val.len(),
-            Self::UInt16(val) => val.len(),
-            Self::UInt32(val) => val.len(),
-            Self::UInt64(val) => val.len(),
-            Self::Int8(val) => val.len(),
-            Self::Int16(val) => val.len(),
-            Self::Int32(val) => val.len(),
-            Self::Int64(val) => val.len(),
-            Self::Float32(val) => val.len(),
-            Self::Float64(val) => val.len(),
-            Self::String(val) => val.len(),
-        }
+        set_members_go!(self, ref members, members.len())
     }
 
     pub fn elem_size(&self) -> usize {

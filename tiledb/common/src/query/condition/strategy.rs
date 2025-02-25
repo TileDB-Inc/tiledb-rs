@@ -37,6 +37,9 @@ pub struct Parameters {
     pub recursion: RecursionParameters,
 }
 
+type EqualityOpDomain = Vec<(String, Range, Option<Vec<EqualityOp>>)>;
+type SetMembershipOpDomain = Vec<(String, Option<Range>, Option<SetMembers>)>;
+
 impl Parameters {
     fn nullness_op_domain(&self) -> Option<Vec<String>> {
         self.domain
@@ -50,9 +53,7 @@ impl Parameters {
             .and_then(|v| (!v.is_empty()).then_some(v))
     }
 
-    fn equality_op_domain(
-        &self,
-    ) -> Option<Vec<(String, Range, Option<Vec<EqualityOp>>)>> {
+    fn equality_op_domain(&self) -> Option<EqualityOpDomain> {
         self.domain
             .as_ref()
             .map(|d| {
@@ -71,9 +72,7 @@ impl Parameters {
             .and_then(|v| (!v.is_empty()).then_some(v))
     }
 
-    fn set_membership_op_domain(
-        &self,
-    ) -> Option<Vec<(String, Option<Range>, Option<SetMembers>)>> {
+    fn set_membership_op_domain(&self) -> Option<SetMembershipOpDomain> {
         self.domain
             .as_ref()
             .map(|d| {
@@ -176,7 +175,7 @@ impl Arbitrary for Field {
             unimplemented!()
         }
         proptest::sample::select(fnames)
-            .prop_map(|fname| QueryConditionExpr::field(fname))
+            .prop_map(QueryConditionExpr::field)
             .boxed()
     }
 }
@@ -204,7 +203,7 @@ impl Arbitrary for Literal {
                 if lb.bits_eq(&ub) {
                     Just(Literal::from(lb)).boxed()
                 } else {
-                    (lb..=ub).prop_map(|point| Literal::from(point)).boxed()
+                    (lb..=ub).prop_map(Literal::from).boxed()
                 }
             ),
             Range::Multi(_) => unimplemented!(),
