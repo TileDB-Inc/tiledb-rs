@@ -99,7 +99,13 @@ impl From<EnumerationData> for FieldData {
             type ByteArray = [u8; WIDTH];
 
             let dts = value.records().into_iter().map(|v| {
-                assert_eq!(0, v.len() % WIDTH);
+                assert_eq!(0, {
+                    #[allow(clippy::modulo_one)]
+                    {
+                        v.len() % WIDTH
+                    }
+                });
+
                 v.chunks(WIDTH)
                     .map(|c| DT::from_le_bytes(ByteArray::try_from(c).unwrap()))
                     .collect::<Vec<_>>()
@@ -116,9 +122,8 @@ impl From<EnumerationData> for FieldData {
                 )
             } else if let Some(CellValNum::Fixed(nz)) = value.cell_val_num {
                 FieldData::from(
-                    dts.map(|v| {
+                    dts.inspect(|v| {
                         assert_eq!(nz.get() as usize, v.len());
-                        v
                     })
                     .collect::<Vec<Vec<DT>>>(),
                 )

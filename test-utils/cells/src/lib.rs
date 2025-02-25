@@ -479,8 +479,8 @@ impl Cells {
                 }
             }
             QueryConditionExpr::Comb { lhs, rhs, op } => {
-                let lhs_passing = self.query_condition_bitmap(&lhs);
-                let rhs_passing = self.query_condition_bitmap(&rhs);
+                let lhs_passing = self.query_condition_bitmap(lhs);
+                let rhs_passing = self.query_condition_bitmap(rhs);
                 assert_eq!(lhs_passing.len(), rhs_passing.len());
 
                 let mut comb_passing = VarBitSet::new_bitset(lhs_passing.len());
@@ -503,7 +503,7 @@ impl Cells {
                 comb_passing
             }
             QueryConditionExpr::Negate(predicate) => {
-                let pred_passing = self.query_condition_bitmap(&predicate);
+                let pred_passing = self.query_condition_bitmap(predicate);
                 let mut neg_passing = VarBitSet::new_bitset(pred_passing.len());
                 for bi in 0..pred_passing.len() {
                     if !pred_passing.test(bi) {
@@ -769,11 +769,81 @@ mod tests {
 
     use proptest::prelude::*;
     use tiledb_common::array::CellValNum;
+    use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
+    use tiledb_common::query::condition::strategy::{
+        QueryConditionField, QueryConditionSchema,
+    };
+    use tiledb_common::query::condition::{EqualityOp, SetMembers};
     use tiledb_common::Datatype;
     use tiledb_pod::array::schema::SchemaData;
 
     use super::*;
     use crate::strategy::{CellsParameters, CellsStrategySchema};
+
+    struct CellsAsQueryConditionSchema {
+        fields: Vec<CellsQueryConditionField>,
+    }
+
+    struct CellsQueryConditionField {
+        cells: Rc<Cells>,
+        name: String,
+    }
+
+    impl CellsAsQueryConditionSchema {
+        pub fn new(cells: Rc<Cells>) -> CellsAsQueryConditionSchema {
+            Self {
+                fields: cells
+                    .fields
+                    .keys()
+                    .map(|name| CellsQueryConditionField {
+                        cells: Rc::clone(&cells),
+                        name: name.to_owned(),
+                    })
+                    .collect(),
+            }
+        }
+    }
+
+    impl QueryConditionSchema for CellsAsQueryConditionSchema {
+        /// Returns a list of fields which can have query conditions applied to them.
+        fn fields(&self) -> Vec<&dyn QueryConditionField> {
+            self.fields
+                .iter()
+                .map(|f| f as &dyn QueryConditionField)
+                .collect::<Vec<&dyn QueryConditionField>>()
+        }
+    }
+
+    impl QueryConditionField for CellsQueryConditionField {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn equality_ops(&self) -> Option<Vec<EqualityOp>> {
+            // all ops are supported
+            None
+        }
+
+        fn domain(&self) -> Option<tiledb_common::range::Range> {
+            self.cells.fields.get(&self.name).unwrap().domain()
+        }
+
+        fn set_members(&self) -> Option<SetMembers> {
+            self.cells.enumeration_values.get(&self.name).and_then(|e| {
+                typed_field_data_go!(
+                    e,
+                    _DT,
+                    ref _members,
+                    Some(SetMembers::from(_members.clone())),
+                    {
+                        // NB: this is Var, we could do String but it's just to test the test code
+                        // so we will skip
+                        None
+                    }
+                )
+            })
+        }
+    }
 
     fn do_cells_extend(dst: Cells, src: Cells) {
         let orig_dst = dst.clone();
@@ -1379,7 +1449,7 @@ mod tests {
     }
 
     fn do_query_condition_and(
-        cells: Cells,
+        cells: Rc<Cells>,
         lhs: QueryConditionExpr,
         rhs: QueryConditionExpr,
     ) {
@@ -1399,12 +1469,14 @@ mod tests {
     }
 
     fn strat_query_condition_combination_op(
-    ) -> impl Strategy<Value = (Cells, QueryConditionExpr, QueryConditionExpr)>
+    ) -> impl Strategy<Value = (Rc<Cells>, QueryConditionExpr, QueryConditionExpr)>
     {
         strat_cells_with_qc_fields().prop_flat_map(|c| {
-            let domain = c.domain();
+            let c = Rc::new(c);
             let params = QueryConditionParameters {
-                domain: Some(domain),
+                domain: Some(Rc::new(CellsAsQueryConditionSchema::new(
+                    Rc::clone(&c),
+                ))),
                 ..Default::default()
             };
             let strat_qc = any_with::<Predicate>(params.clone())
