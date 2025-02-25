@@ -8,7 +8,9 @@ use std::ops::{BitAnd, BitOr, Not};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::array::CellValNum;
 use crate::datatype::physical::{BitsEq, BitsHash};
+use crate::datatype::Datatype;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
@@ -527,6 +529,31 @@ pub struct Field {
 }
 
 impl Field {
+    /// Returns whether the `Datatype` and `CellValNum` are allowed
+    /// as the type of a query condition field.
+    pub fn is_allowed_type(
+        datatype: Datatype,
+        cell_val_num: CellValNum,
+    ) -> bool {
+        match cell_val_num {
+            CellValNum::Var => {
+                matches!(datatype, Datatype::StringAscii | Datatype::StringUtf8)
+            }
+            CellValNum::Fixed(nz) if nz.get() == 1 => !matches!(
+                datatype,
+                Datatype::Any
+                    | Datatype::Blob
+                    | Datatype::GeometryWkb
+                    | Datatype::GeometryWkt
+                    | Datatype::StringUtf16
+                    | Datatype::StringUtf32
+                    | Datatype::StringUcs2
+                    | Datatype::StringUcs4
+            ),
+            _ => false,
+        }
+    }
+
     pub fn lt<V: Into<Literal>>(self, value: V) -> QueryConditionExpr {
         QueryConditionExpr::Cond(Predicate::Equality(EqualityPredicate {
             field: self.field,
