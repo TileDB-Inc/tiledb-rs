@@ -44,6 +44,8 @@ fn main() {
     let libdir = pkg_config::get_variable("tiledb", "libdir")
         .expect("Missing TileDB 'libdir' variable.");
 
+    eprintln!("TILEDB LIBDIR: {}", libdir);
+
     // If we find a libtiledb_static.a, link statically, otherwise assume
     // we want to link dynamically.
     let mut path = std::path::PathBuf::from(&libdir);
