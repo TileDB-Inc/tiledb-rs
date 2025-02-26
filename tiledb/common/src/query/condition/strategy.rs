@@ -315,9 +315,17 @@ impl Arbitrary for SetMembershipPredicate {
                         Just(m.to_vec())
                             .prop_shuffle()
                             .prop_flat_map(move |m| {
+                                let subseq_size_range = std::cmp::min(
+                                    num_set_members.start(),
+                                    m.len(),
+                                )
+                                    ..=std::cmp::min(
+                                        num_set_members.end_incl(),
+                                        m.len(),
+                                    );
                                 proptest::sample::subsequence(
                                     m,
-                                    num_set_members.clone(),
+                                    subseq_size_range,
                                 )
                             })
                             .prop_map(SetMembers::from)
