@@ -210,3 +210,6 @@ impl Iterator for FieldDataIter<'_> {
 }
 
 impl std::iter::FusedIterator for FieldDataIter<'_> {}
+
+#[cfg(test)]
+mod tests;
