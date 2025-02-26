@@ -41,8 +41,13 @@ fn main() {
         .probe("tiledb")
         .expect("TileDB >= 2.27 not found.");
 
-    let libdir = pkg_config::get_variable("tiledb", "libdir")
+    let prefix = pkg_config::get_variable("tiledb", "prefix")
         .expect("Missing TileDB 'libdir' variable.");
+    let prefix = prefix.trim_matches('"');
+    let libdir = std::path::Path::new(prefix)
+        .join("lib")
+        .display()
+        .to_string();
 
     // If we find a libtiledb_static.a, link statically, otherwise assume
     // we want to link dynamically.
