@@ -16,13 +16,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.x"
-    - name: Install Requests
-      run: pip install requests
-      shell: bash
     - name: Detect Version
       id: version
       env:
@@ -74,17 +67,17 @@ runs:
       shell: python
       run: |
         import os
-        import requests
+        import urllib.request
 
         version = os.environ["TDB_VERSION"]
         platform = os.environ["TDB_PLATFORM"]
 
         BASE_URL = "https://github.com/TileDB-Inc/TileDB/releases/download/{}/releases.csv"
-        resp = requests.get(BASE_URL.format(version))
-        resp.raise_for_status()
+        with urllib.request.urlopen(BASE_URL.format(version)) as resp:
+          releases = resp.read().decode("utf-8")
 
         candidates = []
-        for line in resp.text.splitlines():
+        for line in releases.splitlines():
           bits = line.split(",")
           if platform.upper() == bits[0].upper():
             candidates.append((bits[1], bits[2]))
@@ -110,18 +103,18 @@ runs:
       shell: python
       run: |
         import os
-        import requests
+        import urllib.request
 
         version = os.environ["TDB_VERSION"]
         linkage = os.environ["TDB_LINKAGE"]
         platform = os.environ["TDB_PLATFORM"]
 
         URL = "https://github.com/TileDB-Inc/tiledb-rs/releases/download/nightlies/releases.csv"
-        resp = requests.get(URL)
-        resp.raise_for_status()
+        with urllib.request.urlopen(URL) as resp:
+          releases = resp.read().decode("utf-8")
 
         candidates = []
-        for line in resp.text.splitlines():
+        for line in releases.splitlines():
           bits = line.split(",")
 
           if platform.upper() != bits[0].upper():
@@ -153,9 +146,11 @@ runs:
         CUSTOM_SHA256: ${{ steps.custom-tarball.outputs.sha256 }}
       shell: python
       run: |
-        import os
-        import requests
         import hashlib
+        import os
+        import shutil
+        import urllib.request
+
 
         url = os.environ["UPSTREAM_URL"] or os.environ["CUSTOM_URL"]
         expected_sha256 = os.environ["UPSTREAM_SHA256"] or os.environ["CUSTOM_SHA256"]
@@ -169,11 +164,9 @@ runs:
           exit(1)
 
         fname = os.path.basename(url)
-        with requests.get(url, stream=True) as r:
-          r.raise_for_status()
-          with open(fname, 'wb') as f:
-            for chunk in r.iter_content(chunk_size=8192):
-              f.write(chunk)
+        with urllib.request.urlopen(url) as resp:
+          with open(fname, 'wb') as handle:
+            shutil.copyfileobj(resp, handle)
 
         with open(fname, 'rb') as handle:
           digest = hashlib.file_digest(handle, "sha256")
