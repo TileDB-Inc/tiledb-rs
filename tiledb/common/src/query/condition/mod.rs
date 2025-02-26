@@ -9,7 +9,7 @@ use std::ops::{BitAnd, BitOr, Not};
 use serde::{Deserialize, Serialize};
 
 use crate::array::CellValNum;
-use crate::datatype::physical::{BitsEq, BitsHash};
+use crate::datatype::physical::{BitsEq, BitsHash, BitsKeyAdapter};
 use crate::datatype::Datatype;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -100,41 +100,89 @@ pub enum Literal {
     String(String),
 }
 
+#[macro_export]
+macro_rules! literal_go {
+    ($expr:expr, $DT:ident, $value:pat, $integral:expr, $float:expr, $str:expr) => {{
+        match $expr {
+            Literal::UInt8($value) => {
+                type $DT = u8;
+                $integral
+            }
+            Literal::UInt16($value) => {
+                type $DT = u16;
+                $integral
+            }
+            Literal::UInt32($value) => {
+                type $DT = u32;
+                $integral
+            }
+            Literal::UInt64($value) => {
+                type $DT = u64;
+                $integral
+            }
+            Literal::Int8($value) => {
+                type $DT = i8;
+                $integral
+            }
+            Literal::Int16($value) => {
+                type $DT = i16;
+                $integral
+            }
+            Literal::Int32($value) => {
+                type $DT = i32;
+                $integral
+            }
+            Literal::Int64($value) => {
+                type $DT = i64;
+                $integral
+            }
+            Literal::Float32($value) => {
+                type $DT = f32;
+                $float
+            }
+            Literal::Float64($value) => {
+                type $DT = f64;
+                $float
+            }
+            Literal::String($value) => {
+                type $DT = String;
+                $str
+            }
+        }
+    }};
+
+    ($expr:expr, $value:pat, $then:expr) => {{
+        literal_go!($expr, _DT, $value, $then, $then, $then)
+    }};
+
+    ($expr:expr, $value:pat, $numeric:expr, $str:expr) => {{
+        literal_go!($expr, _DT, $value, $numeric, $numeric, $str)
+    }};
+
+    ($expr:expr, $value:pat, $numeric:expr, $float:expr, $str:expr) => {{
+        literal_go!($expr, _DT, $value, $numeric, $float, $str)
+    }};
+}
+
 impl Literal {
     pub fn to_bytes(&self) -> Vec<u8> {
-        match self {
-            Self::UInt8(val) => val.to_le_bytes().to_vec(),
-            Self::UInt16(val) => val.to_le_bytes().to_vec(),
-            Self::UInt32(val) => val.to_le_bytes().to_vec(),
-            Self::UInt64(val) => val.to_le_bytes().to_vec(),
-            Self::Int8(val) => val.to_le_bytes().to_vec(),
-            Self::Int16(val) => val.to_le_bytes().to_vec(),
-            Self::Int32(val) => val.to_le_bytes().to_vec(),
-            Self::Int64(val) => val.to_le_bytes().to_vec(),
-            Self::Float32(val) => val.to_le_bytes().to_vec(),
-            Self::Float64(val) => val.to_le_bytes().to_vec(),
-            Self::String(val) => val.as_bytes().to_vec(),
-        }
+        literal_go!(
+            self,
+            ref val,
+            val.to_le_bytes().to_vec(),
+            val.as_bytes().to_vec()
+        )
     }
 }
 
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match self {
-            Self::UInt8(value) => write!(f, "{}", value),
-            Self::UInt16(value) => write!(f, "{}", value),
-            Self::UInt32(value) => write!(f, "{}", value),
-            Self::UInt64(value) => write!(f, "{}", value),
-            Self::Int8(value) => write!(f, "{}", value),
-            Self::Int16(value) => write!(f, "{}", value),
-            Self::Int32(value) => write!(f, "{}", value),
-            Self::Int64(value) => write!(f, "{}", value),
-            Self::Float32(value) => write!(f, "{}", value),
-            Self::Float64(value) => write!(f, "{}", value),
-            Self::String(value) => {
-                write!(f, "'{}'", escape_string_literal(value))
-            }
-        }
+        literal_go!(
+            self,
+            ref val,
+            write!(f, "{}", val),
+            write!(f, "'{}'", escape_string_literal(val))
+        )
     }
 }
 
@@ -144,21 +192,13 @@ impl Hash for Literal {
     where
         H: Hasher,
     {
-        use self::Literal::*;
-
-        match self {
-            UInt8(ref v) => v.hash(state),
-            UInt16(ref v) => v.hash(state),
-            UInt32(ref v) => v.hash(state),
-            UInt64(ref v) => v.hash(state),
-            Int8(ref v) => v.hash(state),
-            Int16(ref v) => v.hash(state),
-            Int32(ref v) => v.hash(state),
-            Int64(ref v) => v.hash(state),
-            Float32(ref v) => v.to_bits().hash(state),
-            Float64(ref v) => v.to_bits().hash(state),
-            String(ref v) => v.hash(state),
-        }
+        literal_go!(
+            self,
+            ref v,
+            v.hash(state),
+            BitsKeyAdapter(v).hash(state),
+            v.hash(state)
+        )
     }
 }
 
