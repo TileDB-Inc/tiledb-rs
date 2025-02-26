@@ -93,6 +93,15 @@ jobs:
     if: ${{ github.ref != 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 2
+      - name: Debug checkout
+        shell: bash
+        run: |
+          git log --oneline -n10
       - name: "Check Title Format"
         shell: python
         env:
@@ -100,10 +109,27 @@ jobs:
         run: |
           import os
           import re
+          import subprocess as sp
 
           PAT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\([\w\-\.]+\))?(!)?: ([\w ])+([\s\S]*)")
+
+          # We're checking both the PR title and the subject of the last commit
+          # to the PR. The reason for also checking the commit is that when a
+          # PR has a single commit, its the commit subject that is used by
+          # default which means it'll break our changelog generation scripts.
+
           if not PAT.match(os.environ["PR_TITLE"]):
             print("The pull request title does not match Conventional Commits syntax")
+            print("Found title: '{}'".format(os.environ["PR_TITLE"]))
+            print("See: https://www.conventionalcommits.org/en/v1.0.0/")
+            exit(1)
+
+          # Read the subject of the last commit in the branch.
+          subject = sp.check_output(["git", "log", "--format=%B", "-n", "1"])
+          subject = subject.strip().decode("utf-8")
+          if not PAT.match(subject):
+            print("The last commit on this PR branch does not match Conventional Commits syntax")
+            print("Found message: '{}'".format(subject))
             print("See: https://www.conventionalcommits.org/en/v1.0.0/")
             exit(1)
 
