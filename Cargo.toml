@@ -1,29 +1,29 @@
 [workspace]
 resolver = "2"
 members = [
-  "tiledb/api",
-  "tiledb/common",
-  "tiledb/pod",
-  "tiledb/proc-macro",
-  "tiledb/queries",
-  "tiledb/sys",
-  "tiledb/sys-cfg",
-  "tiledb/sys-defs",
-  "tiledb/utils",
-  "test-utils/cells",
-  "test-utils/proptest-config",
-  "test-utils/signal",
-  "test-utils/strategy-ext",
-  "test-utils/uri",
-  "tools/api-coverage"
+    "tiledb/api",
+    "tiledb/common",
+    "tiledb/pod",
+    "tiledb/proc-macro",
+    "tiledb/queries",
+    "tiledb/sys",
+    "tiledb/sys-cfg",
+    "tiledb/sys-defs",
+    "tiledb/utils",
+    "test-utils/cells",
+    "test-utils/proptest-config",
+    "test-utils/signal",
+    "test-utils/strategy-ext",
+    "test-utils/uri",
+    "tools/api-coverage",
 ]
 default-members = [
-  "tiledb/api",
-  "tiledb/common",
-  "tiledb/pod",
-  "tiledb/proc-macro",
-  "tiledb/queries",
-  "tiledb/utils",
+    "tiledb/api",
+    "tiledb/common",
+    "tiledb/pod",
+    "tiledb/proc-macro",
+    "tiledb/queries",
+    "tiledb/utils",
 ]
 
 [workspace.package]
@@ -33,6 +33,11 @@ version = "0.1.0"
 
 [workspace.metadata.libtiledb]
 version = "main"
+
+[patch.crates-io]
+# Remove once this PR hits a release:
+# https://github.com/apache/arrow-rs/pull/7198
+chrono = { git = "https://github.com/davisp/chrono", rev = "8b863490d88ba098038392c8aa930012ffd0c439" }
 
 [workspace.dependencies]
 anyhow = "1.0"
