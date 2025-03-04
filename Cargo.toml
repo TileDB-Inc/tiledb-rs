@@ -29,10 +29,10 @@ default-members = [
 [workspace.package]
 edition = "2021"
 rust-version = "1.80"
-version = "0.1.0"
+version = "0.3.0"
 
 [workspace.metadata.libtiledb]
-version = "main"
+version = "2.27.0"
 
 [patch.crates-io]
 # Remove once this PR hits a release:
