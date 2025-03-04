@@ -80,7 +80,7 @@ runs:
         for line in releases.splitlines():
           bits = line.split(",")
           if platform.upper() == bits[0].upper():
-            candidates.append((bits[1], bits[2]))
+            candidates.append((bits[1].strip(), bits[2].strip()))
 
         if not candidates:
           print("Missing release for version '{}' on platform '{}'".format(version, platform))
@@ -124,7 +124,7 @@ runs:
           if linkage.upper() != bits[2].upper():
             continue
 
-          candidates.append((bits[3], bits[4]))
+          candidates.append((bits[3].strip(), bits[4].strip()))
 
         if not candidates:
           print("Missing release for version '{}' on platform '{}'".format(version, platform))
@@ -175,8 +175,8 @@ runs:
 
         if found_sha256 != expected_sha256:
           print("SHA256 hashes don't match!")
-          print("Expected: '{!r}'".format(expected_sha256))
-          print("Found:    '{!r}'".format(found_sha256))
+          print("Expected: {!r}".format(expected_sha256))
+          print("Found:    {!r}".format(found_sha256))
           exit(1)
 
         with open(os.environ["GITHUB_OUTPUT"], 'w') as handle:
