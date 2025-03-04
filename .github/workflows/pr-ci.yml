@@ -67,7 +67,7 @@ jobs:
 
   lint-nightly:
     name: "Lint - Nightly"
-    continue-on-error: true
+    if: github.event_name == 'pull_request'
     strategy:
       matrix:
         os:
