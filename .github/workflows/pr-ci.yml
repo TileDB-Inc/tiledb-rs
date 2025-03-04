@@ -14,6 +14,10 @@ concurrency:
   group: ${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  issues: write
+  pull-requests: write
+
 jobs:
   build-and-test:
     name: "Build and Test"
@@ -83,10 +87,60 @@ jobs:
         uses: Swatinem/rust-cache@v2
       - name: Install TileDB
         uses: ./.github/actions/install-tiledb
-      - name: Check Formatting
-        run: cargo fmt --quiet --check
-      - name: Lint
-        run: cargo clippy --no-deps --all-targets --all-features -- -Dwarnings
+      - name: Check Formatting and Clippy
+        id: lints
+        env:
+          GITHUB_OS: ${{ matrix.os }}
+        shell: python
+        run: |
+          # Checking formatting and clippy
+          import json
+          import os
+          import subprocess as sp
+
+          fmt = sp.run(["cargo", "fmt", "--quiet", "--check"])
+          clippy = sp.run([
+            'cargo',
+            'clippy',
+            '--workspace',
+            '--all-targets',
+            '--all-features',
+            '--',
+            '-Dwarnings'
+          ])
+
+          if fmt.returncode == 0 and clippy.returncode == 0:
+            exit(0)
+
+          msg = [
+            "# Rust +Nightly Check Failures - {}".format(os.environ["GITHUB_OS"]),
+            ""
+          ]
+          if fmt.returncode == 0:
+            msg.append("* ✅ Formatting Check Succeeded")
+          else:
+            msg.append("* ❌ Formatting Check Failed")
+          if clippy.returncode == 0:
+            msg.append("* ✅ Clippy Check Succeeded")
+          else:
+            msg.append("* ❌ Clippy Check Failed")
+          msg.append("")
+
+          msg = json.dumps("\n".join(msg))
+
+          with open(os.environ["GITHUB_OUTPUT"], "wb") as handle:
+            handle.write("message={}\n".format(msg).encode("utf-8"))
+      - uses: actions/github-script@v7
+        if: ${{ steps.lints.outputs.message }}
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: ${{ steps.lints.outputs.message }}
+            })
 
   check-pr-title:
     name: "Check Title Format"
