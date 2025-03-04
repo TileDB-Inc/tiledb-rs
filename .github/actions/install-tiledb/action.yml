@@ -181,7 +181,9 @@ runs:
         found_sha256 = digest.hexdigest()
 
         if found_sha256 != expected_sha256:
-          print("SHA256 hashes don't match. Found: {}, Expected {}".format(found_sha256, expected_sha256))
+          print("SHA256 hashes don't match!")
+          print("Expected: '{!r}'".format(expected_sha256))
+          print("Found:    '{!r}'".format(foun_sha256))
           exit(1)
 
         with open(os.environ["GITHUB_OUTPUT"], 'w') as handle:
