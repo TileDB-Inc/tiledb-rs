@@ -34,8 +34,9 @@ $ git checkout -b release-0.1 origin/main
 This section is a work in progress. So far the following steps should be
 manually verified:
 
-1. Ensure that the `workspace.metadata.libtiledb.version` key is correct in `Cargo.toml`
-2. Something something, check MSVR maybe?
+1. Ensure that `workspace.pacakge.version` matches the tag about to be created
+2. Ensure that the `workspace.metadata.libtiledb.version` key is correct in `Cargo.toml`
+3. Something something, check MSVR maybe?
 
 ### 3. Tag the Release
 
