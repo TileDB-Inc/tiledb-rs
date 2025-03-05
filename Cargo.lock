@@ -125,7 +125,7 @@ dependencies = [
 
 [[package]]
 name = "api-coverage"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "bindgen 0.69.5",
@@ -527,7 +527,7 @@ dependencies = [
 
 [[package]]
 name = "cells"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "paste",
  "proptest",
@@ -1690,7 +1690,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "signal"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "nix",
 ]
@@ -1709,7 +1709,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strategy-ext"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "proptest",
 ]
@@ -1847,7 +1847,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-api"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "arrow",
@@ -1869,7 +1869,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-common"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "arrow-schema",
@@ -1886,7 +1886,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-pod"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "itertools 0.12.1",
  "num-traits",
@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-proc-macro"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1913,11 +1913,11 @@ dependencies = [
 
 [[package]]
 name = "tiledb-proptest-config"
-version = "0.3.0"
+version = "0.2.2"
 
 [[package]]
 name = "tiledb-query-adapters"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "tiledb-api",
  "tiledb-common",
@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-sys"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "armerge",
  "bindgen 0.70.1",
@@ -1940,18 +1940,18 @@ dependencies = [
 
 [[package]]
 name = "tiledb-sys-cfg"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "tiledb-sys",
 ]
 
 [[package]]
 name = "tiledb-sys-defs"
-version = "0.3.0"
+version = "0.2.2"
 
 [[package]]
 name = "tiledb-utils"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "float_next_after",
  "num-traits",
@@ -2105,7 +2105,7 @@ checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "uri"
-version = "0.3.0"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "tempfile",
