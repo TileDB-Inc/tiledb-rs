@@ -107,10 +107,11 @@ impl<'a> SignalCallback<'a> {
             restore_callback: None,
             action: Box::new(handler),
         });
-        callback.restore_callback = std::mem::replace(
-            &mut SIGNAL_CALLBACKS[signo as i32 as usize].lock().unwrap(),
-            Some(RawSignalCallback::from(callback.as_mut().get_mut())),
-        );
+        let raw_callback = RawSignalCallback::from(callback.as_mut().get_mut());
+        SIGNAL_CALLBACKS[signo as i32 as usize]
+            .lock()
+            .unwrap()
+            .replace(raw_callback);
 
         callback
     }
