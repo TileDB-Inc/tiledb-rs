@@ -300,7 +300,7 @@ mod tests {
                         continue;
                     };
 
-                    let found_output = di.iter().any(|ri| intersection == *ri);
+                    let found_output = di.contains(&intersection);
                     assert!(
                         found_output,
                         "rs1 = {:?}, rs2 = {:?}, intersection = {:?}",
