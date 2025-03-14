@@ -2,6 +2,11 @@ use cells::write::strategy::{WriteParameters, WriteSequenceParameters};
 use cells::write::{DenseWriteInput, SparseWriteInput, WriteSequence};
 use proptest::prelude::*;
 use tiledb_common::array::schema::EnumerationKey;
+use tiledb_common::array::{
+    dimension::DimensionConstraints, CellOrder, TileOrder,
+};
+use tiledb_common::datatype::physical::BitsKeyAdapter;
+use tiledb_common::metadata::Value;
 use tiledb_common::query::condition::strategy::{
     Parameters as QueryConditionParameters, QueryConditionField,
     QueryConditionSchema,
@@ -9,9 +14,13 @@ use tiledb_common::query::condition::strategy::{
 use tiledb_common::query::condition::{
     EqualityOp, Field as ASTField, SetMembers,
 };
-use tiledb_common::range::{NonEmptyDomain, Range, VarValueRange};
-use tiledb_common::Datatype;
+use tiledb_common::range::{
+    NonEmptyDomain, Range, SingleValueRange, VarValueRange,
+};
+use tiledb_common::{set_members_go, Datatype};
+use tiledb_pod::array::attribute::{AttributeData, FillData};
 use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
+use tiledb_pod::array::{DimensionData, DomainData, EnumerationData};
 use uri::TestArrayUri;
 
 use super::*;
@@ -139,6 +148,12 @@ impl CellsAccumulator {
                 Self::Sparse(SparseCellsAccumulator::new(schema))
             }
         }
+    }
+
+    pub fn fold(schema: &SchemaData, seq: &WriteSequence) -> Self {
+        let mut acc = Self::new(schema);
+        seq.iter().for_each(|w| acc.accumulate(w.cloned()));
+        acc
     }
 
     pub fn cells(&self) -> &Cells {
@@ -625,6 +640,40 @@ impl QueryConditionField for FieldWithDomain {
     }
 
     fn domain(&self) -> Option<Range> {
+        if let SchemaField::Attribute(ref a) = self.field {
+            if let Some(edata) = self
+                .schema
+                .enumeration(EnumerationKey::AttributeName(&a.name))
+            {
+                // query condition domain is in terms of the enumerated values,
+                // not the attribute values domaion (which are indexes into the enumerated values)
+                let members = edata.query_condition_set_members()?;
+                return Some(set_members_go!(
+                    members,
+                    _DT,
+                    ref members,
+                    {
+                        let min = *members.iter().min()?;
+                        let max = *members.iter().max()?;
+                        Range::Single(SingleValueRange::from(min..=max))
+                    },
+                    {
+                        let min = *members.iter().map(BitsKeyAdapter).min()?.0;
+                        let max = *members.iter().map(BitsKeyAdapter).max()?.0;
+                        Range::Single(SingleValueRange::from(min..=max))
+                    },
+                    {
+                        let min = members.iter().min()?.clone();
+                        let max = members.iter().max()?.clone();
+                        Range::Var(VarValueRange::from((
+                            min.into_bytes().into_boxed_slice(),
+                            max.into_bytes().into_boxed_slice(),
+                        )))
+                    }
+                ));
+            }
+        }
+
         if matches!(
             self.domain,
             Some(Range::Single(_) | Range::Var(VarValueRange::UInt8(_, _)))
@@ -672,10 +721,7 @@ fn strat_query_condition() -> impl Strategy<
             )
         })
         .prop_map(|(schema, write_sequence)| {
-            let mut acc = CellsAccumulator::new(&schema);
-            write_sequence
-                .iter()
-                .for_each(|w| acc.accumulate(w.cloned()));
+            let acc = CellsAccumulator::fold(&schema, &write_sequence);
             (schema, Rc::new(write_sequence), Rc::new(acc))
         })
         .prop_flat_map(|(schema, write_sequence, acc)| {
@@ -690,7 +736,7 @@ fn strat_query_condition() -> impl Strategy<
                 Just(schema),
                 Just(write_sequence),
                 Just(acc),
-                strategy_ext::records::vec_records_strategy(
+                proptest::collection::vec(
                     any_with::<QueryConditionExpr>(qc_params),
                     1..=32,
                 ),
@@ -703,4 +749,293 @@ proptest! {
     fn proptest_query_condition((schema, writes, acc, qcs) in strat_query_condition()) {
         instance_query_condition(schema, writes, acc, qcs).expect("Error in instance_query_condition");
     }
+}
+
+#[test]
+fn example_query_condition() -> anyhow::Result<()> {
+    let schema = SchemaData {
+        array_type: ArrayType::Sparse,
+        domain: DomainData {
+            dimension: vec![DimensionData {
+                name: "__9clS_8u_EwY_7X_CUz70_".to_owned(),
+                datatype: Datatype::TimePicosecond,
+                constraints: DimensionConstraints::Int64(
+                    [-1826241097139635319, 3393001123887180702],
+                    Some(3633),
+                ),
+                filters: None,
+            }],
+        },
+        capacity: Some(1),
+        cell_order: Some(CellOrder::ColumnMajor),
+        tile_order: Some(TileOrder::RowMajor),
+        allow_duplicates: Some(true),
+        attributes: vec![
+            AttributeData {
+                name: "HAR_".to_owned(),
+                datatype: Datatype::Int16,
+                nullability: Some(true),
+                cell_val_num: Some(CellValNum::single()),
+                fill: Some(FillData {
+                    data: Value::Int16Value(vec![32082]),
+                    nullability: Some(true),
+                }),
+                filters: vec![],
+                enumeration: Some("shtH7o__TGyFZ_H36J".to_owned()),
+            },
+            AttributeData {
+                name: "R_0".to_owned(),
+                datatype: Datatype::Float32,
+                nullability: Some(true),
+                cell_val_num: Some(CellValNum::single()),
+                fill: Some(FillData {
+                    data: Value::Float32Value(vec![-0.00014772698]),
+                    nullability: Some(false),
+                }),
+                filters: vec![],
+                enumeration: None,
+            },
+        ],
+        enumerations: vec![EnumerationData {
+            name: "shtH7o__TGyFZ_H36J".to_owned(),
+            datatype: Datatype::UInt8,
+            cell_val_num: Some(CellValNum::single()),
+            ordered: Some(true),
+            data: vec![
+                0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+                19, 20, 21, 22, 23, 24, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36,
+                38, 39, 40, 41, 42, 43, 44, 45, 46, 48, 49, 50, 51, 52, 53, 54,
+                55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70,
+                71, 72, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87,
+                88, 89, 90, 91, 92, 93, 95, 96, 97, 98, 99, 100, 101, 103, 104,
+                105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116,
+                117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128,
+                129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140,
+                141, 142, 143, 144, 145, 147, 148, 149, 150, 151, 152, 153,
+                154, 155, 156, 157, 158, 159, 160, 161, 162, 164, 165, 168,
+                170, 171, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182,
+                183, 184, 185, 187, 188, 189, 190, 191, 192, 193, 194, 195,
+                196, 198, 199, 201, 202, 203, 204, 205, 207, 209, 210, 211,
+                212, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224,
+                225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236,
+                237, 238, 239, 240, 242, 243, 244, 245, 246, 247, 248, 249,
+                250, 251, 252, 253, 254, 255,
+            ]
+            .into_boxed_slice(),
+            offsets: None,
+        }],
+        coordinate_filters: Default::default(),
+        offsets_filters: Default::default(),
+        nullity_filters: Default::default(),
+    };
+    let writes =
+        WriteSequence::Sparse(cells::write::SparseWriteSequence::from(vec![
+            SparseWriteInput {
+                dimensions: vec![(
+                    "__9clS_8u_EwY_7X_CUz70_".to_owned(),
+                    CellValNum::single(),
+                )],
+                data: Cells::new(HashMap::from([
+                    ("HAR_".to_owned(), FieldData::Int16(vec![85])),
+                    ("R_0".to_owned(), FieldData::Float32(vec![0.0])),
+                    (
+                        "__9clS_8u_EwY_7X_CUz70_".to_owned(),
+                        FieldData::Int64(vec![3208642038087383807]),
+                    ),
+                ])),
+            },
+        ]));
+    let qc1 = QueryConditionExpr::field("R_0").le(-0f32);
+    let qc2 = QueryConditionExpr::field("__9clS_8u_EwY_7X_CUz70_")
+        .gt(3208642038087383807i64);
+    let qc3 = QueryConditionExpr::field("HAR_").le(186u8);
+
+    let qc = (qc1 | qc2) & qc3;
+
+    let acc = CellsAccumulator::fold(&schema, &writes);
+    instance_query_condition(schema.into(), writes.into(), acc.into(), vec![qc])
+}
+
+#[test]
+fn shrinking_query_condition() -> anyhow::Result<()> {
+    let schema = SchemaData {
+        array_type: ArrayType::Sparse,
+        domain: DomainData {
+            dimension: vec![DimensionData {
+                name: "G_2x0u0nImT_z5__S_LpDF".to_owned(),
+                datatype: Datatype::TimeNanosecond,
+                constraints: DimensionConstraints::Int64(
+                    [-1724306171463955564, 2590083558631104178],
+                    Some(4365),
+                ),
+                filters: None,
+            }],
+        },
+        capacity: Some(1),
+        cell_order: Some(CellOrder::ColumnMajor),
+        tile_order: Some(TileOrder::ColumnMajor),
+        allow_duplicates: Some(true),
+        attributes: vec![
+            AttributeData {
+                name: "G".to_owned(),
+                datatype: Datatype::Int16,
+                nullability: Some(false),
+                cell_val_num: CellValNum::single().into(),
+                fill: None,
+                filters: Default::default(),
+                enumeration: Some("t55pbZ".to_owned()),
+            },
+            AttributeData {
+                name: "NVjjN97iS_6T0y7XATzd3kCH4".to_owned(),
+                datatype: Datatype::StringUtf8,
+                nullability: Some(false),
+                cell_val_num: CellValNum::Var.into(),
+                fill: None,
+                filters: Default::default(),
+                enumeration: None,
+            },
+        ],
+        enumerations: vec![EnumerationData {
+            name: "t55pbZ".to_owned(),
+            datatype: Datatype::Int16,
+            cell_val_num: CellValNum::single().into(),
+            ordered: Some(true),
+            data: vec![
+                19, 128, 170, 128, 142, 129, 150, 129, 134, 130, 56, 132, 75,
+                132, 79, 132, 82, 133, 82, 134, 88, 134, 156, 134, 175, 134,
+                238, 134, 54, 135, 72, 135, 88, 135, 171, 135, 177, 135, 164,
+                136, 212, 136, 192, 138, 137, 139, 243, 139, 146, 141, 55, 142,
+                73, 142, 79, 142, 64, 143, 18, 145, 91, 145, 144, 146, 145,
+                146, 243, 146, 130, 147, 124, 148, 247, 148, 1, 149, 62, 149,
+                153, 149, 69, 150, 87, 151, 6, 152, 128, 152, 172, 152, 191,
+                152, 70, 153, 164, 153, 74, 154, 127, 154, 117, 155, 151, 155,
+                213, 156, 217, 157, 105, 159, 107, 159, 140, 159, 222, 159, 68,
+                160, 82, 160, 61, 161, 72, 161, 212, 161, 214, 161, 241, 162,
+                49, 163, 14, 164, 74, 164, 132, 164, 254, 164, 127, 165, 181,
+                165, 199, 165, 151, 166, 36, 167, 37, 167, 112, 167, 126, 167,
+                133, 167, 189, 167, 136, 168, 155, 168, 144, 169, 82, 170, 141,
+                170, 251, 170, 24, 171, 62, 171, 192, 171, 239, 171, 44, 172,
+                232, 172, 10, 173, 93, 173, 28, 174, 109, 174, 134, 174, 120,
+                176, 182, 176, 222, 176, 75, 178, 74, 179, 80, 179, 236, 179,
+                237, 179, 49, 180, 229, 180, 250, 180, 172, 181, 233, 181, 152,
+                182, 71, 183, 35, 184, 188, 184, 134, 186, 206, 186, 213, 186,
+                242, 186, 47, 187, 56, 187, 131, 187, 196, 187, 218, 187, 235,
+                188, 15, 189, 31, 189, 93, 189, 232, 189, 255, 189, 74, 190,
+                81, 190, 157, 190, 143, 191, 171, 191, 220, 191, 31, 192, 232,
+                192, 63, 193, 93, 194, 12, 195, 6, 196, 10, 196, 243, 196, 126,
+                197, 197, 198, 93, 199, 130, 199, 139, 199, 234, 199, 169, 200,
+                176, 200, 198, 200, 52, 201, 138, 201, 159, 201, 220, 201, 70,
+                202, 104, 202, 8, 203, 23, 203, 59, 203, 140, 203, 144, 203,
+                193, 204, 205, 204, 28, 205, 64, 205, 255, 205, 89, 207, 155,
+                207, 9, 208, 133, 209, 239, 209, 79, 211, 95, 212, 105, 212,
+                181, 212, 210, 212, 21, 213, 107, 213, 229, 213, 41, 214, 40,
+                215, 208, 215, 211, 215, 221, 215, 54, 217, 158, 217, 237, 217,
+                131, 218, 67, 219, 71, 219, 211, 219, 79, 220, 235, 220, 14,
+                221, 100, 222, 94, 224, 164, 224, 166, 224, 252, 224, 185, 225,
+                41, 226, 10, 228, 80, 228, 204, 228, 205, 228, 14, 229, 237,
+                229, 211, 230, 33, 231, 54, 231, 96, 231, 198, 231, 13, 234,
+                85, 234, 140, 234, 182, 234, 68, 236, 20, 237, 77, 237, 87,
+                237, 138, 237, 145, 237, 196, 237, 60, 238, 85, 238, 88, 238,
+                18, 239, 195, 239, 29, 240, 78, 240, 172, 240, 238, 240, 249,
+                240, 82, 241, 94, 241, 205, 241, 212, 241, 19, 242, 237, 242,
+                127, 243, 199, 243, 220, 243, 99, 244, 178, 245, 198, 245, 199,
+                245, 252, 245, 220, 246, 92, 247, 115, 247, 204, 248, 238, 249,
+                98, 250, 207, 250, 14, 251, 24, 251, 37, 251, 17, 253, 40, 253,
+                110, 253, 209, 253, 114, 254, 151, 254, 3, 255, 20, 255, 50,
+                255, 169, 255, 240, 255, 91, 0, 150, 0, 185, 0, 58, 1, 201, 1,
+                21, 2, 132, 2, 165, 2, 175, 2, 198, 2, 24, 3, 7, 4, 222, 4,
+                246, 4, 106, 5, 201, 5, 22, 7, 53, 7, 151, 7, 221, 7, 254, 7,
+                168, 8, 170, 8, 212, 9, 76, 10, 188, 11, 160, 12, 201, 12, 3,
+                13, 121, 13, 177, 13, 127, 14, 64, 15, 168, 15, 109, 16, 60,
+                17, 94, 17, 26, 18, 49, 18, 122, 18, 202, 18, 239, 18, 76, 19,
+                48, 21, 61, 21, 199, 22, 230, 22, 70, 23, 144, 23, 223, 23, 28,
+                24, 33, 25, 22, 26, 36, 26, 45, 26, 193, 26, 5, 28, 1, 29, 34,
+                29, 59, 29, 101, 29, 144, 30, 176, 30, 193, 30, 207, 30, 53,
+                31, 90, 31, 181, 31, 209, 31, 29, 32, 132, 32, 160, 32, 65, 33,
+                160, 33, 41, 34, 88, 34, 153, 34, 206, 34, 219, 34, 226, 34,
+                86, 35, 151, 35, 162, 35, 4, 36, 151, 36, 189, 36, 113, 37,
+                184, 39, 245, 39, 90, 40, 96, 40, 83, 41, 151, 41, 171, 42, 96,
+                43, 115, 43, 226, 43, 19, 44, 135, 44, 156, 45, 20, 46, 118,
+                46, 129, 46, 199, 47, 254, 47, 36, 48, 84, 48, 133, 48, 185,
+                48, 204, 48, 31, 49, 33, 49, 53, 49, 71, 49, 87, 49, 209, 49,
+                17, 50, 42, 51, 86, 52, 118, 53, 85, 54, 202, 54, 64, 55, 117,
+                55, 62, 56, 135, 56, 196, 56, 45, 57, 31, 59, 185, 59, 189, 59,
+                1, 60, 60, 60, 227, 61, 70, 62, 74, 62, 32, 63, 73, 63, 195,
+                63, 43, 64, 164, 64, 220, 64, 249, 64, 74, 66, 64, 67, 82, 67,
+                195, 67, 111, 69, 152, 69, 108, 70, 206, 70, 219, 70, 2, 71, 1,
+                73, 44, 73, 244, 74, 77, 75, 248, 75, 34, 76, 54, 76, 184, 76,
+                58, 77, 156, 77, 174, 77, 76, 78, 82, 78, 7, 79, 95, 79, 187,
+                79, 180, 80, 222, 80, 62, 81, 54, 82, 67, 82, 10, 83, 178, 84,
+                249, 84, 8, 85, 203, 85, 140, 86, 184, 86, 198, 86, 71, 88,
+                191, 88, 109, 89, 166, 89, 100, 91, 221, 91, 80, 92, 24, 93,
+                210, 93, 224, 94, 244, 95, 73, 96, 176, 96, 194, 96, 174, 97,
+                187, 97, 87, 98, 126, 98, 192, 98, 233, 98, 70, 99, 148, 99,
+                162, 99, 200, 99, 158, 100, 176, 101, 219, 101, 79, 102, 159,
+                102, 203, 102, 85, 103, 4, 105, 48, 105, 141, 105, 122, 106,
+                37, 107, 123, 107, 146, 107, 31, 108, 235, 108, 20, 110, 91,
+                110, 242, 110, 41, 111, 46, 111, 69, 112, 74, 112, 198, 113,
+                136, 114, 193, 114, 197, 115, 225, 115, 41, 117, 210, 117, 26,
+                118, 33, 118, 31, 119, 42, 119, 134, 119, 15, 120, 55, 122, 71,
+                122, 34, 123, 160, 123, 218, 124, 113, 125, 67, 126, 72, 127,
+                155, 127,
+            ]
+            .into_boxed_slice(),
+            offsets: None,
+        }],
+        coordinate_filters: Default::default(),
+        offsets_filters: Default::default(),
+        nullity_filters: Default::default(),
+    };
+
+    let writes =
+        WriteSequence::Sparse(cells::write::SparseWriteSequence::from(vec![
+            SparseWriteInput {
+                dimensions: vec![(
+                    "G_2x0u0nImT_z5__S_LpDF".to_owned(),
+                    CellValNum::single(),
+                )],
+                data: Cells::new(HashMap::from([
+                    (
+                        "G_2x0u0nImT_z5__S_LpDF".to_owned(),
+                        FieldData::Int64(vec![
+                            2153809892049519861,
+                            -901913982103951590,
+                            1862771018046098338,
+                            2354164672943450129,
+                            825505323377647216,
+                            1629621268782148297,
+                            281162692126792941,
+                        ]),
+                    ),
+                    (
+                        "NVjjN97iS_6T0y7XATzd3kCH4".to_owned(),
+                        FieldData::VecUInt8(vec![
+                            vec![184, 57, 77],
+                            vec![167, 251, 251, 181, 182],
+                            vec![63, 52, 57],
+                            vec![49, 128, 208, 157, 237],
+                            vec![189, 201],
+                            vec![53, 232, 35],
+                            vec![117, 117, 224],
+                        ]),
+                    ),
+                    (
+                        "G".to_owned(),
+                        FieldData::Int16(vec![
+                            245, 619, 13, 403, 292, 131, 712,
+                        ]),
+                    ),
+                ])),
+            },
+        ]));
+
+    let qc = QueryConditionExpr::field("G").ge(30281i16);
+
+    let acc = CellsAccumulator::fold(&schema, &writes);
+    instance_query_condition(
+        schema.into(),
+        writes.into(),
+        acc.into(),
+        vec![!qc],
+    )
 }

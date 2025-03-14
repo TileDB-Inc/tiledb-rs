@@ -16,7 +16,7 @@ use tiledb_common::query::condition::*;
 
 pub use self::field::FieldData;
 
-macro_rules! typed_thing_zip {
+macro_rules! qc_thing_zip {
     ($qcenum:ident, $qcthing:expr, $qcbind:pat, $fieldthing:expr, $fieldbind:pat, $action:expr, $actionstr:expr) => {{
         match ($qcthing, $fieldthing) {
             ($qcenum::UInt8($qcbind), FieldData::UInt8($fieldbind)) => $action,
@@ -98,7 +98,10 @@ impl Cells {
         &self.fields
     }
 
-    pub fn field_resolve_enumeration(&self, name: &str) -> Option<FieldData> {
+    pub fn field_resolve_enumeration(
+        &self,
+        name: &str,
+    ) -> Option<(FieldData, VarBitSet)> {
         self.enumeration_values.get(name).map(|e| {
             let idx = typed_field_data_go!(
                 self.fields.get(name).unwrap(),
@@ -113,11 +116,29 @@ impl Cells {
             typed_field_data_go!(
                 e,
                 ref variants,
-                FieldData::from(
-                    idx.into_iter()
-                        .map(|i| variants[i].clone())
-                        .collect::<Vec<_>>()
-                )
+                #[allow(clippy::clone_on_copy)]
+                {
+                    let data = FieldData::from(
+                        idx.iter()
+                            .map(|i| {
+                                variants
+                                    .get(*i)
+                                    .cloned()
+                                    .unwrap_or_default()
+                                    .clone()
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    let valid = {
+                        let mut valid = VarBitSet::saturated(idx.len());
+                        idx.iter()
+                            .enumerate()
+                            .filter(|(_, i)| variants.get(**i).is_none())
+                            .for_each(|(row, _)| valid.clear(row));
+                        valid
+                    };
+                    (data, valid)
+                }
             )
         })
     }
@@ -352,7 +373,14 @@ impl Cells {
             num_records: usize,
             idx: impl Iterator<Item = usize>,
         ) -> VarBitSet {
-            let mut b = VarBitSet::new_bitset(num_records);
+            let b = VarBitSet::new_bitset(num_records);
+            collect_into_bitmap(b, idx)
+        }
+
+        fn collect_into_bitmap(
+            mut b: VarBitSet,
+            idx: impl Iterator<Item = usize>,
+        ) -> VarBitSet {
             for i in idx {
                 b.set(i);
             }
@@ -381,14 +409,67 @@ impl Cells {
                             }
                         }
 
-                        let fdata = self.field_resolve_enumeration(eq.field());
-                        let fdata = fdata
-                            .as_ref()
-                            .or(self.fields.get(eq.field()))
-                            .unwrap();
-                        typed_thing_zip!(
+                        let fdata = self.fields.get(eq.field()).unwrap();
+
+                        // if there is an enumeration then the operation
+                        // is applied on the index
+                        let cmpvalue = if let Some(variants) =
+                            self.enumeration_values.get(eq.field())
+                        {
+                            let maybe_index = qc_thing_zip!(
+                                Literal,
+                                eq.value(),
+                                ref value,
+                                variants,
+                                ref variants,
+                                {
+                                    variants
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, variant)| {
+                                            *variant == value
+                                        })
+                                        .take(1)
+                                        .map(|(i, _)| i)
+                                        .next()
+                                },
+                                {
+                                    variants
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, variant)| {
+                                            variant.as_slice()
+                                                == value.as_bytes()
+                                        })
+                                        .take(1)
+                                        .map(|(i, _)| i)
+                                        .next()
+                                }
+                            );
+                            if maybe_index.is_none() {
+                                return match eq.operation() {
+                                    EqualityOp::NotEqual => {
+                                        VarBitSet::saturated(self.len())
+                                    }
+                                    _ => VarBitSet::new_bitset(self.len()),
+                                };
+                            }
+                            typed_field_data_go!(
+                                fdata,
+                                _DT,
+                                _,
+                                Literal::from(maybe_index.unwrap() as _DT),
+                                unreachable!(),
+                                unreachable!(),
+                                unreachable!()
+                            )
+                        } else {
+                            eq.value().clone()
+                        };
+
+                        qc_thing_zip!(
                             Literal,
-                            eq.value(),
+                            &cmpvalue,
                             ref literal,
                             fdata,
                             ref cells,
@@ -424,11 +505,16 @@ impl Cells {
                     }
                     Predicate::SetMembership(set) => {
                         let fdata = self.field_resolve_enumeration(set.field());
-                        let fdata = fdata
-                            .as_ref()
-                            .or(self.fields.get(set.field()))
-                            .unwrap();
-                        typed_thing_zip!(
+                        let (fdata, validity) =
+                            if let Some((ref fdata, validity)) = fdata {
+                                (fdata, validity)
+                            } else {
+                                (
+                                    self.fields.get(set.field()).unwrap(),
+                                    VarBitSet::saturated(self.len()),
+                                )
+                            };
+                        let pred = qc_thing_zip!(
                             SetMembers,
                             set.members(),
                             ref members,
@@ -486,7 +572,13 @@ impl Cells {
                                         .map(|(i, _)| i),
                                 )
                             }
-                        )
+                        );
+                        match set.operation() {
+                            SetMembershipOp::In => intersect(validity, pred),
+                            SetMembershipOp::NotIn => {
+                                union(negate(validity), pred)
+                            }
+                        }
                     }
                     Predicate::Nullness(n) => {
                         match n.operation() {
@@ -507,34 +599,19 @@ impl Cells {
                 let rhs_passing = self.query_condition_bitmap(rhs);
                 assert_eq!(lhs_passing.len(), rhs_passing.len());
 
-                let mut comb_passing = VarBitSet::new_bitset(lhs_passing.len());
                 match op {
-                    CombinationOp::And => {
-                        for bi in 0..comb_passing.len() {
-                            if lhs_passing.test(bi) && rhs_passing.test(bi) {
-                                comb_passing.set(bi);
-                            }
-                        }
-                    }
-                    CombinationOp::Or => {
-                        for bi in 0..comb_passing.len() {
-                            if lhs_passing.test(bi) || rhs_passing.test(bi) {
-                                comb_passing.set(bi);
-                            }
-                        }
-                    }
+                    CombinationOp::And => intersect(lhs_passing, rhs_passing),
+                    CombinationOp::Or => union(lhs_passing, rhs_passing),
                 }
-                comb_passing
             }
             QueryConditionExpr::Negate(predicate) => {
-                let pred_passing = self.query_condition_bitmap(predicate);
-                let mut neg_passing = VarBitSet::new_bitset(pred_passing.len());
-                for bi in 0..pred_passing.len() {
-                    if !pred_passing.test(bi) {
-                        neg_passing.set(bi);
-                    }
-                }
-                neg_passing
+                // core does not embed Negate in its expression trees,
+                // instead it builds an expression tree of the negated expression,
+                // so we shall evaluate the negated expression here to match
+                // (Is this *correct* to do? In a binary logic system... probably.
+                // In a ternary logic system... perhaps not)
+                let negated_pred = predicate.negate();
+                self.query_condition_bitmap(&negated_pred)
             }
         }
     }
@@ -784,6 +861,37 @@ impl<'b> PartialEq<CellsView<'b>> for CellsView<'_> {
 
         self.keys.len() == other.keys.len()
     }
+}
+
+fn intersect(mut b1: VarBitSet, b2: VarBitSet) -> VarBitSet {
+    for bi in 0..b1.len() {
+        if b1.test(bi) && b2.test(bi) {
+            b1.set(bi);
+        } else {
+            b1.clear(bi);
+        }
+    }
+    b1
+}
+
+fn union(mut b1: VarBitSet, b2: VarBitSet) -> VarBitSet {
+    for bi in 0..b1.len() {
+        if b1.test(bi) || b2.test(bi) {
+            b1.set(bi);
+        }
+    }
+    b1
+}
+
+fn negate(mut b1: VarBitSet) -> VarBitSet {
+    for bi in 0..b1.len() {
+        if b1.test(bi) {
+            b1.clear(bi)
+        } else {
+            b1.set(bi)
+        }
+    }
+    b1
 }
 
 #[cfg(test)]
