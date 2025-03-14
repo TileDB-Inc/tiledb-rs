@@ -1,0 +1,53 @@
+name: Release
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "release-*"
+    tags:
+      - "*"
+
+jobs:
+  run:
+    name: "Prepare: ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os:
+          - "ubuntu-latest"
+          - "linux-arm64-ubuntu24"
+          - "macos-13"
+          - "macos-latest"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Check Formatting
+        run: cargo fmt --quiet --check
+      - name: Lint
+        run: cargo clippy --all-targets --all-features -- -Dwarnings
+      - name: Build
+        run: cargo build --all-targets --all-features
+      - name: Test
+        run: cargo test --all-targets --all-features
+
+  create_issue_on_fail:
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    needs: run
+    if: failure() || cancelled()
+    steps:
+      - uses: actions/checkout@v3
+      - name: Create Issue on Failure
+        uses: TileDB-Inc/github-actions/open-issue@main
+        with:
+          name: Release Workflow Failure
+          label: release-failure
+          assignee: davisp,rroelke

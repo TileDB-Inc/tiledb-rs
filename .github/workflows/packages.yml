@@ -1,0 +1,198 @@
+name: Nightly TileDB Packages
+
+on:
+  schedule:
+    # Every day at 04:17 UTC
+    - cron: "17 04 * * *"
+  workflow_dispatch:
+
+jobs:
+  generate-matrix:
+    name: Generate Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.generate.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Generate
+        id: generate
+        run: |
+          MATRIX=$(.github/scripts/generate-package-matrix.py)
+          echo "matrix=${MATRIX}" >> $GITHUB_OUTPUT
+
+  build:
+    needs:
+      - generate-matrix
+    name: Build - ${{ matrix.version }} - ${{ matrix.linkage }} - ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+    outputs:
+      matrix: ${{ needs.generate-matrix.outputs.matrix }}
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.manylinux || '' }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: ${{ matrix.MACOSX_DEPLOYMENT_TARGET }}
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+    steps:
+      - name: Checkout TileDB
+        if: ${{ !matrix.prebuilt }}
+        run: |
+          # Something seems very wrong with actions/checkout when not using
+          # it against the current repositor. Avoiding the issue by cloning
+          # manually here.
+          mkdir -p ~/repos
+          git -C ~/repos clone -q https://github.com/TileDB-Inc/TileDB tiledb
+          git -C ~/repos/tiledb checkout ${{ matrix.version }}
+        shell: bash
+      - name: Export GitHub Actions Cache Variables
+        if: ${{ !matrix.prebuilt }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: Install Armerge
+        if: ${{ !matrix.prebuilt && startsWith(matrix.os, 'macos-') == true }}
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: armerge
+      - name: Setup Homebrew
+        run: brew install automake ninja
+        if: ${{ !matrix.prebuilt && startsWith(matrix.os, 'macos-') == true }}
+      - name: Setup manylinux
+        if: ${{ !matrix.prebuilt && startsWith(matrix.platform, 'linux') == true }}
+        run: |
+          set -e pipefail
+          yum install -y ninja-build perl-IPC-Cmd curl zip unzip tar
+          echo "VCPKG_FORCE_SYSTEM_BINARIES=YES" >> $GITHUB_ENV
+        shell: bash
+      - name: Configure TileDB
+        if: ${{ !matrix.prebuilt }}
+        run: |
+          cd ~/repos/tiledb
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=${{ matrix.build_shared_libs }} \
+            -DCMAKE_INSTALL_PREFIX=./dist \
+            -DTILEDB_INSTALL_LIBDIR=lib \
+            -DTILEDB_WERROR=OFF \
+            -DTILEDB_S3=ON \
+            -DTILEDB_AZURE=ON \
+            -DTILEDB_GCS=ON \
+            -DTILEDB_HDFS=${{ startsWith(matrix.platform, 'windows') && 'OFF' || 'ON' }} \
+            -DTILEDB_SERIALIZATION=ON \
+            -DTILEDB_WEBP=ON \
+            -DTILEDB_TESTS=OFF \
+            -DVCPKG_TARGET_TRIPLET=${{ matrix.triplet }} \
+            ${{ matrix.cmake_args }}
+        shell: bash
+      - name: Build TileDB
+        if: ${{ !matrix.prebuilt }}
+        env:
+          TILEDB_PACKAGE_VERSION: ${{ matrix.pkg_version }}
+        shell: bash
+        run: |
+          cd ~/repos/tiledb
+          cmake --build build -j4 --config Release --target package
+      - name: Fix Static Release - macOS
+        if: ${{ !matrix.prebuilt && matrix.build_shared_libs == 'OFF' && startsWith(matrix.platform, 'macos-') == true }}
+        run: |
+          cd ~/repos/tiledb/build
+          mkdir tmp
+          tar -C tmp -xzf ${{ matrix.tarball }}
+          find tmp/ -type f | sort
+          rm tmp/lib/libtiledb.a
+
+          armerge -o tmp/lib/libtiledb_static.a \
+            tiledb/libtiledb.a \
+            vcpkg_installed/${{ matrix.triplet }}/lib/*.a
+
+          cd tmp && tar -czf ../${{ matrix.tarball }} *
+      - name: Fix Static Release - Linux
+        if: ${{ !matrix.prebuilt && matrix.build_shared_libs == 'OFF' && startsWith(matrix.platform, 'linux-') == true }}
+        run: |
+          cd ~/repos/tiledb/build
+          mkdir tmp
+          tar -C tmp -xzf ${{ matrix.tarball }}
+          rm tmp/lib/libtiledb.a
+
+          echo "create tmp/lib/libtiledb_static.a" >> mri.script
+          echo "addlib tiledb/libtiledb.a" >> mri.script
+          find vcpkg_installed/${{ matrix.triplet }}/lib -name "*.a" \
+            | sort \
+            | xargs -n 1 -I {} echo "addlib {}" >> mri.script
+          echo "save" >> mri.script
+          echo "end" >> mri.script
+          cat mri.script | ar -M
+
+          cd tmp && tar -czf ../${{ matrix.tarball }} *
+      - name: Upload Artifacts
+        if: ${{ !matrix.prebuilt }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.tarball }}
+          path: |
+            ~/repos/tiledb/build/tiledb-*.tar.gz
+            ~/repos/tiledb/build/tiledb-*.zip
+
+  publish:
+    needs:
+      - build
+    name: Publish Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Create Directories
+        run: |
+          mkdir prebuilt artifacts release
+        shell: bash
+      - name: Download Current Release
+        uses: KevinRohn/github-full-release-data@v2.0.4
+        with:
+          version: "nightlies"
+          asset-file: "releases,tiledb"
+          asset-output: prebuilt
+      - name: Download New Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: artifacts
+      - name: Generate Release
+        env:
+          RELEASE_MATRIX: ${{ needs.build.outputs.matrix }}
+        run: |
+          .github/scripts/generate-release.py
+      - name: Verify Release
+        run: |
+          cd release && sha256sum -c *.sha256
+        shell: bash
+      - name: Publish Artifacts
+        uses: pyTooling/Actions/releaser/composite@main
+        with:
+          tag: nightlies
+          rm: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: ./release/*
+
+  create-issue-on-fail:
+    name: "Create Issue on Failure"
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    needs: publish
+    if: failure()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Create Issue on Failure
+        uses: TileDB-Inc/github-actions/open-issue@main
+        with:
+          name: Nightly Build Failure
+          label: nightly-failure
+          assignee: davisp,rroelke

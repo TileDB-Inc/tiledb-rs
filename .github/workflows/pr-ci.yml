@@ -8,18 +8,211 @@ on:
 
   pull_request:
     branches:
-      - '*'  # Quotes required because * is reserved by YAML
+      - "*" # Quotes required because * is reserved by YAML
 
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  issues: write
+  pull-requests: write
+
 jobs:
   build-and-test:
-    uses: ./.github/workflows/pr-build-and-test.yml
+    name: "Build and Test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+      - name: Build
+        run: cargo build --all-targets --all-features
+      - name: Test
+        run: |
+          cargo test --all-targets --all-features
+          status=$?
+          echo "Process exited with status ${status}"
 
   lint:
-    uses: ./.github/workflows/pr-lint.yml
+    name: "Lint - Stable"
+    strategy:
+      matrix:
+        os:
+          - "ubuntu-latest"
+          - "linux-arm64-ubuntu24"
+          - "macos-13"
+          - "macos-latest"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+      - name: Check Formatting
+        run: cargo fmt --quiet --check
+      - name: Lint
+        run: cargo clippy --no-deps --all-targets --all-features -- -Dwarnings
+
+  lint-nightly:
+    name: "Lint - Nightly"
+    if: github.event_name == 'pull_request'
+    strategy:
+      matrix:
+        os:
+          - "ubuntu-latest"
+          - "linux-arm64-ubuntu24"
+          - "macos-13"
+          - "macos-latest"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+      - name: Check Formatting and Clippy
+        id: lints
+        env:
+          GITHUB_OS: ${{ matrix.os }}
+        shell: python
+        run: |
+          # Checking formatting and clippy
+          import json
+          import os
+          import subprocess as sp
+
+          fmt = sp.run(["cargo", "fmt", "--quiet", "--check"])
+          clippy = sp.run([
+            'cargo',
+            'clippy',
+            '--workspace',
+            '--all-targets',
+            '--all-features',
+            '--',
+            '-Dwarnings'
+          ])
+
+          if fmt.returncode == 0 and clippy.returncode == 0:
+            exit(0)
+
+          msg = [
+            "# Rust +Nightly Check Failures - {}".format(os.environ["GITHUB_OS"]),
+            ""
+          ]
+          if fmt.returncode == 0:
+            msg.append("* ✅ Formatting Check Succeeded")
+          else:
+            msg.append("* ❌ Formatting Check Failed")
+          if clippy.returncode == 0:
+            msg.append("* ✅ Clippy Check Succeeded")
+          else:
+            msg.append("* ❌ Clippy Check Failed")
+          msg.append("")
+
+          msg = json.dumps("\n".join(msg))
+
+          with open(os.environ["GITHUB_OUTPUT"], "wb") as handle:
+            handle.write("message={}\n".format(msg).encode("utf-8"))
+      - uses: actions/github-script@v7
+        if: ${{ steps.lints.outputs.message }}
+        with:
+          github-token: ${{secrets.GITHUB_TOKEN}}
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: ${{ steps.lints.outputs.message }}
+            })
+
+  check-pr-title:
+    name: "Check Title Format"
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 2
+      - name: Debug checkout
+        shell: bash
+        run: |
+          git log --oneline -n10
+      - name: "Check Title Format"
+        shell: python
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          import os
+          import re
+          import subprocess as sp
+
+          PAT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\([\w\-\.]+\))?(!)?: ([\w ])+([\s\S]*)")
+
+          if not PAT.match(os.environ["PR_TITLE"]):
+            print("The pull request title does not match Conventional Commits syntax")
+            print("Found title: '{}'".format(os.environ["PR_TITLE"]))
+            print("See: https://www.conventionalcommits.org/en/v1.0.0/")
+            exit(1)
+
+          pr_base = os.environ["PR_BASE"]
+          try:
+            git_rev_list = sp.check_output(["git", "rev-list", "-n", "2", "HEAD"])
+          except sp.CalledProcessError as e:
+            print(f"Error executing 'git rev-list -n 2 HEAD':")
+            print(e.output.decode("utf-8"))
+            exit(1)
+
+          pr_head_predecessor = git_rev_list.decode("utf-8").strip().split("\n")[1]
+          if pr_head_predecessor == pr_base:
+            # If there is only one commit in the PR, then that commit
+            # will be the commit subject which is used by default.
+            # This will break our changelog generation scripts unless
+            # it also matches.
+
+            # Read the subject of the last commit in the branch.
+            subject = sp.check_output(["git", "log", "--format=%B", "-n", "1"])
+            subject = subject.strip().decode("utf-8")
+            if not PAT.match(subject):
+              print("The last commit on this PR branch does not match Conventional Commits syntax")
+              print("Found message: '{}'".format(subject))
+              print("See: https://www.conventionalcommits.org/en/v1.0.0/")
+              exit(1)
 
   check-api-coverage:
-    uses: ./.github/workflows/pr-api-coverage.yml
+    name: "Check API Coverage"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tiledb-rs
+        uses: actions/checkout@v4
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Rustc Cache
+        uses: Swatinem/rust-cache@v2
+      - name: Install Cargo Expand
+        run: cargo install cargo-expand
+      - name: Install TileDB
+        uses: ./.github/actions/install-tiledb
+      - name: Build API Coverage Tool
+        run: cd tools/api-coverage && cargo build
+      - name: Calculate Coverage
+        run: ./target/debug/api-coverage 2>&1 >> $GITHUB_STEP_SUMMARY

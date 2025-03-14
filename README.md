@@ -1,10 +1,8 @@
-TileDB - Rust Bindings
-===
+# TileDB - Rust Bindings
 
 Rust bindings for TileDB. (currently covering ~56% of the TileDB C API).
 
-Getting Started
----
+## Getting Started
 
 Using these bindings requires having a copy of libtiledb installed on your
 system where `pkg-config` can find it. There are many different ways this
@@ -64,47 +62,19 @@ $ pkg-config tiledb --libs
 -L/opt/tiledb/lib -ltiledb
 ```
 
-Creating Static Binaries
----
+## Creating Static Binaries
 
 > [!WARNING]
-> It is highly recommended to use the dynamic linking as described above unless
-> you are specifically working on creating statically linked release builds
-> for distribution. Building statically can take on the order of thirty minutes
-> and these builds are easily invalidated requiring complete rebuilds. This ends
-> up leading to an extremely poor developer experience.
+> Generally speaking, you likely want to be using dynamically linked libtiledb
+> unless you're working on distributing binaries.
 
-To build libtiledb statically, simply set the `TILEDB_SYS_STATIC` environment
-variable to anything.
+To build `tiledb-rs` with static linkage to TileDB, you just need to have a
+copy of `libtiledb_static.a` located in the `lib` directory where TileDB is
+installed. The easiest way to accomplish this is to download a static package
+from [the nightlies release][1].
 
-```sh
-$ export TILEDB_SYS_STATIC=true
-$ cargo build
-```
+If you're interested in how to generate `libtiledb_static.a`, you can find that
+logic in the `Nightly TileDB Packages` workflow in
+`.github/workflows/packages.yml`.
 
-> [!NOTE]
-> If you are encountering "weird" failures in CI where the libtiledb build
-> appears to error out for no reason, it is likely that `cmake` is being too
-> aggressive in parallelizing compilation jobs. See the `TILEDB_SYS_JOBS`
-> environment variable below.
-
-Controlling Static Builds
----
-
-There are a few environment variables you can use to attempt to speed up static
-builds.
-
-* `TILEDB_SYS_JOBS` - If this environment variable is set, it is passed as
-  `-j${TILEDB_SYS_JOBS}` to `cmake`. This can also be useful to limit
-  parallelization in CI where the compiler can end up starving the CI runner
-  of RAM which can result in mysteriously failed builds.
-* `TILEDB_SYS_CCACHE` - You can set this to anything to tell libtiledb to search
-  for either `sccache` or `ccache` while building. Consult documentation for
-  either of those tools if you wish to install them. You'll likely want to use
-  `sccache`.
-* `VCPKG_ROOT` - Setting up an external installation of `vcpkg` will ensure that
-  libtiledb dependencies are cached which speeds up builds tremendously. Consult
-  the `vcpkg` documentation for specifics. Though the gist of it is to clone the
-  vcpkg repository, run the bootstrap script to download binaries, then export
-  the `VCPKG_ROOT` environment variable to point at that directory.
-
+[1]: https://github.com/TileDB-Inc/tiledb-rs/releases/tag/nightlies
