@@ -723,7 +723,7 @@ proptest! {
 }
 
 #[test]
-fn example_query_condition() -> anyhow::Result<()> {
+fn shrinking_query_condition_1() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
         domain: DomainData {
@@ -737,7 +737,7 @@ fn example_query_condition() -> anyhow::Result<()> {
                 filters: None,
             }],
         },
-        capacity: Some(1),
+        capacity: Some(100000),
         cell_order: Some(CellOrder::ColumnMajor),
         tile_order: Some(TileOrder::RowMajor),
         allow_duplicates: Some(true),
@@ -828,7 +828,7 @@ fn example_query_condition() -> anyhow::Result<()> {
 }
 
 #[test]
-fn shrinking_query_condition() -> anyhow::Result<()> {
+fn shrinking_query_condition_2() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
         domain: DomainData {
@@ -842,7 +842,7 @@ fn shrinking_query_condition() -> anyhow::Result<()> {
                 filters: None,
             }],
         },
-        capacity: Some(1),
+        capacity: Some(100000),
         cell_order: Some(CellOrder::ColumnMajor),
         tile_order: Some(TileOrder::ColumnMajor),
         allow_duplicates: Some(true),

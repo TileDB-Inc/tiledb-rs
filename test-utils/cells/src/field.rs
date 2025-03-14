@@ -522,6 +522,8 @@ mod tests {
         }
     }
 
+    /// Asserts that `field_data.domain()` is the tightest possible bound on the contents of
+    /// `field_data`.
     fn do_field_domain(field_data: FieldData) {
         let Some(domain) = field_data.domain() else {
             assert!(field_data.is_empty());

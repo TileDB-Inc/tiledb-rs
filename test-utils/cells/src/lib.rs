@@ -16,6 +16,7 @@ use tiledb_common::query::condition::*;
 
 pub use self::field::FieldData;
 
+/// Applies an action to the typed data within a query condition enum instance and a [FieldData] instance.
 macro_rules! qc_thing_zip {
     ($qcenum:ident, $qcthing:expr, $qcbind:pat, $fieldthing:expr, $fieldbind:pat, $action:expr, $actionstr:expr) => {{
         match ($qcthing, $fieldthing) {
@@ -98,6 +99,11 @@ impl Cells {
         &self.fields
     }
 
+    /// Joins `self.fields().get(name)` together with the enumeration for `name`,
+    /// returning a column containing the indexed enumeration variants and a bit set indicating
+    /// validity.
+    ///
+    /// The returned bit set is set at index `i` if the key was a valid index into the enumeration.
     pub fn field_resolve_enumeration(
         &self,
         name: &str,
@@ -143,6 +149,7 @@ impl Cells {
         })
     }
 
+    /// Returns the domain (if any) of each field.
     pub fn domain(&self) -> Vec<(String, Option<tiledb_common::range::Range>)> {
         self.fields
             .iter()
@@ -365,6 +372,8 @@ impl Cells {
         )
     }
 
+    /// Returns a bitmap indicating for each record indicating whether that record passes
+    /// `query_condition`.
     fn query_condition_bitmap(
         &self,
         query_condition: &QueryConditionExpr,
