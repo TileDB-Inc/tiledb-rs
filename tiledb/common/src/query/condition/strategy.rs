@@ -690,7 +690,7 @@ mod tests {
 
     /// Test shrinking to just the left side
     #[test]
-    fn shrink_just_left() {
+    fn shrink_combine_and_just_left() {
         let lhs = QueryConditionExpr::field("foo").eq(7);
         let rhs = QueryConditionExpr::field("bar").ne(22);
 
@@ -709,7 +709,7 @@ mod tests {
 
     /// Test shrinking to just the right side
     #[test]
-    fn shrink_just_right() {
+    fn shrink_combine_and_just_right() {
         let lhs = QueryConditionExpr::field("foo").eq(7);
         let rhs = QueryConditionExpr::field("bar").ne(22);
 
@@ -731,7 +731,7 @@ mod tests {
 
     /// Test shrinking to need both sides after all
     #[test]
-    fn shrink_combine() {
+    fn shrink_combine_and() {
         let lhs_lhs = QueryConditionExpr::field("foo").eq(7);
         let lhs_rhs = QueryConditionExpr::field("bar").ne(22);
         let rhs_lhs = QueryConditionExpr::field("gub").le(45);
@@ -759,5 +759,27 @@ mod tests {
         // now shrinking can apply to either side
         while vt.simplify() {}
         assert_eq!(lhs_lhs & rhs_lhs, vt.current());
+    }
+
+    #[test]
+    fn shrink_combine_or() {
+        let lhs =
+            QueryConditionExpr::field("NVjjN97iS_6T0y7XATzd3kCH4").eq("_\"��");
+        let rhs = !QueryConditionExpr::field("G").ge(30281i16);
+
+        let qc = lhs.clone() | rhs.clone();
+
+        let mut vt = QueryConditionValueTree::new(qc.clone());
+        assert_eq!(qc, vt.current());
+
+        assert!(vt.simplify());
+        assert_eq!(lhs, vt.current());
+
+        // if the LHS does not fail then try just the RHS
+        assert!(vt.complicate());
+        assert_eq!(rhs, vt.current());
+
+        assert!(!vt.simplify());
+        assert_eq!(rhs, vt.current());
     }
 }
