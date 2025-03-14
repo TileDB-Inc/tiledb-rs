@@ -36,6 +36,21 @@ impl Display for EqualityOp {
     }
 }
 
+impl Not for EqualityOp {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::Less => Self::GreaterEqual,
+            Self::LessEqual => Self::Greater,
+            Self::Equal => Self::NotEqual,
+            Self::NotEqual => Self::Equal,
+            Self::GreaterEqual => Self::Less,
+            Self::Greater => Self::LessEqual,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum SetMembershipOp {
@@ -52,6 +67,17 @@ impl Display for SetMembershipOp {
     }
 }
 
+impl Not for SetMembershipOp {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::In => Self::NotIn,
+            Self::NotIn => Self::In,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum NullnessOp {
@@ -64,6 +90,17 @@ impl Display for NullnessOp {
         match self {
             Self::IsNull => write!(f, "IS NULL"),
             Self::NotNull => write!(f, "IS NOT NULL"),
+        }
+    }
+}
+
+impl Not for NullnessOp {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Self::IsNull => Self::NotNull,
+            Self::NotNull => Self::IsNull,
         }
     }
 }
@@ -533,6 +570,15 @@ impl EqualityPredicate {
     pub fn value(&self) -> &Literal {
         &self.value
     }
+
+    /// Returns an [EqualityPredicate] which is true if and only if `self` is false.
+    pub fn negate(&self) -> Self {
+        Self {
+            field: self.field.clone(),
+            op: !self.op,
+            value: self.value.clone(),
+        }
+    }
 }
 
 impl Display for EqualityPredicate {
@@ -561,6 +607,15 @@ impl SetMembershipPredicate {
     pub fn members(&self) -> &SetMembers {
         &self.members
     }
+
+    /// Returns a [SetMembershipPredicate] which is true if and only if `self` is false.
+    pub fn negate(&self) -> Self {
+        Self {
+            field: self.field.clone(),
+            op: !self.op,
+            members: self.members.clone(),
+        }
+    }
 }
 
 impl Display for SetMembershipPredicate {
@@ -584,6 +639,14 @@ impl NullnessPredicate {
     pub fn operation(&self) -> NullnessOp {
         self.op
     }
+
+    /// Returns a [NullnessPredicate] which is true if and only if `self` is false.
+    pub fn negate(&self) -> Self {
+        Self {
+            field: self.field.clone(),
+            op: !self.op,
+        }
+    }
 }
 
 impl Display for NullnessPredicate {
@@ -598,6 +661,17 @@ pub enum Predicate {
     Equality(EqualityPredicate),
     SetMembership(SetMembershipPredicate),
     Nullness(NullnessPredicate),
+}
+
+impl Predicate {
+    /// Returns a [Predicate] which is true if and only if `self` is false.
+    pub fn negate(&self) -> Self {
+        match self {
+            Self::Equality(eq) => Self::Equality(eq.negate()),
+            Self::SetMembership(set) => Self::SetMembership(set.negate()),
+            Self::Nullness(nn) => Self::Nullness(nn.negate()),
+        }
+    }
 }
 
 impl Display for Predicate {
@@ -741,6 +815,25 @@ impl QueryConditionExpr {
     pub fn field<F: AsRef<str>>(field: F) -> Field {
         Field {
             field: field.as_ref().to_owned(),
+        }
+    }
+
+    /// Returns a [QueryConditionExpr] which is true if and only if `self` is false.
+    ///
+    /// The returned expression tree is equivalent to, but distinct from,
+    /// `QueryConditionExpr::Negate(Box::new(self.clone()))`.
+    pub fn negate(&self) -> Self {
+        match self {
+            Self::Cond(predicate) => Self::Cond(predicate.negate()),
+            Self::Comb { lhs, rhs, op } => Self::Comb {
+                lhs: Box::new(lhs.negate()),
+                rhs: Box::new(rhs.negate()),
+                op: match op {
+                    CombinationOp::And => CombinationOp::Or,
+                    CombinationOp::Or => CombinationOp::And,
+                },
+            },
+            Self::Negate(predicate) => predicate.as_ref().clone(),
         }
     }
 }
