@@ -7,12 +7,15 @@ pub mod strategy;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use tiledb_common::array::schema::EnumerationKey;
 use tiledb_common::array::{ArrayType, CellOrder, CellValNum, TileOrder};
 use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::key::LookupKey;
 
-use crate::array::{AttributeData, DimensionData, DomainData, EnumerationData};
+pub use crate::array::{
+    AttributeData, DimensionData, DomainData, EnumerationData,
+};
 
 /// Encapsulation of data needed to construct a Schema
 #[derive(Clone, Default, Debug, PartialEq)]
@@ -64,6 +67,33 @@ impl SchemaData {
                 for a in self.attributes.iter() {
                     if a.name == name {
                         return Some(FieldData::from(a.clone()));
+                    }
+                }
+                None
+            }
+        }
+    }
+
+    /// Returns the enumeration identified by `key`.
+    pub fn enumeration(&self, key: EnumerationKey) -> Option<&EnumerationData> {
+        match key {
+            EnumerationKey::EnumerationName(name) => {
+                for edata in self.enumerations.iter() {
+                    if edata.name == name {
+                        return Some(edata);
+                    }
+                }
+                None
+            }
+            EnumerationKey::AttributeName(name) => {
+                for adata in self.attributes.iter() {
+                    if adata.name == name {
+                        if let Some(ename) = adata.enumeration.as_ref() {
+                            return self.enumeration(
+                                EnumerationKey::EnumerationName(ename),
+                            );
+                        }
+                        break;
                     }
                 }
                 None
@@ -180,3 +210,6 @@ impl Iterator for FieldDataIter<'_> {
 }
 
 impl std::iter::FusedIterator for FieldDataIter<'_> {}
+
+#[cfg(test)]
+mod tests;

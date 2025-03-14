@@ -335,6 +335,28 @@ impl Arbitrary for CellValNum {
     }
 }
 
+pub mod schema {
+    /// A key used to look up an enumeration from a [Schema].
+    pub enum EnumerationKey<'a> {
+        /// Identifies an enumeration by its name.
+        EnumerationName(&'a str),
+        /// Identifies an enumeration by the name of an attribute which refers to it.
+        AttributeName(&'a str),
+    }
+
+    impl<'a> EnumerationKey<'a> {
+        /// Returns [Self::EnumerationName] for any argument which can be used as a [str].
+        pub fn by_name(s: &'a impl AsRef<str>) -> Self {
+            Self::EnumerationName(s.as_ref())
+        }
+
+        /// Returns [Self::AttributeName] for any argument which can be used as a [str].
+        pub fn by_attribute_name(s: &'a impl AsRef<str>) -> Self {
+            Self::AttributeName(s.as_ref())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

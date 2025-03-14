@@ -26,6 +26,7 @@ tiledb-sys = { workspace = true }
 cells = { workspace = true, features = ["proptest-strategies"] }
 num-traits = { workspace = true }
 proptest = { workspace = true }
+strategy-ext = { workspace = true }
 tiledb-common = { workspace = true, features = ["option-subset"] }
 tiledb-pod = { workspace = true, features = ["proptest-strategies", "option-subset", "serde"] }
 tiledb-utils = { workspace = true }

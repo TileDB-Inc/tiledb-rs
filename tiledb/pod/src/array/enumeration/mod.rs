@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::Datatype;
+use tiledb_common::physical_type_go;
+use tiledb_common::query::condition::SetMembers;
 
 /// Encapsulation of data needed to construct an Enumeration
 #[derive(Clone, Debug, PartialEq)]
@@ -62,6 +64,44 @@ impl EnumerationData {
                 .chunks(fixed)
                 .map(|s| s.to_vec())
                 .collect::<Vec<Vec<u8>>>()
+        }
+    }
+
+    /// Returns the variants of this enumeration expressed as `SetMembers` for a query condition.
+    pub fn query_condition_set_members(&self) -> Option<SetMembers> {
+        let records = self.records();
+        if matches!(self.datatype, Datatype::StringAscii | Datatype::StringUtf8)
+            && !matches!(self.cell_val_num, Some(CellValNum::Fixed(_)))
+        {
+            Some(
+                records
+                    .into_iter()
+                    .map(|v| String::from_utf8_lossy(v.as_slice()).into_owned())
+                    .collect::<Vec<String>>()
+                    .into(),
+            )
+        } else if self
+            .cell_val_num
+            .map(|c| c.is_single_valued())
+            .unwrap_or(true)
+        {
+            physical_type_go!(self.datatype, DT, {
+                const WIDTH: usize = std::mem::size_of::<DT>();
+                type ByteArray = [u8; WIDTH];
+                Some(SetMembers::from(
+                    records
+                        .into_iter()
+                        .map(|v| {
+                            assert_eq!(WIDTH, v.len());
+                            DT::from_le_bytes(
+                                ByteArray::try_from(v.as_slice()).unwrap(),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                ))
+            })
+        } else {
+            None
         }
     }
 }

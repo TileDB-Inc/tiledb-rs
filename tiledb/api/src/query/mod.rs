@@ -17,6 +17,7 @@ pub use self::read::{
 pub use self::subarray::{Builder as SubarrayBuilder, Subarray};
 pub use self::write::{WriteBuilder, WriteQuery};
 
+use self::condition::QueryConditionBuilder;
 use self::subarray::RawSubarray;
 
 pub type QueryType = crate::array::Mode;

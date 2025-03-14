@@ -30,7 +30,7 @@ use crate::filter::strategy::{
 pub struct Requirements {
     pub domain: Option<Rc<DomainRequirements>>,
     pub num_attributes: std::ops::RangeInclusive<usize>,
-    pub attribute_filters: Option<Rc<FilterRequirements>>,
+    pub attributes: Option<AttributeRequirements>,
     pub coordinates_filters: Option<Rc<FilterRequirements>>,
     pub offsets_filters: Option<Rc<FilterRequirements>>,
     pub validity_filters: Option<Rc<FilterRequirements>>,
@@ -66,7 +66,7 @@ impl Default for Requirements {
             domain: None,
             num_attributes: Self::min_attributes_default()
                 ..=Self::max_attributes_default(),
-            attribute_filters: None,
+            attributes: None,
             coordinates_filters: None,
             offsets_filters: None,
             validity_filters: None,
@@ -115,8 +115,7 @@ fn prop_schema_for_domain(
 
     let attr_requirements = AttributeRequirements {
         context: Some(AttributeContext::Schema(array_type, Rc::clone(&domain))),
-        filters: params.attribute_filters.clone(),
-        ..Default::default()
+        ..params.attributes.clone().unwrap_or_default()
     };
 
     let offsets_filters_requirements = params

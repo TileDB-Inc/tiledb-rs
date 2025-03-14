@@ -294,7 +294,26 @@ impl PhysicalType for f64 {}
 
 /// Adapts a generic type to use as a key in `std` collections via
 /// the `BitsEq`, `BitsOrd`, or `BitsHash` traits.
+#[derive(Clone, Copy)]
 pub struct BitsKeyAdapter<T>(pub T);
+
+impl<T> Debug for BitsKeyAdapter<T>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        self.0.fmt(f)
+    }
+}
+
+impl<T> Display for BitsKeyAdapter<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut Formatter) -> FmtResult {
+        self.0.fmt(f)
+    }
+}
 
 impl<T> PartialEq for BitsKeyAdapter<T>
 where
@@ -306,6 +325,15 @@ where
 }
 
 impl<T> Eq for BitsKeyAdapter<T> where T: BitsEq {}
+
+impl<T> PartialEq<BitsKeyAdapter<&T>> for BitsKeyAdapter<T>
+where
+    T: BitsEq,
+{
+    fn eq(&self, other: &BitsKeyAdapter<&T>) -> bool {
+        self.0.bits_eq(other.0)
+    }
+}
 
 impl<T> Hash for BitsKeyAdapter<T>
 where
@@ -334,6 +362,15 @@ where
 {
     fn cmp(&self, other: &Self) -> Ordering {
         self.0.bits_cmp(&other.0)
+    }
+}
+
+impl<T> PartialOrd<BitsKeyAdapter<&T>> for BitsKeyAdapter<T>
+where
+    T: BitsEq + BitsOrd,
+{
+    fn partial_cmp(&self, other: &BitsKeyAdapter<&T>) -> Option<Ordering> {
+        Some(self.0.bits_cmp(other.0))
     }
 }
 

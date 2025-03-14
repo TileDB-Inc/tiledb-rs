@@ -76,7 +76,7 @@ pub enum StrategyContext {
 #[derive(Clone, Default)]
 pub struct Requirements {
     pub name: Option<String>,
-    pub datatype: Option<Datatype>,
+    pub datatype: Option<BoxedStrategy<(Datatype, CellValNum)>>,
     pub nullability: Option<bool>,
     pub context: Option<StrategyContext>,
     pub filters: Option<Rc<FilterRequirements>>,
@@ -143,6 +143,7 @@ fn prop_filters(
 /// that satisfies the other user requirements
 fn prop_attribute_for_datatype(
     datatype: Datatype,
+    cell_val_num: CellValNum,
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = AttributeData> {
     physical_type_go!(
@@ -159,15 +160,10 @@ fn prop_attribute_for_datatype(
                 .as_ref()
                 .map(|n| Just(*n).boxed())
                 .unwrap_or(any::<bool>().boxed());
-            let cell_val_num = if datatype == Datatype::Any {
-                Just(CellValNum::Var).boxed()
-            } else {
-                any::<CellValNum>()
-            };
             let fill_nullable = any::<bool>();
 
-            (name, nullable, cell_val_num, fill_nullable).prop_flat_map(
-                move |(name, nullable, cell_val_num, fill_nullable)| {
+            (name, nullable, fill_nullable).prop_flat_map(
+                move |(name, nullable, fill_nullable)| {
                     (
                         prop_fill::<DT>(cell_val_num),
                         prop_filters(
@@ -202,14 +198,25 @@ fn prop_attribute_for_datatype(
 pub fn prop_attribute(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = AttributeData> {
-    let datatype = requirements
-        .datatype
-        .map(|d| Just(d).boxed())
-        .unwrap_or(any::<Datatype>());
+    let datatype = requirements.datatype.clone().unwrap_or(
+        any::<Datatype>()
+            .prop_flat_map(|dt| {
+                if dt == Datatype::Any {
+                    (Just(dt), Just(CellValNum::Var)).boxed()
+                } else {
+                    (Just(dt), any::<CellValNum>()).boxed()
+                }
+            })
+            .boxed(),
+    );
 
     datatype
-        .prop_flat_map(move |datatype| {
-            prop_attribute_for_datatype(datatype, requirements.clone())
+        .prop_flat_map(move |(datatype, cell_val_num)| {
+            prop_attribute_for_datatype(
+                datatype,
+                cell_val_num,
+                requirements.clone(),
+            )
         })
         .value_tree_map(|vt| AttributeValueTree::new(vt.current()))
         .boxed()

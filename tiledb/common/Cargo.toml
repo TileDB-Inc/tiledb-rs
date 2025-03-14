@@ -12,6 +12,7 @@ paste = { workspace = true }
 proptest = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+strategy-ext = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tiledb-proc-macro = { workspace = true, optional = true }
 tiledb-sys-defs = { workspace = true }
@@ -19,10 +20,11 @@ tiledb-utils = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest = { workspace = true }
+strategy-ext = { workspace = true }
 
 [features]
 default = []
 arrow = ["dep:arrow-schema"]
 option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils"]
-proptest-strategies = ["dep:proptest"]
+proptest-strategies = ["dep:proptest", "dep:strategy-ext"]
 serde = ["dep:serde", "dep:serde_json"]
