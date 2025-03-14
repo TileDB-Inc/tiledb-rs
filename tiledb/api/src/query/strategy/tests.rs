@@ -523,49 +523,6 @@ fn instance_query_condition(
     Ok(())
 }
 
-fn strat_query_condition_value_datatype(
-) -> impl Strategy<Value = (Datatype, CellValNum)> {
-    let valid = vec![
-        (Datatype::Char, CellValNum::Var),
-        (Datatype::StringAscii, CellValNum::Var),
-        (Datatype::StringUtf8, CellValNum::Var),
-        (Datatype::UInt8, CellValNum::single()),
-        (Datatype::UInt16, CellValNum::single()),
-        (Datatype::UInt32, CellValNum::single()),
-        (Datatype::UInt64, CellValNum::single()),
-        (Datatype::Int8, CellValNum::single()),
-        (Datatype::Int16, CellValNum::single()),
-        (Datatype::Int32, CellValNum::single()),
-        (Datatype::Int64, CellValNum::single()),
-        (Datatype::Float32, CellValNum::single()),
-        (Datatype::Float64, CellValNum::single()),
-        (Datatype::UInt8, CellValNum::single()),
-        (Datatype::DateTimeYear, CellValNum::single()),
-        (Datatype::DateTimeMonth, CellValNum::single()),
-        (Datatype::DateTimeWeek, CellValNum::single()),
-        (Datatype::DateTimeDay, CellValNum::single()),
-        (Datatype::DateTimeHour, CellValNum::single()),
-        (Datatype::DateTimeMinute, CellValNum::single()),
-        (Datatype::DateTimeSecond, CellValNum::single()),
-        (Datatype::DateTimeMillisecond, CellValNum::single()),
-        (Datatype::DateTimeMicrosecond, CellValNum::single()),
-        (Datatype::DateTimeNanosecond, CellValNum::single()),
-        (Datatype::DateTimePicosecond, CellValNum::single()),
-        (Datatype::DateTimeFemtosecond, CellValNum::single()),
-        (Datatype::DateTimeAttosecond, CellValNum::single()),
-        (Datatype::TimeHour, CellValNum::single()),
-        (Datatype::TimeMinute, CellValNum::single()),
-        (Datatype::TimeSecond, CellValNum::single()),
-        (Datatype::TimeMillisecond, CellValNum::single()),
-        (Datatype::TimeMicrosecond, CellValNum::single()),
-        (Datatype::TimeNanosecond, CellValNum::single()),
-        (Datatype::TimePicosecond, CellValNum::single()),
-        (Datatype::TimeFemtosecond, CellValNum::single()),
-        (Datatype::TimeAttosecond, CellValNum::single()),
-    ];
-    proptest::strategy::Union::new(valid.into_iter().map(Just)).boxed()
-}
-
 struct SchemaWithDomain {
     fields: Vec<FieldWithDomain>,
 }
@@ -674,10 +631,28 @@ impl QueryConditionField for FieldWithDomain {
             }
         }
 
+        // see query_ast.cc
         if matches!(
-            self.domain,
-            Some(Range::Single(_) | Range::Var(VarValueRange::UInt8(_, _)))
+            self.field.datatype(),
+            Datatype::Any
+                | Datatype::StringUtf16
+                | Datatype::StringUtf32
+                | Datatype::StringUcs2
+                | Datatype::StringUcs4
+                | Datatype::Blob
+                | Datatype::GeometryWkb
+                | Datatype::GeometryWkt
         ) {
+            None
+        } else if matches!(self.domain, Some(Range::Single(_)))
+            || (matches!(
+                self.field.datatype(),
+                Datatype::StringAscii | Datatype::StringUtf8
+            ) && matches!(
+                self.field.cell_val_num(),
+                None | Some(CellValNum::Var)
+            ))
+        {
             self.domain.clone()
         } else {
             None
@@ -705,11 +680,7 @@ fn strat_query_condition() -> impl Strategy<
         Vec<QueryConditionExpr>,
     ),
 > {
-    let mut schema_req =
-        query_write_schema_requirements(Some(ArrayType::Sparse));
-    schema_req.attributes.as_mut().unwrap().datatype =
-        Some(strat_query_condition_value_datatype().boxed());
-
+    let schema_req = query_write_schema_requirements(Some(ArrayType::Sparse));
     any_with::<SchemaData>(Rc::new(schema_req))
         .prop_flat_map(|schema| {
             let schema = Rc::new(schema);
