@@ -426,7 +426,7 @@ impl Arbitrary for QueryConditionExpr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum CombinationOpState {
     /// No values have been produced yet. Try the full combination op.
     New,
@@ -442,7 +442,20 @@ enum CombinationOpState {
     Combine,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+enum NegationState {
+    /// No values have been produced yet. Try the full negation op.
+    New,
+    /// The initial negation op failed. Try the equivalent predicate with
+    /// `QueryConditionExpr::negate`.
+    TryFnNegation,
+    /// The outer `QueryConditionExpr::Negate` is required.
+    RequiresNegateWrapping,
+    /// The equivalent predicate fails as well, the negation is unnecessary.
+    JustFnNegation,
+}
+
+#[derive(Clone, Debug)]
 enum QueryConditionValueTreeImpl {
     Cond(PredicateValueTree),
     Comb {
@@ -451,10 +464,13 @@ enum QueryConditionValueTreeImpl {
         op: CombinationOp,
         opstate: CombinationOpState,
     },
-    Negate(Box<QueryConditionValueTree>),
+    Negate {
+        arg: Box<QueryConditionValueTree>,
+        opstate: NegationState,
+    },
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct QueryConditionValueTree(QueryConditionValueTreeImpl);
 
 impl QueryConditionValueTree {
@@ -470,9 +486,10 @@ impl QueryConditionValueTree {
                 op,
                 opstate: CombinationOpState::New,
             }),
-            QueryConditionExpr::Negate(predicate) => Self(Impl::Negate(
-                Box::new(Self::new(QueryConditionExpr::clone(&predicate))),
-            )),
+            QueryConditionExpr::Negate(predicate) => Self(Impl::Negate {
+                arg: Box::new(Self::new(QueryConditionExpr::clone(&predicate))),
+                opstate: NegationState::New,
+            }),
         }
     }
 }
@@ -503,9 +520,16 @@ impl ValueTree for QueryConditionValueTree {
                 CombinationOpState::TryRight
                 | CombinationOpState::JustRight => rhs.current(),
             },
-            Impl::Negate(ref p) => {
-                QueryConditionExpr::Negate(Box::new(p.current()))
-            }
+            Impl::Negate {
+                ref arg,
+                ref opstate,
+            } => match opstate {
+                NegationState::New | NegationState::RequiresNegateWrapping => {
+                    QueryConditionExpr::Negate(Box::new(arg.current()))
+                }
+                NegationState::TryFnNegation
+                | NegationState::JustFnNegation => arg.current().negate(),
+            },
         }
     }
 
@@ -535,10 +559,21 @@ impl ValueTree for QueryConditionValueTree {
                 CombinationOpState::JustRight => rhs.simplify(),
                 CombinationOpState::Combine => lhs.simplify() || rhs.simplify(),
             },
-            Impl::Negate(ref mut p) => {
-                // FIXME: consider removing negation
-                p.simplify()
-            }
+            Impl::Negate {
+                ref mut arg,
+                ref mut opstate,
+            } => match opstate {
+                NegationState::New => {
+                    *opstate = NegationState::TryFnNegation;
+                    true
+                }
+                NegationState::TryFnNegation => {
+                    *opstate = NegationState::JustFnNegation;
+                    arg.simplify()
+                }
+                NegationState::RequiresNegateWrapping => arg.simplify(),
+                NegationState::JustFnNegation => arg.simplify(),
+            },
         }
     }
 
@@ -562,8 +597,12 @@ impl ValueTree for QueryConditionValueTree {
                     CombinationOpState::TryRight => {
                         // passed with left unused, and passed with right unused
                         *opstate = CombinationOpState::Combine;
-                        // we already tried the initial input so simplify one of the sides
-                        lhs.simplify() || rhs.simplify()
+
+                        // "repeated calls to complicate() will return false only once the 'current'
+                        // value has returned to what it was before the last call to simplify()"
+                        // just return `true`, which will try the initial input again, but that's
+                        // better than breaking the invariant
+                        true
                     }
                     CombinationOpState::JustLeft => lhs.complicate(),
                     CombinationOpState::JustRight => rhs.complicate(),
@@ -572,12 +611,27 @@ impl ValueTree for QueryConditionValueTree {
                     }
                 }
             }
-            Impl::Negate(ref mut p) => p.complicate(),
+            Impl::Negate {
+                ref mut arg,
+                ref mut opstate,
+            } => match opstate {
+                NegationState::New => false,
+                NegationState::TryFnNegation => {
+                    *opstate = NegationState::RequiresNegateWrapping;
+                    // "repeated calls to complicate() will return false only once the 'current'
+                    // value has returned to what it was before the last call to simplify()"
+                    // just return `true`, which will try the initial input again, but that's
+                    // better than breaking the invariant
+                    true
+                }
+                NegationState::RequiresNegateWrapping => arg.complicate(),
+                NegationState::JustFnNegation => arg.complicate(),
+            },
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum PredicateValueTree {
     Equality(EqualityPredicateValueTree),
     SetMembership(SetMembershipValueTree),
@@ -626,7 +680,7 @@ impl ValueTree for PredicateValueTree {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct EqualityPredicateValueTree {
     // FIXME: something which can shrink
     // definitely want to shrink the number, and maybe the op
@@ -655,7 +709,7 @@ impl ValueTree for EqualityPredicateValueTree {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct SetMembershipValueTree {
     // FIXME: something which can shrink
     // definitely we want to reduce the members of the set
@@ -752,8 +806,16 @@ mod tests {
         assert!(vt.complicate());
         assert_eq!(rhs, vt.current());
 
-        // now it begins to shrink the left side
+        // to preserve the invariant we have to shrink back to the initial input
         assert!(vt.complicate());
+        assert_eq!(qc, vt.current());
+
+        let mut vt_complicate = vt.clone();
+        assert!(!vt_complicate.complicate());
+        assert_eq!(qc, vt_complicate.current());
+
+        // now it begins to shrink the left side
+        assert!(vt.simplify());
         assert_eq!(lhs_lhs.clone() & rhs.clone(), vt.current());
 
         // now shrinking can apply to either side
@@ -762,24 +824,40 @@ mod tests {
     }
 
     #[test]
-    fn shrink_combine_or() {
-        let lhs =
-            QueryConditionExpr::field("NVjjN97iS_6T0y7XATzd3kCH4").eq("_\"��");
-        let rhs = !QueryConditionExpr::field("G").ge(30281i16);
-
-        let qc = lhs.clone() | rhs.clone();
+    fn shrink_negation_fn_negation() {
+        let arg = QueryConditionExpr::field("foobar").lt(100);
+        let qc = !arg.clone();
 
         let mut vt = QueryConditionValueTree::new(qc.clone());
         assert_eq!(qc, vt.current());
 
         assert!(vt.simplify());
-        assert_eq!(lhs, vt.current());
-
-        // if the LHS does not fail then try just the RHS
-        assert!(vt.complicate());
-        assert_eq!(rhs, vt.current());
+        assert_eq!(arg.negate(), vt.current());
 
         assert!(!vt.simplify());
-        assert_eq!(rhs, vt.current());
+        assert_eq!(arg.negate(), vt.current());
+    }
+
+    #[test]
+    fn shrink_negation_not_is_required() {
+        let arg = QueryConditionExpr::field("foobar").lt(100);
+        let qc = !arg.clone();
+
+        let mut vt = QueryConditionValueTree::new(qc.clone());
+        assert_eq!(qc, vt.current());
+
+        assert!(vt.simplify());
+        assert_eq!(arg.negate(), vt.current());
+
+        assert!(vt.complicate());
+        assert_eq!(qc, vt.current());
+
+        let mut vt_2 = vt.clone();
+
+        assert!(!vt.simplify());
+        assert_eq!(qc, vt.current());
+
+        assert!(!vt_2.simplify());
+        assert_eq!(qc, vt_2.current());
     }
 }
