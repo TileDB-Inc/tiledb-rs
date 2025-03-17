@@ -1,3 +1,4 @@
+pub mod lexicographic;
 pub mod meta;
 pub mod records;
 pub mod sequence;

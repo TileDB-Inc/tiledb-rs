@@ -6,18 +6,54 @@ pub mod strategy;
 
 use std::cmp::Ordering;
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::ops::Range;
 
 use proptest::bits::{BitSetLike, VarBitSet};
-
-use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
+use tiledb_common::datatype::physical::{BitsEq, BitsKeyAdapter, BitsOrd};
+use tiledb_common::query::condition::*;
 
 pub use self::field::FieldData;
 
+/// Applies an action to the typed data within a query condition enum instance and a [FieldData] instance.
+macro_rules! qc_thing_zip {
+    ($qcenum:ident, $qcthing:expr, $qcbind:pat, $fieldthing:expr, $fieldbind:pat, $action:expr, $actionstr:expr) => {{
+        match ($qcthing, $fieldthing) {
+            ($qcenum::UInt8($qcbind), FieldData::UInt8($fieldbind)) => $action,
+            ($qcenum::UInt16($qcbind), FieldData::UInt16($fieldbind)) => {
+                $action
+            }
+            ($qcenum::UInt32($qcbind), FieldData::UInt32($fieldbind)) => {
+                $action
+            }
+            ($qcenum::UInt64($qcbind), FieldData::UInt64($fieldbind)) => {
+                $action
+            }
+            ($qcenum::Int8($qcbind), FieldData::Int8($fieldbind)) => $action,
+            ($qcenum::Int16($qcbind), FieldData::Int16($fieldbind)) => $action,
+            ($qcenum::Int32($qcbind), FieldData::Int32($fieldbind)) => $action,
+            ($qcenum::Int64($qcbind), FieldData::Int64($fieldbind)) => $action,
+            ($qcenum::Float32($qcbind), FieldData::Float32($fieldbind)) => {
+                $action
+            }
+            ($qcenum::Float64($qcbind), FieldData::Float64($fieldbind)) => {
+                $action
+            }
+            ($qcenum::String($qcbind), FieldData::VecUInt8($fieldbind)) => {
+                $actionstr
+            }
+            _ => unreachable!(
+                "Type mismatch: {:?} vs. {:?}",
+                $qcthing, $fieldthing
+            ),
+        }
+    }};
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Cells {
+    enumeration_values: HashMap<String, FieldData>,
     fields: HashMap<String, FieldData>,
 }
 
@@ -35,7 +71,20 @@ impl Cells {
             }
         }
 
-        Cells { fields }
+        Cells {
+            enumeration_values: Default::default(),
+            fields,
+        }
+    }
+
+    pub fn with_enumerations(
+        self,
+        enumeration_values: HashMap<String, FieldData>,
+    ) -> Self {
+        Cells {
+            enumeration_values,
+            ..self
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -48,6 +97,64 @@ impl Cells {
 
     pub fn fields(&self) -> &HashMap<String, FieldData> {
         &self.fields
+    }
+
+    /// Joins `self.fields().get(name)` together with the enumeration for `name`,
+    /// returning a column containing the indexed enumeration variants and a bit set indicating
+    /// validity.
+    ///
+    /// The returned bit set is set at index `i` if the key was a valid index into the enumeration.
+    pub fn field_resolve_enumeration(
+        &self,
+        name: &str,
+    ) -> Option<(FieldData, VarBitSet)> {
+        self.enumeration_values.get(name).map(|e| {
+            let idx = typed_field_data_go!(
+                self.fields.get(name).unwrap(),
+                _DT,
+                ref _keys,
+                _keys.iter().map(|k| *k as usize).collect::<Vec<_>>(),
+                unreachable!(),
+                unreachable!(),
+                unreachable!()
+            );
+
+            typed_field_data_go!(
+                e,
+                ref variants,
+                #[allow(clippy::clone_on_copy)]
+                {
+                    let data = FieldData::from(
+                        idx.iter()
+                            .map(|i| {
+                                variants
+                                    .get(*i)
+                                    .cloned()
+                                    .unwrap_or_default()
+                                    .clone()
+                            })
+                            .collect::<Vec<_>>(),
+                    );
+                    let valid = {
+                        let mut valid = VarBitSet::saturated(idx.len());
+                        idx.iter()
+                            .enumerate()
+                            .filter(|(_, i)| variants.get(**i).is_none())
+                            .for_each(|(row, _)| valid.clear(row));
+                        valid
+                    };
+                    (data, valid)
+                }
+            )
+        })
+    }
+
+    /// Returns the domain (if any) of each field.
+    pub fn domain(&self) -> Vec<(String, Option<tiledb_common::range::Range>)> {
+        self.fields
+            .iter()
+            .map(|(k, v)| (k.to_owned(), v.domain()))
+            .collect::<Vec<_>>()
     }
 
     /// Copies data from the argument.
@@ -263,6 +370,267 @@ impl Cells {
                 .map(|(k, v)| (k.clone(), v.filter(set)))
                 .collect::<HashMap<String, FieldData>>(),
         )
+    }
+
+    /// Returns a bitmap indicating for each record indicating whether that record passes
+    /// `query_condition`.
+    fn query_condition_bitmap(
+        &self,
+        query_condition: &QueryConditionExpr,
+    ) -> VarBitSet {
+        fn collect_bitmap(
+            num_records: usize,
+            idx: impl Iterator<Item = usize>,
+        ) -> VarBitSet {
+            let b = VarBitSet::new_bitset(num_records);
+            collect_into_bitmap(b, idx)
+        }
+
+        fn collect_into_bitmap(
+            mut b: VarBitSet,
+            idx: impl Iterator<Item = usize>,
+        ) -> VarBitSet {
+            for i in idx {
+                b.set(i);
+            }
+            b
+        }
+
+        match query_condition {
+            QueryConditionExpr::Cond(predicate) => {
+                match predicate {
+                    Predicate::Equality(eq) => {
+                        fn compare<T>(
+                            cell: T,
+                            op: EqualityOp,
+                            literal: T,
+                        ) -> bool
+                        where
+                            T: PartialOrd,
+                        {
+                            match op {
+                                EqualityOp::Less => cell < literal,
+                                EqualityOp::LessEqual => cell <= literal,
+                                EqualityOp::Equal => cell == literal,
+                                EqualityOp::GreaterEqual => cell >= literal,
+                                EqualityOp::Greater => cell > literal,
+                                EqualityOp::NotEqual => cell != literal,
+                            }
+                        }
+
+                        let fdata = self.fields.get(eq.field()).unwrap();
+
+                        // if there is an enumeration then the operation
+                        // is applied on the index
+                        let cmpvalue = if let Some(variants) =
+                            self.enumeration_values.get(eq.field())
+                        {
+                            let maybe_index = qc_thing_zip!(
+                                Literal,
+                                eq.value(),
+                                ref value,
+                                variants,
+                                ref variants,
+                                {
+                                    variants
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, variant)| {
+                                            *variant == value
+                                        })
+                                        .take(1)
+                                        .map(|(i, _)| i)
+                                        .next()
+                                },
+                                {
+                                    variants
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, variant)| {
+                                            variant.as_slice()
+                                                == value.as_bytes()
+                                        })
+                                        .take(1)
+                                        .map(|(i, _)| i)
+                                        .next()
+                                }
+                            );
+                            if maybe_index.is_none() {
+                                return match eq.operation() {
+                                    EqualityOp::NotEqual => {
+                                        VarBitSet::saturated(self.len())
+                                    }
+                                    _ => VarBitSet::new_bitset(self.len()),
+                                };
+                            }
+                            typed_field_data_go!(
+                                fdata,
+                                _DT,
+                                _,
+                                Literal::from(maybe_index.unwrap() as _DT),
+                                unreachable!(),
+                                unreachable!(),
+                                unreachable!()
+                            )
+                        } else {
+                            eq.value().clone()
+                        };
+
+                        qc_thing_zip!(
+                            Literal,
+                            &cmpvalue,
+                            ref literal,
+                            fdata,
+                            ref cells,
+                            {
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            compare(*c, eq.operation(), literal)
+                                        })
+                                        .map(|(i, _)| i),
+                                )
+                            },
+                            {
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            compare(
+                                                c.as_slice(),
+                                                eq.operation(),
+                                                literal.as_bytes(),
+                                            )
+                                        })
+                                        .map(|(i, _)| i),
+                                )
+                            }
+                        )
+                    }
+                    Predicate::SetMembership(set) => {
+                        let fdata = self.field_resolve_enumeration(set.field());
+                        let (fdata, validity) =
+                            if let Some((ref fdata, validity)) = fdata {
+                                (fdata, validity)
+                            } else {
+                                (
+                                    self.fields.get(set.field()).unwrap(),
+                                    VarBitSet::saturated(self.len()),
+                                )
+                            };
+                        let pred = qc_thing_zip!(
+                            SetMembers,
+                            set.members(),
+                            ref members,
+                            fdata,
+                            ref cells,
+                            {
+                                let members =
+                                    HashSet::<BitsKeyAdapter<_>>::from_iter(
+                                        members
+                                            .iter()
+                                            .map(|m| BitsKeyAdapter(*m)),
+                                    );
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            match set.operation() {
+                                                SetMembershipOp::In => members
+                                                    .contains(&BitsKeyAdapter(
+                                                        **c,
+                                                    )),
+                                                SetMembershipOp::NotIn => {
+                                                    !members.contains(
+                                                        &BitsKeyAdapter(**c),
+                                                    )
+                                                }
+                                            }
+                                        })
+                                        .map(|(i, _)| i),
+                                )
+                            },
+                            {
+                                let members = HashSet::<Vec<u8>>::from_iter(
+                                    members
+                                        .iter()
+                                        .map(|s| s.as_bytes().to_vec()),
+                                );
+                                collect_bitmap(
+                                    self.len(),
+                                    cells
+                                        .iter()
+                                        .enumerate()
+                                        .filter(|(_, c)| {
+                                            match set.operation() {
+                                                SetMembershipOp::In => members
+                                                    .contains(c.as_slice()),
+                                                SetMembershipOp::NotIn => {
+                                                    !members
+                                                        .contains(c.as_slice())
+                                                }
+                                            }
+                                        })
+                                        .map(|(i, _)| i),
+                                )
+                            }
+                        );
+                        match set.operation() {
+                            SetMembershipOp::In => intersect(validity, pred),
+                            SetMembershipOp::NotIn => {
+                                union(negate(validity), pred)
+                            }
+                        }
+                    }
+                    Predicate::Nullness(n) => {
+                        match n.operation() {
+                            NullnessOp::IsNull => {
+                                // right now there are no nulls, so these are all false
+                                VarBitSet::new_bitset(self.len())
+                            }
+                            NullnessOp::NotNull => {
+                                // right now there are no nulls, so these are all true
+                                VarBitSet::saturated(self.len())
+                            }
+                        }
+                    }
+                }
+            }
+            QueryConditionExpr::Comb { lhs, rhs, op } => {
+                let lhs_passing = self.query_condition_bitmap(lhs);
+                let rhs_passing = self.query_condition_bitmap(rhs);
+                assert_eq!(lhs_passing.len(), rhs_passing.len());
+
+                match op {
+                    CombinationOp::And => intersect(lhs_passing, rhs_passing),
+                    CombinationOp::Or => union(lhs_passing, rhs_passing),
+                }
+            }
+            QueryConditionExpr::Negate(predicate) => {
+                // core does not embed Negate in its expression trees,
+                // instead it builds an expression tree of the negated expression,
+                // so we shall evaluate the negated expression here to match
+                // (Is this *correct* to do? In a binary logic system... probably.
+                // In a ternary logic system... perhaps not)
+                let negated_pred = predicate.negate();
+                self.query_condition_bitmap(&negated_pred)
+            }
+        }
+    }
+
+    /// Returns a subset of the records which pass the provided query condition.
+    pub fn query_condition(
+        &self,
+        query_condition: &QueryConditionExpr,
+    ) -> Cells {
+        self.filter(&self.query_condition_bitmap(query_condition))
     }
 
     /// Returns a subset of `self` containing only cells which have distinct values in `keys`
@@ -504,17 +872,119 @@ impl<'b> PartialEq<CellsView<'b>> for CellsView<'_> {
     }
 }
 
+fn intersect(mut b1: VarBitSet, b2: VarBitSet) -> VarBitSet {
+    for bi in 0..b1.len() {
+        if b1.test(bi) && b2.test(bi) {
+            b1.set(bi);
+        } else {
+            b1.clear(bi);
+        }
+    }
+    b1
+}
+
+fn union(mut b1: VarBitSet, b2: VarBitSet) -> VarBitSet {
+    for bi in 0..b1.len() {
+        if b1.test(bi) || b2.test(bi) {
+            b1.set(bi);
+        }
+    }
+    b1
+}
+
+fn negate(mut b1: VarBitSet) -> VarBitSet {
+    for bi in 0..b1.len() {
+        if b1.test(bi) {
+            b1.clear(bi)
+        } else {
+            b1.set(bi)
+        }
+    }
+    b1
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
     use std::rc::Rc;
 
     use proptest::prelude::*;
-    use tiledb_common::datatype::physical::BitsKeyAdapter;
+    use tiledb_common::array::CellValNum;
+    use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
+    use tiledb_common::query::condition::strategy::{
+        QueryConditionField, QueryConditionSchema,
+    };
+    use tiledb_common::query::condition::{EqualityOp, SetMembers};
+    use tiledb_common::Datatype;
     use tiledb_pod::array::schema::SchemaData;
 
     use super::*;
     use crate::strategy::{CellsParameters, CellsStrategySchema};
+
+    struct CellsAsQueryConditionSchema {
+        fields: Vec<CellsQueryConditionField>,
+    }
+
+    struct CellsQueryConditionField {
+        cells: Rc<Cells>,
+        name: String,
+    }
+
+    impl CellsAsQueryConditionSchema {
+        pub fn new(cells: Rc<Cells>) -> CellsAsQueryConditionSchema {
+            Self {
+                fields: cells
+                    .fields
+                    .keys()
+                    .map(|name| CellsQueryConditionField {
+                        cells: Rc::clone(&cells),
+                        name: name.to_owned(),
+                    })
+                    .collect(),
+            }
+        }
+    }
+
+    impl QueryConditionSchema for CellsAsQueryConditionSchema {
+        /// Returns a list of fields which can have query conditions applied to them.
+        fn fields(&self) -> Vec<&dyn QueryConditionField> {
+            self.fields
+                .iter()
+                .map(|f| f as &dyn QueryConditionField)
+                .collect::<Vec<&dyn QueryConditionField>>()
+        }
+    }
+
+    impl QueryConditionField for CellsQueryConditionField {
+        fn name(&self) -> &str {
+            &self.name
+        }
+
+        fn equality_ops(&self) -> Option<Vec<EqualityOp>> {
+            // all ops are supported
+            None
+        }
+
+        fn domain(&self) -> Option<tiledb_common::range::Range> {
+            self.cells.fields.get(&self.name).unwrap().domain()
+        }
+
+        fn set_members(&self) -> Option<SetMembers> {
+            self.cells.enumeration_values.get(&self.name).and_then(|e| {
+                typed_field_data_go!(
+                    e,
+                    _DT,
+                    ref _members,
+                    Some(SetMembers::from(_members.clone())),
+                    {
+                        // NB: this is Var, we could do String but it's just to test the test code
+                        // so we will skip
+                        None
+                    }
+                )
+            })
+        }
+    }
 
     fn do_cells_extend(dst: Cells, src: Cells) {
         let orig_dst = dst.clone();
@@ -865,6 +1335,298 @@ mod tests {
         assert_eq!(keys.len(), proj.fields().len());
     }
 
+    macro_rules! qc_equality_op_body {
+        ($fname:ident, $op:ident, $cmp:tt) => {
+            fn $fname (
+                cells: Cells,
+                field: String,
+                pivot: usize,
+            ) {
+                let fdata = cells.fields().get(&field).unwrap();
+                let qc = {
+                    let f = QueryConditionExpr::field(field);
+                    match fdata {
+                        FieldData::UInt8(ref cells) => f.$op(cells[pivot]),
+                        FieldData::UInt16(ref cells) => f.$op(cells[pivot]),
+                        FieldData::UInt32(ref cells) => f.$op(cells[pivot]),
+                        FieldData::UInt64(ref cells) => f.$op(cells[pivot]),
+                        FieldData::Int8(ref cells) => f.$op(cells[pivot]),
+                        FieldData::Int16(ref cells) => f.$op(cells[pivot]),
+                        FieldData::Int32(ref cells) => f.$op(cells[pivot]),
+                        FieldData::Int64(ref cells) => f.$op(cells[pivot]),
+                        FieldData::Float32(ref cells) => f.$op(cells[pivot]),
+                        FieldData::Float64(ref cells) => f.$op(cells[pivot]),
+                        FieldData::VecUInt8(ref cells) => f
+                            .$op(String::from_utf8(cells[pivot].to_vec())
+                                .unwrap()),
+                        _ => unreachable!(
+                            "Invalid field for query condition: {:?}",
+                            fdata
+                        ),
+                    }
+                };
+
+                let expect =
+                    cells.filter(&typed_field_data_go!(fdata, ref cells, {
+                        cells
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, c)| *c $cmp &cells[pivot])
+                            .map(|(i, _)| i)
+                            .collect::<VarBitSet>()
+                    }));
+                let cells_out = cells.query_condition(&qc);
+                assert_eq!(expect, cells_out);
+            }
+        };
+    }
+
+    qc_equality_op_body!(do_query_condition_lt, lt, <);
+    qc_equality_op_body!(do_query_condition_le, le, <=);
+    qc_equality_op_body!(do_query_condition_eq, eq, ==);
+    qc_equality_op_body!(do_query_condition_ge, ge, >=);
+    qc_equality_op_body!(do_query_condition_gt, gt, >);
+    qc_equality_op_body!(do_query_condition_ne, ne, !=);
+
+    fn do_query_condition_set_membership_in(
+        cells: Cells,
+        field: String,
+        member_idx: Vec<usize>,
+    ) {
+        let fdata = cells.fields().get(&field).unwrap();
+        let qc = {
+            let f = QueryConditionExpr::field(field);
+            match fdata {
+                FieldData::UInt8(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::UInt16(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::UInt32(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::UInt64(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int8(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int16(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int32(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int64(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Float32(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Float64(ref cells) => f.is_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::VecUInt8(ref cells) => f.is_in(
+                    member_idx
+                        .iter()
+                        .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
+                        .collect::<Vec<_>>(),
+                ),
+                _ => unreachable!(
+                    "Invalid field for query condition: {:?}",
+                    fdata
+                ),
+            }
+        };
+
+        let expect = cells.filter(&typed_field_data_go!(fdata, ref cells, {
+            cells
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| {
+                    member_idx.iter().any(|i| cells[*i].bits_eq(*c))
+                })
+                .map(|(i, _)| i)
+                .collect::<VarBitSet>()
+        }));
+        let cells_out = cells.query_condition(&qc);
+        assert_eq!(expect, cells_out);
+    }
+
+    fn do_query_condition_set_membership_not_in(
+        cells: Cells,
+        field: String,
+        member_idx: Vec<usize>,
+    ) {
+        let fdata = cells.fields().get(&field).unwrap();
+        let qc = {
+            let f = QueryConditionExpr::field(field);
+            match fdata {
+                FieldData::UInt8(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::UInt16(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::UInt32(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::UInt64(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int8(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int16(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int32(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Int64(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Float32(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::Float64(ref cells) => f.not_in(
+                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
+                ),
+                FieldData::VecUInt8(ref cells) => f.not_in(
+                    member_idx
+                        .iter()
+                        .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
+                        .collect::<Vec<_>>(),
+                ),
+                _ => unreachable!(
+                    "Invalid field for query condition: {:?}",
+                    fdata
+                ),
+            }
+        };
+
+        let expect = cells.filter(&typed_field_data_go!(fdata, ref cells, {
+            cells
+                .iter()
+                .enumerate()
+                .filter(|(_, c)| {
+                    !member_idx.iter().any(|i| cells[*i].bits_eq(*c))
+                })
+                .map(|(i, _)| i)
+                .collect::<VarBitSet>()
+        }));
+        let cells_out = cells.query_condition(&qc);
+        assert_eq!(expect, cells_out);
+    }
+
+    fn strat_cells_with_qc_fields() -> impl Strategy<Value = Cells> {
+        let mut cell_params = CellsParameters {
+            schema: Some(CellsStrategySchema::Fields(HashMap::from([
+                ("uint8".to_owned(), (Datatype::UInt8, CellValNum::single())),
+                (
+                    "uint16".to_owned(),
+                    (Datatype::UInt16, CellValNum::single()),
+                ),
+                (
+                    "uint32".to_owned(),
+                    (Datatype::UInt32, CellValNum::single()),
+                ),
+                (
+                    "uint64".to_owned(),
+                    (Datatype::UInt64, CellValNum::single()),
+                ),
+                ("int8".to_owned(), (Datatype::Int8, CellValNum::single())),
+                ("int16".to_owned(), (Datatype::Int16, CellValNum::single())),
+                ("int32".to_owned(), (Datatype::Int32, CellValNum::single())),
+                ("int64".to_owned(), (Datatype::Int64, CellValNum::single())),
+                (
+                    "float32".to_owned(),
+                    (Datatype::Float32, CellValNum::single()),
+                ),
+                (
+                    "float64".to_owned(),
+                    (Datatype::Float64, CellValNum::single()),
+                ),
+                ("string".to_owned(), (Datatype::StringUtf8, CellValNum::Var)),
+            ]))),
+            ..Default::default()
+        };
+        cell_params.min_records = std::cmp::max(1, cell_params.min_records);
+        any_with::<Cells>(cell_params).prop_map(|mut c| {
+            if let Some(ref mut strfield) = c.fields.get_mut("string") {
+                let FieldData::VecUInt8(ss) = strfield else {
+                    unreachable!()
+                };
+                for s in ss.iter_mut() {
+                    *s = String::from_utf8_lossy(s).as_bytes().to_vec();
+                }
+            }
+            c
+        })
+    }
+
+    /// Returns a strategy which produces `Cells` whose fields can
+    /// be filtered via query condition.
+    fn strat_cells_for_qc() -> impl Strategy<Value = (Cells, String, usize)> {
+        strat_cells_with_qc_fields().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nrecords = c.len();
+            (Just(c), proptest::sample::select(keys), 0..nrecords)
+        })
+    }
+
+    fn strat_cells_for_qc_set_membership(
+    ) -> impl Strategy<Value = (Cells, String, Vec<usize>)> {
+        strat_cells_with_qc_fields().prop_flat_map(|c| {
+            let keys = c.fields().keys().cloned().collect::<Vec<String>>();
+            let nrecords = c.len();
+            (
+                Just(c),
+                proptest::sample::select(keys),
+                proptest::collection::vec(0..nrecords, 1..=nrecords),
+            )
+        })
+    }
+
+    fn do_query_condition_and(
+        cells: Rc<Cells>,
+        lhs: QueryConditionExpr,
+        rhs: QueryConditionExpr,
+    ) {
+        let lhs_bitmap = cells.query_condition_bitmap(&lhs);
+        let rhs_bitmap = cells.query_condition_bitmap(&rhs);
+        let and_bitmap = cells.query_condition_bitmap(&(lhs & rhs));
+
+        assert_eq!(lhs_bitmap.len(), rhs_bitmap.len());
+        assert_eq!(lhs_bitmap.len(), and_bitmap.len());
+
+        for i in 0..lhs_bitmap.len() {
+            assert_eq!(
+                lhs_bitmap.test(i) && rhs_bitmap.test(i),
+                and_bitmap.test(i)
+            );
+        }
+    }
+
+    fn strat_query_condition_combination_op(
+    ) -> impl Strategy<Value = (Rc<Cells>, QueryConditionExpr, QueryConditionExpr)>
+    {
+        strat_cells_with_qc_fields().prop_flat_map(|c| {
+            let c = Rc::new(c);
+            let params = QueryConditionParameters {
+                domain: Some(Rc::new(CellsAsQueryConditionSchema::new(
+                    Rc::clone(&c),
+                ))),
+                ..Default::default()
+            };
+            let strat_qc = any_with::<Predicate>(params.clone())
+                .prop_map(QueryConditionExpr::Cond)
+                .boxed();
+            (Just(c), strat_qc.clone(), strat_qc.clone())
+        })
+    }
+
     proptest! {
         #[test]
         fn cells_extend((dst, src) in any::<SchemaData>().prop_flat_map(|s| {
@@ -990,6 +1752,51 @@ mod tests {
             (Just(c), proptest::sample::subsequence(keys, 0..=nkeys).prop_shuffle())
         })) {
             do_cells_projection(cells, keys)
+        }
+
+        #[test]
+        fn query_condition_lt((cells, field, pivot) in strat_cells_for_qc()) {
+            do_query_condition_lt(cells, field, pivot)
+        }
+
+        #[test]
+        fn query_condition_le((cells, field, pivot) in strat_cells_for_qc()) {
+            do_query_condition_le(cells, field, pivot)
+        }
+
+        #[test]
+        fn query_condition_eq((cells, field, pivot) in strat_cells_for_qc()) {
+            do_query_condition_eq(cells, field, pivot)
+        }
+
+        #[test]
+        fn query_condition_ge((cells, field, pivot) in strat_cells_for_qc()) {
+            do_query_condition_ge(cells, field, pivot)
+        }
+
+        #[test]
+        fn query_condition_gt((cells, field, pivot) in strat_cells_for_qc()) {
+            do_query_condition_gt(cells, field, pivot)
+        }
+
+        #[test]
+        fn query_condition_ne((cells, field, pivot) in strat_cells_for_qc()) {
+            do_query_condition_ne(cells, field, pivot)
+        }
+
+        #[test]
+        fn query_condition_set_membership_in((cells, field, member_idx) in strat_cells_for_qc_set_membership()) {
+            do_query_condition_set_membership_in(cells, field, member_idx)
+        }
+
+        #[test]
+        fn query_condition_set_membership_not_in((cells, field, member_idx) in strat_cells_for_qc_set_membership()) {
+            do_query_condition_set_membership_not_in(cells, field, member_idx)
+        }
+
+        #[test]
+        fn query_condition_and((cells, lhs, rhs) in strat_query_condition_combination_op()) {
+            do_query_condition_and(cells, lhs, rhs)
         }
     }
 }

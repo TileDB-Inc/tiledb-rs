@@ -1720,6 +1720,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "strategy-ext"
 version = "0.1.0"
 dependencies = [
+ "num-traits",
  "proptest",
 ]
 
@@ -1867,6 +1868,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "strategy-ext",
  "thiserror 1.0.69",
  "tiledb-common",
  "tiledb-pod",
@@ -1887,6 +1889,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "strategy-ext",
  "thiserror 1.0.69",
  "tiledb-proc-macro",
  "tiledb-sys-defs",
