@@ -96,7 +96,7 @@ pub struct CharType {}
 
 impl LogicalType for CharType {
     const DATA_TYPE: Datatype = Datatype::Char;
-    type PhysicalType = i8;
+    type PhysicalType = std::ffi::c_char;
 }
 
 pub struct StringAsciiType {}
