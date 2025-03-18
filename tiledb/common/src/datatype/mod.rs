@@ -273,12 +273,16 @@ impl Datatype {
         use std::any::TypeId;
 
         let tid = TypeId::of::<T>();
-        if tid == TypeId::of::<f32>() {
+        if matches!(*self, Datatype::Char) {
+            // NB: some architectures this is signed, some it is unsigned,
+            // so it needs this special case
+            tid == TypeId::of::<std::ffi::c_char>()
+        } else if tid == TypeId::of::<f32>() {
             matches!(*self, Datatype::Float32)
         } else if tid == TypeId::of::<f64>() {
             matches!(*self, Datatype::Float64)
         } else if tid == TypeId::of::<i8>() {
-            matches!(*self, Datatype::Char | Datatype::Int8)
+            matches!(*self, Datatype::Int8)
         } else if tid == TypeId::of::<u8>() {
             matches!(
                 *self,
