@@ -1010,3 +1010,122 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
         vec![!qc],
     )
 }
+
+#[test]
+fn shrinking_query_condition_3() -> anyhow::Result<()> {
+    let schema = SchemaData {
+        array_type: ArrayType::Sparse,
+        domain: DomainData {
+            dimension: vec![DimensionData {
+                name: "JFfM_lgORj5c_BuS8Zi1aJxG".to_owned(),
+                datatype: Datatype::DateTimeAttosecond,
+                constraints: DimensionConstraints::Int64(
+                    [1148942038937258225, 2764999564421787440],
+                    Some(4620),
+                ),
+                filters: None,
+            }],
+        },
+        capacity: Some(1),
+        cell_order: Some(CellOrder::Hilbert),
+        tile_order: Some(TileOrder::ColumnMajor),
+        allow_duplicates: Some(false),
+        attributes: vec![AttributeData {
+            name: "478MS__I7".to_owned(),
+            datatype: Datatype::Char,
+            nullability: Some(true),
+            cell_val_num: CellValNum::single().into(),
+            fill: None,
+            filters: vec![],
+            enumeration: None,
+        }],
+        enumerations: vec![],
+        coordinate_filters: vec![],
+        offsets_filters: vec![],
+        nullity_filters: vec![],
+    };
+    let writes =
+        WriteSequence::Sparse(cells::write::SparseWriteSequence::from(vec![
+            SparseWriteInput {
+                dimensions: vec![(
+                    "JFfM_lgORj5c_BuS8Zi1aJxG".to_owned(),
+                    CellValNum::single(),
+                )],
+                data: Cells::new(HashMap::from([
+                    (
+                        "478MS__I7".to_owned(),
+                        FieldData::Int8(vec![
+                            12, 17, -67, 3, 86, 80, 102, -78, 117, -68, -34,
+                            -92, -82, -113, 105,
+                        ]),
+                    ),
+                    (
+                        "JFfM_lgORj5c_BuS8Zi1aJxG".to_owned(),
+                        FieldData::Int64(vec![
+                            2710911327883039156,
+                            2039592453050290347,
+                            2238046718653247530,
+                            1557798329745860504,
+                            2426329515562266082,
+                            1153837227816138344,
+                            2637512935416275165,
+                            2548530218600618664,
+                            2064853275117424032,
+                            2555096863448532801,
+                            1165535206997694286,
+                            1259935974712440169,
+                            2084689463781898211,
+                            2199758939081023375,
+                            1169287904123472043,
+                        ]),
+                    ),
+                ])),
+            },
+            SparseWriteInput {
+                dimensions: vec![(
+                    "JFfM_lgORj5c_BuS8Zi1aJxG".to_owned(),
+                    CellValNum::single(),
+                )],
+                data: Cells::new(HashMap::from([
+                    (
+                        "JFfM_lgORj5c_BuS8Zi1aJxG".to_owned(),
+                        FieldData::Int64(vec![
+                            2685183641182661929,
+                            2304697773534321558,
+                        ]),
+                    ),
+                    ("478MS__I7".to_owned(), FieldData::Int8(vec![-76, 112])),
+                ])),
+            },
+            SparseWriteInput {
+                dimensions: vec![(
+                    "JFfM_lgORj5c_BuS8Zi1aJxG".to_owned(),
+                    CellValNum::single(),
+                )],
+                data: Cells::new(HashMap::from([
+                    (
+                        "JFfM_lgORj5c_BuS8Zi1aJxG".to_owned(),
+                        FieldData::Int64(vec![
+                            2240931305299990434,
+                            2278591491338750833,
+                            1264903526162880855,
+                            2247465574030382854,
+                        ]),
+                    ),
+                    (
+                        "478MS__I7".to_owned(),
+                        FieldData::Int8(vec![29, -82, -42, -17]),
+                    ),
+                ])),
+            },
+        ]));
+    let qc = !QueryConditionExpr::field("478MS__I7").lt(0i8);
+
+    let acc = CellsAccumulator::fold(&schema, &writes);
+    instance_query_condition(
+        schema.into(),
+        writes.into(),
+        acc.into(),
+        vec![!qc],
+    )
+}
