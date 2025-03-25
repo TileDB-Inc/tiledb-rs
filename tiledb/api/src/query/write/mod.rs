@@ -268,3 +268,6 @@ impl<'data> WriteBuilder<'data> {
         Ok(b)
     }
 }
+
+#[cfg(test)]
+mod tests;
