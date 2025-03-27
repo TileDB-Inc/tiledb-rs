@@ -159,7 +159,16 @@ pub fn to_arrow(
                 Datatype::TimeNanosecond => {
                     Res::Exact(ADT::Time64(TimeUnit::Nanosecond))
                 }
-                Datatype::Char => Res::Inexact(ADT::Int8),
+                Datatype::Char => {
+                    let ffi_id = std::any::TypeId::of::<std::ffi::c_char>();
+                    if ffi_id == std::any::TypeId::of::<u8>() {
+                        Res::Inexact(ADT::UInt8)
+                    } else if ffi_id == std::any::TypeId::of::<i8>() {
+                        Res::Inexact(ADT::Int8)
+                    } else {
+                        unreachable!("`std::ffi::c_char` is not an alias for `i8` or `u8`")
+                    }
+                }
                 Datatype::StringAscii => Res::Inexact(ADT::UInt8),
                 Datatype::StringUtf8 => Res::Inexact(ADT::UInt8),
                 Datatype::StringUtf16 => Res::Inexact(ADT::UInt16),

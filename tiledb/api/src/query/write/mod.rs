@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::rc::Rc;
 
 use crate::config::Config;
+use crate::error::{DatatypeError, Error};
 use crate::query::buffer::{CellStructure, QueryBuffers, TypedQueryBuffers};
 use crate::query::write::input::{
     DataProvider, RecordProvider, TypedDataProvider,
@@ -113,6 +114,24 @@ impl<'data> WriteBuilder<'data> {
         S: AsRef<str>,
     {
         let field_name = field.as_ref().to_string();
+
+        // validate data type against schema
+        // NB: core will validate cell val num but raw pointers can't
+        // help with target data type
+        {
+            let schema = self.base().array().schema()?;
+            let schema_field = schema.field(&field_name)?;
+            let target_dt = schema_field.datatype()?;
+            typed_query_buffers_go!(input, DT, _, {
+                if !target_dt.is_compatible_type::<DT>() {
+                    return Err(Error::Datatype(
+                        DatatypeError::physical_type_incompatible::<DT>(
+                            target_dt,
+                        ),
+                    ));
+                }
+            })
+        }
 
         let c_query = **self.base().cquery();
         let c_name = cstring!(field_name.clone());
@@ -249,3 +268,6 @@ impl<'data> WriteBuilder<'data> {
         Ok(b)
     }
 }
+
+#[cfg(test)]
+mod tests;
