@@ -3,7 +3,7 @@ use crate::capi_enum::{
 };
 use crate::types::{capi_return_t, tiledb_ctx_t, tiledb_query_condition_t};
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_query_condition_alloc(
         ctx: *mut tiledb_ctx_t,
         cond: *mut *mut tiledb_query_condition_t,

@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
-use crate::{array::RawArray, Array, Result as TileDBResult};
+use crate::{Array, Result as TileDBResult, array::RawArray};
 
 pub mod buffer;
 pub mod condition;
@@ -48,7 +48,7 @@ pub enum RawQuery {
 impl Deref for RawQuery {
     type Target = *mut ffi::tiledb_query_t;
     fn deref(&self) -> &Self::Target {
-        let RawQuery::Owned(ref ffi) = self;
+        let RawQuery::Owned(ffi) = self;
         ffi
     }
 }

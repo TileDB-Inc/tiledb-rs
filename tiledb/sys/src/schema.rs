@@ -6,7 +6,7 @@ use crate::types::{
     tiledb_domain_t, tiledb_enumeration_t, tiledb_filter_list_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_array_schema_alloc(
         ctx: *mut tiledb_ctx_t,
         array_type: tiledb_array_type_t,

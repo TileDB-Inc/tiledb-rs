@@ -147,10 +147,10 @@ mod tests {
     use arrow::record_batch::RecordBatch;
     use proptest::prelude::*;
 
-    use crate::array::CellValNum;
-    use crate::query::read::output::strategy::RawReadOutputParameters;
-    use crate::query::read::output::CellStructure;
     use crate::Datatype;
+    use crate::array::CellValNum;
+    use crate::query::read::output::CellStructure;
+    use crate::query::read::output::strategy::RawReadOutputParameters;
 
     fn raw_read_to_arrow<C>(rr: RawReadOutput<C>)
     where
@@ -399,7 +399,7 @@ mod tests {
         )]);
 
         let cols = vec![
-            Arc::<dyn ArrowArray>::try_from(rr).expect("Integer overflow")
+            Arc::<dyn ArrowArray>::try_from(rr).expect("Integer overflow"),
         ];
 
         // NB: even constructing this successfully is a big deal due to schema match

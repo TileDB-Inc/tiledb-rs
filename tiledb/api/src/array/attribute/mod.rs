@@ -140,10 +140,13 @@ impl Attribute {
             )
         })?;
 
-        assert!(c_size % std::mem::size_of::<F::PhysicalType>() as u64 == 0,
+        assert!(
+            c_size % std::mem::size_of::<F::PhysicalType>() as u64 == 0,
             "Unexpected fill value size for compatible type {}: expected multiple of {}, found {}",
             std::any::type_name::<F::PhysicalType>(),
-            std::mem::size_of::<F::PhysicalType>(), c_size);
+            std::mem::size_of::<F::PhysicalType>(),
+            c_size
+        );
 
         let len = c_size as usize / std::mem::size_of::<F::PhysicalType>();
         let slice: &[F::PhysicalType] = unsafe {
@@ -182,10 +185,13 @@ impl Attribute {
             )
         })?;
 
-        assert!(c_size % std::mem::size_of::<F::PhysicalType>() as u64 == 0,
+        assert!(
+            c_size % std::mem::size_of::<F::PhysicalType>() as u64 == 0,
             "Unexpected fill value size for compatible type {}: expected multiple of {}, found {}",
             std::any::type_name::<F::PhysicalType>(),
-            std::mem::size_of::<F::PhysicalType>(), c_size);
+            std::mem::size_of::<F::PhysicalType>(),
+            c_size
+        );
 
         let len = c_size as usize / std::mem::size_of::<F::PhysicalType>();
         let slice: &[F::PhysicalType] = unsafe {
@@ -488,9 +494,9 @@ mod tests {
     use tiledb_pod::array::attribute::AttributeData;
 
     use super::*;
+    use crate::Factory;
     use crate::filter::list::Builder as FilterListBuilder;
     use crate::filter::*;
-    use crate::Factory;
 
     /// Test what the default values filled in for `None` with attribute data are.
     /// Mostly because if we write code which does need the default, we're expecting

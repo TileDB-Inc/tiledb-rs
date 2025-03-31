@@ -1,7 +1,7 @@
 use paste::paste;
 
-use crate::datatype::physical::PhysicalType;
 use crate::datatype::Datatype;
+use crate::datatype::physical::PhysicalType;
 use crate::private::sealed;
 
 /// Trait which provides statically-typed attributes for a TileDB `Datatype`

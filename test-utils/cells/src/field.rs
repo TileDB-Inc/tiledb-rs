@@ -2,8 +2,8 @@ use paste::paste;
 use proptest::bits::{BitSetLike, VarBitSet};
 use strategy_ext::records::Records;
 use tiledb_common::array::CellValNum;
-use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
 use tiledb_common::datatype::Error as DatatypeError;
+use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
 use tiledb_common::physical_type_go;
 use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
 use tiledb_pod::array::EnumerationData;
@@ -376,13 +376,13 @@ impl FieldData {
     }
 
     pub fn slice(&self, start: usize, len: usize) -> FieldData {
-        typed_field_data_go!(self, ref values, {
+        typed_field_data_go!(self, values, {
             FieldData::from(values[start..start + len].to_vec().clone())
         })
     }
 
     pub fn filter(&self, set: &VarBitSet) -> FieldData {
-        typed_field_data_go!(self, ref values, {
+        typed_field_data_go!(self, values, {
             FieldData::from(
                 values
                     .clone()
@@ -396,14 +396,14 @@ impl FieldData {
     }
 
     pub fn truncate(&mut self, len: usize) {
-        typed_field_data_go!(self, ref mut data, data.truncate(len))
+        typed_field_data_go!(self, data, data.truncate(len))
     }
 
     pub fn sort(&mut self) {
         typed_field_data_go!(
             self,
             DT,
-            ref mut data,
+            data,
             {
                 let cmp = |k1: &DT, k2: &DT| k1.bits_cmp(k2);
                 data.sort_by(cmp)
@@ -420,7 +420,7 @@ impl FieldData {
             self,
             other,
             _DT,
-            ref mut data,
+            data,
             other_data,
             {
                 // the field types match
@@ -470,8 +470,8 @@ impl BitsEq for FieldData {
             self,
             other,
             _DT,
-            ref data,
-            ref other_data,
+            data,
+            other_data,
             data.bits_eq(other_data), // match
             false                     // fields do not match
         )

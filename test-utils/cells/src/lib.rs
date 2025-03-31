@@ -112,7 +112,7 @@ impl Cells {
             let idx = typed_field_data_go!(
                 self.fields.get(name).unwrap(),
                 _DT,
-                ref _keys,
+                _keys,
                 _keys.iter().map(|k| *k as usize).collect::<Vec<_>>(),
                 unreachable!(),
                 unreachable!(),
@@ -121,7 +121,7 @@ impl Cells {
 
             typed_field_data_go!(
                 e,
-                ref variants,
+                variants,
                 #[allow(clippy::clone_on_copy)]
                 {
                     let data = FieldData::from(
@@ -171,7 +171,7 @@ impl Cells {
                         prev_write_data,
                         data,
                         _DT,
-                        ref mut mine,
+                        mine,
                         theirs,
                         {
                             if mine.len() <= theirs.len() {
@@ -221,8 +221,11 @@ impl Cells {
     ) -> CellsView<'a> {
         for k in keys.iter() {
             if !self.fields.contains_key(k) {
-                panic!("Cannot construct view: key '{}' not found (fields are {:?})",
-                    k, self.fields.keys())
+                panic!(
+                    "Cannot construct view: key '{}' not found (fields are {:?})",
+                    k,
+                    self.fields.keys()
+                )
             }
         }
 
@@ -277,7 +280,7 @@ impl Cells {
         idx.sort_by(idx_comparator);
 
         for data in self.fields.values_mut() {
-            typed_field_data_go!(data, ref mut data, {
+            typed_field_data_go!(data, data, {
                 let mut unsorted = std::mem::replace(
                     data,
                     vec![Default::default(); data.len()],
@@ -310,11 +313,7 @@ impl Cells {
         for i in 1..self.len() {
             let distinct = keys.iter().any(|k| {
                 let v = self.fields().get(k).unwrap();
-                typed_field_data_go!(
-                    v,
-                    ref cells,
-                    cells[i].bits_ne(&cells[icmp])
-                )
+                typed_field_data_go!(v, cells, cells[i].bits_ne(&cells[icmp]))
             });
             if distinct {
                 groups.push(i);
@@ -347,11 +346,7 @@ impl Cells {
         for i in 1..key_cells.len() {
             let distinct = keys.iter().any(|k| {
                 let v = key_cells.fields().get(k).unwrap();
-                typed_field_data_go!(
-                    v,
-                    ref cells,
-                    cells[i].bits_ne(&cells[icmp])
-                )
+                typed_field_data_go!(v, cells, cells[i].bits_ne(&cells[icmp]))
             });
             if distinct {
                 icmp = i;
@@ -428,9 +423,9 @@ impl Cells {
                             let maybe_index = qc_thing_zip!(
                                 Literal,
                                 eq.value(),
-                                ref value,
+                                value,
                                 variants,
-                                ref variants,
+                                variants,
                                 {
                                     variants
                                         .iter()
@@ -479,9 +474,9 @@ impl Cells {
                         qc_thing_zip!(
                             Literal,
                             &cmpvalue,
-                            ref literal,
+                            literal,
                             fdata,
-                            ref cells,
+                            cells,
                             {
                                 collect_bitmap(
                                     self.len(),
@@ -526,9 +521,9 @@ impl Cells {
                         let pred = qc_thing_zip!(
                             SetMembers,
                             set.members(),
-                            ref members,
+                            members,
                             fdata,
-                            ref cells,
+                            cells,
                             {
                                 let members =
                                     HashSet::<BitsKeyAdapter<_>>::from_iter(
@@ -656,7 +651,7 @@ impl Cells {
                 let v = self.fields.get(k).unwrap();
                 typed_field_data_go!(
                     v,
-                    ref field_cells,
+                    field_cells,
                     field_cells[idx[i]].bits_ne(&field_cells[idx[icmp]])
                 )
             });
@@ -859,8 +854,8 @@ impl<'b> PartialEq<CellsView<'b>> for CellsView<'_> {
                 mine,
                 theirs,
                 _DT,
-                ref mine,
-                ref theirs,
+                mine,
+                theirs,
                 if mine[self.slice.clone()] != theirs[other.slice.clone()] {
                     return false;
                 },
@@ -909,13 +904,13 @@ mod tests {
     use std::rc::Rc;
 
     use proptest::prelude::*;
+    use tiledb_common::Datatype;
     use tiledb_common::array::CellValNum;
     use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
     use tiledb_common::query::condition::strategy::{
         QueryConditionField, QueryConditionSchema,
     };
     use tiledb_common::query::condition::{EqualityOp, SetMembers};
-    use tiledb_common::Datatype;
     use tiledb_pod::array::schema::SchemaData;
 
     use super::*;
@@ -974,7 +969,7 @@ mod tests {
                 typed_field_data_go!(
                     e,
                     _DT,
-                    ref _members,
+                    _members,
                     Some(SetMembers::from(_members.clone())),
                     {
                         // NB: this is Var, we could do String but it's just to test the test code
@@ -997,7 +992,7 @@ mod tests {
             let orig_dst = orig_dst.fields().get(fname).unwrap();
             let orig_src = orig_src.fields().get(fname).unwrap();
 
-            typed_field_data_go!(data, ref dst, {
+            typed_field_data_go!(data, dst, {
                 assert_eq!(
                     *orig_dst,
                     FieldData::from(dst[0..orig_dst.len()].to_vec())
@@ -1098,8 +1093,8 @@ mod tests {
                 value,
                 sliced,
                 _DT,
-                ref value_data,
-                ref sliced_data,
+                value_data,
+                sliced_data,
                 {
                     for r in s1.clone() {
                         let value_start = (r * d2) + s2.start;
@@ -1149,8 +1144,8 @@ mod tests {
                 value,
                 sliced,
                 _DT,
-                ref value_data,
-                ref sliced_data,
+                value_data,
+                sliced_data,
                 {
                     for z in s1.clone() {
                         for y in s2.clone() {
@@ -1195,7 +1190,7 @@ mod tests {
             let (start, end) = (w[0], w[1]);
             for k in keys.iter() {
                 let f = cells.fields().get(k).unwrap();
-                typed_field_data_go!(f, ref field_cells, {
+                typed_field_data_go!(f, field_cells, {
                     for i in start..end {
                         assert!(field_cells[start].bits_eq(&field_cells[i]));
                     }
@@ -1204,7 +1199,7 @@ mod tests {
             if end < cells.len() {
                 let some_ne = keys.iter().any(|k| {
                     let f = cells.fields().get(k).unwrap();
-                    typed_field_data_go!(f, ref field_cells, {
+                    typed_field_data_go!(f, field_cells, {
                         field_cells[start].bits_ne(&field_cells[end])
                     })
                 });
@@ -1218,7 +1213,7 @@ mod tests {
     fn do_cells_count_distinct_1d(cells: Cells) {
         for (key, field_cells) in cells.fields().iter() {
             let expect_count =
-                typed_field_data_go!(field_cells, ref field_cells, {
+                typed_field_data_go!(field_cells, field_cells, {
                     let mut c = field_cells.clone();
                     c.sort_by(|l, r| l.bits_cmp(r));
                     c.dedup_by(|l, r| l.bits_eq(r));
@@ -1241,11 +1236,11 @@ mod tests {
                 let expect_count = {
                     typed_field_data_go!(
                         cells.fields().get(keys[i]).unwrap(),
-                        ref ki_cells,
+                        ki_cells,
                         {
                             typed_field_data_go!(
                                 cells.fields().get(keys[j]).unwrap(),
-                                ref kj_cells,
+                                kj_cells,
                                 {
                                     let mut unique = HashMap::new();
 
@@ -1346,17 +1341,17 @@ mod tests {
                 let qc = {
                     let f = QueryConditionExpr::field(field);
                     match fdata {
-                        FieldData::UInt8(ref cells) => f.$op(cells[pivot]),
-                        FieldData::UInt16(ref cells) => f.$op(cells[pivot]),
-                        FieldData::UInt32(ref cells) => f.$op(cells[pivot]),
-                        FieldData::UInt64(ref cells) => f.$op(cells[pivot]),
-                        FieldData::Int8(ref cells) => f.$op(cells[pivot]),
-                        FieldData::Int16(ref cells) => f.$op(cells[pivot]),
-                        FieldData::Int32(ref cells) => f.$op(cells[pivot]),
-                        FieldData::Int64(ref cells) => f.$op(cells[pivot]),
-                        FieldData::Float32(ref cells) => f.$op(cells[pivot]),
-                        FieldData::Float64(ref cells) => f.$op(cells[pivot]),
-                        FieldData::VecUInt8(ref cells) => f
+                        FieldData::UInt8(cells) => f.$op(cells[pivot]),
+                        FieldData::UInt16(cells) => f.$op(cells[pivot]),
+                        FieldData::UInt32(cells) => f.$op(cells[pivot]),
+                        FieldData::UInt64(cells) => f.$op(cells[pivot]),
+                        FieldData::Int8(cells) => f.$op(cells[pivot]),
+                        FieldData::Int16(cells) => f.$op(cells[pivot]),
+                        FieldData::Int32(cells) => f.$op(cells[pivot]),
+                        FieldData::Int64(cells) => f.$op(cells[pivot]),
+                        FieldData::Float32(cells) => f.$op(cells[pivot]),
+                        FieldData::Float64(cells) => f.$op(cells[pivot]),
+                        FieldData::VecUInt8(cells) => f
                             .$op(String::from_utf8(cells[pivot].to_vec())
                                 .unwrap()),
                         _ => unreachable!(
@@ -1367,7 +1362,7 @@ mod tests {
                 };
 
                 let expect =
-                    cells.filter(&typed_field_data_go!(fdata, ref cells, {
+                    cells.filter(&typed_field_data_go!(fdata, cells, {
                         cells
                             .iter()
                             .enumerate()
@@ -1397,37 +1392,37 @@ mod tests {
         let qc = {
             let f = QueryConditionExpr::field(field);
             match fdata {
-                FieldData::UInt8(ref cells) => f.is_in(
+                FieldData::UInt8(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::UInt16(ref cells) => f.is_in(
+                FieldData::UInt16(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::UInt32(ref cells) => f.is_in(
+                FieldData::UInt32(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::UInt64(ref cells) => f.is_in(
+                FieldData::UInt64(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int8(ref cells) => f.is_in(
+                FieldData::Int8(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int16(ref cells) => f.is_in(
+                FieldData::Int16(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int32(ref cells) => f.is_in(
+                FieldData::Int32(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int64(ref cells) => f.is_in(
+                FieldData::Int64(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Float32(ref cells) => f.is_in(
+                FieldData::Float32(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Float64(ref cells) => f.is_in(
+                FieldData::Float64(cells) => f.is_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::VecUInt8(ref cells) => f.is_in(
+                FieldData::VecUInt8(cells) => f.is_in(
                     member_idx
                         .iter()
                         .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
@@ -1440,7 +1435,7 @@ mod tests {
             }
         };
 
-        let expect = cells.filter(&typed_field_data_go!(fdata, ref cells, {
+        let expect = cells.filter(&typed_field_data_go!(fdata, cells, {
             cells
                 .iter()
                 .enumerate()
@@ -1463,37 +1458,37 @@ mod tests {
         let qc = {
             let f = QueryConditionExpr::field(field);
             match fdata {
-                FieldData::UInt8(ref cells) => f.not_in(
+                FieldData::UInt8(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::UInt16(ref cells) => f.not_in(
+                FieldData::UInt16(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::UInt32(ref cells) => f.not_in(
+                FieldData::UInt32(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::UInt64(ref cells) => f.not_in(
+                FieldData::UInt64(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int8(ref cells) => f.not_in(
+                FieldData::Int8(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int16(ref cells) => f.not_in(
+                FieldData::Int16(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int32(ref cells) => f.not_in(
+                FieldData::Int32(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Int64(ref cells) => f.not_in(
+                FieldData::Int64(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Float32(ref cells) => f.not_in(
+                FieldData::Float32(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::Float64(ref cells) => f.not_in(
+                FieldData::Float64(cells) => f.not_in(
                     member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
                 ),
-                FieldData::VecUInt8(ref cells) => f.not_in(
+                FieldData::VecUInt8(cells) => f.not_in(
                     member_idx
                         .iter()
                         .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
@@ -1506,7 +1501,7 @@ mod tests {
             }
         };
 
-        let expect = cells.filter(&typed_field_data_go!(fdata, ref cells, {
+        let expect = cells.filter(&typed_field_data_go!(fdata, cells, {
             cells
                 .iter()
                 .enumerate()
@@ -1576,8 +1571,8 @@ mod tests {
         })
     }
 
-    fn strat_cells_for_qc_set_membership(
-    ) -> impl Strategy<Value = (Cells, String, Vec<usize>)> {
+    fn strat_cells_for_qc_set_membership()
+    -> impl Strategy<Value = (Cells, String, Vec<usize>)> {
         strat_cells_with_qc_fields().prop_flat_map(|c| {
             let keys = c.fields().keys().cloned().collect::<Vec<String>>();
             let nrecords = c.len();
@@ -1609,8 +1604,8 @@ mod tests {
         }
     }
 
-    fn strat_query_condition_combination_op(
-    ) -> impl Strategy<Value = (Rc<Cells>, QueryConditionExpr, QueryConditionExpr)>
+    fn strat_query_condition_combination_op()
+    -> impl Strategy<Value = (Rc<Cells>, QueryConditionExpr, QueryConditionExpr)>
     {
         strat_cells_with_qc_fields().prop_flat_map(|c| {
             let c = Rc::new(c);

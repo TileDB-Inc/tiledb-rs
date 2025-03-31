@@ -18,7 +18,7 @@ where
     F: FnMut(String),
 {
     for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
-        if !entry.path().extension().is_some_and(|ext| ext == "rs") {
+        if entry.path().extension().is_none_or(|ext| ext != "rs") {
             continue;
         }
         callback(entry.path().display().to_string());

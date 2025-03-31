@@ -7,7 +7,7 @@ use strategy_ext::lexicographic::Between;
 
 use super::*;
 use crate::range::{Range, SingleValueRange, VarValueRange};
-use crate::{set_members_go, single_value_range_go, Datatype};
+use crate::{Datatype, set_members_go, single_value_range_go};
 
 pub trait QueryConditionSchema {
     /// Returns a list of fields which can have query conditions applied to them.

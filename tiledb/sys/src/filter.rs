@@ -1,7 +1,7 @@
 use crate::capi_enum::{tiledb_filter_option_t, tiledb_filter_type_t};
 use crate::types::{capi_return_t, tiledb_ctx_t, tiledb_filter_t};
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_filter_alloc(
         ctx: *mut tiledb_ctx_t,
         type_: tiledb_filter_type_t,

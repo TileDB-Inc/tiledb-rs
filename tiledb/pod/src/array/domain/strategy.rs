@@ -3,23 +3,23 @@ use std::rc::Rc;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
-use strategy_ext::records::RecordsValueTree;
 use strategy_ext::StrategyExt;
+use strategy_ext::records::RecordsValueTree;
 use tiledb_common::array::ArrayType;
-use tiledb_common::datatype::strategy::*;
 use tiledb_common::datatype::Datatype;
+use tiledb_common::datatype::strategy::*;
 use tiledb_common::range::Range;
 
+use crate::array::dimension::DimensionData;
 use crate::array::dimension::strategy::{
     DimensionValueTree, Requirements as DimensionRequirements,
 };
-use crate::array::dimension::DimensionData;
 use crate::array::domain::DomainData;
 
 impl DomainData {
     pub fn subarray_strategy(
         &self,
-    ) -> impl proptest::prelude::Strategy<Value = Vec<Range>> {
+    ) -> impl proptest::prelude::Strategy<Value = Vec<Range>> + use<> {
         self.dimension
             .iter()
             .map(|d| d.subarray_strategy(None).unwrap())
@@ -68,7 +68,7 @@ impl Default for Requirements {
 
 fn prop_domain_for_array_type(
     array_type: ArrayType,
-    params: &Requirements,
+    params: Rc<Requirements>,
 ) -> impl Strategy<Value = DomainData> {
     let dimension_params = params.dimension.clone().unwrap_or_default();
 
@@ -128,11 +128,13 @@ fn prop_domain(
     requirements: Rc<Requirements>,
 ) -> impl Strategy<Value = DomainData> {
     if let Some(array_type) = requirements.array_type {
-        prop_domain_for_array_type(array_type, requirements.as_ref()).boxed()
+        let requirements = Rc::clone(&requirements);
+        prop_domain_for_array_type(array_type, requirements).boxed()
     } else {
+        let requirements = Rc::clone(&requirements);
         prop_oneof![Just(ArrayType::Dense), Just(ArrayType::Sparse)]
             .prop_flat_map(move |a| {
-                prop_domain_for_array_type(a, requirements.as_ref())
+                prop_domain_for_array_type(a, requirements.clone())
             })
             .boxed()
     }

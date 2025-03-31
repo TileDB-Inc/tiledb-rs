@@ -1,5 +1,7 @@
 use std::ops::Deref;
 
+use crate::Datatype;
+use crate::Result as TileDBResult;
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiError, Context};
 use crate::context::{CApiInterface, ContextBound, ObjectType};
@@ -8,8 +10,6 @@ use crate::key::LookupKey;
 use crate::metadata;
 use crate::metadata::Metadata;
 use crate::string::{RawTDBString, TDBString};
-use crate::Datatype;
-use crate::Result as TileDBResult;
 
 pub type QueryType = crate::array::Mode;
 
@@ -503,6 +503,14 @@ impl Drop for Group {
 #[cfg(test)]
 mod tests {
     use crate::{
+        Result as TileDBResult,
+        array::{
+            AttributeBuilder, CellOrder, Dimension, DimensionBuilder,
+            DomainBuilder, SchemaBuilder, TileOrder,
+        },
+        context::ObjectType,
+    };
+    use crate::{
         array::{Array, ArrayType},
         config::Config,
         context::Context,
@@ -511,14 +519,6 @@ mod tests {
         group::{Group, QueryType},
         key::LookupKey,
         metadata::{self, Metadata},
-    };
-    use crate::{
-        array::{
-            AttributeBuilder, CellOrder, Dimension, DimensionBuilder,
-            DomainBuilder, SchemaBuilder, TileOrder,
-        },
-        context::ObjectType,
-        Result as TileDBResult,
     };
     use uri::{self, TestArrayUri};
 

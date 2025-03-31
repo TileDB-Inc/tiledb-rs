@@ -2,7 +2,7 @@ use crate::types::{
     capi_return_t, tiledb_ctx_t, tiledb_filter_list_t, tiledb_filter_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_filter_list_alloc(
         ctx: *mut tiledb_ctx_t,
         filter_list: *mut *mut tiledb_filter_list_t,

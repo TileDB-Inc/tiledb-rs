@@ -3,7 +3,7 @@ use crate::types::{
     tiledb_subarray_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_subarray_alloc(
         ctx: *mut tiledb_ctx_t,
         array: *const tiledb_array_t,

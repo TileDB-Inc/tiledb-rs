@@ -2,10 +2,10 @@ extern crate tiledb_api as tiledb;
 
 use std::path::PathBuf;
 
+use tiledb::Datatype;
 use tiledb::config::Config;
 use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::vfs::VFS;
-use tiledb::Datatype;
 use tiledb::{Array, Result as TileDBResult};
 
 const ARRAY_NAME: &str = "using_tiledb_stats";

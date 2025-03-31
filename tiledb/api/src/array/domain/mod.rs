@@ -5,11 +5,11 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 
 use anyhow::anyhow;
 
+use crate::Result as TileDBResult;
 use crate::array::dimension::{Dimension, RawDimension};
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
 use crate::key::LookupKey;
-use crate::Result as TileDBResult;
 
 pub(crate) enum RawDomain {
     Owned(*mut ffi::tiledb_domain_t),

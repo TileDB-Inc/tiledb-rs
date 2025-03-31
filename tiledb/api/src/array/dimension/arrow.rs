@@ -14,9 +14,9 @@ use crate::array::schema::arrow::{
 };
 use crate::array::{Dimension, DimensionBuilder};
 use crate::context::{Context as TileDBContext, ContextBound};
-use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
-use crate::{error::Error as TileDBError, Result as TileDBResult};
+use crate::filter::arrow::FilterMetadata;
+use crate::{Result as TileDBResult, error::Error as TileDBError};
 
 // additional methods with arrow features
 impl Dimension {

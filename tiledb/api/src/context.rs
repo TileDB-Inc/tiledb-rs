@@ -3,10 +3,10 @@ use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::ops::Deref;
 use std::rc::Rc;
 
+use crate::Result as TileDBResult;
 use crate::config::{Config, RawConfig};
 use crate::filesystem::Filesystem;
 use crate::stats::RawStatsString;
-use crate::Result as TileDBResult;
 
 /// An error which can occur when creating a new `Context`.
 #[derive(Debug, thiserror::Error)]
@@ -17,7 +17,9 @@ pub enum CreateContextError {
     OutOfMemory,
     #[error("Internal error: unknown")]
     Fatal,
-    #[error("Internal error: invalid return from libtiledb when allocating context: {0}")]
+    #[error(
+        "Internal error: invalid return from libtiledb when allocating context: {0}"
+    )]
     InternalInvalidReturnValue(i64),
 }
 
@@ -145,7 +147,10 @@ impl Context {
         } else if let Some(e) = self.get_last_error() {
             Err(e)
         } else {
-            panic!("libtiledb context did not have error for error return value: {}", c_ret)
+            panic!(
+                "libtiledb context did not have error for error return value: {}",
+                c_ret
+            )
         }
     }
 

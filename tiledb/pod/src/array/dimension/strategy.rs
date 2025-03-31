@@ -7,10 +7,10 @@ use proptest::strategy::ValueTree;
 
 use strategy_ext::StrategyExt;
 use tiledb_common::array::ArrayType;
-use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
-use tiledb_common::datatype::physical::BitsOrd;
-use tiledb_common::datatype::strategy::*;
 use tiledb_common::datatype::Datatype;
+use tiledb_common::datatype::physical::BitsOrd;
+use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
+use tiledb_common::datatype::strategy::*;
 use tiledb_common::physical_type_go;
 use tiledb_utils::numbers::{
     NextDirection, NextNumericValue, SmallestPositiveValue,

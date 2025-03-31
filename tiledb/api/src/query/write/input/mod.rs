@@ -1,13 +1,13 @@
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use crate::Result as TileDBResult;
 use crate::array::{CellValNum, Schema};
 use crate::error::Error;
+use crate::query::CellValue;
 use crate::query::buffer::{
     Buffer, CellStructure, QueryBuffers, QueryBuffersMut, TypedQueryBuffers,
 };
-use crate::query::CellValue;
-use crate::Result as TileDBResult;
 
 #[cfg(feature = "arrow")]
 pub mod arrow;

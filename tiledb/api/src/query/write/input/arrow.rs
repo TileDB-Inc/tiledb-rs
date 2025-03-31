@@ -12,16 +12,16 @@ use arrow::buffer::OffsetBuffer;
 use arrow::datatypes::{ArrowPrimitiveType, Field};
 use tiledb_common::array::CellValNum;
 
+use crate::Result as TileDBResult;
 use crate::array::Schema;
 use crate::error::{DatatypeError, Error};
+use crate::query::CellValue;
 use crate::query::buffer::{
     Buffer, CellStructure, QueryBuffers, TypedQueryBuffers,
 };
 use crate::query::write::input::{
     DataProvider, RecordProvider, TypedDataProvider,
 };
-use crate::query::CellValue;
-use crate::Result as TileDBResult;
 
 fn cell_structure_var(
     offsets: &OffsetBuffer<i64>,
@@ -669,17 +669,10 @@ mod tests {
             assert_eq!(validity_in, qb_out.validity().map(|v| v.as_ref()));
         }
 
-        typed_query_buffers_go!(
-            &rr_in.buffers,
-            &qb_out,
-            _DT,
-            ref qb_in,
-            ref qb_out,
-            {
-                let data_in = &qb_in.data[0..rr_in.nvalues()];
-                assert_eq!(data_in, qb_out.data.as_ref());
-            }
-        );
+        typed_query_buffers_go!(&rr_in.buffers, &qb_out, _DT, qb_in, qb_out, {
+            let data_in = &qb_in.data[0..rr_in.nvalues()];
+            assert_eq!(data_in, qb_out.data.as_ref());
+        });
 
         /* for good measure, go back to arrow again and it should be PartialEq */
         let qb_out_as_input = TypedRawReadOutput {

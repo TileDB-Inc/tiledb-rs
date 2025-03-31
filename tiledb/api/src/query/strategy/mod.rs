@@ -4,7 +4,7 @@ use std::rc::Rc;
 use cells::write::{
     DenseWriteInput, SparseWriteInput, WriteInput, WriteInputRef,
 };
-use cells::{typed_field_data_go, Cells, FieldData};
+use cells::{Cells, FieldData, typed_field_data_go};
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::physical_type_go;
 use tiledb_pod::array::attribute::strategy::Requirements as AttributeRequirements;
@@ -211,8 +211,8 @@ impl ToReadQuery for WriteInput {
         B: ReadQueryBuilder<'data>,
     {
         match self {
-            Self::Dense(ref d) => d.attach_read(b),
-            Self::Sparse(ref s) => s.attach_read(b),
+            Self::Dense(d) => d.attach_read(b),
+            Self::Sparse(s) => s.attach_read(b),
         }
     }
 }
@@ -284,8 +284,8 @@ impl ToWriteQuery for WriteInput {
         b: WriteBuilder<'data>,
     ) -> TileDBResult<WriteBuilder<'data>> {
         match self {
-            Self::Dense(ref d) => d.attach_write(b),
-            Self::Sparse(ref s) => s.attach_write(b),
+            Self::Dense(d) => d.attach_write(b),
+            Self::Sparse(s) => s.attach_write(b),
         }
     }
 }

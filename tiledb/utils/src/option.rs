@@ -500,18 +500,22 @@ mod tests {
         let lz4s = [lz4_nl, lz4_l4, lz4_l5];
         let zstds = [zstd_nl, zstd_l4, zstd_l5];
 
-        assert!(lzos
-            .iter()
-            .zip(lz4s.iter().chain(zstds.iter()))
-            .all(|(lzo, other)| !lzo.option_subset(other)));
-        assert!(lz4s
-            .iter()
-            .zip(lzos.iter().chain(zstds.iter()))
-            .all(|(lz4, other)| !lz4.option_subset(other)));
-        assert!(zstds
-            .iter()
-            .zip(lzos.iter().chain(lz4s.iter()))
-            .all(|(zstd, other)| !zstd.option_subset(other)));
+        assert!(
+            lzos.iter()
+                .zip(lz4s.iter().chain(zstds.iter()))
+                .all(|(lzo, other)| !lzo.option_subset(other))
+        );
+        assert!(
+            lz4s.iter()
+                .zip(lzos.iter().chain(zstds.iter()))
+                .all(|(lz4, other)| !lz4.option_subset(other))
+        );
+        assert!(
+            zstds
+                .iter()
+                .zip(lzos.iter().chain(lz4s.iter()))
+                .all(|(zstd, other)| !zstd.option_subset(other))
+        );
     }
 
     #[test]
@@ -645,51 +649,57 @@ mod tests {
         let sfs = [sf_none, sf_factor, sf_offset, sf_all];
         let xors = [FilterData::Xor];
 
-        assert!(lzos
-            .iter()
-            .zip(
-                lz4s.iter()
-                    .chain(zstds.iter())
-                    .chain(sfs.iter())
-                    .chain(xors.iter())
-            )
-            .all(|(lzo, other)| !lzo.option_subset(other)));
-        assert!(lz4s
-            .iter()
-            .zip(
-                lzos.iter()
-                    .chain(zstds.iter())
-                    .chain(sfs.iter())
-                    .chain(xors.iter())
-            )
-            .all(|(lz4, other)| !lz4.option_subset(other)));
-        assert!(zstds
-            .iter()
-            .zip(
-                lzos.iter()
-                    .chain(lz4s.iter())
-                    .chain(sfs.iter())
-                    .chain(xors.iter())
-            )
-            .all(|(zstd, other)| !zstd.option_subset(other)));
-        assert!(sfs
-            .iter()
-            .zip(
-                lzos.iter()
-                    .chain(lz4s.iter())
-                    .chain(zstds.iter())
-                    .chain(xors.iter())
-            )
-            .all(|(sf, other)| !sf.option_subset(other)));
-        assert!(xors
-            .iter()
-            .zip(
-                lzos.iter()
-                    .chain(lz4s.iter())
-                    .chain(zstds.iter())
-                    .chain(sfs.iter())
-            )
-            .all(|(xor, other)| !xor.option_subset(other)));
+        assert!(
+            lzos.iter()
+                .zip(
+                    lz4s.iter()
+                        .chain(zstds.iter())
+                        .chain(sfs.iter())
+                        .chain(xors.iter())
+                )
+                .all(|(lzo, other)| !lzo.option_subset(other))
+        );
+        assert!(
+            lz4s.iter()
+                .zip(
+                    lzos.iter()
+                        .chain(zstds.iter())
+                        .chain(sfs.iter())
+                        .chain(xors.iter())
+                )
+                .all(|(lz4, other)| !lz4.option_subset(other))
+        );
+        assert!(
+            zstds
+                .iter()
+                .zip(
+                    lzos.iter()
+                        .chain(lz4s.iter())
+                        .chain(sfs.iter())
+                        .chain(xors.iter())
+                )
+                .all(|(zstd, other)| !zstd.option_subset(other))
+        );
+        assert!(
+            sfs.iter()
+                .zip(
+                    lzos.iter()
+                        .chain(lz4s.iter())
+                        .chain(zstds.iter())
+                        .chain(xors.iter())
+                )
+                .all(|(sf, other)| !sf.option_subset(other))
+        );
+        assert!(
+            xors.iter()
+                .zip(
+                    lzos.iter()
+                        .chain(lz4s.iter())
+                        .chain(zstds.iter())
+                        .chain(sfs.iter())
+                )
+                .all(|(xor, other)| !xor.option_subset(other))
+        );
     }
 
     #[cfg(feature = "serde_json")]

@@ -1,7 +1,7 @@
 use crate::capi_enum::{tiledb_object_t, tiledb_walk_order_t};
 use crate::types::tiledb_ctx_t;
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_object_type(
         ctx: *mut tiledb_ctx_t,
         path: *const ::std::os::raw::c_char,

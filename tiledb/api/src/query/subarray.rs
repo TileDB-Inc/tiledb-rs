@@ -3,6 +3,7 @@ use std::ops::Deref;
 
 use anyhow::anyhow;
 
+use crate::Result as TileDBResult;
 use crate::array::Schema;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
@@ -10,7 +11,6 @@ use crate::error::{DatatypeError, Error};
 use crate::key::LookupKey;
 use crate::query::QueryBuilder;
 use crate::range::{Range, SingleValueRange, TypedRange, VarValueRange};
-use crate::Result as TileDBResult;
 
 use tiledb_common::{
     physical_type_go, single_value_range_go, var_value_range_go,
@@ -382,12 +382,12 @@ mod tests {
     use uri::{self, TestArrayUri};
 
     use super::*;
+    use crate::Datatype;
     use crate::array::*;
     use crate::query::{
         Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder,
         WriteBuilder,
     };
-    use crate::Datatype;
 
     /// The default subarray of a query with a constrained dimension
     /// is whatever the dimension constraints are
@@ -685,9 +685,7 @@ mod tests {
 
                 let row_in_bounds = subarray.dimension_ranges[0].is_empty()
                     || subarray.dimension_ranges[0].iter().any(|r| {
-                        let Range::Var(VarValueRange::UInt8(ref lb, ref ub)) =
-                            r
-                        else {
+                        let Range::Var(VarValueRange::UInt8(lb, ub)) = r else {
                             unreachable!()
                         };
                         lb.as_ref() <= row.as_bytes()

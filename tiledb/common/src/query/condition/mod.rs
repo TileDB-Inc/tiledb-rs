@@ -9,8 +9,8 @@ use std::ops::{BitAnd, BitOr, Not};
 use serde::{Deserialize, Serialize};
 
 use crate::array::CellValNum;
-use crate::datatype::physical::{BitsEq, BitsHash, BitsKeyAdapter};
 use crate::datatype::Datatype;
+use crate::datatype::physical::{BitsEq, BitsHash, BitsKeyAdapter};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
@@ -188,24 +188,18 @@ macro_rules! literal_go {
         }
     }};
 
-    ($expr:expr, $value:pat, $then:expr) => {{
-        literal_go!($expr, _DT, $value, $then, $then, $then)
-    }};
+    ($expr:expr, $value:pat, $then:expr) => {{ literal_go!($expr, _DT, $value, $then, $then, $then) }};
 
-    ($expr:expr, $value:pat, $numeric:expr, $str:expr) => {{
-        literal_go!($expr, _DT, $value, $numeric, $numeric, $str)
-    }};
+    ($expr:expr, $value:pat, $numeric:expr, $str:expr) => {{ literal_go!($expr, _DT, $value, $numeric, $numeric, $str) }};
 
-    ($expr:expr, $value:pat, $numeric:expr, $float:expr, $str:expr) => {{
-        literal_go!($expr, _DT, $value, $numeric, $float, $str)
-    }};
+    ($expr:expr, $value:pat, $numeric:expr, $float:expr, $str:expr) => {{ literal_go!($expr, _DT, $value, $numeric, $float, $str) }};
 }
 
 impl Literal {
     pub fn to_bytes(&self) -> Vec<u8> {
         literal_go!(
             self,
-            ref val,
+            val,
             val.to_le_bytes().to_vec(),
             val.as_bytes().to_vec()
         )
@@ -216,7 +210,7 @@ impl Display for Literal {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         literal_go!(
             self,
-            ref val,
+            val,
             write!(f, "{}", val),
             write!(f, "'{}'", escape_string_literal(val))
         )
@@ -231,7 +225,7 @@ impl Hash for Literal {
     {
         literal_go!(
             self,
-            ref v,
+            v,
             v.hash(state),
             BitsKeyAdapter(v).hash(state),
             v.hash(state)
@@ -243,17 +237,17 @@ impl PartialEq for Literal {
     fn eq(&self, other: &Self) -> bool {
         use self::Literal::*;
         match (self, other) {
-            (UInt8(ref mine), UInt8(ref theirs)) => mine == theirs,
-            (UInt16(ref mine), UInt16(ref theirs)) => mine == theirs,
-            (UInt32(ref mine), UInt32(ref theirs)) => mine == theirs,
-            (UInt64(ref mine), UInt64(ref theirs)) => mine == theirs,
-            (Int8(ref mine), Int8(ref theirs)) => mine == theirs,
-            (Int16(ref mine), Int16(ref theirs)) => mine == theirs,
-            (Int32(ref mine), Int32(ref theirs)) => mine == theirs,
-            (Int64(ref mine), Int64(ref theirs)) => mine == theirs,
-            (Float32(ref mine), Float32(ref theirs)) => mine.bits_eq(theirs),
-            (Float64(ref mine), Float64(ref theirs)) => mine.bits_eq(theirs),
-            (String(ref mine), String(ref theirs)) => mine == theirs,
+            (UInt8(mine), UInt8(theirs)) => mine == theirs,
+            (UInt16(mine), UInt16(theirs)) => mine == theirs,
+            (UInt32(mine), UInt32(theirs)) => mine == theirs,
+            (UInt64(mine), UInt64(theirs)) => mine == theirs,
+            (Int8(mine), Int8(theirs)) => mine == theirs,
+            (Int16(mine), Int16(theirs)) => mine == theirs,
+            (Int32(mine), Int32(theirs)) => mine == theirs,
+            (Int64(mine), Int64(theirs)) => mine == theirs,
+            (Float32(mine), Float32(theirs)) => mine.bits_eq(theirs),
+            (Float64(mine), Float64(theirs)) => mine.bits_eq(theirs),
+            (String(mine), String(theirs)) => mine == theirs,
             _ => false,
         }
     }
@@ -380,11 +374,11 @@ macro_rules! slice_to_ptr_and_size {
 
 impl SetMembers {
     pub fn is_empty(&self) -> bool {
-        set_members_go!(self, ref members, members.is_empty())
+        set_members_go!(self, members, members.is_empty())
     }
 
     pub fn len(&self) -> usize {
-        set_members_go!(self, ref members, members.len())
+        set_members_go!(self, members, members.len())
     }
 
     pub fn elem_size(&self) -> usize {
@@ -437,17 +431,17 @@ impl SetMembers {
 impl Display for SetMembers {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::UInt8(ref members) => Self::display(f, members),
-            Self::UInt16(ref members) => Self::display(f, members),
-            Self::UInt32(ref members) => Self::display(f, members),
-            Self::UInt64(ref members) => Self::display(f, members),
-            Self::Int8(ref members) => Self::display(f, members),
-            Self::Int16(ref members) => Self::display(f, members),
-            Self::Int32(ref members) => Self::display(f, members),
-            Self::Int64(ref members) => Self::display(f, members),
-            Self::Float32(ref members) => Self::display(f, members),
-            Self::Float64(ref members) => Self::display(f, members),
-            Self::String(ref members) => {
+            Self::UInt8(members) => Self::display(f, members),
+            Self::UInt16(members) => Self::display(f, members),
+            Self::UInt32(members) => Self::display(f, members),
+            Self::UInt64(members) => Self::display(f, members),
+            Self::Int8(members) => Self::display(f, members),
+            Self::Int16(members) => Self::display(f, members),
+            Self::Int32(members) => Self::display(f, members),
+            Self::Int64(members) => Self::display(f, members),
+            Self::Float32(members) => Self::display(f, members),
+            Self::Float64(members) => Self::display(f, members),
+            Self::String(members) => {
                 if let Some((first, rest)) = members.split_first() {
                     write!(f, "('{}'", escape_string_literal(first))?;
                     rest.iter().try_for_each(|value| {
@@ -471,17 +465,17 @@ impl Hash for SetMembers {
         use self::SetMembers::*;
 
         match self {
-            UInt8(ref v) => v.hash(state),
-            UInt16(ref v) => v.hash(state),
-            UInt32(ref v) => v.hash(state),
-            UInt64(ref v) => v.hash(state),
-            Int8(ref v) => v.hash(state),
-            Int16(ref v) => v.hash(state),
-            Int32(ref v) => v.hash(state),
-            Int64(ref v) => v.hash(state),
-            Float32(ref v) => v.bits_hash(state),
-            Float64(ref v) => v.bits_hash(state),
-            String(ref v) => v.hash(state),
+            UInt8(v) => v.hash(state),
+            UInt16(v) => v.hash(state),
+            UInt32(v) => v.hash(state),
+            UInt64(v) => v.hash(state),
+            Int8(v) => v.hash(state),
+            Int16(v) => v.hash(state),
+            Int32(v) => v.hash(state),
+            Int64(v) => v.hash(state),
+            Float32(v) => v.bits_hash(state),
+            Float64(v) => v.bits_hash(state),
+            String(v) => v.hash(state),
         }
     }
 }
@@ -491,17 +485,17 @@ impl PartialEq for SetMembers {
         use self::SetMembers::*;
 
         match (self, other) {
-            (UInt8(ref mine), UInt8(ref theirs)) => mine == theirs,
-            (UInt16(ref mine), UInt16(ref theirs)) => mine == theirs,
-            (UInt32(ref mine), UInt32(ref theirs)) => mine == theirs,
-            (UInt64(ref mine), UInt64(ref theirs)) => mine == theirs,
-            (Int8(ref mine), Int8(ref theirs)) => mine == theirs,
-            (Int16(ref mine), Int16(ref theirs)) => mine == theirs,
-            (Int32(ref mine), Int32(ref theirs)) => mine == theirs,
-            (Int64(ref mine), Int64(ref theirs)) => mine == theirs,
-            (Float32(ref mine), Float32(ref theirs)) => mine.bits_eq(theirs),
-            (Float64(ref mine), Float64(ref theirs)) => mine.bits_eq(theirs),
-            (String(ref mine), String(ref theirs)) => mine == theirs,
+            (UInt8(mine), UInt8(theirs)) => mine == theirs,
+            (UInt16(mine), UInt16(theirs)) => mine == theirs,
+            (UInt32(mine), UInt32(theirs)) => mine == theirs,
+            (UInt64(mine), UInt64(theirs)) => mine == theirs,
+            (Int8(mine), Int8(theirs)) => mine == theirs,
+            (Int16(mine), Int16(theirs)) => mine == theirs,
+            (Int32(mine), Int32(theirs)) => mine == theirs,
+            (Int64(mine), Int64(theirs)) => mine == theirs,
+            (Float32(mine), Float32(theirs)) => mine.bits_eq(theirs),
+            (Float64(mine), Float64(theirs)) => mine.bits_eq(theirs),
+            (String(mine), String(theirs)) => mine == theirs,
             _ => false,
         }
     }
@@ -677,9 +671,9 @@ impl Predicate {
 impl Display for Predicate {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::Equality(ref e) => write!(f, "{}", e),
-            Self::SetMembership(ref m) => write!(f, "{}", m),
-            Self::Nullness(ref n) => write!(f, "{}", n),
+            Self::Equality(e) => write!(f, "{}", e),
+            Self::SetMembership(m) => write!(f, "{}", m),
+            Self::Nullness(n) => write!(f, "{}", n),
         }
     }
 }
@@ -870,15 +864,11 @@ impl Not for QueryConditionExpr {
 impl Display for QueryConditionExpr {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::Cond(ref pred) => write!(f, "{}", pred),
-            Self::Comb {
-                ref lhs,
-                ref rhs,
-                op,
-            } => {
+            Self::Cond(pred) => write!(f, "{}", pred),
+            Self::Comb { lhs, rhs, op } => {
                 write!(f, "({}) {} ({})", lhs, op, rhs)
             }
-            Self::Negate(ref pred) => write!(f, "NOT ({})", pred),
+            Self::Negate(pred) => write!(f, "NOT ({})", pred),
         }
     }
 }

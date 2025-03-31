@@ -2,9 +2,9 @@ extern crate tiledb_api as tiledb;
 
 use std::path::PathBuf;
 
-use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
+use tiledb::query::{QueryBuilder, ReadQuery, ReadQueryBuilder};
 
 const QUICKSTART_DENSE_ARRAY_URI: &str = "quickstart_dense";
 const QUICKSTART_ATTRIBUTE_NAME: &str = "a";

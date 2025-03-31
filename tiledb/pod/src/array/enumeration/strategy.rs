@@ -3,11 +3,11 @@ use std::cmp::Ordering;
 use proptest::collection::vec;
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
-use strategy_ext::records::RecordsValueTree;
 use strategy_ext::StrategyExt;
+use strategy_ext::records::RecordsValueTree;
 use tiledb_common::array::CellValNum;
 use tiledb_common::datatype::physical::{BitsEq, BitsOrd};
-use tiledb_common::{physical_type_go, Datatype};
+use tiledb_common::{Datatype, physical_type_go};
 
 use crate::array::enumeration::EnumerationData;
 
@@ -141,11 +141,11 @@ fn prop_enumeration_values(
 pub fn prop_enumeration_for_datatype(
     datatype: Datatype,
     cell_val_num: CellValNum,
-    params: &Parameters,
+    params: Parameters,
 ) -> impl Strategy<Value = EnumerationData> {
     let name = prop_enumeration_name();
     let ordered = prop_ordered();
-    let data = prop_enumeration_values(datatype, cell_val_num, params);
+    let data = prop_enumeration_values(datatype, cell_val_num, &params);
     (name, ordered, data)
         .prop_map(move |(name, ordered, (data, offsets))| EnumerationData {
             name,
@@ -158,6 +158,7 @@ pub fn prop_enumeration_for_datatype(
         .boxed()
 }
 
+#[derive(Clone)]
 pub struct Parameters {
     pub datatype: BoxedStrategy<Datatype>,
     pub cell_val_num: BoxedStrategy<CellValNum>,
@@ -214,7 +215,7 @@ impl Arbitrary for EnumerationData {
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         (params.datatype.clone(), params.cell_val_num.clone())
             .prop_flat_map(move |(dt, cvn)| {
-                prop_enumeration_for_datatype(dt, cvn, &params)
+                prop_enumeration_for_datatype(dt, cvn, params.clone())
             })
             .boxed()
             .value_tree_map(|vt| EnumerationValueTree::new(vt.current()))

@@ -4,7 +4,7 @@ use crate::types::{
     tiledb_string_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_attribute_alloc(
         ctx: *mut tiledb_ctx_t,
         name: *const ::std::os::raw::c_char,

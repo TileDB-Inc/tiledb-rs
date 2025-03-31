@@ -5,7 +5,7 @@ use crate::types::{
     tiledb_string_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_group_alloc(
         ctx: *mut tiledb_ctx_t,
         group_uri: *const ::std::os::raw::c_char,

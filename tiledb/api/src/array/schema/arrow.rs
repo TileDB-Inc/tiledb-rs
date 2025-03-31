@@ -10,7 +10,7 @@ use crate::array::{
     Schema, SchemaBuilder, TileOrder,
 };
 use crate::filter::arrow::FilterMetadata;
-use crate::{error::Error, Context, Factory, Result as TileDBResult};
+use crate::{Context, Factory, Result as TileDBResult, error::Error};
 
 pub type FieldToArrowResult = crate::arrow::ArrowConversionResult<
     arrow::datatypes::Field,
@@ -273,8 +273,8 @@ mod tests {
     use tiledb_pod::array::schema::SchemaData;
 
     use super::*;
-    use crate::array::schema::Field as SchemaField;
     use crate::Factory;
+    use crate::array::schema::Field as SchemaField;
 
     fn do_to_arrow(tdb_in: SchemaData) {
         let c: Context = Context::new().unwrap();

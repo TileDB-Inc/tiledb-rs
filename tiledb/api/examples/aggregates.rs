@@ -2,9 +2,9 @@ extern crate tiledb_api as tiledb;
 
 use crate::tiledb::query::read::AggregateQueryBuilder;
 use std::path::PathBuf;
-use tiledb::query::{QueryBuilder, ReadQuery};
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
+use tiledb::query::{QueryBuilder, ReadQuery};
 
 const AGGREGATE_ARRAY_URI: &str = "aggregates";
 const AGGREGATE_ATTRIBUTE_NAME: &str = "a";

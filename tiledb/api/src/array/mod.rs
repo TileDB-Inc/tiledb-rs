@@ -6,6 +6,7 @@ use std::str::FromStr;
 
 use anyhow::anyhow;
 
+use crate::Result as TileDBResult;
 use crate::array::enumeration::RawEnumeration;
 use crate::array::schema::{RawSchema, SchemaEvolution};
 use crate::context::{
@@ -19,8 +20,7 @@ use crate::metadata::Metadata;
 use crate::range::{
     Range, SingleValueRange, TypedNonEmptyDomain, TypedRange, VarValueRange,
 };
-use crate::Result as TileDBResult;
-use crate::{physical_type_go, Datatype};
+use crate::{Datatype, physical_type_go};
 
 pub mod attribute;
 pub mod dimension;
@@ -685,8 +685,10 @@ impl Array {
                 })?;
 
                 if c_is_empty == 1 {
-                    unreachable!("Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
-                            dimension_key, start_size, end_size)
+                    unreachable!(
+                        "Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
+                        dimension_key, start_size, end_size
+                    )
                 } else {
                     Ok(Some(VarValueRange::from((start, end))))
                 }
@@ -748,8 +750,10 @@ impl Array {
                 })?;
 
                 if c_is_empty == 1 {
-                    unreachable!("Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
-                            c_name, start_size, end_size)
+                    unreachable!(
+                        "Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
+                        c_name, start_size, end_size
+                    )
                 } else {
                     Ok(Some(VarValueRange::from((start, end))))
                 }
@@ -951,11 +955,11 @@ pub mod tests {
     use utils::option::OptionSubset;
 
     use super::*;
+    use crate::Factory;
     use crate::config::CommonOption;
     use crate::query::{
         Query, QueryBuilder, QueryLayout, QueryType, WriteBuilder,
     };
-    use crate::Factory;
 
     /// Create the array used in the "quickstart_dense" example
     pub fn create_quickstart_dense(
@@ -1420,11 +1424,13 @@ pub mod tests {
                 == "flintstones"
         );
 
-        assert!(array
-            .schema()?
-            .attribute("attr2")?
-            .enumeration_name()?
-            .is_none());
+        assert!(
+            array
+                .schema()?
+                .attribute("attr2")?
+                .enumeration_name()?
+                .is_none()
+        );
 
         Ok(())
     }

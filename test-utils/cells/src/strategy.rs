@@ -13,8 +13,8 @@ use tiledb_common::datatype::{Datatype, PhysicalType};
 use tiledb_common::{dimension_constraints_go, physical_type_go};
 use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 
-use super::field::FieldData;
 use super::Cells;
+use super::field::FieldData;
 
 trait IntegralType: Eq + Ord + PhysicalType {}
 
@@ -594,7 +594,10 @@ impl Strategy for CellsStrategy {
         /* Choose the maximum number of records */
         let strat_nrecords = if let Some(limit) = self.nrecords_limit() {
             if limit < self.params.min_records {
-                let r = format!("Schema and parameters are not satisfiable: schema.domain.num_cells() = {}, self.params.min_records = {}", limit, self.params.min_records);
+                let r = format!(
+                    "Schema and parameters are not satisfiable: schema.domain.num_cells() = {}, self.params.min_records = {}",
+                    limit, self.params.min_records
+                );
                 return Err(proptest::test_runner::Reason::from(r));
             } else {
                 let max_records = std::cmp::min(self.params.max_records, limit);

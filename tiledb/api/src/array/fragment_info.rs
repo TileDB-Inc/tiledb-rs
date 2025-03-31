@@ -3,6 +3,7 @@ use std::ops::Deref;
 
 use anyhow::anyhow;
 
+use crate::Result as TileDBResult;
 use crate::array::schema::{RawSchema, Schema};
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, Context, ContextBound};
@@ -13,7 +14,6 @@ use crate::range::{
     MinimumBoundingRectangle, Range, TypedNonEmptyDomain, TypedRange,
 };
 use crate::string::{RawTDBString, TDBString};
-use crate::Result as TileDBResult;
 
 pub use crate::array::schema::ArrayType as FragmentType;
 
@@ -743,10 +743,10 @@ pub mod tests {
     use uri::{self, TestArrayUri};
 
     use super::*;
+    use crate::Datatype;
     use crate::array::*;
     use crate::config::Config;
     use crate::query::{QueryBuilder, WriteBuilder};
-    use crate::Datatype;
 
     #[test]
     fn test_set_config() -> TileDBResult<()> {

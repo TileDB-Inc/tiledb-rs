@@ -17,7 +17,9 @@ pub type MinimumBoundingRectangle = Vec<TypedRange>;
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum DimensionCompatibilityError {
-    #[error("Dimensions cannot have a multiple-value fixed ranges: found range of size {0}")]
+    #[error(
+        "Dimensions cannot have a multiple-value fixed ranges: found range of size {0}"
+    )]
     MultiValueRange(usize),
     #[error("{:?} is invalid for dimensions", CellValNum::Fixed(*.0))]
     CellValNumFixed(NonZeroU32),
@@ -50,7 +52,10 @@ pub enum RangeFromSlicesError {
 
 #[derive(Clone, Debug, Error)]
 pub enum MultiValueRangeError {
-    #[error("Expected multiple value cells but found {:?}; use SingleValueRange instead", CellValNum::single())]
+    #[error(
+        "Expected multiple value cells but found {:?}; use SingleValueRange instead",
+        CellValNum::single()
+    )]
     CellValNumSingle,
     #[error("Expected fixed-length {} but found {:?}", std::any::type_name::<CellValNum>(), CellValNum::Var)]
     CellValNumVar,
@@ -202,7 +207,10 @@ impl SingleValueRange {
                 SingleValueRange::from(&[min, max])
             },
             {
-                panic!("`SingleValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other)
+                panic!(
+                    "`SingleValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
+                    self, other
+                )
             }
         )
     }
@@ -229,7 +237,10 @@ impl SingleValueRange {
                 Some(SingleValueRange::from(&[*lower, *upper]))
             },
             {
-                panic!("`SingleValueRange::intersection` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other)
+                panic!(
+                    "`SingleValueRange::intersection` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
+                    self, other
+                )
             }
         )
     }
@@ -638,7 +649,7 @@ impl MultiValueRange {
 
     /// Returns the number of values held by each end of this range.
     pub fn num_values(&self) -> usize {
-        crate::multi_value_range_go!(self, _DT, ref start, _, start.len())
+        crate::multi_value_range_go!(self, _DT, start, _, start.len())
     }
 
     /// Returns the number of cells spanned by this range if it is a
@@ -684,8 +695,8 @@ impl MultiValueRange {
         crate::multi_value_range_go!(
             self,
             DT,
-            ref start,
-            ref end,
+            start,
+            end,
             {
                 let iter_factor = i128::from(DT::MAX) - i128::from(DT::MIN) + 1;
                 start
@@ -723,11 +734,22 @@ impl MultiValueRange {
     /// Panics if `self` and `other` do not have the same physical datatype or the same fixed
     /// length.
     pub fn union(&self, other: &Self) -> Self {
-        assert_eq!(self.num_values(), other.num_values(),
+        assert_eq!(
+            self.num_values(),
+            other.num_values(),
             "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
-            self, other);
+            self,
+            other
+        );
 
-        crate::multi_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
+        crate::multi_value_range_cmp!(
+            self,
+            other,
+            _DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
             {
                 let min = if lstart.bits_lt(rstart) {
                     lstart.clone()
@@ -741,9 +763,14 @@ impl MultiValueRange {
                     rend.clone()
                 };
 
-                MultiValueRange::try_from((self.cell_val_num(), min, max)).unwrap()
+                MultiValueRange::try_from((self.cell_val_num(), min, max))
+                    .unwrap()
             },
-            panic!("`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+            panic!(
+                "`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
+                self, other
+            )
+        )
     }
 
     /// Returns the range covered by the intersection of `self` and `other`,
@@ -754,18 +781,40 @@ impl MultiValueRange {
     /// Panics if `self` and `other` do not have the same physical datatype or the same fixed
     /// length.
     pub fn intersection(&self, other: &Self) -> Option<Self> {
-        assert_eq!(self.num_values(), other.num_values(),
+        assert_eq!(
+            self.num_values(),
+            other.num_values(),
             "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
-            self, other);
+            self,
+            other
+        );
 
-        crate::multi_value_range_cmp!(self, other, DT, ref lstart, ref lend, ref rstart, ref rend,
+        crate::multi_value_range_cmp!(
+            self,
+            other,
+            DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
             {
-                let (lower, upper) = intersection::<[DT]>(&**lstart, &**lend, &**rstart, &**rend)?;
-                Some(MultiValueRange::try_from((self.cell_val_num(),
-                    lower.to_vec().into_boxed_slice(),
-                    upper.to_vec().into_boxed_slice())).unwrap())
+                let (lower, upper) = intersection::<[DT]>(
+                    &**lstart, &**lend, &**rstart, &**rend,
+                )?;
+                Some(
+                    MultiValueRange::try_from((
+                        self.cell_val_num(),
+                        lower.to_vec().into_boxed_slice(),
+                        upper.to_vec().into_boxed_slice(),
+                    ))
+                    .unwrap(),
+                )
             },
-            panic!("`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+            panic!(
+                "`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
+                self, other
+            )
+        )
     }
 }
 
@@ -846,9 +895,7 @@ multi_value_range_try_from!(Float32: f32, Float64: f64);
 
 #[macro_export]
 macro_rules! multi_value_range_go {
-    ($expr:expr, $DT:ident, $start:pat, $end:pat, $then:expr) => {{
-        $crate::multi_value_range_go!($expr, $DT, $start, $end, $then, $then)
-    }};
+    ($expr:expr, $DT:ident, $start:pat, $end:pat, $then:expr) => {{ $crate::multi_value_range_go!($expr, $DT, $start, $end, $then, $then) }};
     ($expr:expr, $DT:ident, $start:pat, $end:pat, $if_integral:expr, $if_float:expr) => {
         match $expr {
             #[allow(unused_variables)]
@@ -1086,7 +1133,14 @@ impl VarValueRange {
     ///
     /// Panics if `self` and `other` do not have the same physical datatype.
     pub fn union(&self, other: &Self) -> Self {
-        crate::var_value_range_cmp!(self, other, _DT, ref lstart, ref lend, ref rstart, ref rend,
+        crate::var_value_range_cmp!(
+            self,
+            other,
+            _DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
             {
                 let min = if lstart.bits_lt(rstart) {
                     lstart.clone()
@@ -1102,7 +1156,11 @@ impl VarValueRange {
 
                 VarValueRange::from((min, max))
             },
-            panic!("`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+            panic!(
+                "`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
+                self, other
+            )
+        )
     }
 
     /// Returns the range covered by the intersection of `self` and `other`,
@@ -1112,12 +1170,28 @@ impl VarValueRange {
     ///
     /// Panics if `self` and `other` do not have the same physical datatype.
     pub fn intersection(&self, other: &Self) -> Option<Self> {
-        crate::var_value_range_cmp!(self, other, DT, ref lstart, ref lend, ref rstart, ref rend,
+        crate::var_value_range_cmp!(
+            self,
+            other,
+            DT,
+            lstart,
+            lend,
+            rstart,
+            rend,
             {
-                let (lower, upper) = intersection::<[DT]>(&**lstart, &**lend, &**rstart, &**rend)?;
-                Some(VarValueRange::from((lower.to_vec().into_boxed_slice(), upper.to_vec().into_boxed_slice())))
+                let (lower, upper) = intersection::<[DT]>(
+                    &**lstart, &**lend, &**rstart, &**rend,
+                )?;
+                Some(VarValueRange::from((
+                    lower.to_vec().into_boxed_slice(),
+                    upper.to_vec().into_boxed_slice(),
+                )))
             },
-            panic!("`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}", self, other))
+            panic!(
+                "`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
+                self, other
+            )
+        )
     }
 }
 
@@ -1399,9 +1473,9 @@ pub enum Range {
 impl Range {
     pub fn cell_val_num(&self) -> CellValNum {
         match self {
-            Self::Single(ref r) => r.cell_val_num(),
-            Self::Multi(ref r) => r.cell_val_num(),
-            Self::Var(ref r) => r.cell_val_num(),
+            Self::Single(r) => r.cell_val_num(),
+            Self::Multi(r) => r.cell_val_num(),
+            Self::Var(r) => r.cell_val_num(),
         }
     }
 
@@ -1410,8 +1484,8 @@ impl Range {
     /// `Range::Var` variants are not discrete ranges and will return `None`.
     pub fn num_cells(&self) -> Option<u128> {
         match self {
-            Self::Single(ref r) => r.num_cells(),
-            Self::Multi(ref r) => r.num_cells(),
+            Self::Single(r) => r.num_cells(),
+            Self::Multi(r) => r.num_cells(),
             Self::Var(_) => None,
         }
     }
@@ -1430,7 +1504,7 @@ impl Range {
             Self::Multi(mvr) => {
                 return Err(DimensionCompatibilityError::MultiValueRange(
                     mvr.num_values(),
-                ))
+                ));
             }
             Self::Var(vvr) => vvr.check_datatype(datatype)?,
         }
@@ -1498,10 +1572,13 @@ impl Range {
     /// `self` and `other` do not have the same physical datatype.
     pub fn union(&self, other: &Self) -> Self {
         match (self, other) {
-            (Self::Single(ref l), Self::Single(ref r)) => Self::Single(l.union(r)),
-            (Self::Multi(ref l), Self::Multi(ref r)) => Self::Multi(l.union(r)),
-            (Self::Var(ref l), Self::Var(ref r)) => Self::Var(l.union(r)),
-            _ => panic!("`Range::union` on non-matching range variants: `self` = {:?}, `other` = {:?}", self, other)
+            (Self::Single(l), Self::Single(r)) => Self::Single(l.union(r)),
+            (Self::Multi(l), Self::Multi(r)) => Self::Multi(l.union(r)),
+            (Self::Var(l), Self::Var(r)) => Self::Var(l.union(r)),
+            _ => panic!(
+                "`Range::union` on non-matching range variants: `self` = {:?}, `other` = {:?}",
+                self, other
+            ),
         }
     }
 
@@ -1514,10 +1591,17 @@ impl Range {
     /// `self` and `other` do not have the same physical datatype.
     pub fn intersection(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (Self::Single(ref l), Self::Single(ref r)) => Some(Self::Single(l.intersection(r)?)),
-            (Self::Multi(ref l), Self::Multi(ref r)) => Some(Self::Multi(l.intersection(r)?)),
-            (Self::Var(ref l), Self::Var(ref r)) => Some(Self::Var(l.intersection(r)?)),
-            _ => panic!("`Range::intersection` on non-matching range variants: `self` = {:?}, `other` = {:?}", self, other)
+            (Self::Single(l), Self::Single(r)) => {
+                Some(Self::Single(l.intersection(r)?))
+            }
+            (Self::Multi(l), Self::Multi(r)) => {
+                Some(Self::Multi(l.intersection(r)?))
+            }
+            (Self::Var(l), Self::Var(r)) => Some(Self::Var(l.intersection(r)?)),
+            _ => panic!(
+                "`Range::intersection` on non-matching range variants: `self` = {:?}, `other` = {:?}",
+                self, other
+            ),
         }
     }
 }
@@ -1996,17 +2080,27 @@ mod tests {
                         1.try_into()?,
                     )?;
                 } else {
-                    assert!(range
-                        .check_dimension_compatibility(datatype, 1.try_into()?)
-                        .is_err());
+                    assert!(
+                        range
+                            .check_dimension_compatibility(
+                                datatype,
+                                1.try_into()?
+                            )
+                            .is_err()
+                    );
                     srange.check_datatype(datatype)?;
                 }
             }
             Range::Multi(mrange) => {
                 // MultiValueRange is not valid for dimensions
-                assert!(range
-                    .check_dimension_compatibility(datatype, CellValNum::Var)
-                    .is_err());
+                assert!(
+                    range
+                        .check_dimension_compatibility(
+                            datatype,
+                            CellValNum::Var
+                        )
+                        .is_err()
+                );
                 // But we can check that the datatype is correct.
                 mrange.check_datatype(datatype)?;
             }
@@ -2018,12 +2112,14 @@ mod tests {
                     )?;
                 } else {
                     // Only StringAscii can be var sized
-                    assert!(range
-                        .check_dimension_compatibility(
-                            datatype,
-                            CellValNum::Var
-                        )
-                        .is_err());
+                    assert!(
+                        range
+                            .check_dimension_compatibility(
+                                datatype,
+                                CellValNum::Var
+                            )
+                            .is_err()
+                    );
 
                     // But we can still check the datatype correctness
                     vrange.check_datatype(datatype)?;
@@ -2164,30 +2260,32 @@ mod tests {
 
         // Check TryFrom failures
         multi_value_range_go!(range, _DT, ref start, ref end, {
-            assert!(Range::try_from((
-                CellValNum::try_from(1)?,
-                start.clone(),
-                end.clone()
-            ))
-            .is_err());
-            assert!(Range::try_from((
-                CellValNum::Var,
-                start.clone(),
-                end.clone()
-            ))
-            .is_err());
+            assert!(
+                Range::try_from((
+                    CellValNum::try_from(1)?,
+                    start.clone(),
+                    end.clone()
+                ))
+                .is_err()
+            );
+            assert!(
+                Range::try_from((CellValNum::Var, start.clone(), end.clone()))
+                    .is_err()
+            );
 
             {
                 let start = start.clone();
                 let mut end = end.clone().into_vec();
                 end.push(end[0]);
                 let end = end.into_boxed_slice();
-                assert!(Range::try_from((
-                    CellValNum::Fixed(cell_val_num),
-                    start,
-                    end
-                ))
-                .is_err());
+                assert!(
+                    Range::try_from((
+                        CellValNum::Fixed(cell_val_num),
+                        start,
+                        end
+                    ))
+                    .is_err()
+                );
             }
 
             {
@@ -2195,12 +2293,14 @@ mod tests {
                 start.push(start[0]);
                 let start = start.into_boxed_slice();
                 let end = end.clone();
-                assert!(Range::try_from((
-                    CellValNum::Fixed(cell_val_num),
-                    start,
-                    end
-                ))
-                .is_err());
+                assert!(
+                    Range::try_from((
+                        CellValNum::Fixed(cell_val_num),
+                        start,
+                        end
+                    ))
+                    .is_err()
+                );
             }
         });
         Ok(())
@@ -2259,23 +2359,27 @@ mod tests {
         let _ = Range::from(&["foo", "bar"]);
 
         let range = Range::from(&[1u32, 2]);
-        assert!(range
-            .check_dimension_compatibility(
-                Datatype::UInt32,
-                2.try_into().unwrap(),
-            )
-            .is_err());
+        assert!(
+            range
+                .check_dimension_compatibility(
+                    Datatype::UInt32,
+                    2.try_into().unwrap(),
+                )
+                .is_err()
+        );
 
         let range = Range::from((
             vec![].into_boxed_slice(),
             vec![1i32].into_boxed_slice(),
         ));
-        assert!(range
-            .check_dimension_compatibility(
-                Datatype::Int32,
-                1.try_into().unwrap()
-            )
-            .is_err());
+        assert!(
+            range
+                .check_dimension_compatibility(
+                    Datatype::Int32,
+                    1.try_into().unwrap()
+                )
+                .is_err()
+        );
 
         let _ = format!("{:?}", range);
     }
@@ -2610,8 +2714,8 @@ mod tests {
         }
     }
 
-    fn strat_intersection_single(
-    ) -> impl Strategy<Value = (SingleValueRange, SingleValueRange)> {
+    fn strat_intersection_single()
+    -> impl Strategy<Value = (SingleValueRange, SingleValueRange)> {
         any::<Datatype>().prop_flat_map(|dt| {
             (
                 any_with::<SingleValueRange>(Some(dt)),
@@ -2620,8 +2724,8 @@ mod tests {
         })
     }
 
-    fn strat_intersection_multi(
-    ) -> impl Strategy<Value = (MultiValueRange, MultiValueRange)> {
+    fn strat_intersection_multi()
+    -> impl Strategy<Value = (MultiValueRange, MultiValueRange)> {
         (any::<Datatype>(), 2..1024u32).prop_flat_map(|(dt, nz)| {
             let nz = NonZeroU32::try_from(nz).unwrap();
             (
@@ -2631,8 +2735,8 @@ mod tests {
         })
     }
 
-    fn strat_intersection_var(
-    ) -> impl Strategy<Value = (VarValueRange, VarValueRange)> {
+    fn strat_intersection_var()
+    -> impl Strategy<Value = (VarValueRange, VarValueRange)> {
         any::<Datatype>().prop_flat_map(|dt| {
             (
                 any_with::<VarValueRange>(Some(dt)),

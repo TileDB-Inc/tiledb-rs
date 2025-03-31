@@ -1,5 +1,5 @@
 use super::*;
-use crate::tests::examples::{quickstart, TestArray};
+use crate::tests::examples::{TestArray, quickstart};
 use crate::tests::prelude::*;
 
 /// Test that we disallow attaching buffers
