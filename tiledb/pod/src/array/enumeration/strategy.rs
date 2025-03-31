@@ -14,7 +14,9 @@ use crate::array::enumeration::EnumerationData;
 impl EnumerationData {
     /// Returns a strategy which produces a valid
     /// key datatype for this enumeration.
-    pub fn key_datatype_strategy(&self) -> impl Strategy<Value = Datatype> {
+    pub fn key_datatype_strategy(
+        &self,
+    ) -> impl Strategy<Value = Datatype> + use<> {
         let nv = self.num_variants();
         let mut candidates = Vec::new();
 
