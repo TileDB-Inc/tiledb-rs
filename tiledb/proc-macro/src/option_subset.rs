@@ -105,7 +105,7 @@ fn option_subset_body_enum_variants(
                 }).collect::<Vec<_>>();
 
                 quote! {
-                    ( #ename::#vname ( #(ref #self_fnames,)* ), #ename::#vname ( #(ref #other_fnames,)* )) => {
+                    ( #ename::#vname ( #(#self_fnames,)* ), #ename::#vname ( #(#other_fnames,)* )) => {
                         #(if !#self_fnames.option_subset(&#other_fnames) { return false; })*
                         true
                     }

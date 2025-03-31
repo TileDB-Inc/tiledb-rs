@@ -190,7 +190,7 @@ mod tests {
                 super::strategy::prop_enumeration_for_datatype(
                     dt,
                     cvn,
-                    &Default::default(),
+                    Default::default(),
                 )
             },
         )

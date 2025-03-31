@@ -6,14 +6,14 @@ use proptest::option::Probability;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::strategy::ValueTree;
-use strategy_ext::records::RecordsValueTree;
 use strategy_ext::StrategyExt;
+use strategy_ext::records::RecordsValueTree;
 use tiledb_common::array::{ArrayType, CellOrder, TileOrder};
 use tiledb_common::filter::FilterData;
 
 use crate::array::attribute::strategy::{
-    prop_attribute, AttributeValueTree, Requirements as AttributeRequirements,
-    StrategyContext as AttributeContext,
+    AttributeValueTree, Requirements as AttributeRequirements,
+    StrategyContext as AttributeContext, prop_attribute,
 };
 use crate::array::domain::strategy::{
     DomainValueTree, Requirements as DomainRequirements,
@@ -79,13 +79,11 @@ impl Default for Requirements {
 }
 
 pub fn prop_coordinate_filters(
-    domain: &DomainData,
-    params: &Requirements,
+    domain: Rc<DomainData>,
+    params: Rc<Requirements>,
 ) -> impl Strategy<Value = Vec<FilterData>> {
     let req = FilterRequirements {
-        context: Some(FilterContext::SchemaCoordinates(Rc::new(
-            domain.clone(),
-        ))),
+        context: Some(FilterContext::SchemaCoordinates(domain.clone())),
         ..params
             .coordinates_filters
             .as_ref()
@@ -203,7 +201,7 @@ fn prop_schema_for_domain(
         any::<TileOrder>(),
         allow_duplicates,
         strat_attributes_enumerations,
-        prop_coordinate_filters(&domain, params.as_ref()),
+        prop_coordinate_filters(domain.clone(), params.clone()),
         FilterPipelineStrategy::new(offsets_filters_requirements),
         FilterPipelineStrategy::new(validity_filters_requirements)
     )

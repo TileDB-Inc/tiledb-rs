@@ -6,7 +6,7 @@ use crate::types::{
     tiledb_query_t, tiledb_subarray_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_query_alloc(
         ctx: *mut tiledb_ctx_t,
         array: *mut tiledb_array_t,

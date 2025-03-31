@@ -395,7 +395,7 @@ pub fn from_arrow(value: &arrow_schema::DataType) -> DatatypeFromArrowResult {
             },
             Err(_) => Res::None,
         },
-        ADT::FixedSizeList(ref item, ref len) => {
+        ADT::FixedSizeList(item, len) => {
             let len = match u32::try_from(*len).ok().and_then(NonZeroU32::new) {
                 Some(len) => len,
                 None => return Res::None,
@@ -454,7 +454,7 @@ pub fn from_arrow(value: &arrow_schema::DataType) -> DatatypeFromArrowResult {
              */
             Res::Inexact(Datatype::StringUtf8, CellValNum::Var)
         }
-        ADT::LargeList(ref item) => {
+        ADT::LargeList(item) => {
             if item.is_nullable() {
                 // tiledb validity applies to the entire cell, not the values within the cell.
                 // there is currently no way to represent null values within a cell
@@ -699,8 +699,8 @@ pub fn is_physical_type_match(
     use arrow_schema::DataType as ADT;
     match (arrow_in, arrow_out) {
         (
-            ADT::FixedSizeList(ref item_in, len_in),
-            ADT::FixedSizeList(ref item_out, len_out),
+            ADT::FixedSizeList(item_in, len_in),
+            ADT::FixedSizeList(item_out, len_out),
         ) => {
             len_in == len_out
                 && is_physical_type_match(
@@ -708,10 +708,10 @@ pub fn is_physical_type_match(
                     item_out.data_type(),
                 )
         }
-        (ADT::LargeList(ref item_in), ADT::LargeList(ref item_out)) => {
+        (ADT::LargeList(item_in), ADT::LargeList(item_out)) => {
             is_physical_type_match(item_in.data_type(), item_out.data_type())
         }
-        (ADT::FixedSizeList(ref item_in, 1), dt_out) => {
+        (ADT::FixedSizeList(item_in, 1), dt_out) => {
             /*
              * fixed size list of 1 element should have no extra data,
              * we probably don't need to keep the FixedSizeList part
@@ -720,7 +720,7 @@ pub fn is_physical_type_match(
              */
             is_physical_type_match(item_in.data_type(), dt_out)
         }
-        (ADT::LargeUtf8, ADT::LargeList(ref item)) => {
+        (ADT::LargeUtf8, ADT::LargeList(item)) => {
             /*
              * Arrow does checked UTF-8, tiledb does not,
              * so we must permit this inexactness
@@ -1018,7 +1018,8 @@ pub mod tests {
                     assert_eq!(cell_val_num, cell_val_num_out);
                 } else {
                     unreachable!(
-                        "Arrow datatype constructed from tiledb datatype must convert back")
+                        "Arrow datatype constructed from tiledb datatype must convert back"
+                    )
                 }
             }
         }

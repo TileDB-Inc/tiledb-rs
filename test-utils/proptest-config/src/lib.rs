@@ -40,8 +40,8 @@ impl<T> Deref for Configuration<T> {
 
     fn deref(&self) -> &Self::Target {
         match self {
-            Self::Default(ref value) => value,
-            Self::Environmental(ref value) => value,
+            Self::Default(value) => value,
+            Self::Environmental(value) => value,
         }
     }
 }

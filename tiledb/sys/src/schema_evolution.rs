@@ -3,7 +3,7 @@ use crate::types::{
     tiledb_ctx_t, tiledb_current_domain_t, tiledb_enumeration_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_array_evolve(
         ctx: *mut tiledb_ctx_t,
         array_uri: *const ::std::os::raw::c_char,

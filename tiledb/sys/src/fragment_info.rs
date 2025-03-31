@@ -3,7 +3,7 @@ use crate::types::{
     tiledb_fragment_info_t, tiledb_string_t,
 };
 
-extern "C" {
+unsafe extern "C" {
 
     pub fn tiledb_fragment_info_alloc(
         ctx: *mut tiledb_ctx_t,

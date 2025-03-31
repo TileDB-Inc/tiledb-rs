@@ -1,7 +1,7 @@
 use crate::capi_enum::tiledb_filter_type_t;
 use crate::types::capi_return_t;
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_filter_type_to_str(
         filter_type: tiledb_filter_type_t,
         str_: *mut *const ::std::os::raw::c_char,

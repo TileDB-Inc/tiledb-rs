@@ -2,7 +2,7 @@ use crate::{
     tiledb_ctx_t, tiledb_datatype_t, tiledb_dimension_t, tiledb_filter_list_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_dimension_alloc(
         ctx: *mut tiledb_ctx_t,
         name: *const ::std::os::raw::c_char,

@@ -1,6 +1,6 @@
 use crate::types::{capi_return_t, tiledb_string_t};
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_string_view(
         s: *mut tiledb_string_t,
         data: *mut *const ::std::os::raw::c_char,

@@ -3,7 +3,7 @@ use crate::types::{
     capi_return_t, tiledb_ctx_t, tiledb_enumeration_t, tiledb_string_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_enumeration_alloc(
         ctx: *mut tiledb_ctx_t,
         name: *const ::std::os::raw::c_char,

@@ -310,20 +310,20 @@ pub enum CommonOption {
 impl CommonOption {
     fn apply(&self, config: &mut Config) -> CApiResult<()> {
         match self {
-            Self::Aes256GcmEncryptionKey(ref key) => {
+            Self::Aes256GcmEncryptionKey(key) => {
                 config.set("sm.encryption_type", "AES_256_GCM")?;
                 config.set("sm.encryption_key", key)
             }
-            Self::RestServerAddress(ref address) => {
+            Self::RestServerAddress(address) => {
                 config.set("rest.server_address", address)
             }
-            Self::RestUsername(ref username) => {
+            Self::RestUsername(username) => {
                 config.set("rest.username", username)
             }
-            Self::RestPassword(ref password) => {
+            Self::RestPassword(password) => {
                 config.set("rest.password", password)
             }
-            Self::RestToken(ref token) => config.set("rest.token", token),
+            Self::RestToken(token) => config.set("rest.token", token),
             Self::RestIgnoreSslValidation(ignore_ssl_validation) => config.set(
                 "rest.ignore_ssl_validation",
                 if *ignore_ssl_validation {

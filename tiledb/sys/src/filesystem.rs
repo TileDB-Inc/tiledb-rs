@@ -1,7 +1,7 @@
 use crate::capi_enum::tiledb_filesystem_t;
 use crate::types::capi_return_t;
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_filesystem_to_str(
         filesystem: tiledb_filesystem_t,
         str_: *mut *const ::std::os::raw::c_char,

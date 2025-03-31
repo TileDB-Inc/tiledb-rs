@@ -3,7 +3,7 @@ use crate::types::{
     tiledb_ctx_t, tiledb_query_channel_t, tiledb_query_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_channel_operator_sum_get(
         ctx: *mut tiledb_ctx_t,
         op: *mut *const tiledb_channel_operator_t,

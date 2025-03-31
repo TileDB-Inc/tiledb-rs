@@ -2,7 +2,7 @@ use crate::types::{
     capi_return_t, tiledb_config_iter_t, tiledb_config_t, tiledb_error_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_config_alloc(
         config: *mut *mut tiledb_config_t,
         error: *mut *mut tiledb_error_t,

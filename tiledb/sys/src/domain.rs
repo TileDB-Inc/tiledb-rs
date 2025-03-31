@@ -1,7 +1,7 @@
 use crate::capi_enum::tiledb_datatype_t;
 use crate::types::{tiledb_ctx_t, tiledb_dimension_t, tiledb_domain_t};
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_domain_alloc(
         ctx: *mut tiledb_ctx_t,
         domain: *mut *mut tiledb_domain_t,

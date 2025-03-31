@@ -3,7 +3,7 @@ use cells::write::{DenseWriteInput, SparseWriteInput, WriteSequence};
 use proptest::prelude::*;
 use tiledb_common::array::schema::EnumerationKey;
 use tiledb_common::array::{
-    dimension::DimensionConstraints, CellOrder, TileOrder,
+    CellOrder, TileOrder, dimension::DimensionConstraints,
 };
 use tiledb_common::datatype::physical::BitsKeyAdapter;
 use tiledb_common::metadata::Value;
@@ -17,7 +17,7 @@ use tiledb_common::query::condition::{
 use tiledb_common::range::{
     NonEmptyDomain, Range, SingleValueRange, VarValueRange,
 };
-use tiledb_common::{set_members_go, Datatype};
+use tiledb_common::{Datatype, set_members_go};
 use tiledb_pod::array::attribute::{AttributeData, FillData};
 use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 use tiledb_pod::array::{DimensionData, DomainData, EnumerationData};
@@ -158,21 +158,21 @@ impl CellsAccumulator {
 
     pub fn cells(&self) -> &Cells {
         match self {
-            Self::Dense(ref d) => d.cells(),
-            Self::Sparse(ref s) => s.cells(),
+            Self::Dense(d) => d.cells(),
+            Self::Sparse(s) => s.cells(),
         }
     }
 
     pub fn accumulate(&mut self, write: WriteInput) {
         match write {
             WriteInput::Sparse(w) => {
-                let Self::Sparse(ref mut sparse) = self else {
+                let Self::Sparse(sparse) = self else {
                     unreachable!()
                 };
                 sparse.accumulate(w)
             }
             WriteInput::Dense(w) => {
-                let Self::Dense(ref mut dense) = self else {
+                let Self::Dense(dense) = self else {
                     unreachable!()
                 };
                 dense.accumulate(w)
@@ -194,8 +194,8 @@ impl CellsAccumulator {
         B: ReadQueryBuilder<'data>,
     {
         match self {
-            Self::Dense(ref d) => d.attach_read(b),
-            Self::Sparse(ref s) => s.attach_read(b),
+            Self::Dense(d) => d.attach_read(b),
+            Self::Sparse(s) => s.attach_read(b),
         }
     }
 }

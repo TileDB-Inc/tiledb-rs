@@ -10,6 +10,8 @@ use std::fmt::{Debug, Formatter, Result as FmtResult};
 use anyhow::anyhow;
 use itertools::Itertools;
 
+use crate::Datatype;
+use crate::Result as TileDBResult;
 use crate::array::attribute::RawAttribute;
 use crate::array::dimension::Dimension;
 use crate::array::domain::RawDomain;
@@ -20,8 +22,6 @@ use crate::error::Error;
 use crate::filter::list::{FilterList, RawFilterList};
 use crate::key::LookupKey;
 use crate::query::read::output::FieldScratchAllocator;
-use crate::Datatype;
-use crate::Result as TileDBResult;
 
 pub use self::evolution::{Builder as SchemaEvolutionBuilder, SchemaEvolution};
 pub use tiledb_common::array::schema::EnumerationKey;
@@ -69,29 +69,29 @@ impl Field {
 
     pub fn name(&self) -> TileDBResult<String> {
         match self {
-            Field::Dimension(ref d) => d.name(),
-            Field::Attribute(ref a) => a.name(),
+            Field::Dimension(d) => d.name(),
+            Field::Attribute(a) => a.name(),
         }
     }
 
     pub fn datatype(&self) -> TileDBResult<Datatype> {
         match self {
-            Field::Dimension(ref d) => d.datatype(),
-            Field::Attribute(ref a) => a.datatype(),
+            Field::Dimension(d) => d.datatype(),
+            Field::Attribute(a) => a.datatype(),
         }
     }
 
     pub fn nullability(&self) -> TileDBResult<bool> {
         Ok(match self {
             Field::Dimension(_) => false,
-            Field::Attribute(ref a) => a.is_nullable()?,
+            Field::Attribute(a) => a.is_nullable()?,
         })
     }
 
     pub fn cell_val_num(&self) -> TileDBResult<CellValNum> {
         match self {
-            Field::Dimension(ref d) => d.cell_val_num(),
-            Field::Attribute(ref a) => a.cell_val_num(),
+            Field::Dimension(d) => d.cell_val_num(),
+            Field::Attribute(a) => a.cell_val_num(),
         }
     }
 

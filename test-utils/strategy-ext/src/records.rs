@@ -100,7 +100,7 @@ macro_rules! tuple_impls_record {
         impl<$($T: Records),+> Records for ($($T,)+) {
             fn len(&self) -> usize {
                 #[allow(non_snake_case)]
-                let ($(ref $T,)+) = self;
+                let ($($T,)+) = self;
 
                 let mut nrecords = None;
                 $(
@@ -116,7 +116,7 @@ macro_rules! tuple_impls_record {
 
             fn filter(&self, subset: &VarBitSet) -> Self {
                 #[allow(non_snake_case)]
-                let ($(ref $T,)+) = self;
+                let ($($T,)+) = self;
                 (
                     $(
                         $T.filter(subset),
@@ -422,8 +422,8 @@ enum ShrinkStep {
 mod tests {
     use super::*;
 
-    use crate::meta::*;
     use crate::StrategyExt;
+    use crate::meta::*;
 
     #[test]
     fn shrink_convergence_u64() {

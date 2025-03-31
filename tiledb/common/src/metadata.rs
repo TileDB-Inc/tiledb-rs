@@ -145,11 +145,11 @@ macro_rules! value_cmp {
 
 impl Value {
     pub fn len(&self) -> usize {
-        metadata_value_go!(self, _DT, ref v, v.len())
+        metadata_value_go!(self, _DT, v, v.len())
     }
 
     pub fn is_empty(&self) -> bool {
-        metadata_value_go!(self, _DT, ref v, v.is_empty())
+        metadata_value_go!(self, _DT, v, v.is_empty())
     }
 }
 
@@ -207,7 +207,7 @@ impl Metadata {
 #[cfg(any(test, feature = "proptest-strategies"))]
 pub mod strategy {
     use super::*;
-    use proptest::collection::{vec, SizeRange};
+    use proptest::collection::{SizeRange, vec};
     use proptest::prelude::*;
 
     use crate::datatype::strategy::DatatypeContext;
@@ -268,15 +268,31 @@ mod tests {
 
     fn do_value_cmp(m1: Metadata, m2: Metadata) {
         if m1.datatype.same_physical_type(&m2.datatype) {
-            value_cmp!(&m1.value, &m2.value, _DT, _, _,
+            value_cmp!(
+                &m1.value,
+                &m2.value,
+                _DT,
+                _,
+                _,
                 (),
-                unreachable!("Non-matching `Value` variants for same physical type: {:?} and {:?}",
-                    m1, m2));
+                unreachable!(
+                    "Non-matching `Value` variants for same physical type: {:?} and {:?}",
+                    m1, m2
+                )
+            );
         } else {
-            value_cmp!(&m1.value, &m2.value, _DT, _, _,
-                unreachable!("Matching `Value` variants for different physical type: {:?} and {:?}",
-                    m1, m2),
-                ());
+            value_cmp!(
+                &m1.value,
+                &m2.value,
+                _DT,
+                _,
+                _,
+                unreachable!(
+                    "Matching `Value` variants for different physical type: {:?} and {:?}",
+                    m1, m2
+                ),
+                ()
+            );
         }
     }
 

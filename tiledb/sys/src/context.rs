@@ -3,7 +3,7 @@ use crate::types::{
     capi_return_t, tiledb_config_t, tiledb_ctx_t, tiledb_error_t,
 };
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_ctx_alloc(
         config: *mut tiledb_config_t,
         ctx: *mut *mut tiledb_ctx_t,

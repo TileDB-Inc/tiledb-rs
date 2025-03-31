@@ -203,8 +203,8 @@ mod tests {
 
     use super::*;
     use crate::array::domain::strategy::Requirements as DomainRequirements;
-    use crate::array::schema::strategy::Requirements as SchemaRequirements;
     use crate::array::schema::SchemaData;
+    use crate::array::schema::strategy::Requirements as SchemaRequirements;
 
     fn do_subarray_intersect_ranges(subarray: &SubarrayData, ranges: &[Range]) {
         if let Some(intersection) = subarray.intersect_ranges(ranges) {
@@ -324,8 +324,8 @@ mod tests {
         }
     }
 
-    fn strat_subarray_intersect_ranges(
-    ) -> impl Strategy<Value = (SubarrayData, Vec<Range>)> {
+    fn strat_subarray_intersect_ranges()
+    -> impl Strategy<Value = (SubarrayData, Vec<Range>)> + use<> {
         let req = Rc::new(SchemaRequirements {
             domain: Some(Rc::new(DomainRequirements {
                 num_dimensions: 1..=1,
@@ -336,15 +336,14 @@ mod tests {
 
         any_with::<SchemaData>(req).prop_flat_map(|schema| {
             let schema = Rc::new(schema);
-            (
-                any_with::<SubarrayData>(Some(Rc::clone(&schema))),
-                schema.domain.subarray_strategy(),
-            )
+            let domain = schema.domain.clone();
+            let ranges = domain.subarray_strategy();
+            (any_with::<SubarrayData>(Some(Rc::clone(&schema))), ranges)
         })
     }
 
-    fn strat_subarray_intersect_subarray(
-    ) -> impl Strategy<Value = (SubarrayData, SubarrayData)> {
+    fn strat_subarray_intersect_subarray()
+    -> impl Strategy<Value = (SubarrayData, SubarrayData)> {
         use crate::array::domain::strategy::Requirements as DomainRequirements;
         use crate::array::schema::strategy::Requirements as SchemaRequirements;
 

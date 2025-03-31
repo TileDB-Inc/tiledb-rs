@@ -38,11 +38,11 @@ impl AggregateFunction {
     pub fn argument_name(&self) -> Option<&str> {
         match self {
             Self::Count => None,
-            Self::NullCount(ref s)
-            | Self::Min(ref s)
-            | Self::Max(ref s)
-            | Self::Sum(ref s)
-            | Self::Mean(ref s) => Some(s.as_ref()),
+            Self::NullCount(s)
+            | Self::Min(s)
+            | Self::Max(s)
+            | Self::Sum(s)
+            | Self::Mean(s) => Some(s.as_ref()),
         }
     }
 
@@ -50,11 +50,11 @@ impl AggregateFunction {
     pub fn aggregate_name(&self) -> String {
         match self {
             Self::Count => "Count".to_owned(),
-            Self::NullCount(ref s) => format!("NullCount({})", s),
-            Self::Min(ref s) => format!("Min({})", s),
-            Self::Max(ref s) => format!("Max({})", s),
-            Self::Sum(ref s) => format!("Sum({})", s),
-            Self::Mean(ref s) => format!("Mean({})", s),
+            Self::NullCount(s) => format!("NullCount({})", s),
+            Self::Min(s) => format!("Min({})", s),
+            Self::Max(s) => format!("Max({})", s),
+            Self::Sum(s) => format!("Sum({})", s),
+            Self::Mean(s) => format!("Mean({})", s),
         }
     }
 
@@ -128,7 +128,8 @@ impl AggregateFunction {
                 None => Err(TileDBError::InvalidArgument(anyhow!(format!(
                     "aggregate_type: field '{}' has invalid datatype and cell val num ({}, {})",
                     self.argument_name().unwrap(),
-                    datatype, cell_val_num
+                    datatype,
+                    cell_val_num
                 )))),
             }
         } else {
@@ -704,8 +705,8 @@ mod tests {
     }
 
     #[test]
-    fn quickstart_aggregate_queries_same_function_different_args(
-    ) -> TileDBResult<()> {
+    fn quickstart_aggregate_queries_same_function_different_args()
+    -> TileDBResult<()> {
         let a = quickstart_init("same_function_different_args")?;
 
         let mut a = a.for_read()?;

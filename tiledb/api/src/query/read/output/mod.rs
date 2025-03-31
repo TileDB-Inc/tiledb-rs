@@ -4,13 +4,13 @@ use std::num::{NonZeroU32, NonZeroUsize};
 
 use anyhow::anyhow;
 
+use crate::Result as TileDBResult;
 use crate::array::CellValNum;
 use crate::datatype::PhysicalType;
 use crate::error::Error;
-use crate::query::buffer::*;
 use crate::query::CellValue;
-use crate::Result as TileDBResult;
-use crate::{typed_query_buffers_go, Datatype};
+use crate::query::buffer::*;
+use crate::{Datatype, typed_query_buffers_go};
 
 #[cfg(feature = "arrow")]
 pub mod arrow;
@@ -170,7 +170,7 @@ impl ScratchCellStructure {
 
     /// Returns a reference to the offsets buffer, if any.
     pub fn offsets_ref(&self) -> Option<&[u64]> {
-        if let Self::Var(ref offsets) = self {
+        if let Self::Var(offsets) = self {
             Some(offsets.as_ref())
         } else {
             None
@@ -179,7 +179,7 @@ impl ScratchCellStructure {
 
     /// Returns a mutable reference to the offsets buffer, if any.
     pub fn offsets_mut(&mut self) -> Option<&mut [u64]> {
-        if let Self::Var(ref mut offsets) = self {
+        if let Self::Var(offsets) = self {
             Some(offsets.as_mut())
         } else {
             None
@@ -199,9 +199,12 @@ impl TryFrom<CellStructure<'_>> for ScratchCellStructure {
     fn try_from(value: CellStructure) -> TileDBResult<Self> {
         match value {
             CellStructure::Fixed(nz) => Ok(Self::Fixed(nz)),
-            CellStructure::Var(Buffer::Owned(offsets)) => Ok(Self::Var(offsets)),
+            CellStructure::Var(Buffer::Owned(offsets)) => {
+                Ok(Self::Var(offsets))
+            }
             CellStructure::Var(_) => Err(Error::InvalidArgument(anyhow!(
-                        "Cannot convert borrowed offsets buffer into owned scratch space")))
+                "Cannot convert borrowed offsets buffer into owned scratch space"
+            ))),
         }
     }
 }
@@ -211,9 +214,12 @@ impl TryFrom<CellStructureMut<'_>> for ScratchCellStructure {
     fn try_from(value: CellStructureMut) -> TileDBResult<Self> {
         match value {
             CellStructureMut::Fixed(nz) => Ok(Self::Fixed(nz)),
-            CellStructureMut::Var(BufferMut::Owned(offsets)) => Ok(Self::Var(offsets)),
+            CellStructureMut::Var(BufferMut::Owned(offsets)) => {
+                Ok(Self::Var(offsets))
+            }
             CellStructureMut::Var(_) => Err(Error::InvalidArgument(anyhow!(
-                        "Cannot convert borrowed offsets buffer into owned scratch space")))
+                "Cannot convert borrowed offsets buffer into owned scratch space"
+            ))),
         }
     }
 }
@@ -255,7 +261,7 @@ impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
             BufferMut::Borrowed(_) => {
                 return Err(Error::InvalidArgument(anyhow!(
                     "Cannot convert borrowed data into owned scratch space"
-                )))
+                )));
             }
             BufferMut::Owned(d) => d,
         };
@@ -265,8 +271,11 @@ impl<'data, C> TryFrom<QueryBuffersMut<'data, C>> for ScratchSpace<C> {
         let validity = if let Some(validity) = value.validity {
             Some(match validity {
                 BufferMut::Empty => vec![].into_boxed_slice(),
-                BufferMut::Borrowed(_) => return Err(Error::InvalidArgument(
-                    anyhow!("Cannot convert borrowed validity buffer into owned scratch space"))),
+                BufferMut::Borrowed(_) => {
+                    return Err(Error::InvalidArgument(anyhow!(
+                        "Cannot convert borrowed validity buffer into owned scratch space"
+                    )));
+                }
                 BufferMut::Owned(d) => d,
             })
         } else {
@@ -704,7 +713,8 @@ impl<'data, C> FixedDataIterator<'data, C> {
             Err(input) => {
                 if matches!(input.data, Buffer::Owned(_)) {
                     Err(Error::InvalidArgument(anyhow!(
-                            "FixedDataIterator cannot take ownership of data inside QueryBuffers")))
+                        "FixedDataIterator cannot take ownership of data inside QueryBuffers"
+                    )))
                 } else {
                     assert!(!QueryBuffersCellStructureFixed::accept(&input));
                     Err(Error::UnexpectedCellStructure {
@@ -787,7 +797,8 @@ impl<'data, C> VarDataIterator<'data, C> {
             Err(input) => {
                 if matches!(input.data, Buffer::Owned(_)) {
                     Err(Error::InvalidArgument(anyhow!(
-                                "VarDataIterator cannot take ownership of data inside QueryBuffers")))
+                        "VarDataIterator cannot take ownership of data inside QueryBuffers"
+                    )))
                 } else {
                     assert!(!QueryBuffersCellStructureVar::accept(&input));
                     Err(Error::UnexpectedCellStructure {

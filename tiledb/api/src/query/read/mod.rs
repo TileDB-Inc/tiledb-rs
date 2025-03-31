@@ -5,10 +5,10 @@ use std::pin::Pin;
 
 use paste::paste;
 
+use crate::Result as TileDBResult;
 use crate::config::Config;
 use crate::query::buffer::{BufferMut, QueryBuffersMut};
 use crate::query::read::output::ScratchAllocator;
-use crate::Result as TileDBResult;
 
 pub mod aggregate;
 mod callback;
@@ -51,10 +51,8 @@ impl<I, F> ReadStepOutput<I, F> {
     pub const fn as_ref(&self) -> ReadStepOutput<&I, &F> {
         match self {
             ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
-            ReadStepOutput::Intermediate(ref i) => {
-                ReadStepOutput::Intermediate(i)
-            }
-            ReadStepOutput::Final(ref f) => ReadStepOutput::Final(f),
+            ReadStepOutput::Intermediate(i) => ReadStepOutput::Intermediate(i),
+            ReadStepOutput::Final(f) => ReadStepOutput::Final(f),
         }
     }
 
@@ -62,10 +60,8 @@ impl<I, F> ReadStepOutput<I, F> {
     pub fn as_mut(&mut self) -> ReadStepOutput<&mut I, &mut F> {
         match self {
             ReadStepOutput::NotEnoughSpace => ReadStepOutput::NotEnoughSpace,
-            ReadStepOutput::Intermediate(ref mut i) => {
-                ReadStepOutput::Intermediate(i)
-            }
-            ReadStepOutput::Final(ref mut f) => ReadStepOutput::Final(f),
+            ReadStepOutput::Intermediate(i) => ReadStepOutput::Intermediate(i),
+            ReadStepOutput::Final(f) => ReadStepOutput::Final(f),
         }
     }
 
@@ -119,8 +115,12 @@ impl<I, F> ReadStepOutput<I, F> {
     pub fn unwrap_intermediate(self) -> I {
         match self {
             ReadStepOutput::Intermediate(i) => i,
-            ReadStepOutput::NotEnoughSpace => panic!("Called `ReadStepOutput::unwrap_intermediate` on `NotEnoughSpace`"),
-            ReadStepOutput::Final(_) => panic!("Called `ReadStepOutput::unwrap_intermediate` on `Final`"),
+            ReadStepOutput::NotEnoughSpace => panic!(
+                "Called `ReadStepOutput::unwrap_intermediate` on `NotEnoughSpace`"
+            ),
+            ReadStepOutput::Final(_) => panic!(
+                "Called `ReadStepOutput::unwrap_intermediate` on `Final`"
+            ),
         }
     }
 

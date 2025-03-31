@@ -8,7 +8,7 @@ use tiledb_common::datatype::physical::BitsOrd;
 use tiledb_common::range::{NonEmptyDomain, Range, SingleValueRange};
 use tiledb_pod::array::schema::SchemaData;
 
-use crate::{typed_field_data_go, Cells};
+use crate::{Cells, typed_field_data_go};
 
 #[derive(Clone, Debug)]
 pub struct DenseWriteInput {
@@ -44,7 +44,7 @@ impl SparseWriteInput {
                 Some(typed_field_data_go!(
                     dim_cells,
                     _DT,
-                    ref dim_cells,
+                    dim_cells,
                     {
                         let min =
                             *dim_cells.iter().min_by(|l, r| l.bits_cmp(r))?;
@@ -195,16 +195,16 @@ impl WriteInput {
     /// Returns a reference to the cells of input of this write operation.
     pub fn cells(&self) -> &Cells {
         match self {
-            Self::Dense(ref dense) => &dense.data,
-            Self::Sparse(ref sparse) => &sparse.data,
+            Self::Dense(dense) => &dense.data,
+            Self::Sparse(sparse) => &sparse.data,
         }
     }
 
     /// Returns a mutable reference to the cells of input of this write operation.
     pub fn cells_mut(&mut self) -> &mut Cells {
         match self {
-            Self::Dense(ref mut dense) => &mut dense.data,
-            Self::Sparse(ref mut sparse) => &mut sparse.data,
+            Self::Dense(dense) => &mut dense.data,
+            Self::Sparse(sparse) => &mut sparse.data,
         }
     }
 
@@ -212,7 +212,7 @@ impl WriteInput {
     /// the coordinates of this write operation.
     pub fn domain(&self) -> Option<NonEmptyDomain> {
         match self {
-            Self::Dense(ref dense) => Some(
+            Self::Dense(dense) => Some(
                 dense
                     .subarray
                     .clone()
@@ -220,7 +220,7 @@ impl WriteInput {
                     .map(Range::from)
                     .collect::<NonEmptyDomain>(),
             ),
-            Self::Sparse(ref sparse) => sparse.domain(),
+            Self::Sparse(sparse) => sparse.domain(),
         }
     }
 
@@ -356,17 +356,15 @@ impl Iterator for WriteSequenceIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Dense(ref mut dense) => dense.next().map(WriteInput::Dense),
-            Self::Sparse(ref mut sparse) => {
-                sparse.next().map(WriteInput::Sparse)
-            }
+            Self::Dense(dense) => dense.next().map(WriteInput::Dense),
+            Self::Sparse(sparse) => sparse.next().map(WriteInput::Sparse),
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         match self {
-            Self::Dense(ref d) => d.size_hint(),
-            Self::Sparse(ref s) => s.size_hint(),
+            Self::Dense(d) => d.size_hint(),
+            Self::Sparse(s) => s.size_hint(),
         }
     }
 }
@@ -381,19 +379,15 @@ impl<'a> Iterator for WriteSequenceRefIter<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Dense(ref mut dense) => {
-                dense.next().map(WriteInputRef::Dense)
-            }
-            Self::Sparse(ref mut sparse) => {
-                sparse.next().map(WriteInputRef::Sparse)
-            }
+            Self::Dense(dense) => dense.next().map(WriteInputRef::Dense),
+            Self::Sparse(sparse) => sparse.next().map(WriteInputRef::Sparse),
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         match self {
-            Self::Dense(ref d) => d.size_hint(),
-            Self::Sparse(ref s) => s.size_hint(),
+            Self::Dense(d) => d.size_hint(),
+            Self::Sparse(s) => s.size_hint(),
         }
     }
 }

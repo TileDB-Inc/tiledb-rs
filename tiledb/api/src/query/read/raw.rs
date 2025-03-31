@@ -2,15 +2,15 @@ use super::*;
 
 use std::cell::RefMut;
 
-use crate::array::schema::Field;
+use crate::Datatype;
 use crate::array::CellValNum;
+use crate::array::schema::Field;
 use crate::error::Error;
+use crate::query::Query;
 use crate::query::buffer::{
     CellStructureMut, QueryBuffersMut, RefTypedQueryBuffersMut,
 };
 use crate::query::read::output::ScratchSpace;
-use crate::query::Query;
-use crate::Datatype;
 
 pub struct ManagedBuffer<'data, C> {
     pub buffers: Pin<Box<RefCell<QueryBuffersMut<'data, C>>>>,
@@ -278,11 +278,7 @@ impl<'data, C> RawReadHandle<'data, C> {
                  * Note that the core does not add a zero offset if
                  * the result set is empty.
                  */
-                if noffsets == 0 {
-                    0
-                } else {
-                    noffsets - 1
-                }
+                if noffsets == 0 { 0 } else { noffsets - 1 }
             }
         };
 
@@ -386,12 +382,7 @@ impl<'data> TypedReadHandle<'data> {
     }
 
     pub fn realloc_if_managed(&mut self) {
-        typed_read_handle_go!(
-            self,
-            _DT,
-            ref mut handle,
-            handle.realloc_if_managed()
-        );
+        typed_read_handle_go!(self, _DT, handle, handle.realloc_if_managed());
     }
 }
 
@@ -418,7 +409,7 @@ macro_rules! typed_read_handle {
             impl<'data, 'this> TryFrom<&'this TypedReadHandle<'data>> for &'this RawReadHandle<'data, $U> {
                 type Error = ();
                 fn try_from(value: &'this TypedReadHandle<'data>) -> std::result::Result<Self, Self::Error> {
-                    if let TypedReadHandle::$V(ref d) = value {
+                    if let TypedReadHandle::$V(d) = value {
                         Ok(d)
                     } else {
                         Err(())

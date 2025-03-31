@@ -5,8 +5,8 @@ use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 use strategy_ext::sequence::SequenceValueTree;
 use tiledb_common::array::{ArrayType, CellValNum};
-use tiledb_common::datatype::strategy::DatatypeContext;
 use tiledb_common::datatype::Datatype;
+use tiledb_common::datatype::strategy::DatatypeContext;
 use tiledb_common::dimension_constraints_go;
 use tiledb_common::filter::*;
 
@@ -294,7 +294,7 @@ fn prop_scalefloat() -> impl Strategy<Value = FilterData> {
 ///
 /// Note that this probably could be more permissive returning Some in other non-Domain scenarios.
 fn prop_webp(
-    requirements: &Rc<Requirements>,
+    requirements: Rc<Requirements>,
 ) -> Option<impl Strategy<Value = FilterData>> {
     if !requirements.allow_webp {
         return None;
@@ -304,7 +304,7 @@ fn prop_webp(
         attribute_type,
         _,
         array_type,
-        ref domain,
+        domain,
     )) = requirements.context.as_ref()
     {
         if *attribute_type != Datatype::UInt8
@@ -436,7 +436,7 @@ pub fn prop_filter(
         filter_strategies.push(prop_scalefloat().boxed());
     }
 
-    if let Some(webp) = prop_webp(&requirements) {
+    if let Some(webp) = prop_webp(requirements.clone()) {
         filter_strategies.push(webp.boxed());
     }
 

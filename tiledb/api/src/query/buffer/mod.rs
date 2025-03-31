@@ -124,7 +124,7 @@ impl<'data> CellStructure<'data> {
 
     /// Returns a reference to the offsets buffer, if any.
     pub fn offsets_ref(&self) -> Option<&[u64]> {
-        if let Self::Var(ref offsets) = self {
+        if let Self::Var(offsets) = self {
             Some(offsets.as_ref())
         } else {
             None
@@ -136,7 +136,7 @@ impl<'data> CellStructure<'data> {
     where
         F: FnOnce(&[u64]) -> U,
     {
-        if let Self::Var(ref offsets) = self {
+        if let Self::Var(offsets) = self {
             Some(func(offsets.as_ref()))
         } else {
             None
@@ -150,8 +150,8 @@ impl<'data> CellStructure<'data> {
         'this: 'data,
     {
         match self {
-            Self::Fixed(ref nz) => Self::Fixed(*nz),
-            Self::Var(ref offsets) => Self::Var(offsets.borrow()),
+            Self::Fixed(nz) => Self::Fixed(*nz),
+            Self::Var(offsets) => Self::Var(offsets.borrow()),
         }
     }
 }
@@ -329,7 +329,7 @@ impl<'data> CellStructureMut<'data> {
 
     /// Returns a reference to the offsets buffer, if any.
     pub fn offsets_ref(&self) -> Option<&[u64]> {
-        if let Self::Var(ref offsets) = self {
+        if let Self::Var(offsets) = self {
             Some(offsets.as_ref())
         } else {
             None
@@ -338,7 +338,7 @@ impl<'data> CellStructureMut<'data> {
 
     /// Returns a mutable reference to the offsets buffer, if any.
     pub fn offsets_mut(&mut self) -> Option<&mut BufferMut<'data, u64>> {
-        if let Self::Var(ref mut offsets) = self {
+        if let Self::Var(offsets) = self {
             Some(offsets)
         } else {
             None
@@ -350,7 +350,7 @@ impl<'data> CellStructureMut<'data> {
     where
         F: FnOnce(&BufferMut<'data, u64>) -> U,
     {
-        if let Self::Var(ref offsets) = self {
+        if let Self::Var(offsets) = self {
             Some(func(offsets))
         } else {
             None
@@ -364,8 +364,8 @@ impl<'data> CellStructureMut<'data> {
         'this: 'data,
     {
         match self {
-            Self::Fixed(ref nz) => CellStructure::Fixed(*nz),
-            Self::Var(ref offsets) => CellStructure::Var(offsets.borrow()),
+            Self::Fixed(nz) => CellStructure::Fixed(*nz),
+            Self::Var(offsets) => CellStructure::Var(offsets.borrow()),
         }
     }
 
@@ -376,8 +376,8 @@ impl<'data> CellStructureMut<'data> {
         'this: 'data,
     {
         match self {
-            Self::Fixed(ref nz) => Self::Fixed(*nz),
-            Self::Var(ref mut offsets) => Self::Var(offsets.borrow_mut()),
+            Self::Fixed(nz) => Self::Fixed(*nz),
+            Self::Var(offsets) => Self::Var(offsets.borrow_mut()),
         }
     }
 }
@@ -474,7 +474,7 @@ pub struct QueryBuffersCellStructureFixed<'data, C>(QueryBuffers<'data, C>);
 
 impl<'data, C> QueryBuffersCellStructureFixed<'data, C> {
     pub fn accept(value: &QueryBuffers<'data, C>) -> bool {
-        matches!(&value.cell_structure, CellStructure::Fixed(ref nz) if nz.get() != 1)
+        matches!(&value.cell_structure, CellStructure::Fixed(nz) if nz.get() != 1)
     }
 }
 
@@ -509,22 +509,22 @@ pub enum TypedQueryBuffers<'data> {
 
 impl<'data> TypedQueryBuffers<'data> {
     pub fn values_capacity(&self) -> usize {
-        crate::typed_query_buffers_go!(self, _DT, ref qb, qb.data.len())
+        crate::typed_query_buffers_go!(self, _DT, qb, qb.data.len())
     }
 
     pub fn cell_structure(&self) -> &CellStructure<'data> {
-        crate::typed_query_buffers_go!(self, _DT, ref qb, &qb.cell_structure)
+        crate::typed_query_buffers_go!(self, _DT, qb, &qb.cell_structure)
     }
 
     pub fn validity(&self) -> Option<&Buffer<'data, u8>> {
-        crate::typed_query_buffers_go!(self, _DT, ref qb, qb.validity.as_ref())
+        crate::typed_query_buffers_go!(self, _DT, qb, qb.validity.as_ref())
     }
 
     pub fn borrow<'this>(&'this self) -> TypedQueryBuffers<'data>
     where
         'this: 'data,
     {
-        crate::typed_query_buffers_go!(self, _DT, ref qb, qb.borrow().into())
+        crate::typed_query_buffers_go!(self, _DT, qb, qb.borrow().into())
     }
 }
 

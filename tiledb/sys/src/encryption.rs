@@ -1,7 +1,7 @@
 use crate::capi_enum::tiledb_encryption_type_t;
 use crate::capi_return_t;
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_encryption_type_to_str(
         encryption_type: tiledb_encryption_type_t,
         str_: *mut *const ::std::os::raw::c_char,

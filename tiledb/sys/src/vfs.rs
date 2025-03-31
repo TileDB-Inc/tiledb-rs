@@ -26,7 +26,7 @@ pub type LSRecursiveCallback = ::std::option::Option<
     ) -> i32,
 >;
 
-extern "C" {
+unsafe extern "C" {
     pub fn tiledb_vfs_alloc(
         ctx: *mut tiledb_ctx_t,
         config: *mut tiledb_config_t,
