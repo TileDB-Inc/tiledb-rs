@@ -1,15 +1,15 @@
 use super::*;
 
-use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::Datatype;
+use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_pod::array::{AttributeData, EnumerationData};
 use tiledb_utils::assert_option_subset;
 
-use crate::array::schema::EnumerationKey;
-use crate::array::Array;
-use crate::error::Error;
-use crate::tests::examples::{quickstart, TestArray};
 use crate::Factory;
+use crate::array::Array;
+use crate::array::schema::EnumerationKey;
+use crate::error::Error;
+use crate::tests::examples::{TestArray, quickstart};
 
 /// Test adding an attribute
 #[test]
@@ -238,9 +238,11 @@ fn drop_enumeration() -> anyhow::Result<()> {
     })?;
 
     let old_schema = array.for_read()?.schema()?;
-    assert!(old_schema
-        .enumeration(EnumerationKey::EnumerationName(ename))
-        .is_ok());
+    assert!(
+        old_schema
+            .enumeration(EnumerationKey::EnumerationName(ename))
+            .is_ok()
+    );
     assert_eq!(1, old_schema.num_attributes()?);
     assert_eq!(
         Some(ename),

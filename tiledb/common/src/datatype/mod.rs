@@ -17,12 +17,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum Error {
-    #[error("Physical type mismatch: expected {actual_type}, found {requested_type}")]
+    #[error(
+        "Physical type mismatch: expected {actual_type}, found {requested_type}"
+    )]
     PhysicalTypeMismatch {
         requested_type: &'static str,
         actual_type: &'static str,
     },
-    #[error("Physical type '{physical_type}' is not compatible with logical type '{logical_type}'")]
+    #[error(
+        "Physical type '{physical_type}' is not compatible with logical type '{logical_type}'"
+    )]
     PhysicalTypeIncompatible {
         physical_type: &'static str,
         logical_type: Datatype,
@@ -705,7 +709,7 @@ impl TryFrom<ffi::tiledb_datatype_t> for Datatype {
             ffi::tiledb_datatype_t_TILEDB_GEOM_WKB => Datatype::GeometryWkb,
             ffi::tiledb_datatype_t_TILEDB_GEOM_WKT => Datatype::GeometryWkt,
             _ => {
-                return Err(TryFromFFIError::InvalidDiscriminant(value as u64))
+                return Err(TryFromFFIError::InvalidDiscriminant(value as u64));
             }
         })
     }

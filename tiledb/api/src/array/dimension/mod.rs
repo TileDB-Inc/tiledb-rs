@@ -7,7 +7,7 @@ use crate::array::CellValNum;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::datatype::PhysicalType;
 use crate::filter::list::{FilterList, RawFilterList};
-use crate::{physical_type_go, Datatype, Result as TileDBResult};
+use crate::{Datatype, Result as TileDBResult, physical_type_go};
 
 pub use tiledb_common::array::dimension::DimensionConstraints;
 pub use tiledb_common::dimension_constraints_go;
@@ -283,9 +283,9 @@ mod tests {
     use utils::assert_option_subset;
 
     use super::*;
+    use crate::Factory;
     use crate::filter::list::Builder as FilterListBuilder;
     use crate::filter::*;
-    use crate::Factory;
 
     #[test]
     fn test_dimension_alloc() {

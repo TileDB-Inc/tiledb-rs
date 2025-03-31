@@ -166,7 +166,9 @@ pub fn to_arrow(
                     } else if ffi_id == std::any::TypeId::of::<i8>() {
                         Res::Inexact(ADT::Int8)
                     } else {
-                        unreachable!("`std::ffi::c_char` is not an alias for `i8` or `u8`")
+                        unreachable!(
+                            "`std::ffi::c_char` is not an alias for `i8` or `u8`"
+                        )
                     }
                 }
                 Datatype::StringAscii => Res::Inexact(ADT::UInt8),

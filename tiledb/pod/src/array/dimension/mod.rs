@@ -7,8 +7,8 @@ pub mod strategy;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use tiledb_common::array::dimension::DimensionConstraints;
 use tiledb_common::array::CellValNum;
+use tiledb_common::array::dimension::DimensionConstraints;
 use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 

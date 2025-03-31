@@ -1,5 +1,5 @@
 use crate::filter::{FilterData, FilterList, FilterListBuilder};
-use crate::{context::Context as TileDBContext, Result as TileDBResult};
+use crate::{Result as TileDBResult, context::Context as TileDBContext};
 use serde::{Deserialize, Serialize};
 
 /// Encapsulates TileDB filter data for storage in Arrow Field metadata

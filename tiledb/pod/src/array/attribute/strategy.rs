@@ -3,17 +3,17 @@ use std::rc::Rc;
 use num_traits::FromPrimitive;
 use proptest::prelude::*;
 use proptest::strategy::ValueTree;
-use strategy_ext::strategy::MaybeValueTree;
 use strategy_ext::StrategyExt;
+use strategy_ext::strategy::MaybeValueTree;
 use tiledb_common::array::{ArrayType, CellValNum};
-use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
 use tiledb_common::datatype::Datatype;
+use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 
+use crate::array::DomainData;
 use crate::array::attribute::{AttributeData, FillData};
 use crate::array::enumeration::strategy::Parameters as EnumerationParameters;
-use crate::array::DomainData;
 use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements,

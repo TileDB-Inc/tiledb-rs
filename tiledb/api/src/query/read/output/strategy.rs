@@ -6,7 +6,7 @@ use proptest::prelude::*;
 use crate::array::CellValNum;
 use crate::query::buffer::{CellStructure, QueryBuffers};
 use crate::query::read::output::{RawReadOutput, TypedRawReadOutput};
-use crate::{physical_type_go, Datatype};
+use crate::{Datatype, physical_type_go};
 
 #[derive(Clone, Debug)]
 pub struct RawReadOutputParameters {

@@ -2,9 +2,9 @@ use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::ops::Deref;
 
+use crate::Result as TileDBResult;
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::filter::{Filter, FilterData, RawFilter};
-use crate::Result as TileDBResult;
 
 pub(crate) enum RawFilterList {
     Owned(*mut ffi::tiledb_filter_list_t),

@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use itertools::izip;
 
+use tiledb::Datatype;
+use tiledb::Result as TileDBResult;
 use tiledb::array::{
     Array, ArrayType, AttributeBuilder, CellOrder, DimensionBuilder,
     DomainBuilder, SchemaBuilder, TileOrder,
@@ -12,8 +14,6 @@ use tiledb::context::Context;
 use tiledb::query::{
     Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
 };
-use tiledb::Datatype;
-use tiledb::Result as TileDBResult;
 
 const ARRAY_URI: &str = "multi_range_slicing";
 

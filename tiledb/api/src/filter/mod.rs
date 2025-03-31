@@ -373,7 +373,7 @@ mod tests {
     use proptest::prelude::*;
     use tiledb_common::filter::FilterData;
     use tiledb_pod::filter::strategy::{
-        prop_filter, FilterPipelineStrategy, Requirements,
+        FilterPipelineStrategy, Requirements, prop_filter,
     };
     use utils::assert_option_subset;
 

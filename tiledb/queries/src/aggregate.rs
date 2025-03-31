@@ -1,5 +1,5 @@
-use tiledb_api::query::read::aggregate::*;
 use tiledb_api::query::read::ReadStepOutput;
+use tiledb_api::query::read::aggregate::*;
 use tiledb_api::query::{
     BuilderBase, Query, QueryBase, QueryBuilder, ReadQuery,
 };

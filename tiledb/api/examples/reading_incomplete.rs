@@ -4,6 +4,8 @@ use std::cell::{Ref, RefCell};
 use std::path::PathBuf;
 
 use itertools::izip;
+use tiledb::Datatype;
+use tiledb::Result as TileDBResult;
 use tiledb::array::{CellOrder, Mode, TileOrder};
 use tiledb::query::buffer::{
     BufferMut, CellStructureMut, QueryBuffers, QueryBuffersMut,
@@ -13,8 +15,6 @@ use tiledb::query::read::{FnMutAdapter, ReadStepOutput, ScratchStrategy};
 use tiledb::query::{
     Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder,
 };
-use tiledb::Datatype;
-use tiledb::Result as TileDBResult;
 
 const ARRAY_NAME: &str = "reading_incomplete";
 

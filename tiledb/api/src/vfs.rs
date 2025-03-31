@@ -1,8 +1,8 @@
 use std::ops::Deref;
 
+use crate::Result as TileDBResult;
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiInterface, Context, ContextBound};
-use crate::Result as TileDBResult;
 
 pub use tiledb_common::vfs::VFSMode;
 
@@ -397,10 +397,7 @@ extern "C" fn vfs_ls_cb_handler(
             // This complicated cast is brought to you by clippy. The original
             // did not require this, but the original is also two years old.
             &mut *(callback_data
-                as *mut &mut dyn for<'a> std::ops::FnMut(
-                    &'a str,
-                )
-                    -> VFSLsStatus),
+                as *mut &mut dyn for<'a> std::ops::FnMut(&'a str) -> VFSLsStatus),
         )
     };
 
@@ -434,8 +431,7 @@ extern "C" fn vfs_ls_recursive_cb_handler(
                 as *mut &mut dyn for<'a> std::ops::FnMut(
                     &'a str,
                     &'a u64,
-                )
-                    -> VFSLsStatus),
+                ) -> VFSLsStatus),
         )
     };
 

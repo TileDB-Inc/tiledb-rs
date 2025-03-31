@@ -2,9 +2,9 @@ extern crate tiledb_api as tiledb;
 
 use std::path::PathBuf;
 
-use tiledb::query::QueryBuilder;
 use tiledb::Datatype;
 use tiledb::Result as TileDBResult;
+use tiledb::query::QueryBuilder;
 
 const FRAGMENT_INFO_ARRAY_URI: &str = "fragment_info";
 const FRAGMENT_INFO_ATTRIBUTE_NAME: &str = "a";

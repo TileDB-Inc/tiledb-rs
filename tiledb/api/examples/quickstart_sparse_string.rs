@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 use itertools::izip;
 
+use tiledb::Datatype;
+use tiledb::Result as TileDBResult;
 use tiledb::array::dimension::DimensionConstraints;
 use tiledb::array::{
     Array, ArrayType, AttributeBuilder, CellOrder, DimensionBuilder,
@@ -13,8 +15,6 @@ use tiledb::context::Context;
 use tiledb::query::{
     Query, QueryBuilder, ReadBuilder, ReadQuery, ReadQueryBuilder, WriteBuilder,
 };
-use tiledb::Datatype;
-use tiledb::Result as TileDBResult;
 
 const ARRAY_URI: &str = "quickstart_sparse_string";
 

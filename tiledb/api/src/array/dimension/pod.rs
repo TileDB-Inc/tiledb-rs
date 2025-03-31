@@ -29,11 +29,7 @@ impl TryFrom<&Dimension> for DimensionData {
             constraints,
             filters: {
                 let fl = Vec::<FilterData>::try_from(&dim.filters()?)?;
-                if fl.is_empty() {
-                    None
-                } else {
-                    Some(fl)
-                }
+                if fl.is_empty() { None } else { Some(fl) }
             },
         })
     }

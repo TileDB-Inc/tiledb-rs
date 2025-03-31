@@ -4,10 +4,10 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tiledb_common::array::CellValNum;
+use tiledb_common::datatype::Datatype;
 use tiledb_common::datatype::arrow::{
     DatatypeFromArrowResult, DatatypeToArrowResult,
 };
-use tiledb_common::datatype::Datatype;
 use tiledb_common::physical_type_go;
 
 use crate::array::schema::arrow::{
@@ -16,8 +16,8 @@ use crate::array::schema::arrow::{
 use crate::array::{Attribute, AttributeBuilder};
 use crate::context::ContextBound;
 use crate::error::Error;
-use crate::filter::arrow::FilterMetadata;
 use crate::filter::FilterListBuilder;
+use crate::filter::arrow::FilterMetadata;
 use crate::{Context, Result as TileDBResult};
 
 // additional methods with arrow features

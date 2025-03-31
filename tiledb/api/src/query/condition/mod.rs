@@ -3,9 +3,9 @@ use std::ops::Deref;
 use anyhow::anyhow;
 pub use tiledb_common::query::condition::*;
 
+use crate::Result as TileDBResult;
 use crate::context::Context;
 use crate::error::Error;
-use crate::Result as TileDBResult;
 
 pub(super) trait QueryConditionBuilder {
     fn build(&self, ctx: &Context) -> TileDBResult<RawQueryCondition>;
