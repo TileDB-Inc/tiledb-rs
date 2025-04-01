@@ -270,8 +270,7 @@ impl Cells {
     /// then they will be ordered using the second; and so on.
     /// May not preserve the order of elements which are equal for all fields in `keys`.
     pub fn sort(&mut self, keys: &[String]) {
-        let mut idx = std::iter::repeat(())
-            .take(self.len())
+        let mut idx = std::iter::repeat_n((), self.len())
             .enumerate()
             .map(|(i, _)| i)
             .collect::<Vec<usize>>();
