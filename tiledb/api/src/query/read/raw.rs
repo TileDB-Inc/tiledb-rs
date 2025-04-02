@@ -253,7 +253,7 @@ impl<'data, C> RawReadHandle<'data, C> {
     /// Returns the number of cells produced by the last read,
     /// or the capacity of the destination buffers if no read has occurred.
     pub fn last_read_ncells(&self) -> usize {
-        let ncells = match self.field.cell_val_num {
+        match self.field.cell_val_num {
             CellValNum::Fixed(nz) => {
                 let nz = nz.get() as usize;
 
@@ -280,9 +280,7 @@ impl<'data, C> RawReadHandle<'data, C> {
                  */
                 if noffsets == 0 { 0 } else { noffsets - 1 }
             }
-        };
-
-        ncells
+        }
     }
 
     pub fn realloc_if_managed(&mut self) {
