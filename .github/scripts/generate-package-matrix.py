@@ -23,7 +23,7 @@ BASE_MATRIX = [
     {
         "platform": "linux-x86_64",
         "os": "ubuntu-20.04",
-        "manylinux": "quay.io/pypa/manylinux_2_28_x86_64",
+        "manylinux": "quay.io/pypa/manylinux_2_28_x86_64:2025.03.15-1",
         "triplet": "x64-linux-release"
     },
     {
@@ -31,13 +31,13 @@ BASE_MATRIX = [
         "os": "ubuntu-20.04",
         "cmake_args": "-DCOMPILER_SUPPORTS_AVX2=OFF",
         "triplet": "x64-linux-release",
-        "manylinux": "quay.io/pypa/manylinux_2_28_x86_64"
+        "manylinux": "quay.io/pypa/manylinux_2_28_x86_64:2025.03.15-1"
     },
     {
         "platform": "linux-aarch64",
         "os": "linux-arm64-ubuntu24",
         "triplet": "arm64-linux-release",
-        "manylinux": "quay.io/pypa/manylinux_2_28_aarch64"
+        "manylinux": "quay.io/pypa/manylinux_2_28_aarch64:2025.03.15-1"
     },
     {
         "platform": "macos-x86_64",

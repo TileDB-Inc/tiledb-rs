@@ -137,6 +137,18 @@ jobs:
           path: |
             ~/repos/tiledb/build/tiledb-*.tar.gz
             ~/repos/tiledb/build/tiledb-*.zip
+      - name: "Show Logs on Failure"
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          set -e pipefail
+          for f in $(find ~/repos/tiledb/build -name *.log | sort);
+            do
+              echo "$f"
+              echo "==================================================="
+              cat $f
+              echo "\n\n"
+            done;
 
   publish:
     needs:
