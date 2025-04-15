@@ -22,13 +22,13 @@ VERSIONS = ["main", "2.27.0"]
 BASE_MATRIX = [
     {
         "platform": "linux-x86_64",
-        "os": "ubuntu-20.04",
+        "os": "ubuntu-latest",
         "manylinux": "quay.io/pypa/manylinux_2_28_x86_64:2025.03.15-1",
         "triplet": "x64-linux-release"
     },
     {
         "platform": "linux-x86_64-noavx2",
-        "os": "ubuntu-20.04",
+        "os": "ubuntu-latest",
         "cmake_args": "-DCOMPILER_SUPPORTS_AVX2=OFF",
         "triplet": "x64-linux-release",
         "manylinux": "quay.io/pypa/manylinux_2_28_x86_64:2025.03.15-1"
