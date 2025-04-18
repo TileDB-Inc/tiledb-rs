@@ -552,7 +552,7 @@ pub mod strategy {
                 max_fixed_binary_len: DEFAULT_MAX_FIXED_BINARY_LEN,
                 min_numeric_precision: 1,
                 max_numeric_precision: u8::MAX,
-                min_fixed_list_len: 0,
+                min_fixed_list_len: 2,
                 max_fixed_list_len: DEFAULT_MAX_FIXED_LIST_LEN,
                 min_struct_fields: 0,
                 max_struct_fields: 16,
