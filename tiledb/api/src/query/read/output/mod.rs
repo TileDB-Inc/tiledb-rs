@@ -331,6 +331,7 @@ where
     C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
+        eprintln!("ALLOC 1: {}", std::mem::size_of::<C>() * self.capacity);
         ScratchSpace(
             vec![C::default(); self.capacity].into_boxed_slice(),
             self.cell_val_num.into(),
@@ -350,7 +351,7 @@ where
             v.into_boxed_slice()
         };
 
-        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
+        eprintln!("REALLOC 1: {}", std::mem::size_of_val(&(*new_data)));
 
         ScratchSpace(new_data, self.cell_val_num.into(), None)
     }
@@ -378,6 +379,8 @@ where
     C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
+        eprintln!("ALLOC 2: {}", std::mem::size_of::<C>() * self.data_capacity);
+        eprintln!("VALIDITY ALLOC: {}", self.validity_capacity);
         ScratchSpace(
             vec![C::default(); self.data_capacity].into_boxed_slice(),
             ScratchCellStructure::Fixed(self.cell_val_num),
@@ -394,7 +397,7 @@ where
             v.into_boxed_slice()
         };
 
-        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
+        eprintln!("REALLOC 2: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_validity = {
             let mut v = old_validity.unwrap().to_vec();
@@ -429,6 +432,8 @@ where
     C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
+        eprintln!("ALLOC 3: {}", std::mem::size_of::<C>() * self.byte_capacity);
+        eprintln!("OFFSETS ALLOC: {}", 8 * self.offset_capacity);
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
         let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
         ScratchSpace(data, ScratchCellStructure::Var(offsets), None)
@@ -443,7 +448,7 @@ where
             v.into_boxed_slice()
         };
 
-        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
+        eprintln!("REALLOC 3: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_structure = match old_structure {
             ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
@@ -483,6 +488,9 @@ where
     C: PhysicalType,
 {
     fn alloc(&self) -> ScratchSpace<C> {
+        eprintln!("ALLOC 4: {}", std::mem::size_of::<C>() * self.byte_capacity);
+        eprintln!("OFFSETS ALLOC: {}", 8 * self.offset_capacity);
+        eprintln!("VALIDITY ALLOC: {}", self.validity_capacity);
         let data = vec![C::default(); self.byte_capacity].into_boxed_slice();
         let offsets = vec![0u64; self.offset_capacity].into_boxed_slice();
         let validity = vec![0u8; self.validity_capacity].into_boxed_slice();
@@ -498,7 +506,7 @@ where
             v.into_boxed_slice()
         };
 
-        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
+        eprintln!("REALLOC 4: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_structure = match old_structure {
             ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
@@ -560,6 +568,9 @@ where
             }
         };
 
+        eprintln!("ALLOC 5: {}", std::mem::size_of::<C>() * byte_capacity);
+        eprintln!("VALIDITY ALLOC: {}", self.record_capacity.get());
+
         let data = vec![C::default(); byte_capacity].into_boxed_slice();
         let validity = if self.is_nullable {
             Some(vec![0u8; self.record_capacity.get()].into_boxed_slice())
@@ -579,7 +590,7 @@ where
             v.into_boxed_slice()
         };
 
-        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
+        eprintln!("REALLOC 5: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_structure = match old_structure {
             ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
