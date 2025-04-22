@@ -350,6 +350,8 @@ where
             v.into_boxed_slice()
         };
 
+        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
+
         ScratchSpace(new_data, self.cell_val_num.into(), None)
     }
 }
@@ -391,6 +393,8 @@ where
             v.resize(2 * v.len() + 1, Default::default());
             v.into_boxed_slice()
         };
+
+        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_validity = {
             let mut v = old_validity.unwrap().to_vec();
@@ -438,6 +442,8 @@ where
             v.resize(2 * v.len() + 1, Default::default());
             v.into_boxed_slice()
         };
+
+        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_structure = match old_structure {
             ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
@@ -491,6 +497,8 @@ where
             v.resize(2 * v.len() + 1, Default::default());
             v.into_boxed_slice()
         };
+
+        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_structure = match old_structure {
             ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
@@ -570,6 +578,8 @@ where
             v.resize(2 * v.len(), Default::default());
             v.into_boxed_slice()
         };
+
+        eprintln!("ALLOCATION: {}", std::mem::size_of_val(&(*new_data)));
 
         let new_structure = match old_structure {
             ScratchCellStructure::Fixed(nz) => ScratchCellStructure::Fixed(nz),
