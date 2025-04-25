@@ -90,7 +90,7 @@ pub fn schema(params: Parameters) -> SchemaData {
                 DimensionConstraints::StringAscii
             };
             dims.push(DimensionData {
-                name: format!("d_{}", dt),
+                name: format!("d_{dt}"),
                 datatype: dt,
                 filters: None,
                 constraints,
@@ -100,7 +100,7 @@ pub fn schema(params: Parameters) -> SchemaData {
         let mut attfunc = |cell_val_num, is_nullable| {
             let tag_cvn = match cell_val_num {
                 CellValNum::Fixed(nz) if nz.get() == 1 => "single".to_owned(),
-                CellValNum::Fixed(nz) => format!("fixed@{}", nz),
+                CellValNum::Fixed(nz) => format!("fixed@{nz}"),
                 CellValNum::Var => "var".to_owned(),
             };
             let tag_nullable = if is_nullable {
@@ -110,7 +110,7 @@ pub fn schema(params: Parameters) -> SchemaData {
             };
 
             atts.push(AttributeData {
-                name: format!("a_{}_{}_{}", dt, tag_cvn, tag_nullable),
+                name: format!("a_{dt}_{tag_cvn}_{tag_nullable}"),
                 datatype: dt,
                 nullability: Some(is_nullable),
                 cell_val_num: Some(cell_val_num),

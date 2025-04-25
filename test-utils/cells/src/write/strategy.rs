@@ -114,15 +114,11 @@ impl DenseWriteValueTree {
 
                 assert!(
                     complete.start() <= current.start(),
-                    "complete = {:?}, current = {:?}",
-                    complete,
-                    current
+                    "complete = {complete:?}, current = {current:?}",
                 );
                 assert!(
                     current.end() <= complete.end(),
-                    "complete = {:?}, current = {:?}",
-                    complete,
-                    current
+                    "complete = {complete:?}, current = {current:?}",
                 );
 
                 let start = current.start() - complete.start();
@@ -271,7 +267,7 @@ impl Strategy for DenseWriteStrategy {
                 d.subarray_strategy(Some(cell_limit)).expect("Dense dimension subarray not found")
                     .prop_map(|r| {
                         let Range::Single(s) = r else {
-                            unreachable!("Dense dimension subarray is not `Range::Single`: {:?}", r)
+                            unreachable!("Dense dimension subarray is not `Range::Single`: {r:?}")
                         };
                         s
                     }).boxed()

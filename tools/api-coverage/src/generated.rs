@@ -21,7 +21,7 @@ impl<'ast> Visit<'ast> for BindgenDefs {
             return;
         }
         if self.constants.contains_key(&ident) {
-            panic!("Duplicate constant defintion: {}", ident);
+            panic!("Duplicate constant defintion: {ident}");
         }
 
         // Drop all attributes on const definitions to avoid spurious
@@ -42,7 +42,7 @@ impl<'ast> Visit<'ast> for BindgenDefs {
             return;
         }
         if self.signatures.contains_key(&ident) {
-            panic!("Duplicate signature definition: {}", ident);
+            panic!("Duplicate signature definition: {ident}");
         }
         self.signatures.insert(ident, node.clone());
         visit::visit_signature(self, node);
@@ -58,7 +58,7 @@ fn generate_bindings(generated: &String, wrapper: &String) -> Result<()> {
 
     let wrappath = Path::new(&wrapper);
     if !wrappath.is_file() {
-        return Err(anyhow!("Missing wrapper file: {}", wrapper));
+        return Err(anyhow!("Missing wrapper file: {wrapper}"));
     }
 
     let tiledb_lib = pkg_config::Config::new()
@@ -90,7 +90,7 @@ pub fn generate(generated: &String, wrapper: &String) -> Result<BindgenDefs> {
 
     let mut bindgen = BindgenDefs::default();
     let ast = util::parse_file(generated).unwrap_or_else(|e| {
-        panic!("Error parsing {} - {:?}", generated, e);
+        panic!("Error parsing {generated} - {e:?}");
     });
     bindgen.visit_file(&ast);
 
@@ -105,7 +105,7 @@ pub fn process(ignored: &String) -> Result<BindgenDefs> {
 
     let mut bindgen = BindgenDefs::default();
     let ast = util::parse_file(ignored).unwrap_or_else(|e| {
-        panic!("Error parsing {} - {:?}", ignored, e);
+        panic!("Error parsing {ignored} - {e:?}");
     });
     bindgen.visit_file(&ast);
 

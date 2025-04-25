@@ -114,7 +114,7 @@ impl Processor {
         for (key, val) in self.ignored_defs.constants.iter() {
             let generated = self.generated_defs.constants.get(key);
             if generated.is_none() {
-                panic!("Ignored constant was not generated: {}", key);
+                panic!("Ignored constant was not generated: {key}");
             }
             // Ignore the TILEDB_VERESION_* constants so that we're not
             // constantly (heh) updating them.
@@ -126,7 +126,7 @@ impl Processor {
                         util::unparse_constant(generated)
                     );
                     println!("Ignored:   {}", util::unparse_constant(val));
-                    panic!("Invalid ignore for constant: {}", key);
+                    panic!("Invalid ignore for constant: {key}");
                 }
             }
             self.generated_defs
@@ -138,13 +138,13 @@ impl Processor {
         for (key, val) in self.ignored_defs.signatures.iter() {
             let generated = self.generated_defs.signatures.get(key);
             if generated.is_none() {
-                panic!("Ignored signature not generated: {}", key);
+                panic!("Ignored signature not generated: {key}");
             }
             let generated = generated.unwrap();
             if generated != val {
                 println!("Generated: {}", util::unparse_signature(generated));
                 println!("Ignored:   {}", util::unparse_signature(val));
-                panic!("Invalid ignore for signature: {}", key);
+                panic!("Invalid ignore for signature: {key}");
             }
             self.generated_defs
                 .signatures
@@ -156,16 +156,16 @@ impl Processor {
     fn remap(&mut self) {
         for (key, val) in self.remapped_defs.constants.iter() {
             if val.old.as_ref().is_none() {
-                panic!("Missing old half of remapped definition for: {}", key);
+                panic!("Missing old half of remapped definition for: {key}");
             }
 
             if val.new.as_ref().is_none() {
-                panic!("Misisng new half of remapped definition for: {}", key);
+                panic!("Misisng new half of remapped definition for: {key}");
             }
 
             let generated = self.generated_defs.constants.get(key);
             if generated.is_none() {
-                panic!("Remapped constant was not generated: {}", key);
+                panic!("Remapped constant was not generated: {key}");
             }
             let generated = generated.unwrap();
             if generated != val.old.as_ref().unwrap() {
@@ -174,7 +174,7 @@ impl Processor {
                     "Remapped:  {}",
                     util::unparse_constant(val.old.as_ref().unwrap())
                 );
-                panic!("Invalid remap for constant: {}", key);
+                panic!("Invalid remap for constant: {key}");
             }
             self.generated_defs
                 .constants
@@ -184,7 +184,7 @@ impl Processor {
         for (key, val) in self.remapped_defs.signatures.iter() {
             let generated = self.generated_defs.signatures.get(key);
             if generated.is_none() {
-                panic!("Remapped signature not generated: {}", key);
+                panic!("Remapped signature not generated: {key}");
             }
             let generated = generated.unwrap();
             if generated != val.old.as_ref().unwrap() {
@@ -193,7 +193,7 @@ impl Processor {
                     "Remapped:  {}",
                     util::unparse_signature(val.old.as_ref().unwrap())
                 );
-                panic!("Invalid remap for signature: {}", key);
+                panic!("Invalid remap for signature: {key}");
             }
             self.generated_defs
                 .signatures
@@ -210,12 +210,11 @@ impl Processor {
     {
         println!(
             "<tr>\
-            <th align=\"left\">{}</th>\
-            <td align=\"right\">{}</td>\
-            <td align=\"right\">{}</td>\
-            <td align=\"right\">{}</td>\
+            <th align=\"left\">{label}</th>\
+            <td align=\"right\">{count}</td>\
+            <td align=\"right\">{total}</td>\
+            <td align=\"right\">{perc}</td>\
             </tr>",
-            label, count, total, perc
         )
     }
 
@@ -316,7 +315,7 @@ impl Processor {
             println!("## Unwrapped Constants");
             println!();
             for name in &unwrapped_constants[..] {
-                println!(" * `{}`", name);
+                println!(" * `{name}`");
             }
             println!();
         }
@@ -324,7 +323,7 @@ impl Processor {
         if !unwrapped_apis.is_empty() {
             println!("## Unwrapped APIs:");
             for name in &unwrapped_apis[..] {
-                println!("  * `{}`", name);
+                println!("  * `{name}`");
             }
             println!();
         }
@@ -332,7 +331,7 @@ impl Processor {
         if !uncalled_apis.is_empty() {
             println!("## Uncalled APIs:");
             for name in &uncalled_apis[..] {
-                println!("  * `{}`", name);
+                println!("  * `{name}`");
             }
             println!();
         }
@@ -421,7 +420,7 @@ impl Processor {
                     println!();
                 }
                 mismatch = true;
-                println!("### {}", name);
+                println!("### {name}");
                 println!();
                 println!("<table>");
                 println!("<tr><th>Generated</th><th>Declared</th></tr>");

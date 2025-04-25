@@ -72,7 +72,7 @@ pub fn to_arrow(dim: &Dimension) -> TileDBResult<FieldToArrowResult> {
         )?)
         .map_err(|e| {
             TileDBError::Serialization(
-                format!("dimension {} metadata", name),
+                format!("dimension {name} metadata"),
                 anyhow!(e),
             )
         })?;
@@ -211,7 +211,7 @@ mod tests {
         let tdb_out = tdb_out.ok().unwrap().build();
 
         if is_to_arrow_exact {
-            assert!(is_from_arrow_exact, "{:?}", tdb_out);
+            assert!(is_from_arrow_exact, "{tdb_out:?}");
             assert_eq!(tdb_in, tdb_out);
         } else {
             /*

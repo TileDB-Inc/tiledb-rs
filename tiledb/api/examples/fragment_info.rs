@@ -36,7 +36,7 @@ fn read_fragment_info() -> TileDBResult<()> {
             .build()?;
     let num_frags = frag_infos.num_fragments()?;
 
-    println!("Number of fragments: {}", num_frags);
+    println!("Number of fragments: {num_frags}");
     println!("To Vacuum Num: {}", frag_infos.num_to_vacuum()?);
     println!("Total Cell Count: {}", frag_infos.total_cell_count()?);
     println!(
@@ -44,32 +44,27 @@ fn read_fragment_info() -> TileDBResult<()> {
         frag_infos.unconsolidated_metadata_num()?
     );
     for (i, frag_info) in frag_infos.iter()?.enumerate() {
-        println!("Name {}: {}", i, frag_info.name()?);
-        println!("URI  {}: {}", i, frag_info.uri()?);
-        println!("Size {}: {}", i, frag_info.size()?);
-        println!("Type {}: {:?}", i, frag_info.fragment_type()?);
-        println!("Timestamp Range {}: {:?}", i, frag_info.timestamp_range()?);
-        println!("Cell Num {}: {}", i, frag_info.num_cells()?);
-        println!("Version {}: {}", i, frag_info.version()?);
+        println!("Name {i}: {}", frag_info.name()?);
+        println!("URI  {i}: {}", frag_info.uri()?);
+        println!("Size {i}: {}", frag_info.size()?);
+        println!("Type {i}: {:?}", frag_info.fragment_type()?);
+        println!("Timestamp Range {i}: {:?}", frag_info.timestamp_range()?);
+        println!("Cell Num {i}: {}", frag_info.num_cells()?);
+        println!("Version {i}: {}", frag_info.version()?);
         println!(
-            "Has Consolidated Metadata {}: {}",
-            i,
+            "Has Consolidated Metadata {i}: {}",
             frag_info.has_consolidated_metadata()?
         );
 
         frag_info.to_vacuum_uri().expect_err("No vacuums to vacuum");
 
-        println!("Schema {}: {:?}", i, frag_info.schema()?);
-        println!("Schema Name {}: {}", i, frag_info.schema_name()?);
-        println!(
-            "Non-empty domain: {}: {:?}",
-            i,
-            frag_info.non_empty_domain()?
-        );
+        println!("Schema {i}: {:?}", frag_info.schema()?);
+        println!("Schema Name {i}: {}", frag_info.schema_name()?);
+        println!("Non-empty domain: {i}: {:?}", frag_info.non_empty_domain()?);
 
         // Dense arrays don't have MBRs, but the num_mbrs method is hard
         // coded to return 0 in libtiledb.
-        println!("Num MBRs {}: {}", i, frag_info.num_mbrs()?);
+        println!("Num MBRs {i}: {}", frag_info.num_mbrs()?);
         frag_info.mbr(0).expect_err("Dense arrays don't have MBRs");
     }
 

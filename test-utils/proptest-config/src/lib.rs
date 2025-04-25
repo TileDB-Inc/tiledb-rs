@@ -9,7 +9,7 @@ where
     match std::env::var(env) {
         Ok(value) => Some(
             T::from_str(&value)
-                .unwrap_or_else(|_| panic!("Invalid value for {}", env)),
+                .unwrap_or_else(|_| panic!("Invalid value for {env}")),
         ),
         Err(_) => None,
     }

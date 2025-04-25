@@ -222,8 +222,7 @@ impl Cells {
         for k in keys.iter() {
             if !self.fields.contains_key(k) {
                 panic!(
-                    "Cannot construct view: key '{}' not found (fields are {:?})",
-                    k,
+                    "Cannot construct view: key '{k}' not found (fields are {:?})",
                     self.fields.keys()
                 )
             }
@@ -717,7 +716,7 @@ pub struct StructuredCells {
 impl StructuredCells {
     pub fn new(dimensions: Vec<usize>, cells: Cells) -> Self {
         let expected_cells: usize = dimensions.iter().cloned().product();
-        assert_eq!(expected_cells, cells.len(), "Dimensions: {:?}", dimensions);
+        assert_eq!(expected_cells, cells.len(), "Dimensions: {dimensions:?}",);
 
         StructuredCells { dimensions, cells }
     }
@@ -1354,8 +1353,7 @@ mod tests {
                             .$op(String::from_utf8(cells[pivot].to_vec())
                                 .unwrap()),
                         _ => unreachable!(
-                            "Invalid field for query condition: {:?}",
-                            fdata
+                            "Invalid field for query condition: {fdata:?}",
                         ),
                     }
                 };
@@ -1427,10 +1425,9 @@ mod tests {
                         .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
                         .collect::<Vec<_>>(),
                 ),
-                _ => unreachable!(
-                    "Invalid field for query condition: {:?}",
-                    fdata
-                ),
+                _ => {
+                    unreachable!("Invalid field for query condition: {fdata:?}",)
+                }
             }
         };
 
@@ -1493,10 +1490,9 @@ mod tests {
                         .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
                         .collect::<Vec<_>>(),
                 ),
-                _ => unreachable!(
-                    "Invalid field for query condition: {:?}",
-                    fdata
-                ),
+                _ => {
+                    unreachable!("Invalid field for query condition: {fdata:?}",)
+                }
             }
         };
 

@@ -737,7 +737,7 @@ mod tests {
     fn vfs_ls_recursive_new() -> TileDBResult<()> {
         // Recursive ls over the Posix backend doesn't exist before 2.21
         let (major, minor, patch) = crate::version();
-        println!("VERSION: {}.{}.{}", major, minor, patch);
+        println!("VERSION: {major}.{minor}.{patch}");
         if !(major >= 2 && minor >= 21) {
             return Ok(());
         }

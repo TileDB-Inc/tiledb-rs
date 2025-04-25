@@ -984,10 +984,7 @@ mod tests {
             if i < NUM_DATATYPES {
                 let dt = Datatype::try_from(i as u32)
                     .expect("Error converting value to Datatype");
-                assert_ne!(
-                    format!("{}", dt),
-                    "<UNKNOWN DATA TYPE>".to_string()
-                );
+                assert_ne!(format!("{dt}"), "<UNKNOWN DATA TYPE>".to_string());
                 assert!(check_valid(&dt));
             } else {
                 assert!(Datatype::try_from(i as u32).is_err());

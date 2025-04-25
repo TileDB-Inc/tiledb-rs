@@ -165,7 +165,7 @@ impl Debug for Dimension {
             Ok(d) => Debug::fmt(&d, f),
             Err(e) => {
                 let RawDimension::Owned(ptr) = self.raw;
-                write!(f, "<Dimension @ {:?}: serialization error: {}>", ptr, e)
+                write!(f, "<Dimension @ {ptr:?}: serialization error: {e}>")
             }
         }
     }

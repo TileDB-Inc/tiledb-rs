@@ -56,13 +56,12 @@ pub fn process(name: &String) -> Result<HashSet<String>> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
-        .unwrap_or_else(|_| panic!("Failed to run `cargo expand {}`", name));
+        .unwrap_or_else(|_| panic!("Failed to run `cargo expand {name}`"));
 
     if !output.status.success() {
         panic!(
-            "Failed to run `cargo exapnd -p {}`\n\n\
+            "Failed to run `cargo exapnd -p {name}`\n\n\
             *NOTE* You may need to run: `cargo install cargo-expand`\n",
-            name
         );
     }
 

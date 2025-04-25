@@ -187,8 +187,7 @@ impl ReadQuery for QueryBase {
             }
             ffi::tiledb_query_status_t_TILEDB_INITIALIZED => unreachable!(),
             unrecognized => Err(Error::Internal(format!(
-                "Unrecognized query status: {}",
-                unrecognized
+                "Unrecognized query status: {unrecognized}",
             ))),
         }
     }

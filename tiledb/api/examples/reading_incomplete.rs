@@ -212,7 +212,7 @@ fn read_array_step() -> TileDBResult<()> {
             for (row, column, a1, a2) in
                 izip!(rows.iter(), cols.iter(), a1.iter(), a2)
             {
-                println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+                println!("\tCell ({row}, {column}) a1: {a1}, a2: {a2}")
             }
         } else {
             println!("\t\tNot enough space, growing buffers...");
@@ -280,7 +280,7 @@ fn read_array_collect() -> TileDBResult<()> {
     let (a2, (a1, (column, (row, _)))) = qq.execute()?;
 
     for (row, column, a1, a2) in izip!(row, column, a1, a2) {
-        println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+        println!("\tCell ({row}, {column}) a1: {a1}, a2: {a2}")
     }
 
     Ok(())
@@ -292,7 +292,7 @@ fn read_array_collect() -> TileDBResult<()> {
 /// which is handled manually by swapping the buffer inside of the RefCell.
 fn read_array_callback() -> TileDBResult<()> {
     fn callback(row: i32, column: i32, a1: i32, a2: String) {
-        println!("\tCell ({}, {}) a1: {}, a2: {}", row, column, a1, a2)
+        println!("\tCell ({row}, {column}) a1: {a1}, a2: {a2}")
     }
 
     println!("read_array_callback");

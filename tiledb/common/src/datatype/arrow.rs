@@ -755,10 +755,7 @@ pub mod tests {
                 assert_eq!(
                     tdb_dt.size(),
                     arrow_size,
-                    "to_arrow({}, {:?}) = {}",
-                    tdb_dt,
-                    cell_val_num,
-                    arrow
+                    "to_arrow({tdb_dt}, {cell_val_num:?}) = {arrow}",
                 );
 
                 let tdb_out = from_arrow(&arrow);
@@ -775,10 +772,7 @@ pub mod tests {
                 assert_eq!(
                     tdb_dt.size(),
                     arrow_size,
-                    "to_arrow({}, {:?}) = {}",
-                    tdb_dt,
-                    cell_val_num,
-                    arrow
+                    "to_arrow({tdb_dt}, {cell_val_num:?}) = {arrow}",
                 );
 
                 let tdb_out = from_arrow(&arrow);
@@ -825,8 +819,7 @@ pub mod tests {
                         }
                     }
                     arrow => unreachable!(
-                        "Expected FixedSizeList for inexact match but found {}",
-                        arrow
+                        "Expected FixedSizeList for inexact match but found {arrow}",
                     ),
                 }
 
@@ -884,8 +877,7 @@ pub mod tests {
                         assert_eq!(fixed_len_in, fixed_len_out as u32);
                     }
                     adt => unreachable!(
-                        "to_arrow({}, {:?}) = {}",
-                        tdb_dt, cell_val_num, adt
+                        "to_arrow({tdb_dt}, {cell_val_num:?}) = {adt}",
                     ),
                 }
 
@@ -917,10 +909,7 @@ pub mod tests {
             DatatypeToArrowResult::Inexact(arrow) => {
                 assert!(
                     !arrow.is_primitive(),
-                    "to_arrow({}, {:?}) = {}",
-                    tdb_dt,
-                    cell_val_num,
-                    arrow
+                    "to_arrow({tdb_dt}, {cell_val_num:?}) = {arrow}",
                 );
 
                 if let ADT::LargeList(ref item) = arrow {
@@ -953,10 +942,7 @@ pub mod tests {
             DatatypeToArrowResult::Exact(arrow) => {
                 assert!(
                     !arrow.is_primitive(),
-                    "to_arrow({}, {:?}) = {}",
-                    tdb_dt,
-                    cell_val_num,
-                    arrow
+                    "to_arrow({tdb_dt}, {cell_val_num:?}) = {arrow}"
                 );
 
                 match arrow {
@@ -978,8 +964,7 @@ pub mod tests {
                                 assert_eq!(*item.data_type(), item_dt);
                             } else {
                                 unreachable!(
-                                    "Expected inexact item match but found {:?}",
-                                    item_dt
+                                    "Expected inexact item match but found {item_dt:?}"
                                 )
                             }
                         } else {
@@ -1005,8 +990,7 @@ pub mod tests {
                         assert!(matches!(tdb_dt, Datatype::Blob))
                     }
                     adt => unreachable!(
-                        "to_arrow({}, {:?}) = {}",
-                        tdb_dt, cell_val_num, adt
+                        "to_arrow({tdb_dt}, {cell_val_num:?}) = {adt}",
                     ),
                 }
 
@@ -1054,9 +1038,7 @@ pub mod tests {
                 let arrow_out = arrow_out.into_inner();
                 assert!(
                     is_physical_type_match(arrow_in, &arrow_out),
-                    "{:?} => {:?}",
-                    arrow_in,
-                    arrow_out
+                    "{arrow_in:?} => {arrow_out:?}"
                 );
             }
         }

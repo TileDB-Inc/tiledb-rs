@@ -345,8 +345,8 @@ impl Filter {
 impl Debug for Filter {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self.filter_data() {
-            Ok(data) => write!(f, "{:?}", data),
-            Err(e) => write!(f, "<error reading filter data: {}", e),
+            Ok(data) => write!(f, "{data:?}"),
+            Err(e) => write!(f, "<error reading filter data: {e}"),
         }
     }
 }
@@ -666,8 +666,8 @@ mod tests {
                     .transform_datatype(&current_dt) {
                         current_dt = next_dt
                 } else {
-                    panic!("Constructed invalid filter list for datatype {}: \
-                        {:?}, invalid at position {}", dt, fl, fi)
+                    panic!("Constructed invalid filter list for datatype {dt}: \
+                        {fl:?}, invalid at position {fi}")
                 }
             }
         });

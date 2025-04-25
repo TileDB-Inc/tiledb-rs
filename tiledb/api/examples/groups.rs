@@ -131,7 +131,7 @@ fn print_group() -> TileDBResult<()> {
     let group =
         Group::open(&tdb, "my_group", tiledb::query::QueryType::Read, None)?;
     let dump_str = group.dump(true)?;
-    println!("{}", dump_str);
+    println!("{dump_str}");
     Ok(())
 }
 

@@ -70,7 +70,7 @@ fn main() -> TileDBResult<()> {
     let (a, (cols, (rows, ()))) = query.execute()?;
 
     for (row, col, a) in izip!(rows, cols, a) {
-        println!("{} {} {}", row, col, a);
+        println!("{row} {col} {a}");
     }
     println!();
 

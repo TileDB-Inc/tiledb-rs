@@ -103,7 +103,7 @@ impl Serialize for Error {
     where
         S: Serializer,
     {
-        format!("<{}>", self).serialize(serializer)
+        format!("<{self}>").serialize(serializer)
     }
 }
 

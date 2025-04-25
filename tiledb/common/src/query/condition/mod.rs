@@ -211,7 +211,7 @@ impl Display for Literal {
         literal_go!(
             self,
             val,
-            write!(f, "{}", val),
+            write!(f, "{val}"),
             write!(f, "'{}'", escape_string_literal(val))
         )
     }
@@ -419,8 +419,8 @@ impl SetMembers {
         T: Display,
     {
         if let Some((first, rest)) = members.split_first() {
-            write!(f, "({}", first)?;
-            rest.iter().try_for_each(|value| write!(f, ", {}", value))?;
+            write!(f, "({first}")?;
+            rest.iter().try_for_each(|value| write!(f, ", {value}"))?;
             write!(f, ")")
         } else {
             write!(f, "()")
@@ -671,9 +671,9 @@ impl Predicate {
 impl Display for Predicate {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::Equality(e) => write!(f, "{}", e),
-            Self::SetMembership(m) => write!(f, "{}", m),
-            Self::Nullness(n) => write!(f, "{}", n),
+            Self::Equality(e) => write!(f, "{e}"),
+            Self::SetMembership(m) => write!(f, "{m}"),
+            Self::Nullness(n) => write!(f, "{n}"),
         }
     }
 }
@@ -864,11 +864,11 @@ impl Not for QueryConditionExpr {
 impl Display for QueryConditionExpr {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            Self::Cond(pred) => write!(f, "{}", pred),
+            Self::Cond(pred) => write!(f, "{pred}"),
             Self::Comb { lhs, rhs, op } => {
-                write!(f, "({}) {} ({})", lhs, op, rhs)
+                write!(f, "({lhs}) {op} ({rhs})")
             }
-            Self::Negate(pred) => write!(f, "NOT ({})", pred),
+            Self::Negate(pred) => write!(f, "NOT ({pred})"),
         }
     }
 }
@@ -892,12 +892,12 @@ mod tests {
 
         let qc_comb = qc_cmp.clone() & qc_setmemb.clone();
         assert_eq!(
-            format!("({}) AND ({})", qc_cmp, qc_setmemb),
+            format!("({qc_cmp}) AND ({qc_setmemb})"),
             qc_comb.to_string()
         );
 
         let qc_neg = !qc_nullness.clone();
-        assert_eq!(format!("NOT ({})", qc_nullness), qc_neg.to_string());
+        assert_eq!(format!("NOT ({qc_nullness})"), qc_neg.to_string());
 
         /* parentheses should leave no ambiguity */
         let atom = QC::field("x").lt(5);

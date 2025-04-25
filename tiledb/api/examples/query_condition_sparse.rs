@@ -94,9 +94,9 @@ fn read_array(ctx: &Context, qc: Option<QC>) -> TileDBResult<()> {
 
     for (index, a, a_valid, b, c, d) in izip!(index, a, a_validity, b, c, d) {
         if a_valid == 1 {
-            println!("{}: '{}' '{}' '{}', '{}'", index, a, b, c, d)
+            println!("{index}: '{a}' '{b}' '{c}', '{d}'")
         } else {
-            println!("{}: null '{}', '{}', '{}'", index, b, c, d)
+            println!("{index}: null '{b}', '{c}', '{d}'")
         }
     }
     println!();

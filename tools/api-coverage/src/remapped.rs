@@ -49,8 +49,7 @@ impl<'ast> Visit<'ast> for RemappedDefs {
         } else {
             panic!(
                 "Mapping names must be prefixed with \
-                    `old_` or `new_`. '{}' is not valid.",
-                ident
+                    `old_` or `new_`. '{ident}' is not valid."
             );
         };
 
@@ -64,12 +63,12 @@ impl<'ast> Visit<'ast> for RemappedDefs {
 
         if is_old {
             if entry.old.is_some() {
-                panic!("Multiple definitions for old_{}", ident);
+                panic!("Multiple definitions for old_{ident}");
             }
             entry.old = Some(node.clone());
         } else {
             if entry.new.is_some() {
-                panic!("Multiple definitions for: new_{}", ident)
+                panic!("Multiple definitions for: new_{ident}")
             }
             entry.new = Some(node.clone());
         }
@@ -100,8 +99,7 @@ impl<'ast> Visit<'ast> for RemappedDefs {
         } else {
             panic!(
                 "Mapping names must be prefixed with \
-                    `old_` or `new_`. '{}' is not valid.",
-                ident
+                    `old_` or `new_`. '{ident}' is not valid.",
             );
         };
 
@@ -115,12 +113,12 @@ impl<'ast> Visit<'ast> for RemappedDefs {
 
         if is_old {
             if entry.old.is_some() {
-                panic!("Multiple definitions for old_{}", ident);
+                panic!("Multiple definitions for old_{ident}");
             }
             entry.old = Some(node.clone());
         } else {
             if entry.new.is_some() {
-                panic!("Multiple definitions for: new_{}", ident)
+                panic!("Multiple definitions for: new_{ident}")
             }
             entry.new = Some(node.clone());
         }
@@ -137,7 +135,7 @@ pub fn process(remapped: &String) -> Result<RemappedDefs> {
 
     let mut defs = RemappedDefs::default();
     let ast = util::parse_file(remapped).unwrap_or_else(|e| {
-        panic!("Error parsing {} - {:?}", remapped, e);
+        panic!("Error parsing {remapped} - {e:?}");
     });
     defs.visit_file(&ast);
 
