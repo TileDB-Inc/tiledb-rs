@@ -477,7 +477,7 @@ impl Debug for Schema {
             Ok(s) => Debug::fmt(&s, f),
             Err(e) => {
                 let RawSchema::Owned(ptr) = self.raw;
-                write!(f, "<Schema @ {:?}: serialization error: {}>", ptr, e)
+                write!(f, "<Schema @ {ptr:?}: serialization error: {e}>")
             }
         }
     }
@@ -1542,8 +1542,7 @@ mod tests {
             assert!(
                 s.contains("not a valid Dimension Datatype")
                     || s.contains("do not support dimension datatype"),
-                "Expected dimension datatype error, received: {}",
-                s
+                "Expected dimension datatype error, received: {s}",
             );
         } else {
             assert!(
@@ -1570,8 +1569,7 @@ mod tests {
             assert!(
                 s.contains("not a valid Dimension Datatype")
                     || s.contains("do not support dimension datatype"),
-                "Expected dimension datatype error, received: {}",
-                s
+                "Expected dimension datatype error, received: {s}",
             );
         } else {
             assert!(

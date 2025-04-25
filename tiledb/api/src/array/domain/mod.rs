@@ -148,8 +148,7 @@ impl Domain {
         }
 
         Err(Error::InvalidArgument(anyhow!(
-            "Dimension '{}' does not exist in this domain.",
-            name
+            "Dimension '{name}' does not exist in this domain.",
         )))
     }
 
@@ -223,7 +222,7 @@ impl Debug for Domain {
             Ok(d) => Debug::fmt(&d, f),
             Err(e) => {
                 let RawDomain::Owned(ptr) = self.raw;
-                write!(f, "<Domain @ {:?}: serialization error: {}>", ptr, e)
+                write!(f, "<Domain @ {ptr:?}: serialization error: {e}>")
             }
         }
     }

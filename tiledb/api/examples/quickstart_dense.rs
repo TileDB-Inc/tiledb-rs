@@ -128,7 +128,7 @@ fn read_array() -> TileDBResult<()> {
     let (results, _) = query.execute()?;
 
     for value in results {
-        print!("{} ", value)
+        print!("{value} ")
     }
     println!();
     Ok(())

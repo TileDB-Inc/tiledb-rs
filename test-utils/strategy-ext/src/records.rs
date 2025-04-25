@@ -439,8 +439,7 @@ mod tests {
             let convergence = tree.current();
             assert!(
                 convergence.is_empty(),
-                "Value tree converged to: {:?}",
-                convergence
+                "Value tree converged to: {convergence:?}"
             );
         }
     }
@@ -465,8 +464,7 @@ mod tests {
             let convergence = tree.current();
             assert!(
                 convergence.is_empty(),
-                "Value tree converged to: {:?}",
-                convergence
+                "Value tree converged to: {convergence:?}"
             );
         }
     }

@@ -77,12 +77,12 @@ fn option_subset_body_enum_variants(
             syn::Fields::Named(ref fields) => {
                 let fnames = fields.named.iter().map(|f| f.ident.as_ref().unwrap()).collect::<Vec<_>>();
                 let self_fnames = fnames.iter().map(|f| {
-                    let fname = format!("self_{}", f);
+                    let fname = format!("self_{f}");
                     Ident::new(&fname, Span::call_site())
                 }).collect::<Vec<_>>();
 
                 let other_fnames = fnames.iter().map(|f| {
-                    let fname = format!("other_{}", f);
+                    let fname = format!("other_{f}");
                     Ident::new(&fname, Span::call_site())
                 }).collect::<Vec<_>>();
 
@@ -95,12 +95,12 @@ fn option_subset_body_enum_variants(
             },
             syn::Fields::Unnamed(ref fields) => {
                 let self_fnames = (0.. fields.unnamed.len()).map(|idx| {
-                    let fname = format!("self_{}", idx);
+                    let fname = format!("self_{idx}");
                     Ident::new(&fname, Span::call_site())
                 }).collect::<Vec<_>>();
 
                 let other_fnames = (0.. fields.unnamed.len()).map(|idx| {
-                    let fname = format!("other_{}", idx);
+                    let fname = format!("other_{idx}");
                     Ident::new(&fname, Span::call_site())
                 }).collect::<Vec<_>>();
 

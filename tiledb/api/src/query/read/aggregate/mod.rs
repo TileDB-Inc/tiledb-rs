@@ -50,11 +50,11 @@ impl AggregateFunction {
     pub fn aggregate_name(&self) -> String {
         match self {
             Self::Count => "Count".to_owned(),
-            Self::NullCount(s) => format!("NullCount({})", s),
-            Self::Min(s) => format!("Min({})", s),
-            Self::Max(s) => format!("Max({})", s),
-            Self::Sum(s) => format!("Sum({})", s),
-            Self::Mean(s) => format!("Mean({})", s),
+            Self::NullCount(s) => format!("NullCount({s})"),
+            Self::Min(s) => format!("Min({s})"),
+            Self::Max(s) => format!("Max({s})"),
+            Self::Sum(s) => format!("Sum({s})"),
+            Self::Mean(s) => format!("Mean({s})"),
         }
     }
 
@@ -126,10 +126,8 @@ impl AggregateFunction {
             match self.result_type_impl(Some((datatype, cell_val_num))) {
                 Some(datatype) => Ok(datatype),
                 None => Err(TileDBError::InvalidArgument(anyhow!(format!(
-                    "aggregate_type: field '{}' has invalid datatype and cell val num ({}, {})",
+                    "aggregate_type: field '{}' has invalid datatype and cell val num ({datatype}, {cell_val_num})",
                     self.argument_name().unwrap(),
-                    datatype,
-                    cell_val_num
                 )))),
             }
         } else {

@@ -305,7 +305,7 @@ impl Debug for Attribute {
             Ok(a) => Debug::fmt(&a, f),
             Err(e) => {
                 let RawAttribute::Owned(ptr) = self.raw;
-                write!(f, "<Attribute @ {:?}: serialization error: {}>", ptr, e)
+                write!(f, "<Attribute @ {ptr:?}: serialization error: {e}>")
             }
         }
     }

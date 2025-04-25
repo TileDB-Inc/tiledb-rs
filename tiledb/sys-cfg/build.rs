@@ -4,7 +4,7 @@ fn main() {
     if linkage == "dynamic" {
         let libdir = std::env::var("DEP_TILEDB_LIBDIR")
             .expect("Missing DEP_TILEDB_LIBDIR");
-        println!("cargo::rustc-env=TILEDB_RPATH={}", libdir);
+        println!("cargo::rustc-env=TILEDB_RPATH={libdir}");
     } else if linkage == "static" {
         println!("cargo::rustc-env=TILEDB_RPATH=");
     } else {

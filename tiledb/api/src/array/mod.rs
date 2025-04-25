@@ -69,7 +69,7 @@ impl Display for Encryption {
         if c_ret == ffi::TILEDB_OK {
             let s =
                 unsafe { std::ffi::CStr::from_ptr(c_str) }.to_string_lossy();
-            write!(f, "{}", s)
+            write!(f, "{s}")
         } else {
             write!(f, "<Internal error>")
         }
@@ -95,8 +95,7 @@ impl FromStr for Encryption {
             Ok(encryption_type)
         } else {
             Err(Error::InvalidArgument(anyhow!(format!(
-                "Invalid encryption type: {}",
-                s
+                "Invalid encryption type: {s}",
             ))))
         }
     }
@@ -595,8 +594,7 @@ impl Array {
         // but this is written to be easy to upgrade if that ever changes
         assert_eq!(
             num_values, 1,
-            "Unexpected cell val num for dimension: {:?}",
-            cell_val_num
+            "Unexpected cell val num for dimension: {cell_val_num:?}",
         );
 
         if c_is_empty == 1 {
@@ -686,8 +684,7 @@ impl Array {
 
                 if c_is_empty == 1 {
                     unreachable!(
-                        "Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
-                        dimension_key, start_size, end_size
+                        "Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {dimension_key:?}, start_size = {start_size}, end_size = {end_size}",
                     )
                 } else {
                     Ok(Some(VarValueRange::from((start, end))))
@@ -751,8 +748,7 @@ impl Array {
 
                 if c_is_empty == 1 {
                     unreachable!(
-                        "Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {:?}, start_size = {}, end_size = {}",
-                        c_name, start_size, end_size
+                        "Non-empty domain was non-empty for size check but empty when retrieving data: dimension = {c_name:?}, start_size = {start_size}, end_size = {end_size}",
                     )
                 } else {
                     Ok(Some(VarValueRange::from((start, end))))

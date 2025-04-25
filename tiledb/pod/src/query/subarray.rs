@@ -255,9 +255,7 @@ mod tests {
                     .iter()
                     .zip(ranges.iter())
                     .map(|(d, r)| format!(
-                        "({:?} && {:?} = {:?}",
-                        d,
-                        r,
+                        "({d:?} && {r:?} = {:?}",
                         d.iter()
                             .map(|dr| dr.intersection(r))
                             .collect::<Vec<Option<Range>>>()
@@ -291,7 +289,7 @@ mod tests {
                         .any(|(rs1, rs2)| {
                             Some(ri) == rs1.intersection(rs2).as_ref()
                         });
-                    assert!(found_input, "ri = {:?}", ri);
+                    assert!(found_input, "ri = {ri:?}");
                 }
 
                 // and for all pairs (rs1, rs2), there must be some ri which covers
@@ -303,8 +301,7 @@ mod tests {
                     let found_output = di.contains(&intersection);
                     assert!(
                         found_output,
-                        "rs1 = {:?}, rs2 = {:?}, intersection = {:?}",
-                        rs1, rs2, intersection
+                        "rs1 = {rs1:?}, rs2 = {rs2:?}, intersection = {intersection:?}",
                     );
                 }
             }

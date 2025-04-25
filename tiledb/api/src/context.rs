@@ -148,8 +148,7 @@ impl Context {
             Err(e)
         } else {
             panic!(
-                "libtiledb context did not have error for error return value: {}",
-                c_ret
+                "libtiledb context did not have error for error return value: {c_ret}",
             )
         }
     }

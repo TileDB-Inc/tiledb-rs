@@ -154,7 +154,7 @@ fn example_count() -> TileDBResult<()> {
     let Some(count) = count else {
         unreachable!("Count result is never `None`");
     };
-    println!("Count is {}", count);
+    println!("Count is {count}");
 
     Ok(())
 }
@@ -190,7 +190,7 @@ fn example_sum() -> TileDBResult<()> {
     let Some(sum) = results else {
         unreachable!("Sum is `None` which cannot occur on example input");
     };
-    println!("Sum is {}", sum);
+    println!("Sum is {sum}");
 
     Ok(())
 }
@@ -229,8 +229,8 @@ fn example_min_max() -> TileDBResult<()> {
     let (Some(min_res), Some(max_res)) = (min_res, max_res) else {
         unreachable!("Min or max is `None` which cannot occur on example input")
     };
-    println!("Min is {}", min_res);
-    println!("Max is {}", max_res);
+    println!("Min is {min_res}");
+    println!("Max is {max_res}");
 
     Ok(())
 }
@@ -266,7 +266,7 @@ fn example_mean() -> TileDBResult<()> {
     let Some(mean) = mean else {
         unreachable!("Mean is `None` which cannot occur on example input")
     };
-    println!("Mean is {}", mean);
+    println!("Mean is {mean}");
 
     Ok(())
 }

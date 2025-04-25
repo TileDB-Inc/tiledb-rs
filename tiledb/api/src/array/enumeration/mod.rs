@@ -222,11 +222,7 @@ impl Debug for Enumeration {
             Ok(e) => Debug::fmt(&e, f),
             Err(e) => {
                 let RawEnumeration::Owned(ptr) = self.raw;
-                write!(
-                    f,
-                    "<Enumeration @ {:?}: serialization error: {}>",
-                    ptr, e
-                )
+                write!(f, "<Enumeration @ {ptr:?}: serialization error: {e}>",)
             }
         }
     }

@@ -20,7 +20,7 @@ fn configure_rustc(_libdir: String) {
 fn configure_static(libdir: String) {
     // Configure linking
     println!("cargo::metadata=LINKAGE=static");
-    println!("cargo::rustc-link-search=native={}", libdir);
+    println!("cargo::rustc-link-search=native={libdir}");
     println!("cargo::rustc-link-lib=static=tiledb_static");
 
     // Add any extra OS specific config
@@ -29,7 +29,7 @@ fn configure_static(libdir: String) {
 
 fn configure_dynamic(libdir: String) {
     println!("cargo::metadata=LINKAGE=dynamic");
-    println!("cargo::rustc-link-search=native={}", libdir);
+    println!("cargo::rustc-link-search=native={libdir}");
     println!("cargo::rustc-link-lib=tiledb");
     println!("cargo::metadata=LIBDIR={libdir}");
 }

@@ -158,7 +158,7 @@ pub fn read_array(json: bool) -> TileDBResult<()> {
     } else {
         let stats = tiledb::stats::dump()?;
         match stats {
-            Some(stats_str) => println!("{}", &stats_str),
+            Some(stats_str) => println!("{stats_str}"),
             None => println!("No stats associated with this query."),
         }
     }

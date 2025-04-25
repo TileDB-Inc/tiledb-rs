@@ -46,7 +46,7 @@ fn main() -> TileDBResult<()> {
     let (a, (cols, (rows, ()))) = query.execute()?;
 
     for (row, col, a) in izip!(rows, cols, a) {
-        println!("Cell ({} {}) has data {}", row, col, a);
+        println!("Cell ({row} {col}) has data {a}");
     }
     println!();
 

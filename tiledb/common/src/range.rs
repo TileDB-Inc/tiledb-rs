@@ -208,8 +208,7 @@ impl SingleValueRange {
             },
             {
                 panic!(
-                    "`SingleValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
-                    self, other
+                    "`SingleValueRange::union` on non-matching datatypes: `self` = {self:?}, `other` = {other:?}"
                 )
             }
         )
@@ -238,8 +237,7 @@ impl SingleValueRange {
             },
             {
                 panic!(
-                    "`SingleValueRange::intersection` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
-                    self, other
+                    "`SingleValueRange::intersection` on non-matching datatypes: `self` = {self:?}, `other` = {other:?}"
                 )
             }
         )
@@ -706,10 +704,7 @@ impl MultiValueRange {
                     .try_fold(0i128, |num_cells, (lower, upper)| {
                         if upper < lower && num_cells == 0 {
                             // this is the first unequal value, upper must be greater
-                            unreachable!(
-                                "Invalid `MultiValueRange`: {:?}",
-                                self
-                            )
+                            unreachable!("Invalid `MultiValueRange`: {self:?}")
                         }
 
                         let num_cells = num_cells.checked_mul(iter_factor)?;
@@ -737,9 +732,7 @@ impl MultiValueRange {
         assert_eq!(
             self.num_values(),
             other.num_values(),
-            "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
-            self,
-            other
+            "`MultiValueRange::union` on ranges of non-matching length: `self` = {self:?}, `other` = {other:?}"
         );
 
         crate::multi_value_range_cmp!(
@@ -767,8 +760,7 @@ impl MultiValueRange {
                     .unwrap()
             },
             panic!(
-                "`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
-                self, other
+                "`MultiValueRange::union` on non-matching datatypes: `self` = {self:?}, `other` = {other:?}"
             )
         )
     }
@@ -784,9 +776,7 @@ impl MultiValueRange {
         assert_eq!(
             self.num_values(),
             other.num_values(),
-            "`MultiValueRange::union` on ranges of non-matching length: `self` = {:?}, `other` = {:?}",
-            self,
-            other
+            "`MultiValueRange::union` on ranges of non-matching length: `self` = {self:?}, `other` = {other:?}"
         );
 
         crate::multi_value_range_cmp!(
@@ -811,8 +801,7 @@ impl MultiValueRange {
                 )
             },
             panic!(
-                "`MultiValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
-                self, other
+                "`MultiValueRange::union` on non-matching datatypes: `self` = {self:?}, `other` = {other:?}"
             )
         )
     }
@@ -1157,8 +1146,7 @@ impl VarValueRange {
                 VarValueRange::from((min, max))
             },
             panic!(
-                "`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
-                self, other
+                "`VarValueRange::union` on non-matching datatypes: `self` = {self:?}, `other` = {other:?}"
             )
         )
     }
@@ -1188,8 +1176,7 @@ impl VarValueRange {
                 )))
             },
             panic!(
-                "`VarValueRange::union` on non-matching datatypes: `self` = {:?}, `other` = {:?}",
-                self, other
+                "`VarValueRange::union` on non-matching datatypes: `self` = {self:?}, `other` = {other:?}"
             )
         )
     }
@@ -1576,8 +1563,7 @@ impl Range {
             (Self::Multi(l), Self::Multi(r)) => Self::Multi(l.union(r)),
             (Self::Var(l), Self::Var(r)) => Self::Var(l.union(r)),
             _ => panic!(
-                "`Range::union` on non-matching range variants: `self` = {:?}, `other` = {:?}",
-                self, other
+                "`Range::union` on non-matching range variants: `self` = {self:?}, `other` = {other:?}"
             ),
         }
     }
@@ -1599,8 +1585,7 @@ impl Range {
             }
             (Self::Var(l), Self::Var(r)) => Some(Self::Var(l.intersection(r)?)),
             _ => panic!(
-                "`Range::intersection` on non-matching range variants: `self` = {:?}, `other` = {:?}",
-                self, other
+                "`Range::intersection` on non-matching range variants: `self` = {self:?}, `other` = {other:?}"
             ),
         }
     }
@@ -2381,7 +2366,7 @@ mod tests {
                 .is_err()
         );
 
-        let _ = format!("{:?}", range);
+        let _ = format!("{range:?}");
     }
 
     #[test]

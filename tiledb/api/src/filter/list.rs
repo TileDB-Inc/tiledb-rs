@@ -85,18 +85,16 @@ impl Debug for FilterList {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         let nfilters = match self.get_num_filters() {
             Ok(n) => n,
-            Err(e) => return write!(f, "<error reading filter list: {}>", e),
+            Err(e) => return write!(f, "<error reading filter list: {e}>"),
         };
         write!(f, "[")?;
         for fi in 0..nfilters {
             match self.get_filter(fi) {
                 Ok(fd) => match fd.filter_data() {
-                    Ok(fd) => write!(f, "{:?},", fd)?,
-                    Err(e) => {
-                        write!(f, "<error reading filter {}: {}>", fi, e)?
-                    }
+                    Ok(fd) => write!(f, "{fd:?},")?,
+                    Err(e) => write!(f, "<error reading filter {fi}: {e}>")?,
                 },
-                Err(e) => write!(f, "<error reading filter {}: {}>", fi, e)?,
+                Err(e) => write!(f, "<error reading filter {fi}: {e}>")?,
             };
         }
         write!(f, "]")

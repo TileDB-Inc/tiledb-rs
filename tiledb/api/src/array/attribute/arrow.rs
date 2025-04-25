@@ -105,7 +105,7 @@ pub fn to_arrow(attr: &Attribute) -> TileDBResult<FieldToArrowResult> {
             serde_json::ser::to_string(&AttributeMetadata::new(attr)?)
                 .map_err(|e| {
                     Error::Serialization(
-                        format!("attribute {} metadata", name),
+                        format!("attribute {name} metadata"),
                         anyhow!(e),
                     )
                 })?;
@@ -230,7 +230,7 @@ pub mod tests {
         let tdb_out = tdb_out.ok().unwrap().build();
 
         if is_to_arrow_exact {
-            assert!(is_from_arrow_exact, "{:?}", tdb_out);
+            assert!(is_from_arrow_exact, "{tdb_out:?}");
             assert_eq!(tdb_in, tdb_out);
         } else {
             /*
@@ -278,7 +278,7 @@ pub mod tests {
         };
 
         if is_from_arrow_exact {
-            assert!(is_to_arrow_exact, "{:?} => {:?}", arrow_in, arrow_out);
+            assert!(is_to_arrow_exact, "{arrow_in:?} => {arrow_out:?}");
 
             /* this should be perfectly invertible */
             assert_eq!(arrow_in, arrow_out);
