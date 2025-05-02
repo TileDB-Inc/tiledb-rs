@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "tiledb/api",
+    "tiledb/api2",
     "tiledb/common",
     "tiledb/pod",
     "tiledb/proc-macro",
@@ -16,7 +17,6 @@ members = [
     "test-utils/strategy-ext",
     "test-utils/uri",
     "tools/api-coverage",
-    "tiledb/api2",
 ]
 default-members = [
     "tiledb/api",

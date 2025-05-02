@@ -7,6 +7,15 @@ static void context_free(tiledb_ctx_t* config) {
 
 namespace tiledb::rs {
 
+std::unique_ptr<Context> create_context() {
+  return std::make_unique<Context>();
+}
+
+std::unique_ptr<Context> create_context_with_config(
+    const std::unique_ptr<Config>& cfg) {
+  return std::make_unique<Context>(cfg);
+}
+
 Context::Context() {
   tiledb_ctx_t* ctx;
   if (tiledb_ctx_alloc(nullptr, &ctx) != TILEDB_OK) {
@@ -18,9 +27,9 @@ Context::Context() {
   set_tag("x-tiledb-api-language", "Rust");
 }
 
-Context::Context(const Config& config) {
+Context::Context(const std::unique_ptr<Config>& config) {
   tiledb_ctx_t* ctx;
-  if (tiledb_ctx_alloc(config.ptr().get(), &ctx) != TILEDB_OK) {
+  if (tiledb_ctx_alloc(config->ptr().get(), &ctx) != TILEDB_OK) {
     throw TileDBError("[TileDB::C++API] Error: Failed to create context");
   }
 
@@ -43,13 +52,43 @@ std::unique_ptr<Config> Context::config() const {
   return std::make_unique<Config>(c);
 }
 
-// ToDo: Create shared filesystem enum
+bool Context::is_supported_fs(int32_t fs) const {
+  tiledb_filesystem_t cpp_fs;
+  if (fs == 0) {
+    cpp_fs = TILEDB_HDFS;
+  } else if (fs == 1) {
+    cpp_fs = TILEDB_S3;
+  } else if (fs == 2) {
+    cpp_fs = TILEDB_AZURE;
+  } else if (fs == 3) {
+    cpp_fs = TILEDB_GCS;
+  } else if (fs == 4) {
+    cpp_fs = TILEDB_MEMFS;
+  } else {
+    throw TileDBError("Invalid filesystem variant.");
+  }
 
-// bool is_supported_fs(tiledb_filesystem_t fs) const;
+  int ret;
+  handle_error(tiledb_ctx_is_supported_fs(ctx_.get(), cpp_fs, &ret));
+  return ret != 0;
+}
 
-// void set_tag(const rust::Str key, const rust::Str val);
+void Context::set_tag(const rust::Str key, const rust::Str val) const {
+  auto c_key = static_cast<std::string>(key);
+  auto c_val = static_cast<std::string>(val);
 
-// rust::String stats() const;
+  handle_error(tiledb_ctx_set_tag(ctx_.get(), c_key.c_str(), c_val.c_str()));
+}
+
+rust::String Context::stats() const {
+  char* c_str;
+  handle_error(tiledb_ctx_get_stats(ctx_.get(), &c_str));
+
+  std::string str(c_str);
+  tiledb_stats_free_str(&c_str);
+
+  return str;
+}
 
 std::shared_ptr<tiledb_ctx_t> Context::ptr() const {
   return ctx_;

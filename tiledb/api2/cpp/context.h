@@ -11,20 +11,21 @@ namespace tiledb::rs {
 class Context;
 
 std::unique_ptr<Context> create_context();
-std::unique_ptr<Context> create_context_with_config(const Config& cfg);
+std::unique_ptr<Context> create_context_with_config(
+    const std::unique_ptr<Config>& cfg);
 
 class Context {
  public:
   Context();
-  Context(const Config& config);
+  Context(const std::unique_ptr<Config>& config);
 
   std::unique_ptr<Config> config() const;
 
   void handle_error(int rc) const;
 
-  bool is_supported_fs(tiledb_filesystem_t fs) const;
+  bool is_supported_fs(int32_t fs) const;
 
-  void set_tag(const rust::Str key, const rust::Str val);
+  void set_tag(const rust::Str key, const rust::Str val) const;
 
   rust::String stats() const;
 

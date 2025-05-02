@@ -1,7 +1,7 @@
 use crate::error::TileDBError;
 
 #[cxx::bridge(namespace = "tiledb::rs")]
-mod ffi {
+pub mod ffi {
     unsafe extern "C++" {
         include!("tiledb-api2/cpp/config.h");
 
@@ -18,7 +18,7 @@ mod ffi {
 }
 
 pub struct Config {
-    cfg: cxx::UniquePtr<ffi::Config>,
+    pub(crate) cfg: cxx::UniquePtr<ffi::Config>,
 }
 
 impl Config {
