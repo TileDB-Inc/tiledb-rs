@@ -1,0 +1,15 @@
+[package]
+name = "tiledb-api2"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+cxx.workspace = true
+tiledb-sys.workspace = true
+thiserror.workspace = true
+
+[build-dependencies]
+cxx-build.workspace = true
+pkg-config.workspace = true
+tiledb-sys-cfg.workspace = true

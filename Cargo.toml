@@ -16,6 +16,7 @@ members = [
     "test-utils/strategy-ext",
     "test-utils/uri",
     "tools/api-coverage",
+    "tiledb/api2",
 ]
 default-members = [
     "tiledb/api",
@@ -47,6 +48,8 @@ arrow-schema = "52.0.0"
 bindgen = "0.70"
 cells = { path = "test-utils/cells" }
 cmake = "0.1"
+cxx = "1.0"
+cxx-build = "1.0"
 itertools = "0"
 num-traits = "0.2"
 paste = "1.0"

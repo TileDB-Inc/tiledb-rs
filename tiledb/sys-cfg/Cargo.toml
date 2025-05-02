@@ -5,4 +5,4 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
-tiledb-sys = { workspace = true }
+pkg-config.workspace = true

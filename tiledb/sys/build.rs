@@ -44,10 +44,16 @@ fn main() {
     let prefix = pkg_config::get_variable("tiledb", "prefix")
         .expect("Missing TileDB 'libdir' variable.");
     let prefix = prefix.trim_matches('"');
+    let incdir = std::path::Path::new(prefix)
+        .join("include")
+        .display()
+        .to_string();
     let libdir = std::path::Path::new(prefix)
         .join("lib")
         .display()
         .to_string();
+
+    println!("cargo::metadata=INCLUDE_DIR={incdir}");
 
     // If we find a libtiledb_static.a, link statically, otherwise assume
     // we want to link dynamically.
