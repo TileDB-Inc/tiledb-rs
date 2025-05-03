@@ -1,21 +1,6 @@
+use tiledb_sys2::config as ffi;
+
 use crate::error::TileDBError;
-
-#[cxx::bridge(namespace = "tiledb::rs")]
-pub mod ffi {
-    unsafe extern "C++" {
-        include!("tiledb-api2/cpp/config.h");
-
-        type Config;
-
-        fn create_config() -> Result<UniquePtr<Config>>;
-        fn get(&self, key: &str) -> Result<String>;
-        fn contains(&self, key: &str) -> Result<bool>;
-        fn set(&self, key: &str, val: &str) -> Result<()>;
-        fn unset(&self, key: &str) -> Result<()>;
-        fn load_from_file(&self, path: &str) -> Result<()>;
-        fn save_to_file(&self, path: &str) -> Result<()>;
-    }
-}
 
 pub struct Config {
     pub(crate) cfg: cxx::UniquePtr<ffi::Config>,

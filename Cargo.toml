@@ -10,6 +10,7 @@ members = [
     "tiledb/sys",
     "tiledb/sys-cfg",
     "tiledb/sys-defs",
+    "tiledb/sys2",
     "tiledb/utils",
     "test-utils/cells",
     "test-utils/proptest-config",
@@ -70,6 +71,7 @@ tiledb-proptest-config = { path = "test-utils/proptest-config" }
 tiledb-sys = { path = "tiledb/sys" }
 tiledb-sys-cfg = { path = "tiledb/sys-cfg" }
 tiledb-sys-defs = { path = "tiledb/sys-defs" }
+tiledb-sys2 = { path = "tiledb/sys2" }
 tiledb-test-utils = { path = "tiledb/test-utils" }
 tiledb-utils = { path = "tiledb/utils" }
 uri = { path = "test-utils/uri" }

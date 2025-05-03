@@ -1,26 +1,9 @@
+use tiledb_sys2::filesystem::FileSystem;
+
 use crate::config::Config;
-use crate::enums::FileSystem;
 use crate::error::TileDBError;
 
-#[cxx::bridge(namespace = "tiledb::rs")]
-pub mod ffi {
-    unsafe extern "C++" {
-        include!("tiledb-api2/cpp/context.h");
-        include!("tiledb-api2/cpp/enums.h");
-
-        type Config = crate::config::ffi::Config;
-        type Context;
-
-        pub fn create_context() -> Result<UniquePtr<Context>>;
-        pub fn create_context_with_config(
-            cfg: &UniquePtr<Config>,
-        ) -> Result<UniquePtr<Context>>;
-
-        pub fn is_supported_fs(self: &Context, fs: i32) -> Result<bool>;
-        pub fn set_tag(self: &Context, key: &str, val: &str) -> Result<()>;
-        pub fn stats(self: &Context) -> Result<String>;
-    }
-}
+use tiledb_sys2::context as ffi;
 
 pub struct Context {
     ctx: cxx::UniquePtr<ffi::Context>,

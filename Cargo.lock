@@ -2005,8 +2005,8 @@ dependencies = [
  "cxx-build",
  "pkg-config",
  "thiserror 1.0.69",
- "tiledb-sys",
  "tiledb-sys-cfg",
+ "tiledb-sys2",
 ]
 
 [[package]]
@@ -2091,6 +2091,15 @@ dependencies = [
 [[package]]
 name = "tiledb-sys-defs"
 version = "0.1.0"
+
+[[package]]
+name = "tiledb-sys2"
+version = "0.1.0"
+dependencies = [
+ "cxx",
+ "cxx-build",
+ "tiledb-sys-cfg",
+]
 
 [[package]]
 name = "tiledb-utils"
