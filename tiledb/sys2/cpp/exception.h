@@ -15,4 +15,4 @@ struct TileDBError : std::runtime_error {
 
 }  // namespace tiledb::rs
 
-#endif  // TILEDB_CPP_API_EXCEPTION_H
+#endif

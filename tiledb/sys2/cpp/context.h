@@ -39,4 +39,4 @@ class Context {
 
 }  // namespace tiledb::rs
 
-#endif  // TILEDB_RS_API_CONTEXT_H
+#endif

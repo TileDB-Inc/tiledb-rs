@@ -32,4 +32,4 @@ class Config {
 
 }  // namespace tiledb::rs
 
-#endif  // TILEDB_RS_API_CONFIG_H
+#endif
