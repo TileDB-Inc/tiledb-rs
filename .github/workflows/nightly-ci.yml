@@ -53,13 +53,13 @@ jobs:
         # on that approach. So I'm just disabling the particular lint globally.
         run: cargo clippy --all-targets --all-features -- --allow non_local_definitions -Dwarnings
       - name: Build
-        run: cargo build --all-targets --all-features
+        run: cargo build --workspace --all-targets --all-features
       - name: Test
         env:
           # give up shrinking after an hour
           PROPTEST_MAX_SHRINK_ITERS: 100000000
           PROPTEST_MAX_SHRINK_TIME: 3600000
-        run: cargo test --all-targets --all-features
+        run: cargo test --workspace --all-targets --all-features
       - name: Check Linkage - Linux
         if: ${{ startsWith(matrix.os, 'ubuntu-') || startsWith(matrix.os, 'linux-') }}
         run: .github/scripts/ubuntu-check-${{ matrix.linkage }}-linkage.sh
