@@ -22,6 +22,9 @@ tiledb-utils = { workspace = true, optional = true }
 proptest = { workspace = true }
 strategy-ext = { workspace = true }
 
+[build-dependencies]
+tiledb-sys-cfg = { workspace = true }
+
 [features]
 default = []
 arrow = ["dep:arrow-schema"]

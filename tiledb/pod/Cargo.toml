@@ -26,6 +26,9 @@ tiledb-proptest-config = { workspace = true }
 strategy-ext = { workspace = true }
 tiledb-utils = { workspace = true }
 
+[build-dependencies]
+tiledb-sys-cfg = { workspace = true }
+
 [features]
 default = []
 option-subset = ["dep:tiledb-proc-macro", "dep:tiledb-utils", "tiledb-common/option-subset"]
