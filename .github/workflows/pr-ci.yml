@@ -10,6 +10,8 @@ on:
     branches:
       - "*" # Quotes required because * is reserved by YAML
 
+  workflow_dispatch:
+
 concurrency:
   group: ${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
