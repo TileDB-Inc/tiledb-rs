@@ -1905,7 +1905,6 @@ dependencies = [
  "tiledb-common",
  "tiledb-proc-macro",
  "tiledb-proptest-config",
- "tiledb-sys-cfg",
  "tiledb-sys-defs",
  "tiledb-utils",
 ]
