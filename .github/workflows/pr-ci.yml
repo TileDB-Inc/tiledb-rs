@@ -42,7 +42,7 @@ jobs:
       - name: Test
         run: |
           export RUST_BACKTRACE=1
-          cargo test --workspace --all-targets --all-features
+          cargo test --no-fail-fast --workspace --all-targets --all-features
           status=$?
           echo "Process exited with status ${status}"
 
