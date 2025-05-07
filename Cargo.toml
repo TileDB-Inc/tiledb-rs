@@ -12,7 +12,6 @@ members = [
     "tiledb/utils",
     "test-utils/cells",
     "test-utils/proptest-config",
-    "test-utils/signal",
     "test-utils/strategy-ext",
     "test-utils/uri",
     "tools/api-coverage",
@@ -55,7 +54,6 @@ proptest = "1.0.0"
 regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
-signal = { path = "test-utils/signal" }
 strategy-ext = { path = "test-utils/strategy-ext" }
 tempfile = { version = "3" }
 thiserror = { version = "1" }

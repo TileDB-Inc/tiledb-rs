@@ -35,6 +35,9 @@ fn configure_dynamic(libdir: String) {
 }
 
 fn main() {
+    // Why did CI not trigger on the first commit?
+    tiledb_sys_cfg::rpath();
+
     pkg_config::Config::new()
         .atleast_version("2.27.0")
         .cargo_metadata(false)
