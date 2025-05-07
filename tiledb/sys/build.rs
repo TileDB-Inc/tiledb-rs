@@ -35,6 +35,8 @@ fn configure_dynamic(libdir: String) {
 }
 
 fn main() {
+    tiledb_sys_cfg::rpath();
+
     pkg_config::Config::new()
         .atleast_version("2.27.0")
         .cargo_metadata(false)

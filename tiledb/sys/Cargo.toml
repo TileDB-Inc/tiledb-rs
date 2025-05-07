@@ -15,3 +15,4 @@ pkg-config = { workspace = true }
 regex = { workspace = true }
 tiledb-utils = { workspace = true }
 thiserror = { workspace = true }
+tiledb-sys-cfg = { workspace = true }
