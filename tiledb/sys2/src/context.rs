@@ -6,10 +6,10 @@ mod ffi {
         type Config = crate::config::Config;
         type Context;
 
-        pub fn create_context() -> Result<UniquePtr<Context>>;
+        pub fn create_context() -> Result<SharedPtr<Context>>;
         pub fn create_context_with_config(
-            cfg: &UniquePtr<Config>,
-        ) -> Result<UniquePtr<Context>>;
+            cfg: &SharedPtr<Config>,
+        ) -> Result<SharedPtr<Context>>;
 
         pub fn is_supported_fs(self: &Context, fs: i32) -> Result<bool>;
         pub fn set_tag(self: &Context, key: &str, val: &str) -> Result<()>;

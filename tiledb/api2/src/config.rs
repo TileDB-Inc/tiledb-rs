@@ -3,7 +3,7 @@ use tiledb_sys2::config as ffi;
 use crate::error::TileDBError;
 
 pub struct Config {
-    pub(crate) cfg: cxx::UniquePtr<ffi::Config>,
+    pub(crate) cfg: cxx::SharedPtr<ffi::Config>,
 }
 
 impl Config {

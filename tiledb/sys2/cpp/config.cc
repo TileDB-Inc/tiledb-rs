@@ -3,10 +3,6 @@
 
 namespace tiledb::rs {
 
-std::unique_ptr<Config> create_config() {
-  return std::make_unique<Config>();
-}
-
 static void config_free(tiledb_config_t* config) {
   tiledb_config_free(&config);
 }
@@ -93,6 +89,10 @@ void Config::create_config() {
   check_config_error(err);
 
   config_ = std::shared_ptr<tiledb_config_t>(config, config_free);
+}
+
+std::shared_ptr<Config> create_config() {
+  return std::make_shared<Config>();
 }
 
 }  // namespace tiledb::rs

@@ -44,8 +44,8 @@ class Subarray {
       const std::string& label_name, uint64_t range_idx);
 
  private:
-  std::shared_ptr<const Context> ctx_;
-  std::unique_ptr<const Array> array_;
+  std::shared_ptr<Context> ctx_;
+  std::shared_ptr<Array> array_;
   std::shared_ptr<tiledb_subarray_t> subarray_;
 };
 

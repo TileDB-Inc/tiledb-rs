@@ -8,18 +8,12 @@
 
 namespace tiledb::rs {
 
-class Context;
-
-std::unique_ptr<Context> create_context();
-std::unique_ptr<Context> create_context_with_config(
-    const std::unique_ptr<Config>& cfg);
-
 class Context {
  public:
   Context();
-  Context(const std::unique_ptr<Config>& config);
+  Context(const std::shared_ptr<Config>& config);
 
-  std::unique_ptr<Config> config() const;
+  std::shared_ptr<Config> config() const;
 
   void handle_error(int rc) const;
 
@@ -36,6 +30,10 @@ class Context {
 
   std::shared_ptr<tiledb_ctx_t> ctx_;
 };
+
+std::shared_ptr<Context> create_context();
+std::shared_ptr<Context> create_context_with_config(
+    const std::shared_ptr<Config>& cfg);
 
 }  // namespace tiledb::rs
 

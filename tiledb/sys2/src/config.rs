@@ -5,7 +5,7 @@ mod ffi {
 
         type Config;
 
-        fn create_config() -> Result<UniquePtr<Config>>;
+        fn create_config() -> Result<SharedPtr<Config>>;
         fn get(&self, key: &str) -> Result<String>;
         fn contains(&self, key: &str) -> Result<bool>;
         fn set(&self, key: &str, val: &str) -> Result<()>;

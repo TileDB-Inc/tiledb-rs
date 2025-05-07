@@ -6,7 +6,7 @@ use crate::error::TileDBError;
 use tiledb_sys2::context as ffi;
 
 pub struct Context {
-    ctx: cxx::UniquePtr<ffi::Context>,
+    ctx: cxx::SharedPtr<ffi::Context>,
 }
 
 impl Context {

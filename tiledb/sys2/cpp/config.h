@@ -6,10 +6,6 @@
 
 namespace tiledb::rs {
 
-class Config;
-
-std::unique_ptr<Config> create_config();
-
 class Config {
  public:
   Config();
@@ -29,6 +25,8 @@ class Config {
 
   void create_config();
 };
+
+std::shared_ptr<Config> create_config();
 
 }  // namespace tiledb::rs
 

@@ -7,15 +7,6 @@ static void context_free(tiledb_ctx_t* config) {
 
 namespace tiledb::rs {
 
-std::unique_ptr<Context> create_context() {
-  return std::make_unique<Context>();
-}
-
-std::unique_ptr<Context> create_context_with_config(
-    const std::unique_ptr<Config>& cfg) {
-  return std::make_unique<Context>(cfg);
-}
-
 Context::Context() {
   tiledb_ctx_t* ctx;
   if (tiledb_ctx_alloc(nullptr, &ctx) != TILEDB_OK) {
@@ -27,7 +18,7 @@ Context::Context() {
   set_tag("x-tiledb-api-language", "Rust");
 }
 
-Context::Context(const std::unique_ptr<Config>& config) {
+Context::Context(const std::shared_ptr<Config>& config) {
   tiledb_ctx_t* ctx;
   if (tiledb_ctx_alloc(config->ptr().get(), &ctx) != TILEDB_OK) {
     throw TileDBError("[TileDB::C++API] Error: Failed to create context");
@@ -46,10 +37,10 @@ void Context::handle_error(int rc) const {
   throw TileDBError(get_last_error_message());
 }
 
-std::unique_ptr<Config> Context::config() const {
+std::shared_ptr<Config> Context::config() const {
   tiledb_config_t* c;
   handle_error(tiledb_ctx_get_config(ctx_.get(), &c));
-  return std::make_unique<Config>(c);
+  return std::make_shared<Config>(c);
 }
 
 bool Context::is_supported_fs(int32_t fs) const {
@@ -120,6 +111,15 @@ std::string Context::get_last_error_message() const noexcept {
   tiledb_error_free(&err);
 
   return msg_str;
+}
+
+std::shared_ptr<Context> create_context() {
+  return std::make_shared<Context>();
+}
+
+std::shared_ptr<Context> create_context_with_config(
+    const std::shared_ptr<Config>& cfg) {
+  return std::make_shared<Context>(cfg);
 }
 
 }  // namespace tiledb::rs

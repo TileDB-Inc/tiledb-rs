@@ -118,8 +118,8 @@ class Query {
   ChannelOperation create_unary_aggregate(const std::string& input_field);
 
  private:
-  std::shared_ptr<const Context> ctx_;
-  std::unique_ptr<const Array> array_;
+  std::shared_ptr<Context> ctx_;
+  std::shared_ptr<Array> array_;
   std::shared_ptr<tiledb_query_t> query_;
 
   tiledb_datatype_t field_type(const std::string& name) const;
