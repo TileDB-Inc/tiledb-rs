@@ -1886,6 +1886,7 @@ dependencies = [
  "strategy-ext",
  "thiserror 1.0.69",
  "tiledb-proc-macro",
+ "tiledb-sys-cfg",
  "tiledb-sys-defs",
  "tiledb-utils",
 ]
@@ -1904,6 +1905,7 @@ dependencies = [
  "tiledb-common",
  "tiledb-proc-macro",
  "tiledb-proptest-config",
+ "tiledb-sys-cfg",
  "tiledb-sys-defs",
  "tiledb-utils",
 ]
