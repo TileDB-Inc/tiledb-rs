@@ -1,8 +1,0 @@
-[package]
-name = "signal"
-edition.workspace = true
-rust-version.workspace = true
-version.workspace = true
-
-[dependencies]
-nix = { version = "0", features = ["signal"] }
