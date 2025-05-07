@@ -59,6 +59,7 @@ jobs:
           # give up shrinking after an hour
           PROPTEST_MAX_SHRINK_ITERS: 100000000
           PROPTEST_MAX_SHRINK_TIME: 3600000
+        # Exclude tiledb-sys per https://github.com/TileDB-Inc/tiledb-rs/pull/238
         run: cargo test --no-fail-fast --workspace --all-targets --all-features --exclude tiledb-sys
       - name: Check Linkage - Linux
         if: ${{ startsWith(matrix.os, 'ubuntu-') || startsWith(matrix.os, 'linux-') }}

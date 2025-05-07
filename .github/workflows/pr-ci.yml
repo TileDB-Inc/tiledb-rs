@@ -42,6 +42,7 @@ jobs:
       - name: Build
         run: cargo build --workspace --all-targets --all-features
       - name: Test
+        # Exclude tiledb-sys per https://github.com/TileDB-Inc/tiledb-rs/pull/238
         run: |
           export RUST_BACKTRACE=1
           cargo test --no-fail-fast --workspace --all-targets --all-features --exclude tiledb-sys
