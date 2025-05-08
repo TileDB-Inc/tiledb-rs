@@ -33,9 +33,10 @@ jobs:
       - name: Lint
         run: cargo clippy --all-targets --all-features -- -Dwarnings
       - name: Build
-        run: cargo build --all-targets --all-features
+        run: cargo build --workspace --all-targets --all-features
       - name: Test
-        run: cargo test --all-targets --all-features
+        # Exclude tiledb-sys per https://github.com/TileDB-Inc/tiledb-rs/pull/238
+        run: cargo test --no-fail-fast --workspace --all-targets --all-features --exclude tiledb-sys
 
   create_issue_on_fail:
     permissions:
