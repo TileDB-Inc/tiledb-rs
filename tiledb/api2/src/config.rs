@@ -1,15 +1,15 @@
-use tiledb_sys2::config as ffi;
+use tiledb_sys2::config;
 
 use crate::error::TileDBError;
 
 pub struct Config {
-    pub(crate) cfg: cxx::SharedPtr<ffi::Config>,
+    pub(crate) cfg: cxx::SharedPtr<config::Config>,
 }
 
 impl Config {
     pub fn new() -> Result<Self, TileDBError> {
         Ok(Self {
-            cfg: ffi::create_config()?,
+            cfg: config::create_config()?,
         })
     }
 

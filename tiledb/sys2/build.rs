@@ -1,3 +1,5 @@
+use walkdir::WalkDir;
+
 const BRIDGES: &[&str] = &[
     "src/attribute.rs",
     "src/config.rs",
@@ -33,4 +35,12 @@ fn main() {
 
     tiledb_sys_cfg::configure();
     tiledb_sys_cfg::rpath();
+
+    ensure_rebuild();
+}
+
+fn ensure_rebuild() {
+    for entry in WalkDir::new(".").into_iter().filter_map(|e| e.ok()) {
+        println!("cargo:rerun-if-changed={}", entry.path().display());
+    }
 }

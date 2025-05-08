@@ -6,6 +6,7 @@
 #include "attribute.h"
 #include "context.h"
 #include "datatype.h"
+#include "exception.h"
 #include "filter_list.h"
 
 namespace tiledb::rs {
@@ -90,6 +91,51 @@ std::shared_ptr<FilterList> Attribute::filter_list() const {
   return std::make_shared<FilterList>(ctx_, filter_list);
 }
 
+uint64_t Attribute::fill_value_size() const {
+  auto is_nullable = nullable();
+  if (is_nullable) {
+    const void* data = nullptr;
+    uint64_t size = 0;
+    uint8_t validity = 0;
+    ctx_->handle_error(tiledb_attribute_get_fill_value_nullable(
+        ctx_->ptr().get(), attr_.get(), &data, &size, &validity));
+    return size;
+  } else {
+    const void* data = nullptr;
+    uint64_t size = 0;
+    ctx_->handle_error(tiledb_attribute_get_fill_value(
+        ctx_->ptr().get(), attr_.get(), &data, &size));
+    return size;
+  }
+}
+
+void Attribute::fill_value(rust::Slice<unsigned char> value) const {
+  const void* data = nullptr;
+  uint64_t size = 0;
+  ctx_->handle_error(tiledb_attribute_get_fill_value(
+      ctx_->ptr().get(), attr_.get(), &data, &size));
+
+  if (size != value.size()) {
+    throw TileDBError("Invalid slice size for fill value.");
+  }
+
+  std::memcpy(value.data(), data, size);
+}
+
+void Attribute::fill_value_nullable(
+    rust::Slice<unsigned char> value, uint8_t& validity) const {
+  const void* data = nullptr;
+  uint64_t size = 0;
+  ctx_->handle_error(tiledb_attribute_get_fill_value_nullable(
+      ctx_->ptr().get(), attr_.get(), &data, &size, &validity));
+
+  if (size != value.size()) {
+    throw TileDBError("Invalid slice size for fill value nullable.");
+  }
+
+  std::memcpy(value.data(), data, size);
+}
+
 AttributeBuilder::AttributeBuilder(
     std::shared_ptr<Context> ctx, std::string name, tiledb_datatype_t dtype)
     : ctx_(ctx) {
@@ -126,115 +172,13 @@ void AttributeBuilder::set_filter_list(
       ctx_->ptr().get(), attr_.get(), filter_list->ptr().get()));
 }
 
-void AttributeBuilder::set_fill_value_i8(
-    rust::Slice<const int8_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_i16(
-    rust::Slice<const int16_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_i32(
-    rust::Slice<const int32_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_i64(
-    rust::Slice<const int64_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_u8(
-    rust::Slice<const uint8_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_u16(
-    rust::Slice<const uint16_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_u32(
-    rust::Slice<const uint32_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_u64(
-    rust::Slice<const uint64_t> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_f32(
-    rust::Slice<const float> value) const {
-  set_fill_value(value);
-}
-
-void AttributeBuilder::set_fill_value_f64(
-    rust::Slice<const double> value) const {
-  set_fill_value(value);
-}
-
-template <typename T>
-void AttributeBuilder::set_fill_value(rust::Slice<const T> value) const {
+void AttributeBuilder::set_fill_value(rust::Slice<const uint8_t> value) const {
   ctx_->handle_error(tiledb_attribute_set_fill_value(
       ctx_->ptr().get(), attr_.get(), value.data(), value.size()));
 }
 
-void AttributeBuilder::set_fill_value_nullable_i8(
-    rust::Slice<const int8_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_i16(
-    rust::Slice<const int16_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_i32(
-    rust::Slice<const int32_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_i64(
-    rust::Slice<const int64_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_u8(
-    rust::Slice<const uint8_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_u16(
-    rust::Slice<const uint16_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_u32(
-    rust::Slice<const uint32_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_u64(
-    rust::Slice<const uint64_t> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_f32(
-    rust::Slice<const float> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-void AttributeBuilder::set_fill_value_nullable_f64(
-    rust::Slice<const double> value, uint8_t validity) const {
-  set_fill_value_nullable(value, validity);
-}
-
-template <typename T>
 void AttributeBuilder::set_fill_value_nullable(
-    rust::Slice<const T> value, uint8_t validity) const {
+    rust::Slice<const uint8_t> value, uint8_t validity) const {
   ctx_->handle_error(tiledb_attribute_set_fill_value_nullable(
       ctx_->ptr().get(), attr_.get(), value.data(), value.size(), validity));
 }

@@ -6,6 +6,7 @@ version.workspace = true
 
 [dependencies]
 cxx.workspace = true
+tiledb-common.workspace = true
 tiledb-sys2.workspace = true
 thiserror.workspace = true
 

@@ -5,8 +5,10 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+arrow.workspace = true
 cxx.workspace = true
 
 [build-dependencies]
 tiledb-sys-cfg.workspace = true
 cxx-build.workspace = true
+walkdir.workspace = true

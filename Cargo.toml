@@ -75,3 +75,4 @@ tiledb-sys2 = { path = "tiledb/sys2" }
 tiledb-test-utils = { path = "tiledb/test-utils" }
 tiledb-utils = { path = "tiledb/utils" }
 uri = { path = "test-utils/uri" }
+walkdir = "2"

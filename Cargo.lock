@@ -2005,6 +2005,7 @@ dependencies = [
  "cxx-build",
  "pkg-config",
  "thiserror 1.0.69",
+ "tiledb-common",
  "tiledb-sys-cfg",
  "tiledb-sys2",
 ]
@@ -2096,9 +2097,11 @@ version = "0.1.0"
 name = "tiledb-sys2"
 version = "0.1.0"
 dependencies = [
+ "arrow",
  "cxx",
  "cxx-build",
  "tiledb-sys-cfg",
+ "walkdir",
 ]
 
 [[package]]

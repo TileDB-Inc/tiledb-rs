@@ -3,22 +3,22 @@ use tiledb_sys2::filesystem::FileSystem;
 use crate::config::Config;
 use crate::error::TileDBError;
 
-use tiledb_sys2::context as ffi;
+use tiledb_sys2::context;
 
 pub struct Context {
-    ctx: cxx::SharedPtr<ffi::Context>,
+    pub(crate) ctx: cxx::SharedPtr<context::Context>,
 }
 
 impl Context {
     pub fn new() -> Result<Self, TileDBError> {
         Ok(Self {
-            ctx: ffi::create_context()?,
+            ctx: context::create_context()?,
         })
     }
 
     pub fn from_config(cfg: &Config) -> Result<Self, TileDBError> {
         Ok(Self {
-            ctx: ffi::create_context_with_config(&(cfg.cfg))?,
+            ctx: context::create_context_with_config(&(cfg.cfg))?,
         })
     }
 
