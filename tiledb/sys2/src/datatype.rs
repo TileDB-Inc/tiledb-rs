@@ -1,5 +1,6 @@
 #[cxx::bridge(namespace = "tiledb::rs")]
 mod ffi {
+    #[derive(Debug)]
     pub enum Datatype {
         /// A 32-bit signed integer
         Int32,

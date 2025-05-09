@@ -48,16 +48,16 @@ impl Attribute {
         Ok(FilterList::new(self.attr.filter_list()?))
     }
 
-    pub fn fill_value<T: PhysicalType>(&self) -> Result<Buffer, TileDBError> {
+    pub fn fill_value(&self) -> Result<Buffer, TileDBError> {
         let size = self.attr.fill_value_size()? as usize;
-        let mut buffer = MutableBuffer::new(size);
+        let mut buffer = MutableBuffer::from_len_zeroed(size);
         self.attr.fill_value(buffer.as_slice_mut())?;
         Ok(buffer.into())
     }
 
     pub fn fill_value_nullable(&self) -> Result<(Buffer, u8), TileDBError> {
         let size = self.attr.fill_value_size()? as usize;
-        let mut buffer = MutableBuffer::new(size);
+        let mut buffer = MutableBuffer::from_len_zeroed(size);
         let mut validity: u8 = 0;
         self.attr
             .fill_value_nullable(buffer.as_slice_mut(), &mut validity)?;
@@ -120,5 +120,60 @@ impl AttributeBuilder {
         self.builder
             .set_fill_value_nullable(buffer.as_slice(), validity)?;
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn basic() -> Result<(), TileDBError> {
+        let ctx = Context::new()?;
+        let builder = AttributeBuilder::new(ctx, "foo", Datatype::Int32)?;
+        let attr = builder
+            .with_nullable(true)?
+            .with_cell_val_num(2)?
+            .with_enumeration_name("bar")?
+            .build()?;
+
+        assert_eq!(attr.name()?, "foo");
+        assert_eq!(attr.datatype()?, Datatype::Int32);
+        assert!(attr.nullable()?);
+        assert_eq!(attr.cell_size()?, 4 * 2);
+        assert_eq!(attr.enumeration_name()?, Some("bar".into()));
+
+        Ok(())
+    }
+
+    #[test]
+    fn fill_value() -> Result<(), TileDBError> {
+        let ctx = Context::new()?;
+        let builder = AttributeBuilder::new(ctx, "foo", Datatype::Int32)?;
+        let attr = builder.with_fill_value(&[42])?.build()?;
+        let buffer = attr.fill_value()?;
+
+        let expect = Buffer::from_vec(vec![42u32]);
+
+        assert_eq!(buffer, expect);
+
+        Ok(())
+    }
+
+    #[test]
+    fn fill_value_nullable() -> Result<(), TileDBError> {
+        let ctx = Context::new()?;
+        let builder = AttributeBuilder::new(ctx, "foo", Datatype::Int32)?;
+        let attr = builder
+            .with_nullable(true)?
+            .with_fill_value_nullable(&[42], 127)?
+            .build()?;
+        let (buffer, validity) = attr.fill_value_nullable()?;
+
+        let expect = Buffer::from_vec(vec![42u32]);
+        assert_eq!(buffer, expect);
+        assert_eq!(validity, 127);
+
+        Ok(())
     }
 }

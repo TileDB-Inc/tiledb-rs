@@ -9,6 +9,9 @@
 #include "exception.h"
 #include "filter_list.h"
 
+// temp
+#include <iostream>
+
 namespace tiledb::rs {
 
 static void delete_attribute(tiledb_attribute_t* attr) {
