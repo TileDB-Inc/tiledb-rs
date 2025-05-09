@@ -153,9 +153,7 @@ mod tests {
         let attr = builder.with_fill_value(&[42])?.build()?;
         let buffer = attr.fill_value()?;
 
-        let expect = Buffer::from_vec(vec![42u32]);
-
-        assert_eq!(buffer, expect);
+        assert_eq!(buffer.typed_data::<i32>(), &[42]);
 
         Ok(())
     }
@@ -170,8 +168,7 @@ mod tests {
             .build()?;
         let (buffer, validity) = attr.fill_value_nullable()?;
 
-        let expect = Buffer::from_vec(vec![42u32]);
-        assert_eq!(buffer, expect);
+        assert_eq!(buffer.typed_data::<i32>(), &[42]);
         assert_eq!(validity, 127);
 
         Ok(())
