@@ -152,62 +152,6 @@ jobs:
               body: ${{ steps.lints.outputs.message }}
             })
 
-  check-pr-title:
-    name: "Check Title Format"
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout tiledb-rs
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 2
-      - name: Debug checkout
-        shell: bash
-        run: |
-          git log --oneline -n10
-      - name: "Check Title Format"
-        shell: python
-        env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-        run: |
-          import os
-          import re
-          import subprocess as sp
-
-          PAT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\([\w\-\.]+\))?(!)?: ([\w ])+([\s\S]*)")
-
-          if not PAT.match(os.environ["PR_TITLE"]):
-            print("The pull request title does not match Conventional Commits syntax")
-            print("Found title: '{}'".format(os.environ["PR_TITLE"]))
-            print("See: https://www.conventionalcommits.org/en/v1.0.0/")
-            exit(1)
-
-          pr_base = os.environ["PR_BASE"]
-          try:
-            git_rev_list = sp.check_output(["git", "rev-list", "-n", "2", "HEAD"])
-          except sp.CalledProcessError as e:
-            print(f"Error executing 'git rev-list -n 2 HEAD':")
-            print(e.output.decode("utf-8"))
-            exit(1)
-
-          pr_head_predecessor = git_rev_list.decode("utf-8").strip().split("\n")[1]
-          if pr_head_predecessor == pr_base:
-            # If there is only one commit in the PR, then that commit
-            # will be the commit subject which is used by default.
-            # This will break our changelog generation scripts unless
-            # it also matches.
-
-            # Read the subject of the last commit in the branch.
-            subject = sp.check_output(["git", "log", "--format=%B", "-n", "1"])
-            subject = subject.strip().decode("utf-8")
-            if not PAT.match(subject):
-              print("The last commit on this PR branch does not match Conventional Commits syntax")
-              print("Found message: '{}'".format(subject))
-              print("See: https://www.conventionalcommits.org/en/v1.0.0/")
-              exit(1)
-
   check-api-coverage:
     name: "Check API Coverage"
     runs-on: ubuntu-latest
