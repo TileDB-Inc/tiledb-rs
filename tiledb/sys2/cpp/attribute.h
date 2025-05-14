@@ -7,6 +7,7 @@
 #include <tiledb/tiledb.h>
 
 #include "rust/cxx.h"
+#include "tiledb-sys2/src/buffer.rs.h"
 #include "tiledb-sys2/src/datatype.rs.h"
 
 namespace tiledb::rs {
@@ -29,9 +30,8 @@ class Attribute {
   std::shared_ptr<FilterList> filter_list() const;
 
   uint64_t fill_value_size() const;
-  void fill_value(rust::Slice<unsigned char> value) const;
-  void fill_value_nullable(
-      rust::Slice<unsigned char> value, uint8_t& validity) const;
+  void fill_value(Buffer& buf) const;
+  void fill_value_nullable(Buffer& buf, uint8_t& validity) const;
 
  private:
   std::shared_ptr<Context> ctx_;
@@ -49,11 +49,8 @@ class AttributeBuilder {
   void set_cell_val_num(uint32_t num) const;
   void set_enumeration_name(const rust::Str enumeration_name) const;
   void set_filter_list(std::shared_ptr<FilterList> filter_list) const;
-
-  void set_fill_value(rust::Slice<const uint8_t> value) const;
-
-  void set_fill_value_nullable(
-      rust::Slice<const uint8_t> value, uint8_t valid) const;
+  void set_fill_value(Buffer& value) const;
+  void set_fill_value_nullable(Buffer& value, uint8_t valid) const;
 
  private:
   std::shared_ptr<Context> ctx_;

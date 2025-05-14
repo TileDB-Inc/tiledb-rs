@@ -6,11 +6,7 @@
 #include "attribute.h"
 #include "context.h"
 #include "datatype.h"
-#include "exception.h"
 #include "filter_list.h"
-
-// temp
-#include <iostream>
 
 namespace tiledb::rs {
 
@@ -94,49 +90,34 @@ std::shared_ptr<FilterList> Attribute::filter_list() const {
   return std::make_shared<FilterList>(ctx_, filter_list);
 }
 
-uint64_t Attribute::fill_value_size() const {
-  auto is_nullable = nullable();
-  if (is_nullable) {
-    const void* data = nullptr;
-    uint64_t size = 0;
-    uint8_t validity = 0;
-    ctx_->handle_error(tiledb_attribute_get_fill_value_nullable(
-        ctx_->ptr().get(), attr_.get(), &data, &size, &validity));
-    return size;
-  } else {
-    const void* data = nullptr;
-    uint64_t size = 0;
-    ctx_->handle_error(tiledb_attribute_get_fill_value(
-        ctx_->ptr().get(), attr_.get(), &data, &size));
-    return size;
-  }
-}
+void Attribute::fill_value(Buffer& buf) const {
+  tiledb_datatype_t dtype;
+  ctx_->handle_error(
+      tiledb_attribute_get_type(ctx_->ptr().get(), attr_.get(), &dtype));
+  auto dt_size = tiledb_datatype_size(dtype);
 
-void Attribute::fill_value(rust::Slice<unsigned char> value) const {
   const void* data = nullptr;
   uint64_t size = 0;
   ctx_->handle_error(tiledb_attribute_get_fill_value(
       ctx_->ptr().get(), attr_.get(), &data, &size));
 
-  if (size != value.size()) {
-    throw TileDBError("Invalid slice size for fill value.");
-  }
-
-  std::memcpy(value.data(), data, size);
+  buf.resize(size / dt_size);
+  std::memcpy(buf.as_mut_ptr(), data, size);
 }
 
-void Attribute::fill_value_nullable(
-    rust::Slice<unsigned char> value, uint8_t& validity) const {
+void Attribute::fill_value_nullable(Buffer& buf, uint8_t& validity) const {
+  tiledb_datatype_t dtype;
+  ctx_->handle_error(
+      tiledb_attribute_get_type(ctx_->ptr().get(), attr_.get(), &dtype));
+  auto dt_size = tiledb_datatype_size(dtype);
+
   const void* data = nullptr;
   uint64_t size = 0;
   ctx_->handle_error(tiledb_attribute_get_fill_value_nullable(
       ctx_->ptr().get(), attr_.get(), &data, &size, &validity));
 
-  if (size != value.size()) {
-    throw TileDBError("Invalid slice size for fill value nullable.");
-  }
-
-  std::memcpy(value.data(), data, size);
+  buf.resize(size / dt_size);
+  std::memcpy(buf.as_mut_ptr(), data, size);
 }
 
 AttributeBuilder::AttributeBuilder(
@@ -175,15 +156,15 @@ void AttributeBuilder::set_filter_list(
       ctx_->ptr().get(), attr_.get(), filter_list->ptr().get()));
 }
 
-void AttributeBuilder::set_fill_value(rust::Slice<const uint8_t> value) const {
+void AttributeBuilder::set_fill_value(Buffer& value) const {
   ctx_->handle_error(tiledb_attribute_set_fill_value(
-      ctx_->ptr().get(), attr_.get(), value.data(), value.size()));
+      ctx_->ptr().get(), attr_.get(), value.as_ptr(), value.len()));
 }
 
 void AttributeBuilder::set_fill_value_nullable(
-    rust::Slice<const uint8_t> value, uint8_t validity) const {
+    Buffer& value, uint8_t validity) const {
   ctx_->handle_error(tiledb_attribute_set_fill_value_nullable(
-      ctx_->ptr().get(), attr_.get(), value.data(), value.size(), validity));
+      ctx_->ptr().get(), attr_.get(), value.as_ptr(), value.len(), validity));
 }
 
 std::shared_ptr<AttributeBuilder> create_attribute_builder(

@@ -7,7 +7,7 @@ mod ffi {
         type FilterBuilder;
         type FilterType = crate::filter_type::FilterType;
         type Context = crate::context::Context;
-        type Datatype = crate::datatype::Datatype;
+        type Datatype = crate::datatype::FFIDatatype;
         type WebPFormat = crate::webp_format::WebPFormat;
 
         pub fn get_type(self: &Filter) -> Result<FilterType>;
@@ -72,6 +72,7 @@ mod ffi {
             self: &FilterBuilder,
             val: WebPFormat,
         ) -> Result<()>;
+
         pub fn set_webp_lossless(self: &FilterBuilder, val: bool)
         -> Result<()>;
 

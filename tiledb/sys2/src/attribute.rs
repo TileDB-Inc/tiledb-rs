@@ -5,8 +5,10 @@ mod ffi {
 
         type Attribute;
         type AttributeBuilder;
+
+        type Buffer = crate::buffer::Buffer;
         type Context = crate::context::Context;
-        type Datatype = crate::datatype::Datatype;
+        type Datatype = crate::datatype::FFIDatatype;
         type FilterList = crate::filter_list::FilterList;
 
         pub fn name(self: &Attribute) -> Result<String>;
@@ -22,13 +24,14 @@ mod ffi {
 
         pub fn filter_list(self: &Attribute) -> Result<SharedPtr<FilterList>>;
 
-        pub fn fill_value_size(self: &Attribute) -> Result<u64>;
-
-        pub fn fill_value(self: &Attribute, value: &mut [u8]) -> Result<()>;
+        pub fn fill_value(
+            self: &Attribute,
+            buf: Pin<&mut Buffer>,
+        ) -> Result<()>;
 
         pub fn fill_value_nullable(
             self: &Attribute,
-            value: &mut [u8],
+            buf: Pin<&mut Buffer>,
             validity: &mut u8,
         ) -> Result<()>;
 
@@ -62,12 +65,12 @@ mod ffi {
 
         pub fn set_fill_value(
             self: &AttributeBuilder,
-            value: &[u8],
+            value: Pin<&mut Buffer>,
         ) -> Result<()>;
 
         pub fn set_fill_value_nullable(
             self: &AttributeBuilder,
-            value: &[u8],
+            value: Pin<&mut Buffer>,
             validity: u8,
         ) -> Result<()>;
     }

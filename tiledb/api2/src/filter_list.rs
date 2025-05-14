@@ -1,7 +1,7 @@
 use tiledb_sys2::filter_list;
 
 pub struct FilterList {
-    list: cxx::SharedPtr<filter_list::FilterList>,
+    pub(crate) list: cxx::SharedPtr<filter_list::FilterList>,
 }
 
 impl FilterList {

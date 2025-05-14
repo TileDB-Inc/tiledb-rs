@@ -5,6 +5,7 @@ use crate::error::TileDBError;
 
 use tiledb_sys2::context;
 
+#[derive(Clone)]
 pub struct Context {
     pub(crate) ctx: cxx::SharedPtr<context::Context>,
 }

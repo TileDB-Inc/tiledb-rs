@@ -1,55 +1,48 @@
 #ifndef TILEDB_RS_API_ENUMERATION_H
 #define TILEDB_RS_API_ENUMERATION_H
 
-#include <string>
-#include <vector>
-
 #include <tiledb/tiledb.h>
 #include <tiledb/tiledb_experimental.h>
+
+#include "rust/cxx.h"
+#include "tiledb-sys2/src/buffer.rs.h"
+#include "tiledb-sys2/src/datatype.rs.h"
 
 namespace tiledb::rs {
 
 class Context;
 class Enumeration;
 
-std::shared_ptr<Enumeration> create_enumeration(
-    const Context& ctx,
-    const std::string& name,
-    tiledb_datatype_t type,
-    uint32_t cell_val_num,
-    bool ordered,
-    const void* data,
-    uint64_t data_size,
-    const void* offsets,
-    uint64_t offsets_size);
-
 class Enumeration {
  public:
-  Enumeration(const Context& ctx, tiledb_enumeration_t* enmr);
+  Enumeration(std::shared_ptr<Context> ctx, tiledb_enumeration_t* enmr);
 
-  std::shared_ptr<tiledb_enumeration_t> ptr() const;
-
-  std::string name() const;
-  tiledb_datatype_t type() const;
+  rust::String name() const;
+  Datatype datatype() const;
   uint32_t cell_val_num() const;
   bool ordered() const;
 
-  template <typename T>
-  std::vector<T> as_vector();
+  void get_data(Buffer& buf) const;
+  void get_offsets(Buffer& buf) const;
+  bool get_index(Buffer& buf, uint64_t& index) const;
 
-  template <typename T>
-  std::optional<uint64_t> index_of(T value);
+  std::shared_ptr<Enumeration> extend(Buffer& data, Buffer& offsets) const;
 
-  Enumeration extend(
-      const void* data,
-      uint64_t data_size,
-      const void* offsets,
-      uint64_t offsets_size) const;
+  std::shared_ptr<tiledb_enumeration_t> ptr() const;
 
  private:
-  std::shared_ptr<const Context> ctx_;
-  std::shared_ptr<tiledb_enumeration_t> enumeration_;
+  std::shared_ptr<Context> ctx_;
+  std::shared_ptr<tiledb_enumeration_t> enmr_;
 };
+
+std::shared_ptr<Enumeration> create_enumeration(
+    std::shared_ptr<Context> ctx,
+    rust::Str name,
+    Datatype type,
+    uint32_t cell_val_num,
+    bool ordered,
+    Buffer& data,
+    Buffer& offsets);
 
 }  // namespace tiledb::rs
 

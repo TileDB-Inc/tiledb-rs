@@ -2100,6 +2100,7 @@ dependencies = [
  "arrow",
  "cxx",
  "cxx-build",
+ "thiserror 1.0.69",
  "tiledb-sys-cfg",
  "walkdir",
 ]

@@ -45,6 +45,10 @@ uint32_t FilterList::max_chunk_size() const {
   return max_chunk_size;
 }
 
+std::shared_ptr<tiledb_filter_list_t> FilterList::ptr() const {
+  return filter_list_;
+}
+
 FilterListBuilder::FilterListBuilder(std::shared_ptr<Context> ctx)
     : ctx_(ctx) {
   tiledb_filter_list_t* filter_list;

@@ -1,5 +1,7 @@
-use tiledb_sys2::arrow::{Buffer, MutableBuffer, PhysicalType};
+use std::pin::Pin;
+
 use tiledb_sys2::attribute;
+use tiledb_sys2::buffer::Buffer;
 use tiledb_sys2::datatype::Datatype;
 
 use crate::context::Context;
@@ -20,7 +22,7 @@ impl Attribute {
     }
 
     pub fn datatype(&self) -> Result<Datatype, TileDBError> {
-        Ok(self.attr.datatype()?)
+        Ok(self.attr.datatype()?.try_into()?)
     }
 
     pub fn cell_size(&self) -> Result<u64, TileDBError> {
@@ -49,19 +51,17 @@ impl Attribute {
     }
 
     pub fn fill_value(&self) -> Result<Buffer, TileDBError> {
-        let size = self.attr.fill_value_size()? as usize;
-        let mut buffer = MutableBuffer::from_len_zeroed(size);
-        self.attr.fill_value(buffer.as_slice_mut())?;
-        Ok(buffer.into())
+        let mut value = Buffer::new(self.datatype()?);
+        self.attr.fill_value(Pin::new(&mut value))?;
+        Ok(value)
     }
 
     pub fn fill_value_nullable(&self) -> Result<(Buffer, u8), TileDBError> {
-        let size = self.attr.fill_value_size()? as usize;
-        let mut buffer = MutableBuffer::from_len_zeroed(size);
+        let mut value = Buffer::new(self.datatype()?);
         let mut validity: u8 = 0;
         self.attr
-            .fill_value_nullable(buffer.as_slice_mut(), &mut validity)?;
-        Ok((buffer.into(), validity))
+            .fill_value_nullable(Pin::new(&mut value), &mut validity)?;
+        Ok((value, validity))
     }
 }
 
@@ -76,7 +76,11 @@ impl AttributeBuilder {
         dtype: Datatype,
     ) -> Result<Self, TileDBError> {
         Ok(Self {
-            builder: attribute::create_attribute_builder(ctx.ctx, name, dtype)?,
+            builder: attribute::create_attribute_builder(
+                ctx.ctx,
+                name,
+                dtype.into(),
+            )?,
         })
     }
 
@@ -102,23 +106,21 @@ impl AttributeBuilder {
         Ok(self)
     }
 
-    pub fn with_fill_value<T: PhysicalType>(
+    pub fn with_fill_value(
         self,
-        value: &[T],
+        value: &mut Buffer,
     ) -> Result<Self, TileDBError> {
-        let buffer = T::slice_to_buffer(value);
-        self.builder.set_fill_value(buffer.as_slice())?;
+        self.builder.set_fill_value(Pin::new(value))?;
         Ok(self)
     }
 
-    pub fn with_fill_value_nullable<T: PhysicalType>(
+    pub fn with_fill_value_nullable(
         self,
-        value: &[T],
+        value: &mut Buffer,
         validity: u8,
     ) -> Result<Self, TileDBError> {
-        let buffer = T::slice_to_buffer(value);
         self.builder
-            .set_fill_value_nullable(buffer.as_slice(), validity)?;
+            .set_fill_value_nullable(Pin::new(value), validity)?;
         Ok(self)
     }
 }
@@ -149,11 +151,13 @@ mod tests {
     #[test]
     fn fill_value() -> Result<(), TileDBError> {
         let ctx = Context::new()?;
-        let builder = AttributeBuilder::new(ctx, "foo", Datatype::Int32)?;
-        let attr = builder.with_fill_value(&[42])?.build()?;
+        let builder =
+            AttributeBuilder::new(ctx.clone(), "foo", Datatype::Int32)?;
+        let mut fill = Buffer::try_from((Datatype::Int32, vec![42i32]))?;
+        let attr = builder.with_fill_value(&mut fill)?.build()?;
         let buffer = attr.fill_value()?;
 
-        assert_eq!(buffer.typed_data::<i32>(), &[42]);
+        assert_eq!(buffer.into_vec::<i32>()?, vec![42]);
 
         Ok(())
     }
@@ -162,13 +166,14 @@ mod tests {
     fn fill_value_nullable() -> Result<(), TileDBError> {
         let ctx = Context::new()?;
         let builder = AttributeBuilder::new(ctx, "foo", Datatype::Int32)?;
+        let mut fill = Buffer::try_from((Datatype::Int32, vec![42i32]))?;
         let attr = builder
             .with_nullable(true)?
-            .with_fill_value_nullable(&[42], 127)?
+            .with_fill_value_nullable(&mut fill, 127)?
             .build()?;
         let (buffer, validity) = attr.fill_value_nullable()?;
 
-        assert_eq!(buffer.typed_data::<i32>(), &[42]);
+        assert_eq!(buffer.into_vec::<i32>()?, vec![42]);
         assert_eq!(validity, 127);
 
         Ok(())
