@@ -4,7 +4,7 @@ use crate::Datatype;
 use crate::Result as TileDBResult;
 use crate::config::{Config, RawConfig};
 use crate::context::{CApiError, Context};
-use crate::context::{CApiInterface, ContextBound, ObjectType};
+use crate::context::{CApiInterface, CApiResult, ContextBound, ObjectType};
 use crate::error::Error;
 use crate::key::LookupKey;
 use crate::metadata;
@@ -75,6 +75,15 @@ impl Group {
             ffi::tiledb_group_create(ctx, c_name.as_ptr())
         })?;
         Ok(())
+    }
+
+    pub fn exists<S>(context: &Context, uri: S) -> CApiResult<bool>
+    where
+        S: AsRef<str>,
+    {
+        context
+            .object_type(uri)
+            .map(|object_type| matches!(object_type, Some(ObjectType::Group)))
     }
 
     pub fn open<S>(
