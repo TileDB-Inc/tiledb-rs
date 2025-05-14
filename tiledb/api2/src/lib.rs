@@ -6,3 +6,4 @@ pub mod domain;
 pub mod enumeration;
 pub mod error;
 pub mod filter_list;
+pub mod schema;

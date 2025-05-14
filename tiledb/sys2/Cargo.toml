@@ -8,6 +8,7 @@ version.workspace = true
 arrow.workspace = true
 cxx.workspace = true
 thiserror.workspace = true
+tiledb-common.workspace = true
 
 [build-dependencies]
 tiledb-sys-cfg.workspace = true

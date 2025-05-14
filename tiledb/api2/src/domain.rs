@@ -60,7 +60,7 @@ impl DomainBuilder {
         Ok(Domain::new(dom))
     }
 
-    pub fn with_dimension(self, dim: &Dimension) -> Result<Self, TileDBError> {
+    pub fn with_dimension(self, dim: Dimension) -> Result<Self, TileDBError> {
         self.builder.add_dimension(dim.dim.clone())?;
         Ok(self)
     }
@@ -88,7 +88,7 @@ mod tests {
             .with_domain(&[0i32, 1024])?
             .build()?;
 
-        let dom = DomainBuilder::new(&ctx)?.with_dimension(&dim)?.build()?;
+        let dom = DomainBuilder::new(&ctx)?.with_dimension(dim)?.build()?;
         assert_eq!(dom.datatype()?, Datatype::Int32);
         assert_eq!(dom.num_dimensions()?, 1);
         assert!(dom.dimension_from_index(0).is_ok());

@@ -71,13 +71,13 @@ pub struct AttributeBuilder {
 
 impl AttributeBuilder {
     pub fn new(
-        ctx: Context,
+        ctx: &Context,
         name: &str,
         dtype: Datatype,
     ) -> Result<Self, TileDBError> {
         Ok(Self {
             builder: attribute::create_attribute_builder(
-                ctx.ctx,
+                ctx.clone().ctx,
                 name,
                 dtype.into(),
             )?,
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn basic() -> Result<(), TileDBError> {
         let ctx = Context::new()?;
-        let builder = AttributeBuilder::new(ctx, "foo", Datatype::Int32)?;
+        let builder = AttributeBuilder::new(&ctx, "foo", Datatype::Int32)?;
         let attr = builder
             .with_nullable(true)?
             .with_cell_val_num(2)?
@@ -151,8 +151,7 @@ mod tests {
     #[test]
     fn fill_value() -> Result<(), TileDBError> {
         let ctx = Context::new()?;
-        let builder =
-            AttributeBuilder::new(ctx.clone(), "foo", Datatype::Int32)?;
+        let builder = AttributeBuilder::new(&ctx, "foo", Datatype::Int32)?;
         let mut fill = Buffer::try_from((Datatype::Int32, vec![42i32]))?;
         let attr = builder.with_fill_value(&mut fill)?.build()?;
         let buffer = attr.fill_value()?;
@@ -165,7 +164,7 @@ mod tests {
     #[test]
     fn fill_value_nullable() -> Result<(), TileDBError> {
         let ctx = Context::new()?;
-        let builder = AttributeBuilder::new(ctx, "foo", Datatype::Int32)?;
+        let builder = AttributeBuilder::new(&ctx, "foo", Datatype::Int32)?;
         let mut fill = Buffer::try_from((Datatype::Int32, vec![42i32]))?;
         let attr = builder
             .with_nullable(true)?

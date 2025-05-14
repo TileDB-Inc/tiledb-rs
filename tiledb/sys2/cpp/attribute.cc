@@ -120,6 +120,10 @@ void Attribute::fill_value_nullable(Buffer& buf, uint8_t& validity) const {
   std::memcpy(buf.as_mut_ptr(), data, size);
 }
 
+std::shared_ptr<tiledb_attribute_t> Attribute::ptr() const {
+  return attr_;
+}
+
 AttributeBuilder::AttributeBuilder(
     std::shared_ptr<Context> ctx, std::string name, tiledb_datatype_t dtype)
     : ctx_(ctx) {

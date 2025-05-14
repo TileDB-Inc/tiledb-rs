@@ -3,6 +3,8 @@ use std::str::FromStr;
 
 use thiserror::Error;
 
+use crate::error::TryFromFFIError;
+
 #[cxx::bridge(namespace = "tiledb::rs")]
 mod ffi {
     #[derive(Debug)]
@@ -690,12 +692,6 @@ impl From<Datatype> for ffi::Datatype {
     }
 }
 
-#[derive(Clone, Debug, thiserror::Error)]
-pub enum TryFromFFIError {
-    #[error("Invalid discriminant for {}: {0:?}", std::any::type_name::<Datatype>())]
-    InvalidDiscriminant(FFIDatatype),
-}
-
 impl TryFrom<FFIDatatype> for Datatype {
     type Error = TryFromFFIError;
 
@@ -746,7 +742,7 @@ impl TryFrom<FFIDatatype> for Datatype {
             ffi::Datatype::GeometryWkb => Datatype::GeometryWkb,
             ffi::Datatype::GeometryWkt => Datatype::GeometryWkt,
             _ => {
-                return Err(TryFromFFIError::InvalidDiscriminant(value));
+                return Err(TryFromFFIError::from_datatype(value));
             }
         })
     }

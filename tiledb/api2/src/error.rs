@@ -1,5 +1,6 @@
 use tiledb_sys2::buffer::Buffer;
-use tiledb_sys2::datatype::{DatatypeError, TryFromFFIError};
+use tiledb_sys2::datatype::DatatypeError;
+use tiledb_sys2::error::TryFromFFIError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TileDBError {

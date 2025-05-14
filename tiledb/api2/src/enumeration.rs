@@ -232,7 +232,7 @@ mod tests {
         assert_eq!(enmr.name()?, "flintstones");
         assert_eq!(enmr.datatype()?, Datatype::StringAscii);
         assert_eq!(enmr.cell_val_num()?, u32::MAX);
-        assert_eq!(enmr.ordered()?, false);
+        assert!(!enmr.ordered()?);
         assert!(enmr.get_data().is_ok());
         assert!(enmr.get_data().is_ok());
 
@@ -255,7 +255,7 @@ mod tests {
     fn from_strings() -> Result<(), TileDBError> {
         let ctx = Context::new()?;
 
-        let strings = vec!["carl", "doughnut", "mordecai", "katia"];
+        let strings = ["carl", "doughnut", "mordecai", "katia"];
 
         let enmr =
             EnumerationBuilder::from_strings(&ctx, "crawlers", &strings[..])?
@@ -264,7 +264,7 @@ mod tests {
         assert_eq!(enmr.name()?, "crawlers");
         assert_eq!(enmr.datatype()?, Datatype::StringUtf8);
         assert_eq!(enmr.cell_val_num()?, u32::MAX);
-        assert_eq!(enmr.ordered()?, false);
+        assert!(!enmr.ordered()?);
 
         let data = enmr.get_data()?.into_vec::<u8>()?;
         let expect = "carldoughnutmordecaikatia"

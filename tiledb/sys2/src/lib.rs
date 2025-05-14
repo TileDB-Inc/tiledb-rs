@@ -1,3 +1,4 @@
+pub mod array_type;
 pub mod attribute;
 pub mod buffer;
 pub mod config;
@@ -6,10 +7,13 @@ pub mod datatype;
 pub mod dimension;
 pub mod domain;
 pub mod enumeration;
+pub mod error;
 pub mod filesystem;
 pub mod filter;
 pub mod filter_list;
 pub mod filter_type;
+pub mod layout;
+pub mod schema;
 pub mod types;
 pub mod utils;
 pub mod webp_format;

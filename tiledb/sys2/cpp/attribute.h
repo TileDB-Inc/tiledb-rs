@@ -33,6 +33,8 @@ class Attribute {
   void fill_value(Buffer& buf) const;
   void fill_value_nullable(Buffer& buf, uint8_t& validity) const;
 
+  std::shared_ptr<tiledb_attribute_t> ptr() const;
+
  private:
   std::shared_ptr<Context> ctx_;
   std::shared_ptr<tiledb_attribute_t> attr_;
