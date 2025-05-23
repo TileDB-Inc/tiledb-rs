@@ -125,7 +125,7 @@ dependencies = [
 
 [[package]]
 name = "api-coverage"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "bindgen 0.69.5",
@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "cells"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "paste",
  "proptest",
@@ -971,15 +971,6 @@ name = "itertools"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
@@ -1713,7 +1704,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strategy-ext"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "num-traits",
  "proptest",
@@ -1851,12 +1842,12 @@ dependencies = [
 
 [[package]]
 name = "tiledb-api"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arrow",
  "cells",
- "itertools 0.14.0",
+ "itertools 0.12.1",
  "num-traits",
  "paste",
  "proptest",
@@ -1874,7 +1865,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-common"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "arrow-schema",
@@ -1892,9 +1883,9 @@ dependencies = [
 
 [[package]]
 name = "tiledb-pod"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
- "itertools 0.14.0",
+ "itertools 0.12.1",
  "num-traits",
  "proptest",
  "serde",
@@ -1910,7 +1901,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-proc-macro"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1919,11 +1910,11 @@ dependencies = [
 
 [[package]]
 name = "tiledb-proptest-config"
-version = "0.1.0"
+version = "0.3.0"
 
 [[package]]
 name = "tiledb-query-adapters"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "tiledb-api",
  "tiledb-common",
@@ -1932,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "tiledb-sys"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "armerge",
  "bindgen 0.70.1",
@@ -1946,18 +1937,18 @@ dependencies = [
 
 [[package]]
 name = "tiledb-sys-cfg"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "tiledb-sys",
 ]
 
 [[package]]
 name = "tiledb-sys-defs"
-version = "0.1.0"
+version = "0.3.0"
 
 [[package]]
 name = "tiledb-utils"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "float_next_after",
  "num-traits",
@@ -2111,7 +2102,7 @@ checksum = "1fc81956842c57dac11422a97c3b8195a1ff727f06e85c84ed2e8aa277c9a0fd"
 
 [[package]]
 name = "uri"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "tempfile",
