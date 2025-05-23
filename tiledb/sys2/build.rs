@@ -1,6 +1,7 @@
 use walkdir::WalkDir;
 
 const BRIDGES: &[&str] = &[
+    "src/array.rs",
     "src/array_type.rs",
     "src/attribute.rs",
     "src/buffer.rs",
@@ -9,17 +10,21 @@ const BRIDGES: &[&str] = &[
     "src/datatype.rs",
     "src/dimension.rs",
     "src/domain.rs",
+    "src/encryption_type.rs",
     "src/enumeration.rs",
     "src/filter.rs",
     "src/filter_list.rs",
     "src/filter_type.rs",
     "src/layout.rs",
+    "src/mode.rs",
+    "src/query_status.rs",
     "src/schema.rs",
     "src/utils.rs",
     "src/webp_format.rs",
 ];
 
 const CPP_FILES: &[&str] = &[
+    "cpp/array.cc",
     "cpp/array_type.cc",
     "cpp/attribute.cc",
     "cpp/config.cc",
@@ -27,11 +32,15 @@ const CPP_FILES: &[&str] = &[
     "cpp/datatype.cc",
     "cpp/dimension.cc",
     "cpp/domain.cc",
+    "cpp/encryption_type.cc",
     "cpp/enumeration.cc",
     "cpp/filter.cc",
     "cpp/filter_list.cc",
     "cpp/filter_type.cc",
     "cpp/layout.cc",
+    "cpp/mode.cc",
+    "cpp/query.cc",
+    "cpp/query_status.cc",
     "cpp/schema.cc",
     "cpp/string.cc",
     "cpp/webp_format.cc",

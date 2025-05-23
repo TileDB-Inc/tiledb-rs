@@ -1,6 +1,9 @@
 use crate::array_type::FFIArrayType;
 use crate::datatype::FFIDatatype;
+use crate::encryption_type::FFIEncryptionType;
 use crate::layout::{FFICellOrder, FFITileOrder};
+use crate::mode::FFIMode;
+use crate::query_status::FFIQueryStatus;
 
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum TryFromFFIError {
@@ -27,6 +30,27 @@ impl TryFromFFIError {
         Self::InvalidDiscriminant(
             std::any::type_name::<FFIDatatype>().to_string(),
             dt.repr as u64,
+        )
+    }
+
+    pub fn from_encryption_type(etype: FFIEncryptionType) -> Self {
+        Self::InvalidDiscriminant(
+            std::any::type_name::<FFIEncryptionType>().to_string(),
+            etype.repr as u64,
+        )
+    }
+
+    pub fn from_mode(mode: FFIMode) -> Self {
+        Self::InvalidDiscriminant(
+            std::any::type_name::<FFIMode>().to_string(),
+            mode.repr as u64,
+        )
+    }
+
+    pub fn from_query_status(status: FFIQueryStatus) -> Self {
+        Self::InvalidDiscriminant(
+            std::any::type_name::<FFIQueryStatus>().to_string(),
+            status.repr as u64,
         )
     }
 

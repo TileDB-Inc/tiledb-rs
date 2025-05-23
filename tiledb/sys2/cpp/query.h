@@ -1,12 +1,13 @@
 #ifndef TILEDB_RS_API_QUERY_H
 #define TILEDB_RS_API_QUERY_H
 
-#include <array>
-#include <string>
-#include <unordered_map>
-#include <vector>
-
 #include <tiledb/tiledb.h>
+
+#include "rust/cxx.h"
+#include "tiledb-sys2/src/buffer.rs.h"
+#include "tiledb-sys2/src/layout.rs.h"
+#include "tiledb-sys2/src/mode.rs.h"
+#include "tiledb-sys2/src/query_status.rs.h"
 
 namespace tiledb::rs {
 
@@ -19,160 +20,100 @@ class QueryChannel;
 class QueryCondition;
 class Subarray;
 
+struct QueryBufferSizes {
+  uint64_t data;
+  uint64_t offsets;
+  uint64_t validity;
+};
+
 class Query {
  public:
-  enum class Status {
-    FAILED,
-    COMPLETE,
-    INPROGRESS,
-    INCOMPLETE,
-    UNINITIALIZED,
-    INITIALIZED
-  };
+  Query(
+      std::shared_ptr<Context> ctx,
+      std::shared_ptr<Array> array,
+      tiledb_query_t* query);
 
-  Query(const Context& ctx, const Array& array);
-  Query(const Context& ctx, const Array& array, tiledb_query_type_t type);
+  Query(
+      std::shared_ptr<Context> ctx,
+      std::shared_ptr<Array> array,
+      std::shared_ptr<tiledb_query_t> query);
 
-  std::shared_ptr<tiledb_query_t> ptr() const;
+  Mode mode() const;
+  std::shared_ptr<Config> config() const;
+  CellOrder layout() const;
 
-  tiledb_query_type_t query_type() const;
+  void set_data_buffer(rust::Str name, Buffer& data) const;
+  void set_offsets_buffer(rust::Str name, Buffer& offsets) const;
+  void set_validity_buffer(rust::Str name, Buffer& validity) const;
 
-  tiledb_layout_t query_layout() const;
+  void submit() const;
+  void finalize() const;
+  void submit_and_finalize() const;
 
-  const Array& array();
-  Status query_status() const;
-
+  QueryStatus status() const;
   bool has_results() const;
 
-  Status submit();
+  void est_result_size(
+      rust::Str name,
+      uint64_t& data_size,
+      uint64_t& offsets_size,
+      uint64_t& validity_size) const;
 
-  void finalize();
-  void submit_and_finalize();
+  uint32_t num_fragments() const;
+  uint64_t num_relevant_fragments() const;
+  rust::String fragment_uri(uint32_t idx) const;
+  void fragment_timestamp_range(uint32_t idx, uint64_t& lo, uint64_t& hi) const;
 
-  std::unordered_map<std::string, std::pair<uint64_t, uint64_t>>
-  result_buffer_elements() const;
-
-  std::unordered_map<std::string, std::tuple<uint64_t, uint64_t, uint64_t>>
-  result_buffer_elements_nullable() const;
-
-  uint64_t est_result_size(const std::string& attr_name) const;
-  std::array<uint64_t, 2> est_result_size_var(
-      const std::string& attr_name) const;
-
-  std::array<uint64_t, 2> est_result_size_nullable(
-      const std::string& attr_name) const;
-
-  std::array<uint64_t, 3> est_result_size_var_nullable(
-      const std::string& attr_name);
-
-  uint32_t fragment_num() const;
-
-  std::string fragment_uri(uint32_t idx) const;
-
-  std::pair<uint64_t, uint64_t> fragment_timestamp_range(uint32_t idx) const;
-
-  Config config() const;
-
-  void get_data_buffer(
-      const std::string& name,
-      void** data,
-      uint64_t* data_nelements,
-      uint64_t* element_size);
-
-  void get_offsets_buffer(
-      const std::string& name, uint64_t** offsets, uint64_t* offsets_nelements);
-
-  void get_validity_buffer(
-      const std::string& name,
-      uint8_t** validity_bytemap,
-      uint64_t* validity_bytemap_nelements);
-
-  std::string stats();
+  rust::String stats() const;
 
   // PJD: I'm pretty sure this is "get subarray of query" and not "update the
   // query's subarray" but I need to track this down to be certain.
-  void update_subarray_from_query(Subarray* subarray);
+  // void update_subarray_from_query(Subarray* subarray);
 
-  const Context& ctx() const;
-  const Array& array() const;
+  // TODO: Updates
+  // void add_update_value_to_query(rust::Str name, Buffer& value) const;
 
-  void add_update_value_to_query(
-      const char* field_name,
-      const void* update_value,
-      uint64_t update_value_size);
+  // ToDo: Dimension Labels
+  // std::unordered_map<std::string, std::pair<uint64_t, uint64_t>>
+  // result_buffer_elements_labels() const;
+  // std::unordered_map<std::string, std::tuple<uint64_t, uint64_t, uint64_t>>
+  // result_buffer_elements_nullable_labels() const;
 
-  uint64_t get_relevant_fragment_num();
+  // ToDo: Aggregate queries
+  // QueryChannel get_default_channel();
+  // ChannelOperation create_unary_aggregate(const std::string& input_field);
 
-  std::unordered_map<std::string, std::pair<uint64_t, uint64_t>>
-  result_buffer_elements_labels() const;
-
-  std::unordered_map<std::string, std::tuple<uint64_t, uint64_t, uint64_t>>
-  result_buffer_elements_nullable_labels() const;
-
-  QueryChannel get_default_channel();
-
-  template <
-      class Op,
-      std::enable_if_t<std::is_base_of_v<ChannelOperator, Op>, bool> = true>
-
-  ChannelOperation create_unary_aggregate(const std::string& input_field);
+  std::shared_ptr<tiledb_query_t> ptr() const;
 
  private:
   std::shared_ptr<Context> ctx_;
   std::shared_ptr<Array> array_;
   std::shared_ptr<tiledb_query_t> query_;
-
-  tiledb_datatype_t field_type(const std::string& name) const;
-  bool field_var_sized(const std::string& name) const;
+  std::shared_ptr<
+      std::unordered_map<std::string, std::shared_ptr<QueryBufferSizes>>>
+      sizes_;
 };
 
 class QueryBuilder {
  public:
-  void set_layout(tiledb_layout_t layout);
-  void set_condition(const QueryCondition& condition);
-  void set_subarray(const Subarray& subarray);
-  void set_config(const Config& config);
+  QueryBuilder(
+      std::shared_ptr<Context> ctx, std::shared_ptr<Array> array, Mode mode);
 
-  template <typename T>
-  void set_data_buffer(const std::string& name, T* buff, uint64_t nelements);
-
-  template <typename T>
-  void set_data_buffer(const std::string& name, std::vector<T>& buf);
-  void set_data_buffer(const std::string& name, void* buff, uint64_t nelements);
-  void set_data_buffer(const std::string& name, std::string& data);
-
-  void set_offsets_buffer(
-      const std::string& attr, uint64_t* offsets, uint64_t offset_nelements);
-
-  void set_offsets_buffer(
-      const std::string& name, std::vector<uint64_t>& offsets);
-
-  void set_validity_buffer(
-      const std::string& attr,
-      uint8_t* validity_bytemap,
-      uint64_t validity_bytemap_nelements);
-  void set_validity_buffer(
-      const std::string& name, std::vector<uint8_t>& validity_bytemap);
-
-  // These were all in the experimental header. Not sure why they were
-  // duplicated there but leaving them commented out as a note for
-  // me to investigate further later.
-  //
-  // template <typename T>
-  // void set_data_buffer(const std::string& name, std::vector<T>& buf);
-  // template <typename T>
-  // void set_data_buffer(const std::string& name, T* buff, uint64_t nelements);
-  // void set_data_buffer(const std::string& name, void* buff, uint64_t
-  // nelements); void set_data_buffer(const std::string& name, std::string&
-  // data);
+  void set_layout(CellOrder order) const;
+  // ToDo: Query Conditions
+  // void set_condition(const QueryCondition& condition) const;
+  // ToDo: Subarray
+  // void set_subarray(const Subarray& subarray) const;
+  void set_config(std::shared_ptr<Config> config) const;
 
  private:
-  void set_data_buffer(
-      const std::string& attr,
-      void* data,
-      uint64_t data_nelements,
-      size_t data_element_size);
+  std::shared_ptr<Context> ctx_;
+  std::shared_ptr<Array> array_;
+  std::shared_ptr<tiledb_query_t> query_;
 };
+
+std::shared_ptr<QueryBuilder> create_query_builder(
+    std::shared_ptr<Context> ctx, std::shared_ptr<Array> array, Mode mode);
 
 }  // namespace tiledb::rs
 

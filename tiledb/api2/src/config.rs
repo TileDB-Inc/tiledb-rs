@@ -7,6 +7,10 @@ pub struct Config {
 }
 
 impl Config {
+    pub(crate) fn from_ptr(cfg: cxx::SharedPtr<config::Config>) -> Self {
+        Self { cfg }
+    }
+
     pub fn new() -> Result<Self, TileDBError> {
         Ok(Self {
             cfg: config::create_config()?,

@@ -2,9 +2,13 @@
 #define TILEDB_RS_API_ARRAY_H
 
 #include <memory>
-#include <vector>
 
 #include <tiledb/tiledb.h>
+
+#include "rust/cxx.h"
+#include "tiledb-sys2/src/buffer.rs.h"
+#include "tiledb-sys2/src/datatype.rs.h"
+#include "tiledb-sys2/src/mode.rs.h"
 
 namespace tiledb::rs {
 
@@ -13,135 +17,97 @@ class Context;
 class Enumeration;
 class Schema;
 
-void delete_array(const Context& ctx, const std::string& uri);
-
-void delete_fragments(
-    const Context& ctx,
-    const std::string& uri,
-    uint64_t timestamp_start,
-    uint64_t timestamp_end);
-
-void delete_fragments_list(
-    const Context& ctx,
-    const std::string& uri,
-    const char* fragment_uris[],
-    const size_t num_fragments);
-
-void consolidate(
-    const Context& ctx, const std::string& uri, Config* const config = nullptr);
-
-void consolidate(
-    const Context& ctx,
-    const std::string& array_uri,
-    const char* fragment_uris[],
-    const size_t num_fragments,
-    Config* const config = nullptr);
-
-void consolidate_metadata(
-    const Context& ctx, const std::string& uri, Config* const config = nullptr);
-
-void vacuum(
-    const Context& ctx, const std::string& uri, Config* const config = nullptr);
-
-void create(const Context& ctx, const std::string& uri, const Schema& schema);
-
-Schema load_schema(const Context& ctx, const std::string& uri);
-
-Schema load_schema_with_config(
-    const Context& ctx, const Config& config, const std::string& uri);
-
-tiledb_encryption_type_t encryption_type(
-    const Context& ctx, const std::string& array_uri);
-
-void upgrade_version(
-    const Context& ctx,
-    const std::string& array_uri,
-    Config* const config = nullptr);
-
 class Array {
  public:
-  Array(std::shared_ptr<const Context> ctx, const std::string& array_uri);
+  Array(std::shared_ptr<Context> ctx, tiledb_array_t* array);
+  Array(std::shared_ptr<Context> ctx, rust::Str array_uri);
 
-  Array(const Context& ctx, tiledb_array_t* array);
+  rust::String uri() const;
 
-  bool is_open() const;
-  std::string uri() const;
-  Schema schema() const;
-  std::shared_ptr<tiledb_array_t> ptr() const;
-
-  void open(tiledb_query_type_t query_type);
-  void open(tiledb_query_type_t query_type, uint64_t end_timestamp);
-  void open(
-      tiledb_query_type_t query_type,
-      tiledb_encryption_type_t encryption_type,
-      const std::string& encryption_key);
-
-  void open(
-      tiledb_query_type_t query_type,
-      tiledb_encryption_type_t encryption_type,
-      const std::string& encryption_key,
-      uint64_t end_timestamp);
-
-  void reopen();
-
+  void set_config(std::shared_ptr<Config> config) const;
   void set_open_timestamp_start(uint64_t timestamp_start) const;
   void set_open_timestamp_end(uint64_t timestamp_end) const;
+
+  void open(Mode mode) const;
+  void reopen() const;
+  void close() const;
+
+  bool is_open() const;
+  Mode mode() const;
+  std::shared_ptr<Config> config() const;
+  std::shared_ptr<Schema> schema() const;
   uint64_t open_timestamp_start() const;
   uint64_t open_timestamp_end() const;
 
-  void set_config(const Config& config) const;
-  Config config() const;
-  void close();
+  std::shared_ptr<Enumeration> get_enumeration(rust::Str attr_name) const;
+  void load_all_enumerations() const;
+  void load_enumerations_all_schemas() const;
 
-  Enumeration get_enumeration(const std::string& attr_name);
+  bool non_empty_domain_from_index(uint32_t index, Buffer& buffer) const;
+  bool non_empty_domain_from_name(rust::Str name, Buffer& buffer) const;
 
-  void load_all_enumerations(const Context& ctx, const Array& array);
-  void load_enumerations_all_schemas(const Context& ctx, const Array& array);
-
-  template <typename T>
-  std::vector<std::pair<std::string, std::pair<T, T>>> non_empty_domain();
-
-  template <typename T>
-  std::pair<T, T> non_empty_domain(unsigned idx);
-
-  template <typename T>
-  std::pair<T, T> non_empty_domain(const std::string& name);
-
-  std::pair<std::string, std::string> non_empty_domain_var(unsigned idx);
-
-  std::pair<std::string, std::string> non_empty_domain_var(
-      const std::string& name);
-
-  tiledb_query_type_t query_type() const;
+  bool non_empty_domain_var_from_index(
+      uint32_t index, Buffer& lower, Buffer& upper) const;
+  bool non_empty_domain_var_from_name(
+      rust::Str name, Buffer& lower, Buffer& upper) const;
 
   void put_metadata(
-      const std::string& key,
-      tiledb_datatype_t value_type,
-      uint32_t value_num,
-      const void* value);
+      rust::Str key, Datatype dtype, uint32_t num, Buffer& value) const;
 
-  void delete_metadata(const std::string& key);
+  void get_metadata(rust::Str key, Datatype& dtype, Buffer& value) const;
 
-  void get_metadata(
-      const std::string& key,
-      tiledb_datatype_t* value_type,
-      uint32_t* value_num,
-      const void** value);
+  void delete_metadata(rust::Str key) const;
 
-  bool has_metadata(const std::string& key, tiledb_datatype_t* value_type);
+  bool has_metadata(rust::Str key, Datatype& dtype) const;
 
-  uint64_t metadata_num() const;
+  uint64_t num_metadata() const;
 
   void get_metadata_from_index(
       uint64_t index,
-      std::string* key,
-      tiledb_datatype_t* value_type,
-      uint32_t* value_num,
-      const void** value);
+      rust::Vec<uint8_t>& key,
+      Datatype& dtype,
+      Buffer& values) const;
+
+  std::shared_ptr<tiledb_array_t> ptr() const;
 
  private:
-  std::shared_ptr<const Context> ctx_;
+  std::shared_ptr<Context> ctx_;
   std::shared_ptr<tiledb_array_t> array_;
+};
+
+std::shared_ptr<Array> create_array(
+    std::shared_ptr<Context> ctx, rust::Str uri);
+
+class ArrayContext {
+ public:
+  ArrayContext(std::shared_ptr<Context> ctx, rust::Str uri);
+
+  void create(std::shared_ptr<Schema> schema);
+  void destroy();
+
+  void consolidate();
+  void consolidate_with_config(std::shared_ptr<Config> cfg);
+
+  void consolidate_list(rust::Slice<rust::Str> fragment_uris);
+  void consolidate_list_with_config(
+      rust::Slice<rust::Str> fragment_uris, std::shared_ptr<Config> cfg);
+
+  void consolidate_metadata();
+  void consolidate_metadata_with_config(std::shared_ptr<Config> cfg);
+
+  void delete_fragments(uint64_t timestamp_start, uint64_t timestamp_end);
+
+  void delete_fragment_list(rust::Slice<rust::Str> fragment_uris);
+
+  void vacuum();
+  void vacuum_with_config(std::shared_ptr<Config> cfg);
+
+  std::shared_ptr<Schema> load_schema();
+  std::shared_ptr<Schema> load_schema_with_config(std::shared_ptr<Config> cfg);
+
+ private:
+  std::shared_ptr<Context> ctx_;
+  std::string uri_;
 };
 
 }  // namespace tiledb::rs

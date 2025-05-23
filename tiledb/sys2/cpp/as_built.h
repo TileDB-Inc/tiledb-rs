@@ -1,11 +1,11 @@
 #ifndef TILEDB_RS_API_AS_BUILT_H
 #define TILEDB_RS_API_AS_BUILT_H
 
-#include <string>
+#include "rust/cxx.h"
 
 namespace tiledb::rs {
 
-std::string build_info();
+rust::String build_info();
 
 }
 

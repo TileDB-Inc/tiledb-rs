@@ -357,6 +357,12 @@ pub mod schema {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum EncryptionType {
+    None,
+    Aes256Gcm,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

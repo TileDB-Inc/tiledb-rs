@@ -2,7 +2,7 @@ use arrow::buffer::{
     MutableBuffer as ArrowMutableBuffer, ScalarBuffer as ArrowScalarBuffer,
 };
 
-use crate::datatype::{Datatype, DatatypeError};
+use crate::datatype::{Datatype, DatatypeError, FFIDatatype};
 use crate::types::{LogicalType, PhysicalType};
 
 #[cxx::bridge(namespace = "tiledb::rs")]
@@ -15,6 +15,16 @@ pub(crate) mod ffi {
         fn len(&mut self) -> usize;
         fn resize(&mut self, elments: usize);
         fn resize_bytes(&mut self, bytes: usize);
+
+        // Requires the buffer to be allocated with Datatype::Any and only
+        // works one time per buffer. This is specifically for when the
+        // C API doesn't have a way to get the datatype before passing a
+        // Buffer in.
+        fn cpp_init(&mut self, datatype: u8) -> bool;
+
+        // ToDo: Not stopping for first query, but this should be FFIDatatype
+        // or similar.
+        fn cpp_is_compatible_type(&mut self, datatype: u8) -> bool;
     }
 }
 
@@ -34,6 +44,29 @@ impl Buffer {
                 >::new()),
             }
         })
+    }
+
+    pub fn with_capacity(dtype: Datatype, capacity: usize) -> Self {
+        crate::logical_type_go!(dtype, LT, {
+            let data = Vec::<<LT as LogicalType>::PhysicalType>::with_capacity(
+                capacity,
+            );
+            Self {
+                dtype,
+                buf: ArrowMutableBuffer::from(data),
+            }
+        })
+    }
+
+    /// This is specifically for passing a buffer to the C API's that don't
+    /// have a way for Rust to know what the Datatype is before the call. Use
+    /// with caution. Nothing should panic if used incorrectly, although
+    /// something will certainly return an error fairly quickly.
+    pub fn uninit() -> Self {
+        Self {
+            dtype: Datatype::Any,
+            buf: ArrowMutableBuffer::from(Vec::<u8>::new()),
+        }
     }
 
     pub fn datatype(&self) -> Datatype {
@@ -97,6 +130,16 @@ impl Buffer {
         Ok(buf.into())
     }
 
+    pub fn as_slice<T: PhysicalType>(&self) -> Result<&[T], DatatypeError> {
+        if !self.dtype.is_compatible_type::<T>() {
+            return Err(DatatypeError::physical_type_incompatible::<T>(
+                self.dtype,
+            ));
+        }
+
+        Ok(self.buf.typed_data::<T>())
+    }
+
     pub fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }
@@ -118,6 +161,38 @@ impl Buffer {
     // traits so that we don't cause panics if core ever messes up there.
     pub fn resize_bytes(&mut self, bytes: usize) {
         self.buf.resize(bytes, 0);
+    }
+
+    // Helpers for safety from the C++ wrapper layer. Everything below here is
+    // meant to only be called from the C++ wrapperes. Hopefully I can enforce
+    // that with keeping these private.
+
+    fn cpp_init(&mut self, dtype: u8) -> bool {
+        if self.dtype != Datatype::Any {
+            return false;
+        }
+
+        let dtype = FFIDatatype { repr: dtype };
+        if let Ok(dtype) = Datatype::try_from(dtype) {
+            self.dtype = dtype;
+            crate::logical_type_go!(dtype, LT, {
+                self.buf = ArrowMutableBuffer::from(Vec::<
+                    <LT as LogicalType>::PhysicalType,
+                >::new());
+            });
+            true
+        } else {
+            false
+        }
+    }
+
+    fn cpp_is_compatible_type(&mut self, dtype: u8) -> bool {
+        let dtype = FFIDatatype { repr: dtype };
+        if let Ok(dtype) = Datatype::try_from(dtype) {
+            dtype == self.dtype
+        } else {
+            false
+        }
     }
 }
 
