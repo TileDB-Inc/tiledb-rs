@@ -10,7 +10,7 @@ TILEDB_REF_URL = API + "repos/TileDB-Inc/TileDB/git/ref/{ref}"
 NIGHTLY_RELEASE_URL = API + "repos/TileDB-Inc/tiledb-rs/releases/tags/nightlies"
 
 BUILD_SHARED_LIBS = ["ON", "OFF"]
-VERSIONS = ["main", "2.27.0"]
+VERSIONS = ["main", "2.28.0"]
 
 # This is taken from the TileDB Release workflow found here:
 #
