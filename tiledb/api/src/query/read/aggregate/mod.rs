@@ -251,6 +251,7 @@ where
             )
         })?;
 
+        #[allow(clippy::collapsible_if)]
         if let Some(field_name) = self.handle.field_name.as_ref() {
             if !matches!(self.handle.function, AggregateFunction::NullCount(_))
                 && self

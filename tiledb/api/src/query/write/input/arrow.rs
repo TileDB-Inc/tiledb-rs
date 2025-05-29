@@ -616,6 +616,7 @@ mod tests {
         let cell_val_num = rr_in.cell_structure().as_cell_val_num();
         let is_nullable = rr_in.buffers.validity().is_some();
 
+        #[allow(clippy::collapsible_if)]
         if let Some(offsets) = rr_in.cell_structure().offsets_ref() {
             if offsets.as_ref().is_empty() {
                 /*

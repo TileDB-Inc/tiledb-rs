@@ -161,11 +161,10 @@ impl Enumeration {
         // nullptr can be used to distinguish between Some and None. The stdlib
         // empty slices all appear to return 0x1 which is mentioned in the docs
         // as a valid strategy.
-        let (offsets_ptr, offsets_len) = if offsets.is_none() {
-            (std::ptr::null_mut() as *const u64, 0u64)
-        } else {
-            let offsets = offsets.unwrap();
+        let (offsets_ptr, offsets_len) = if let Some(offsets) = offsets {
             (offsets.as_ptr(), std::mem::size_of_val(offsets) as u64)
+        } else {
+            (std::ptr::null_mut() as *const u64, 0u64)
         };
 
         // An important note here is that the Enumeration allocator copies the
