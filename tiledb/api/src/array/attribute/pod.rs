@@ -52,12 +52,15 @@ impl Factory for AttributeData {
         if let Some(n) = self.nullability {
             b = b.nullability(n)?;
         }
+
+        #[allow(clippy::collapsible_if)]
         if let Some(c) = self.cell_val_num {
             if !matches!((self.datatype, c), (Datatype::Any, CellValNum::Var)) {
                 /* SC-46696 */
                 b = b.cell_val_num(c)?;
             }
         }
+
         if let Some(ref fill) = self.fill {
             b = metadata_value_go!(fill.data, _DT, ref value, {
                 if let Some(fill_nullability) = fill.nullability {
@@ -67,6 +70,7 @@ impl Factory for AttributeData {
                 }
             })?;
         }
+
         if let Some(enumeration) = self.enumeration.as_ref() {
             b = b.enumeration_name(enumeration)?
         }
