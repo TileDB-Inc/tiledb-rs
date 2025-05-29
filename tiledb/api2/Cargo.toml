@@ -10,6 +10,9 @@ tiledb-common.workspace = true
 tiledb-sys2.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+uri.workspace = true
+
 [build-dependencies]
 cxx-build.workspace = true
 pkg-config.workspace = true

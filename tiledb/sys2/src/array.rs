@@ -4,6 +4,7 @@ mod ffi {
         include!("tiledb-sys2/cpp/array.h");
 
         type Array;
+        type ArrayContext;
 
         type Buffer = crate::buffer::Buffer;
         type Config = crate::config::Config;
@@ -38,7 +39,7 @@ mod ffi {
 
         pub fn get_enumeration(
             self: &Array,
-            attr_name: &str,
+            enmr_name: &str,
         ) -> Result<SharedPtr<Enumeration>>;
 
         pub fn load_all_enumerations(self: &Array) -> Result<()>;
@@ -96,6 +97,68 @@ mod ffi {
             dtype: &mut Datatype,
             values: Pin<&mut Buffer>,
         ) -> Result<()>;
+
+        pub fn create_array_context(
+            ctx: SharedPtr<Context>,
+            uri: &str,
+        ) -> Result<SharedPtr<ArrayContext>>;
+
+        pub fn create(
+            self: &ArrayContext,
+            schema: SharedPtr<Schema>,
+        ) -> Result<()>;
+
+        pub fn destroy(self: &ArrayContext) -> Result<()>;
+
+        pub fn consolidate(self: &ArrayContext) -> Result<()>;
+
+        pub fn consolidate_with_config(
+            self: &ArrayContext,
+            cfg: SharedPtr<Config>,
+        ) -> Result<()>;
+
+        pub fn consolidate_list(
+            self: &ArrayContext,
+            fragment_uris: &[&str],
+        ) -> Result<()>;
+
+        pub fn consolidate_list_with_config(
+            self: &ArrayContext,
+            fragment_uris: &[&str],
+            cfg: SharedPtr<Config>,
+        ) -> Result<()>;
+
+        pub fn consolidate_metadata(self: &ArrayContext) -> Result<()>;
+
+        pub fn consolidate_metadata_with_config(
+            self: &ArrayContext,
+            cfg: SharedPtr<Config>,
+        ) -> Result<()>;
+
+        pub fn delete_fragments(
+            self: &ArrayContext,
+            timestamp_start: u64,
+            timestamp_end: u64,
+        ) -> Result<()>;
+
+        pub fn delete_fragments_list(
+            self: &ArrayContext,
+            fragment_uris: &[&str],
+        ) -> Result<()>;
+
+        pub fn vacuum(self: &ArrayContext) -> Result<()>;
+
+        pub fn vacuum_with_config(
+            self: &ArrayContext,
+            cfg: SharedPtr<Config>,
+        ) -> Result<()>;
+
+        pub fn load_schema(self: &ArrayContext) -> Result<SharedPtr<Schema>>;
+
+        pub fn load_schema_with_config(
+            self: &ArrayContext,
+            cfg: SharedPtr<Config>,
+        ) -> Result<SharedPtr<Schema>>;
     }
 }
 

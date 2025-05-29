@@ -117,7 +117,7 @@ impl SchemaBuilder {
     ) -> Result<Self, TileDBError> {
         Ok(SchemaBuilder {
             builder: schema::create_schema_builder(
-                ctx.clone().ctx,
+                ctx.ctx.clone(),
                 array_type.into(),
             )?,
         })

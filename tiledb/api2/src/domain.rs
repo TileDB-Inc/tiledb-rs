@@ -49,9 +49,8 @@ pub struct DomainBuilder {
 
 impl DomainBuilder {
     pub fn new(ctx: &Context) -> Result<Self, TileDBError> {
-        let ctx = ctx.clone();
         Ok(Self {
-            builder: domain::create_domain_builder(ctx.ctx)?,
+            builder: domain::create_domain_builder(ctx.ctx.clone())?,
         })
     }
 

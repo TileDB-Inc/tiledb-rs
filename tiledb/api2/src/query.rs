@@ -184,7 +184,7 @@ impl QueryBuilder {
     ) -> Result<Self, TileDBError> {
         Ok(Self {
             builder: query::create_query_builder(
-                ctx.clone().ctx,
+                ctx.ctx.clone(),
                 array.array.clone(),
                 mode.into(),
             )?,
@@ -223,6 +223,18 @@ impl QueryBuilder {
         for (field, buffers) in fields.into_iter() {
             self.buffers.insert(field.to_string(), buffers);
         }
+        Ok(self)
+    }
+
+    pub fn with_allocated_fields<F: AsRef<str>>(
+        mut self,
+        fields: &[F],
+        elements: usize,
+    ) -> Result<Self, TileDBError> {
+        for field in fields {
+            self = self.with_allocated_field(field.as_ref(), elements)?;
+        }
+
         Ok(self)
     }
 
@@ -274,18 +286,6 @@ impl QueryBuilder {
         };
 
         self.buffers.insert(field.into(), buffers);
-
-        Ok(self)
-    }
-
-    pub fn with_allocated_fields<F: AsRef<str>>(
-        mut self,
-        fields: &[F],
-        elements: usize,
-    ) -> Result<Self, TileDBError> {
-        for field in fields {
-            self = self.with_allocated_field(field.as_ref(), elements)?;
-        }
 
         Ok(self)
     }

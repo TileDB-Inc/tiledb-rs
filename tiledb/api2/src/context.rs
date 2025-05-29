@@ -5,7 +5,6 @@ use crate::error::TileDBError;
 
 use tiledb_sys2::context;
 
-#[derive(Clone)]
 pub struct Context {
     pub(crate) ctx: cxx::SharedPtr<context::Context>,
 }
@@ -37,6 +36,12 @@ impl Context {
 
     pub fn stats(&self) -> Result<String, TileDBError> {
         Ok(self.ctx.stats()?)
+    }
+
+    pub(crate) fn clone(&self) -> Self {
+        Self {
+            ctx: self.ctx.clone(),
+        }
     }
 }
 

@@ -10,3 +10,6 @@ pub mod filter_list;
 pub mod query;
 pub mod query_buffers;
 pub mod schema;
+
+#[cfg(test)]
+mod tests;

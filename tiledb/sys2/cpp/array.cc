@@ -1,4 +1,5 @@
 #include <memory>
+#include <sstream>
 #include <string>
 
 #include <tiledb/tiledb.h>
@@ -116,8 +117,8 @@ uint64_t Array::open_timestamp_end() const {
   return ts;
 }
 
-std::shared_ptr<Enumeration> Array::get_enumeration(rust::Str attr_name) const {
-  auto c_name = static_cast<std::string>(attr_name);
+std::shared_ptr<Enumeration> Array::get_enumeration(rust::Str enmr_name) const {
+  auto c_name = static_cast<std::string>(enmr_name);
   tiledb_enumeration_t* enmr = nullptr;
   ctx_->handle_error(tiledb_array_get_enumeration(
       ctx_->ptr().get(), array_.get(), c_name.c_str(), &enmr));
@@ -290,6 +291,12 @@ void Array::get_metadata(rust::Str key, Datatype& dtype, Buffer& values) const {
       &c_num,
       &c_data));
 
+  if (c_data == nullptr) {
+    std::stringstream ss;
+    ss << "Metadata key '" << c_key << "' was not found.";
+    throw TileDBError(ss.str());
+  }
+
   dtype = to_rs_datatype(c_dtype);
   values.cpp_init(static_cast<uint8_t>(dtype));
   values.resize(c_num);
@@ -358,6 +365,135 @@ std::shared_ptr<tiledb_array_t> Array::ptr() const {
 std::shared_ptr<Array> create_array(
     std::shared_ptr<Context> ctx, rust::Str uri) {
   return std::make_shared<Array>(ctx, uri);
+}
+
+ArrayContext::ArrayContext(std::shared_ptr<Context> ctx, rust::Str uri)
+    : ctx_(ctx)
+    , uri_(uri) {
+}
+
+void ArrayContext::create(std::shared_ptr<Schema> schema) const {
+  ctx_->handle_error(
+      tiledb_array_schema_check(ctx_->ptr().get(), schema->ptr().get()));
+  ctx_->handle_error(tiledb_array_create(
+      ctx_->ptr().get(), uri_.c_str(), schema->ptr().get()));
+}
+
+void ArrayContext::destroy() const {
+  ctx_->handle_error(tiledb_array_delete(ctx_->ptr().get(), uri_.c_str()));
+}
+
+void ArrayContext::consolidate() const {
+  ctx_->handle_error(
+      tiledb_array_consolidate(ctx_->ptr().get(), uri_.c_str(), nullptr));
+}
+
+void ArrayContext::consolidate_with_config(std::shared_ptr<Config> cfg) const {
+  ctx_->handle_error(tiledb_array_consolidate(
+      ctx_->ptr().get(), uri_.c_str(), cfg->ptr().get()));
+}
+
+void ArrayContext::consolidate_list(rust::Slice<const rust::Str> uris) const {
+  std::vector<std::string> c_uris(uris.size());
+  std::vector<const char*> c_uri_ptrs(uris.size());
+
+  rust_to_cpp(uris, c_uris, c_uri_ptrs);
+
+  ctx_->handle_error(tiledb_array_consolidate_fragments(
+      ctx_->ptr().get(),
+      uri_.c_str(),
+      c_uri_ptrs.data(),
+      c_uri_ptrs.size(),
+      nullptr));
+}
+
+void ArrayContext::consolidate_list_with_config(
+    rust::Slice<const rust::Str> uris, std::shared_ptr<Config> cfg) const {
+  std::vector<std::string> c_uris(uris.size());
+  std::vector<const char*> c_uri_ptrs(uris.size());
+
+  rust_to_cpp(uris, c_uris, c_uri_ptrs);
+
+  ctx_->handle_error(tiledb_array_consolidate_fragments(
+      ctx_->ptr().get(),
+      uri_.c_str(),
+      c_uri_ptrs.data(),
+      c_uri_ptrs.size(),
+      cfg->ptr().get()));
+}
+
+void ArrayContext::consolidate_metadata() const {
+  auto cfg = Config();
+  cfg.set("sm.consolidation.mode", "array_meta");
+  ctx_->handle_error(tiledb_array_consolidate(
+      ctx_->ptr().get(), uri_.c_str(), cfg.ptr().get()));
+}
+
+void ArrayContext::consolidate_metadata_with_config(
+    std::shared_ptr<Config> cfg) const {
+  cfg->set("sm.consolidation.mode", "array_meta");
+  ctx_->handle_error(tiledb_array_consolidate(
+      ctx_->ptr().get(), uri_.c_str(), cfg->ptr().get()));
+}
+
+void ArrayContext::delete_fragments(
+    uint64_t timestamp_start, uint64_t timestamp_end) const {
+  ctx_->handle_error(tiledb_array_delete_fragments_v2(
+      ctx_->ptr().get(), uri_.c_str(), timestamp_start, timestamp_end));
+}
+
+void ArrayContext::delete_fragments_list(
+    rust::Slice<const rust::Str> fragment_uris) const {
+  std::vector<std::string> c_uris(fragment_uris.size());
+  std::vector<const char*> c_uri_ptrs(fragment_uris.size());
+
+  rust_to_cpp(fragment_uris, c_uris, c_uri_ptrs);
+
+  ctx_->handle_error(tiledb_array_delete_fragments_list(
+      ctx_->ptr().get(), uri_.c_str(), c_uri_ptrs.data(), c_uri_ptrs.size()));
+}
+
+void ArrayContext::vacuum() const {
+  ctx_->handle_error(
+      tiledb_array_vacuum(ctx_->ptr().get(), uri_.c_str(), nullptr));
+}
+
+void ArrayContext::vacuum_with_config(std::shared_ptr<Config> cfg) const {
+  ctx_->handle_error(
+      tiledb_array_vacuum(ctx_->ptr().get(), uri_.c_str(), cfg->ptr().get()));
+}
+
+std::shared_ptr<Schema> ArrayContext::load_schema() const {
+  tiledb_array_schema_t* schema;
+  ctx_->handle_error(
+      tiledb_array_schema_load(ctx_->ptr().get(), uri_.c_str(), &schema));
+  return std::make_shared<Schema>(ctx_, schema);
+}
+
+std::shared_ptr<Schema> ArrayContext::load_schema_with_config(
+    std::shared_ptr<Config> cfg) const {
+  tiledb_array_schema_t* schema;
+  ctx_->handle_error(tiledb_array_schema_load_with_config(
+      ctx_->ptr().get(), cfg->ptr().get(), uri_.c_str(), &schema));
+  return std::make_shared<Schema>(ctx_, schema);
+}
+
+void ArrayContext::rust_to_cpp(
+    rust::Slice<const rust::Str>& rs_uris,
+    std::vector<std::string>& c_uris,
+    std::vector<const char*>& c_uri_ptrs) const {
+  for (auto iter = rs_uris.begin(); iter != rs_uris.end(); ++iter) {
+    c_uris.push_back(static_cast<std::string>(*iter));
+  }
+
+  for (auto iter = c_uris.begin(); iter != c_uris.end(); ++iter) {
+    c_uri_ptrs.push_back(iter->c_str());
+  }
+}
+
+std::shared_ptr<ArrayContext> create_array_context(
+    std::shared_ptr<Context> ctx, rust::Str uri) {
+  return std::make_shared<ArrayContext>(ctx, uri);
 }
 
 }  // namespace tiledb::rs

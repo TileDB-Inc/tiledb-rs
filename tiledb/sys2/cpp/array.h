@@ -39,7 +39,7 @@ class Array {
   uint64_t open_timestamp_start() const;
   uint64_t open_timestamp_end() const;
 
-  std::shared_ptr<Enumeration> get_enumeration(rust::Str attr_name) const;
+  std::shared_ptr<Enumeration> get_enumeration(rust::Str enmr_name) const;
   void load_all_enumerations() const;
   void load_enumerations_all_schemas() const;
 
@@ -82,33 +82,43 @@ class ArrayContext {
  public:
   ArrayContext(std::shared_ptr<Context> ctx, rust::Str uri);
 
-  void create(std::shared_ptr<Schema> schema);
-  void destroy();
+  void create(std::shared_ptr<Schema> schema) const;
+  void destroy() const;
 
-  void consolidate();
-  void consolidate_with_config(std::shared_ptr<Config> cfg);
+  void consolidate() const;
+  void consolidate_with_config(std::shared_ptr<Config> cfg) const;
 
-  void consolidate_list(rust::Slice<rust::Str> fragment_uris);
+  void consolidate_list(rust::Slice<const rust::Str> fragment_uris) const;
   void consolidate_list_with_config(
-      rust::Slice<rust::Str> fragment_uris, std::shared_ptr<Config> cfg);
+      rust::Slice<const rust::Str> fragment_uris,
+      std::shared_ptr<Config> cfg) const;
 
-  void consolidate_metadata();
-  void consolidate_metadata_with_config(std::shared_ptr<Config> cfg);
+  void consolidate_metadata() const;
+  void consolidate_metadata_with_config(std::shared_ptr<Config> cfg) const;
 
-  void delete_fragments(uint64_t timestamp_start, uint64_t timestamp_end);
+  void delete_fragments(uint64_t timestamp_start, uint64_t timestamp_end) const;
 
-  void delete_fragment_list(rust::Slice<rust::Str> fragment_uris);
+  void delete_fragments_list(rust::Slice<const rust::Str> fragment_uris) const;
 
-  void vacuum();
-  void vacuum_with_config(std::shared_ptr<Config> cfg);
+  void vacuum() const;
+  void vacuum_with_config(std::shared_ptr<Config> cfg) const;
 
-  std::shared_ptr<Schema> load_schema();
-  std::shared_ptr<Schema> load_schema_with_config(std::shared_ptr<Config> cfg);
+  std::shared_ptr<Schema> load_schema() const;
+  std::shared_ptr<Schema> load_schema_with_config(
+      std::shared_ptr<Config> cfg) const;
+
+  void rust_to_cpp(
+      rust::Slice<const rust::Str>& rs_uris,
+      std::vector<std::string>& c_strs,
+      std::vector<const char*>& c_str_pts) const;
 
  private:
   std::shared_ptr<Context> ctx_;
   std::string uri_;
 };
+
+std::shared_ptr<ArrayContext> create_array_context(
+    std::shared_ptr<Context> ctx, rust::Str uri);
 
 }  // namespace tiledb::rs
 

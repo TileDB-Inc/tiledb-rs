@@ -77,7 +77,7 @@ impl AttributeBuilder {
     ) -> Result<Self, TileDBError> {
         Ok(Self {
             builder: attribute::create_attribute_builder(
-                ctx.clone().ctx,
+                ctx.ctx.clone(),
                 name,
                 dtype.into(),
             )?,

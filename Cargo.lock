@@ -2008,6 +2008,7 @@ dependencies = [
  "tiledb-common",
  "tiledb-sys-cfg",
  "tiledb-sys2",
+ "uri",
 ]
 
 [[package]]
