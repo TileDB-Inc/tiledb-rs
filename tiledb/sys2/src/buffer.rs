@@ -144,6 +144,10 @@ impl Buffer {
         self.buf.is_empty()
     }
 
+    pub fn capacity(&self) -> usize {
+        self.buf.capacity()
+    }
+
     pub fn len(&self) -> usize {
         self.buf.len()
     }

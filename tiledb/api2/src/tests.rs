@@ -1,6 +1,7 @@
 use tiledb_common::array::{ArrayType, CellOrder, TileOrder};
 use tiledb_sys2::datatype::Datatype;
 
+use crate::array::Array;
 use crate::attribute::AttributeBuilder;
 use crate::context::Context;
 use crate::dimension::DimensionBuilder;
@@ -37,4 +38,13 @@ pub fn create_quickstart_schema(
         .build()?;
 
     Ok(schema)
+}
+
+pub fn create_quickstart_array(
+    ctx: &Context,
+    uri: &str,
+    atype: ArrayType,
+) -> Result<(), TileDBError> {
+    let schema = crate::tests::create_quickstart_schema(ctx, atype)?;
+    Array::create(ctx, uri, &schema)
 }

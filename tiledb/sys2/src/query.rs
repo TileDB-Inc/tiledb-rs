@@ -1,7 +1,7 @@
 #[cxx::bridge(namespace = "tiledb::rs")]
 mod ffi {
     unsafe extern "C++" {
-        include!("tiledb-sys2/cpp/array.h");
+        include!("tiledb-sys2/cpp/query.h");
 
         type Query;
         type QueryBuilder;
@@ -35,6 +35,14 @@ mod ffi {
             field: &str,
             buffer: Pin<&mut Buffer>,
         ) -> Result<()>;
+
+        pub(crate) fn get_buffer_sizes(
+            self: &Query,
+            field: &str,
+            data_size: &mut u64,
+            offset_size: &mut u64,
+            validity_size: &mut u64,
+        ) -> Result<bool>;
 
         pub fn submit(self: &Query) -> Result<()>;
         pub fn finalize(self: &Query) -> Result<()>;

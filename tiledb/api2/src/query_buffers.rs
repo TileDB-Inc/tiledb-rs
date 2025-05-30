@@ -1,5 +1,8 @@
 use tiledb_sys2::buffer::Buffer;
 use tiledb_sys2::datatype::Datatype;
+use tiledb_sys2::types::PhysicalType;
+
+use crate::error::TileDBError;
 
 pub struct QueryBuffers {
     pub data: Buffer,
@@ -7,12 +10,14 @@ pub struct QueryBuffers {
     pub validity: Option<Buffer>,
 }
 
+const DEFAULT_SIZE: usize = 10_485_760; // 10MiB
+
 impl QueryBuffers {
     /// Create a new data-only QueryBuffers instance.
     ///
-    /// This defaults to allocating 1MiB of whatever datatype is provided.
+    /// This defaults to allocating 10MiB of whatever datatype is provided.
     pub fn new(datatype: Datatype) -> Self {
-        let capacity = 1024 * 1024 / datatype.size();
+        let capacity = DEFAULT_SIZE / datatype.size();
         Self {
             data: Buffer::with_capacity(datatype, capacity),
             offsets: None,
@@ -21,8 +26,8 @@ impl QueryBuffers {
     }
 
     pub fn new_with_offsets(datatype: Datatype) -> Self {
-        let data_capacity = 1024 * 1024 / datatype.size();
-        let offsets_capacity = 1024 * 1024 / 8;
+        let data_capacity = DEFAULT_SIZE / datatype.size();
+        let offsets_capacity = DEFAULT_SIZE / 8;
         Self {
             data: Buffer::with_capacity(datatype, data_capacity),
             offsets: Some(Buffer::with_capacity(
@@ -34,8 +39,8 @@ impl QueryBuffers {
     }
 
     pub fn new_with_validity(datatype: Datatype) -> Self {
-        let data_capacity = 1024 * 1024 / datatype.size();
-        let validity_capacity = 1024 * 1024;
+        let data_capacity = DEFAULT_SIZE / datatype.size();
+        let validity_capacity = DEFAULT_SIZE;
         Self {
             data: Buffer::with_capacity(datatype, data_capacity),
             offsets: None,
@@ -47,9 +52,9 @@ impl QueryBuffers {
     }
 
     pub fn new_with_offsets_and_validity(datatype: Datatype) -> Self {
-        let data_capacity = 1024 * 1024 / datatype.size();
-        let offsets_capacity = 1024 * 1024 / 8;
-        let validity_capacity = 1024 * 1024;
+        let data_capacity = DEFAULT_SIZE / datatype.size();
+        let offsets_capacity = DEFAULT_SIZE / 8;
+        let validity_capacity = DEFAULT_SIZE;
         Self {
             data: Buffer::with_capacity(datatype, data_capacity),
             offsets: Some(Buffer::with_capacity(
@@ -93,5 +98,82 @@ impl From<Buffer> for QueryBuffers {
             offsets: None,
             validity: None,
         }
+    }
+}
+
+impl<T: PhysicalType> TryFrom<(Datatype, Vec<T>)> for QueryBuffers {
+    type Error = TileDBError;
+
+    fn try_from(data: (Datatype, Vec<T>)) -> Result<Self, Self::Error> {
+        let buffer = Buffer::try_from(data)?;
+        Ok(buffer.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_only() {
+        let buf = QueryBuffers::new(Datatype::Int32);
+        assert_eq!(buf.data.capacity(), DEFAULT_SIZE);
+        assert!(buf.offsets.is_none());
+        assert!(buf.validity.is_none());
+    }
+
+    #[test]
+    fn with_offsets() {
+        let buf = QueryBuffers::new_with_offsets(Datatype::Int32);
+        assert_eq!(buf.data.capacity(), DEFAULT_SIZE);
+        assert!(buf.offsets.is_some());
+        assert_eq!(buf.offsets.unwrap().capacity(), DEFAULT_SIZE);
+        assert!(buf.validity.is_none());
+    }
+
+    #[test]
+    fn with_validity() {
+        let buf = QueryBuffers::new_with_validity(Datatype::Int32);
+        assert_eq!(buf.data.capacity(), DEFAULT_SIZE);
+        assert!(buf.offsets.is_none());
+        assert!(buf.validity.is_some());
+        assert_eq!(buf.validity.unwrap().capacity(), DEFAULT_SIZE);
+    }
+
+    #[test]
+    fn with_offsets_and_validity() {
+        let buf = QueryBuffers::new_with_offsets_and_validity(Datatype::Int32);
+        assert_eq!(buf.data.capacity(), DEFAULT_SIZE);
+        assert!(buf.offsets.is_some());
+        assert_eq!(buf.offsets.unwrap().capacity(), DEFAULT_SIZE);
+        assert!(buf.validity.is_some());
+        assert_eq!(buf.validity.unwrap().capacity(), DEFAULT_SIZE);
+    }
+
+    #[test]
+    fn custom_capacity() {
+        let buf = QueryBuffers::with_capacity(Datatype::Int32, 100);
+        assert_eq!(buf.data.capacity(), 400);
+        assert!(buf.offsets.is_none());
+        assert!(buf.validity.is_none());
+
+        let buf = buf.with_offsets(100);
+        assert!(buf.offsets.is_some());
+        assert_eq!(buf.offsets.as_ref().unwrap().capacity(), 800);
+        assert!(buf.validity.is_none());
+
+        let buf = buf.with_validity(100);
+        assert!(buf.offsets.is_some());
+        assert!(buf.validity.is_some());
+        assert_eq!(buf.validity.unwrap().capacity(), 100);
+    }
+
+    #[test]
+    fn from_buffer() {
+        let buffer = Buffer::new(Datatype::Int32);
+        let buf = QueryBuffers::from(buffer);
+        assert_eq!(buf.data.capacity(), 0);
+        assert!(buf.offsets.is_none());
+        assert!(buf.validity.is_none());
     }
 }

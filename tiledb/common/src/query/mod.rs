@@ -1,6 +1,6 @@
 pub mod condition;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum QueryStatus {
     Failed,
     Completed,

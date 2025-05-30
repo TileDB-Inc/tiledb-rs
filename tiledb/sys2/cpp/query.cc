@@ -29,7 +29,10 @@ Query::Query(
     tiledb_query_t* query)
     : ctx_(ctx)
     , array_(array)
-    , query_(query, delete_query) {
+    , query_(query, delete_query)
+    , sizes_(std::make_shared<std::unordered_map<
+                 std::string,
+                 std::shared_ptr<QueryBufferSizes>>>()) {
 }
 
 Query::Query(
@@ -38,7 +41,10 @@ Query::Query(
     std::shared_ptr<tiledb_query_t> query)
     : ctx_(ctx)
     , array_(array)
-    , query_(query) {
+    , query_(query)
+    , sizes_(std::make_shared<std::unordered_map<
+                 std::string,
+                 std::shared_ptr<QueryBufferSizes>>>()) {
 }
 
 Mode Query::mode() const {
@@ -78,7 +84,7 @@ bool Query::has_results() const {
 
 void Query::set_data_buffer(rust::Str name, Buffer& data) const {
   auto c_name = static_cast<std::string>(name);
-  auto sizes = (*sizes_)[c_name];
+  auto sizes = get_sizes(c_name);
 
   sizes->data = data.len();
 
@@ -92,7 +98,7 @@ void Query::set_data_buffer(rust::Str name, Buffer& data) const {
 
 void Query::set_offsets_buffer(rust::Str name, Buffer& offsets) const {
   auto c_name = static_cast<std::string>(name);
-  auto sizes = (*sizes_)[c_name];
+  auto sizes = get_sizes(c_name);
 
   sizes->offsets = offsets.len();
 
@@ -106,7 +112,7 @@ void Query::set_offsets_buffer(rust::Str name, Buffer& offsets) const {
 
 void Query::set_validity_buffer(rust::Str name, Buffer& validity) const {
   auto c_name = static_cast<std::string>(name);
-  auto sizes = (*sizes_)[c_name];
+  auto sizes = get_sizes(c_name);
 
   sizes->validity = validity.len();
 
@@ -116,6 +122,26 @@ void Query::set_validity_buffer(rust::Str name, Buffer& validity) const {
       c_name.c_str(),
       validity.as_mut_ptr(),
       &(sizes->validity)));
+}
+
+bool Query::get_buffer_sizes(
+    rust::Str name,
+    uint64_t& data_size,
+    uint64_t& offsets_size,
+    uint64_t& validity_size) const {
+  auto c_name = static_cast<std::string>(name);
+
+  if (sizes_->find(c_name) == sizes_->end()) {
+    return false;
+  }
+
+  auto sizes = get_sizes(c_name);
+
+  data_size = sizes->data;
+  offsets_size = sizes->offsets;
+  validity_size = sizes->validity;
+
+  return true;
 }
 
 void Query::submit() const {
@@ -184,6 +210,16 @@ std::shared_ptr<tiledb_query_t> Query::ptr() const {
   return query_;
 }
 
+std::shared_ptr<QueryBufferSizes> Query::get_sizes(std::string& name) const {
+  auto iter = sizes_->find(name);
+  if (iter == sizes_->end()) {
+    (*sizes_)[name] = std::make_shared<QueryBufferSizes>();
+  }
+
+  auto ret = sizes_->find(name);
+  return (*ret).second;
+}
+
 QueryBuilder::QueryBuilder(
     std::shared_ptr<Context> ctx, std::shared_ptr<Array> array, Mode mode)
     : ctx_(ctx)
@@ -193,6 +229,10 @@ QueryBuilder::QueryBuilder(
   ctx_->handle_error(tiledb_query_alloc(
       ctx_->ptr().get(), array_->ptr().get(), c_mode, &query));
   query_ = std::shared_ptr<tiledb_query_t>(query, delete_query);
+}
+
+std::shared_ptr<Query> QueryBuilder::build() const {
+  return std::make_shared<Query>(ctx_, array_, query_);
 }
 
 void QueryBuilder::set_layout(CellOrder order) const {

@@ -17,6 +17,7 @@ const BRIDGES: &[&str] = &[
     "src/filter_type.rs",
     "src/layout.rs",
     "src/mode.rs",
+    "src/query.rs",
     "src/query_status.rs",
     "src/schema.rs",
     "src/utils.rs",

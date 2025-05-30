@@ -89,7 +89,12 @@ impl Query {
         &mut self,
         field: &str,
     ) -> Result<&[T], TileDBError> {
-        if let Some(qb) = self.buffers.get(field) {
+        let Some(sizes) = self.get_buffer_sizes(field)? else {
+            return Err(TileDBError::UnknownField(field.into()));
+        };
+
+        if let Some(qb) = self.buffers.get_mut(field) {
+            qb.data.resize_bytes(sizes.0 as usize);
             Ok(qb.data.as_slice::<T>()?)
         } else {
             Err(TileDBError::UnknownField(field.into()))
@@ -100,8 +105,13 @@ impl Query {
         &mut self,
         field: &str,
     ) -> Result<&[u64], TileDBError> {
-        if let Some(qb) = self.buffers.get(field) {
-            if let Some(offsets) = qb.offsets.as_ref() {
+        let Some(sizes) = self.get_buffer_sizes(field)? else {
+            return Err(TileDBError::UnknownField(field.into()));
+        };
+
+        if let Some(qb) = self.buffers.get_mut(field) {
+            if let Some(offsets) = qb.offsets.as_mut() {
+                offsets.resize_bytes(sizes.1 as usize);
                 Ok(offsets.as_slice::<u64>()?)
             } else {
                 Err(TileDBError::NonVariable(field.into()))
@@ -115,8 +125,13 @@ impl Query {
         &mut self,
         field: &str,
     ) -> Result<&[u8], TileDBError> {
-        if let Some(qb) = self.buffers.get(field) {
-            if let Some(validity) = qb.validity.as_ref() {
+        let Some(sizes) = self.get_buffer_sizes(field)? else {
+            return Err(TileDBError::UnknownField(field.into()));
+        };
+
+        if let Some(qb) = self.buffers.get_mut(field) {
+            if let Some(validity) = qb.validity.as_mut() {
+                validity.resize_bytes(sizes.2 as usize);
                 Ok(validity.as_slice::<u8>()?)
             } else {
                 Err(TileDBError::NonNullable(field.into()))
@@ -167,6 +182,27 @@ impl Query {
 
     pub fn stats(&mut self) -> Result<String, TileDBError> {
         Ok(self.query.stats()?)
+    }
+
+    fn get_buffer_sizes(
+        &mut self,
+        field: &str,
+    ) -> Result<Option<(u64, u64, u64)>, TileDBError> {
+        let mut data_size = 0u64;
+        let mut offsets_size = 0u64;
+        let mut validity_size = 0u64;
+        let found = self.query.get_buffer_sizes(
+            field,
+            &mut data_size,
+            &mut offsets_size,
+            &mut validity_size,
+        )?;
+
+        if !found {
+            return Ok(None);
+        }
+
+        Ok(Some((data_size, offsets_size, validity_size)))
     }
 }
 
@@ -232,7 +268,7 @@ impl QueryBuilder {
         elements: usize,
     ) -> Result<Self, TileDBError> {
         for field in fields {
-            self = self.with_allocated_field(field.as_ref(), elements)?;
+            self = self.with_allocated_field_impl(field.as_ref(), elements)?;
         }
 
         Ok(self)
@@ -271,16 +307,21 @@ impl QueryBuilder {
             return Err(TileDBError::UnknownField(field.into()));
         };
 
-        let buffers = QueryBuffers::with_capacity(dtype, elements);
+        let mut buffers = QueryBuffers::with_capacity(dtype, elements);
+        buffers.data.resize(elements);
 
         let buffers = if var {
-            buffers.with_offsets(elements)
+            let mut buffers = buffers.with_offsets(elements);
+            buffers.offsets.as_mut().unwrap().resize(elements);
+            buffers
         } else {
             buffers
         };
 
         let buffers = if nullable {
-            buffers.with_validity(elements)
+            let mut buffers = buffers.with_validity(elements);
+            buffers.validity.as_mut().unwrap().resize(elements);
+            buffers
         } else {
             buffers
         };
@@ -288,5 +329,101 @@ impl QueryBuilder {
         self.buffers.insert(field.into(), buffers);
 
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tiledb_common::array::ArrayType;
+    use tiledb_sys2::datatype::Datatype;
+    use uri::TestArrayUri;
+
+    #[test]
+    fn write_data() -> Result<(), TileDBError> {
+        let ctx = Context::new()?;
+        let tmpuri = uri::get_uri_generator().unwrap();
+        let uri = tmpuri.with_path("quickstart_dense").unwrap();
+
+        write_data_impl(&ctx, &uri)
+    }
+
+    #[test]
+    fn read_data() -> Result<(), TileDBError> {
+        let ctx = Context::new()?;
+        let tmpuri = uri::get_uri_generator().unwrap();
+        let uri = tmpuri.with_path("quickstart_dense").unwrap();
+
+        write_data_impl(&ctx, &uri)?;
+
+        let mut array = Array::new(&ctx, &uri)?;
+        array.open(Mode::Read)?;
+
+        let mut query = QueryBuilder::new(&ctx, array, Mode::Read)?
+            .with_layout(CellOrder::RowMajor)?
+            .with_allocated_fields(&["rows", "columns", "a"], 1024)?
+            .build()?;
+
+        assert_eq!(query.mode()?, Mode::Read);
+
+        query.submit()?;
+        assert_eq!(query.status()?, QueryStatus::Completed);
+        assert!(query.has_results()?);
+
+        let rows = query.get_data_slice::<i32>("rows")?;
+        assert_eq!(rows, vec![1i32, 2, 2]);
+
+        let columns = query.get_data_slice::<i32>("columns")?;
+        assert_eq!(columns, vec![1i32, 3, 4]);
+
+        let a = query.get_data_slice::<i32>("a")?;
+        assert_eq!(a, vec![1i32, 3, 2]);
+
+        // Check for missing field
+        let b = query.get_data_slice::<i32>("b");
+        assert!(b.is_err());
+        let msg = format!("{}", b.err().unwrap());
+        assert_eq!(msg, "The field 'b' was not found.");
+
+        // Check for missing offsets and validity
+        let a_offsets = query.get_offsets_slice("a");
+        assert!(a_offsets.is_err());
+        let msg = format!("{}", a_offsets.err().unwrap());
+        assert_eq!(msg, "The field 'a' is not variably sized");
+
+        let a_validity = query.get_validity_slice("a");
+        assert!(a_validity.is_err());
+        let msg = format!("{}", a_validity.err().unwrap());
+        assert_eq!(msg, "The field 'a' is not nullable.");
+
+        Ok(())
+    }
+
+    fn write_data_impl(ctx: &Context, uri: &str) -> Result<(), TileDBError> {
+        crate::tests::create_quickstart_array(ctx, uri, ArrayType::Sparse)?;
+
+        let fields: Vec<(&str, QueryBuffers)> = vec![
+            ("rows", (Datatype::Int32, vec![1i32, 2, 2]).try_into()?),
+            ("columns", (Datatype::Int32, vec![1i32, 4, 3]).try_into()?),
+            ("a", (Datatype::Int32, vec![1i32, 2, 3]).try_into()?),
+        ];
+
+        let mut array = Array::new(ctx, uri)?;
+        array.open(Mode::Write)?;
+
+        let mut query = QueryBuilder::new(ctx, array, Mode::Write)?
+            .with_layout(CellOrder::Unordered)?
+            .with_fields(fields)?
+            .build()?;
+
+        assert_eq!(query.mode()?, Mode::Write);
+
+        query.submit()?;
+        assert_eq!(query.status()?, QueryStatus::Completed);
+        assert!(!query.has_results()?);
+        query.finalize()?;
+
+        Ok(())
     }
 }

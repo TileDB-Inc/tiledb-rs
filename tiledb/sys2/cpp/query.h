@@ -46,6 +46,12 @@ class Query {
   void set_offsets_buffer(rust::Str name, Buffer& offsets) const;
   void set_validity_buffer(rust::Str name, Buffer& validity) const;
 
+  bool get_buffer_sizes(
+      rust::Str name,
+      uint64_t& data_size,
+      uint64_t& offsets_size,
+      uint64_t& validity_size) const;
+
   void submit() const;
   void finalize() const;
   void submit_and_finalize() const;
@@ -85,6 +91,8 @@ class Query {
 
   std::shared_ptr<tiledb_query_t> ptr() const;
 
+  std::shared_ptr<QueryBufferSizes> get_sizes(std::string& name) const;
+
  private:
   std::shared_ptr<Context> ctx_;
   std::shared_ptr<Array> array_;
@@ -98,6 +106,8 @@ class QueryBuilder {
  public:
   QueryBuilder(
       std::shared_ptr<Context> ctx, std::shared_ptr<Array> array, Mode mode);
+
+  std::shared_ptr<Query> build() const;
 
   void set_layout(CellOrder order) const;
   // ToDo: Query Conditions
