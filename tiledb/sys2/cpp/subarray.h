@@ -7,6 +7,8 @@
 
 #include <tiledb/tiledb.h>
 
+#include "rust/cxx.h"
+
 namespace tiledb::rs {
 
 class Array;
@@ -15,33 +17,33 @@ class Context;
 
 class Subarray {
  public:
-  Subarray(const Context& ctx, const Array& array, bool coalesce_ranges = true);
+  Subarray(std::shared_ptr<Context> ctx, std::shared_ptr<Array> array);
 
-  uint64_t range_num(unsigned dim_idx) const;
-  uint64_t range_num(const std::string& dim_name) const;
+  uint64_t num_ranges_from_index(uint32_t idx);
+  uint64_t num_ranges_from_name(rust::Str name);
 
-  template <class T>
-  std::array<T, 3> range(unsigned dim_idx, uint64_t range_idx);
+  void get_range_from_index(
+      uint32_t dim_idx,
+      uint64_t range_idx,
+      const void** start,
+      const void** end,
+      const void** stride);
+  void get_range_from_name(const char* name, ...);
 
-  template <class T>
-  std::array<T, 3> range(const std::string& dim_name, uint64_t range_idx);
+  void get_range_var_size(
+      uint32_t dim_idx, uint64_t range_idx, uint64_t& start, uint64_t& end);
+  void get_range_var_size_from_name(const char* name, ...);
 
-  std::array<std::string, 2> range(unsigned dim_idx, uint64_t range_idx);
+  void get_range_var(uint32_t idx, uint64_t range_idx, void* start, void* end);
+  void get_range_var_from_name(const char* name, ...);
 
-  std::array<std::string, 2> range(
-      const std::string& dim_name, uint64_t range_idx);
-
-  std::shared_ptr<tiledb_subarray_t> ptr() const;
-  const Array& array() const;
-
-  uint64_t label_range_num(const std::string& label_name);
-
-  template <class T>
-  static std::array<T, 3> label_range(
-      const std::string& label_name, uint64_t range_idx);
-
-  std::array<std::string, 2> label_range(
-      const std::string& label_name, uint64_t range_idx);
+  void add_point_ranges(uint32_t dim_idx, const void* start, uint64_t count);
+  void add_point_ranges_var(
+      uint32_t dim_idx,
+      const void* start,
+      uint64_t start_size,
+      const uint64_t* start_offsets,
+      uint64_t start_offsets_size);
 
  private:
   std::shared_ptr<Context> ctx_;
@@ -51,44 +53,27 @@ class Subarray {
 
 class SubarrayBuilder {
  public:
-  void set_coalesce_ranges(bool coalesce_ranges);
+  void set_coalesce_ranges(bool coalesce_ranges) const;
+  void set_config(std::shared_ptr<Config> cfg) const;
 
-  template <class T>
-  void add_range(uint32_t dim_idx, T start, T end, T stride = 0);
+  // The docs say this is only for dense writes and takes a list of [low, high]
+  // pairs that must match the dimensions types of the domain.
+  //
+  // Maybe ignore
+  void set_subarray(void* subarray) const;
 
-  template <class T>
-  void add_range(const std::string& dim_name, T start, T end, T stride = 0);
+  // N.B., the stride is optional.
 
+  // This needs to be morphed to probably take a buffer of length 3
+  // to pass the values. Which makes me suddenly wonder about adding a stack
+  // based version of the buffer class.
   void add_range(
-      uint32_t dim_idx, const std::string& start, const std::string& end);
+      uint32_t dim_idx, const void* start, const void* end, const void* stride);
 
-  void add_range(
-      const std::string& dim_name,
-      const std::string& start,
-      const std::string& end);
-
-  template <typename T = uint64_t>
-  void set_subarray(const T* pairs, uint64_t size);
-
-  void set_config(const Config& config);
-
-  template <typename Vec>
-  void set_subarray(const Vec& pairs);
-
-  template <typename T = uint64_t>
-  void set_subarray(const std::initializer_list<T>& l);
-
-  template <typename T = uint64_t>
-  void set_subarray(const std::vector<std::array<T, 2>>& pairs);
-
-  template <class T>
-  static void add_label_range(
-      const std::string& label_name, T start, T end, T stride = 0);
-
-  void add_label_range(
-      const std::string& label_name,
-      const std::string& start,
-      const std::string& end);
+  // Same comment as add_range
+  void add_range_by_name(const char* dim_name, ...);
+  void add_range_var(uint32_t dim_idx, ...);
+  void add_range_var_by_name(const char* dim_name, ...);
 };
 
 }  // namespace tiledb::rs

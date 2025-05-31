@@ -10,6 +10,10 @@ namespace tiledb::rs {
 
 class Context;
 
+// TODO: Make sure and go through
+// tiledb/sm/c_api/tiledb_dimension_label_experimental.h and update all of the
+// affected instances like array schema and subarrays.
+
 class DimensionLabel {
  public:
   DimensionLabel(const Context& ctx, tiledb_dimension_label_t* dim_label);

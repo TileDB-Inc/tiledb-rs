@@ -2002,8 +2002,6 @@ name = "tiledb-api2"
 version = "0.1.0"
 dependencies = [
  "cxx",
- "cxx-build",
- "pkg-config",
  "thiserror 1.0.69",
  "tiledb-common",
  "tiledb-sys-cfg",
