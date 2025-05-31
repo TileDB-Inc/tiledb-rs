@@ -1,3 +1,16 @@
+//! Query docs go here.
+//!
+//! ToDo: I need to separate the query types out into specific read/write types
+//! because some functions only apply to queries in read or write mode. So far:
+//!
+//! Write only:
+//!   * num_fragments
+//!   * fragment_uri
+//!   * fragment_timestamp_range
+//!
+//! Read only:
+//!   * Pretty sure num_relevant_fragments even though it returns 0 on writes
+
 use std::collections::HashMap;
 use std::pin::Pin;
 
@@ -141,20 +154,81 @@ impl Query {
         }
     }
 
+    /// Get the estimated buffer size for a field.
+    ///
+    /// The returned size may not be large enough to contain all query results.
+    /// The query status should be used to know if a query has completed or
+    /// if it needs to be resubmitted.
+    ///
+    /// Result values are returned as the number of elements of the buffer
+    /// which is different than the number of bytes required. That would be
+    /// elements * dtype.size() to get the bytes required.
     pub fn est_result_size(
         &mut self,
-        name: &str,
-    ) -> Result<(u64, u64, u64), TileDBError> {
+        field: &str,
+    ) -> Result<(usize, Option<usize>, Option<usize>), TileDBError> {
+        let (dtype, var, nullable) = self.array.schema()?.field_info(field)?;
+
         let mut data_size = 0;
         let mut offsets_size = 0;
         let mut validity_size = 0;
-        self.query.est_result_size(
-            name,
-            &mut data_size,
-            &mut offsets_size,
-            &mut validity_size,
-        )?;
-        Ok((data_size, offsets_size, validity_size))
+
+        if !var && !nullable {
+            self.query.est_result_size(field, &mut data_size)?;
+            assert!(
+                data_size as usize % dtype.size() == 0,
+                "Invalid data buffer."
+            );
+            Ok((data_size as usize / dtype.size(), None, None))
+        } else if var && !nullable {
+            self.query.est_result_size_var(
+                field,
+                &mut data_size,
+                &mut offsets_size,
+            )?;
+            assert!(
+                data_size as usize % dtype.size() == 0,
+                "Invalid data buffer."
+            );
+            assert!(offsets_size % 8 == 0, "Inlvaid offsets buffer.");
+            Ok((
+                data_size as usize / dtype.size(),
+                Some(offsets_size as usize / 8),
+                None,
+            ))
+        } else if !var && nullable {
+            self.query.est_result_size_nullable(
+                field,
+                &mut data_size,
+                &mut validity_size,
+            )?;
+            assert!(
+                data_size as usize % dtype.size() == 0,
+                "Invalid data buffer."
+            );
+            Ok((
+                data_size as usize / dtype.size(),
+                None,
+                Some(validity_size as usize),
+            ))
+        } else {
+            self.query.est_result_size_var_nullable(
+                field,
+                &mut data_size,
+                &mut offsets_size,
+                &mut validity_size,
+            )?;
+            assert!(
+                data_size as usize % dtype.size() == 0,
+                "Invalid data buffer."
+            );
+            assert!(offsets_size % 8 == 0, "Invalid offsets buffer");
+            Ok((
+                data_size as usize / dtype.size(),
+                Some(offsets_size as usize / 8),
+                Some(validity_size as usize),
+            ))
+        }
     }
 
     pub fn num_fragments(&mut self) -> Result<u32, TileDBError> {
@@ -292,20 +366,7 @@ impl QueryBuilder {
         }
 
         let schema = self.array.schema()?;
-        let (dtype, var, nullable) = if schema.has_attribute(field)? {
-            let attr = schema.attribute_from_name(field)?;
-            let dtype = attr.datatype()?;
-            let var = attr.cell_val_num()? == u32::MAX;
-            let nullable = attr.nullable()?;
-            (dtype, var, nullable)
-        } else if schema.domain()?.has_dimension(field)? {
-            let dim = schema.domain()?.dimension_from_name(field)?;
-            let dtype = dim.datatype()?;
-            let var = dim.cell_val_num()? == u32::MAX;
-            (dtype, var, false)
-        } else {
-            return Err(TileDBError::UnknownField(field.into()));
-        };
+        let (dtype, var, nullable) = schema.field_info(field)?;
 
         let mut buffers = QueryBuffers::with_capacity(dtype, elements);
         buffers.data.resize(elements);
@@ -336,9 +397,14 @@ impl QueryBuilder {
 mod tests {
     use super::*;
 
-    use tiledb_common::array::ArrayType;
+    use tiledb_common::array::{ArrayType, TileOrder};
     use tiledb_sys2::datatype::Datatype;
     use uri::TestArrayUri;
+
+    use crate::attribute::AttributeBuilder;
+    use crate::dimension::DimensionBuilder;
+    use crate::domain::DomainBuilder;
+    use crate::schema::SchemaBuilder;
 
     #[test]
     fn write_data() -> Result<(), TileDBError> {
@@ -366,6 +432,8 @@ mod tests {
             .build()?;
 
         assert_eq!(query.mode()?, Mode::Read);
+        assert!(query.config().is_ok());
+        assert_eq!(query.layout()?, CellOrder::RowMajor);
 
         query.submit()?;
         assert_eq!(query.status()?, QueryStatus::Completed);
@@ -386,6 +454,16 @@ mod tests {
         let msg = format!("{}", b.err().unwrap());
         assert_eq!(msg, "The field 'b' was not found.");
 
+        let b = query.get_offsets_slice("b");
+        assert!(b.is_err());
+        let msg = format!("{}", b.err().unwrap());
+        assert_eq!(msg, "The field 'b' was not found.");
+
+        let b = query.get_validity_slice("b");
+        assert!(b.is_err());
+        let msg = format!("{}", b.err().unwrap());
+        assert_eq!(msg, "The field 'b' was not found.");
+
         // Check for missing offsets and validity
         let a_offsets = query.get_offsets_slice("a");
         assert!(a_offsets.is_err());
@@ -396,6 +474,229 @@ mod tests {
         assert!(a_validity.is_err());
         let msg = format!("{}", a_validity.err().unwrap());
         assert_eq!(msg, "The field 'a' is not nullable.");
+
+        Ok(())
+    }
+
+    #[test]
+    fn check_all_field_types() -> Result<(), TileDBError> {
+        let ctx = Context::new()?;
+
+        let id = DimensionBuilder::new(&ctx, "id", Datatype::Int32)?
+            .with_domain(&[0, 4])?
+            .with_tile_extent(1)?
+            .build()?;
+
+        let dom = DomainBuilder::new(&ctx)?.with_dimension(id)?.build()?;
+
+        let a = AttributeBuilder::new(&ctx, "a", Datatype::Int32)?.build()?;
+        let b = AttributeBuilder::new(&ctx, "b", Datatype::Int32)?
+            .with_nullable(true)?
+            .build()?;
+        let c = AttributeBuilder::new(&ctx, "c", Datatype::StringUtf8)?
+            .with_cell_val_num(u32::MAX)?
+            .build()?;
+        let d = AttributeBuilder::new(&ctx, "d", Datatype::StringUtf8)?
+            .with_cell_val_num(u32::MAX)?
+            .with_nullable(true)?
+            .build()?;
+
+        let schema = SchemaBuilder::new(&ctx, ArrayType::Sparse)?
+            .with_capacity(1000)?
+            .with_tile_order(TileOrder::RowMajor)?
+            .with_cell_order(CellOrder::RowMajor)?
+            .with_domain(dom)?
+            .with_attributes(&[a, b, c, d])?
+            .build()?;
+
+        let tmpuri = uri::get_uri_generator().unwrap();
+        let uri = tmpuri.with_path("quickstart_dense").unwrap();
+
+        Array::create(&ctx, &uri, &schema)?;
+
+        let mut array = Array::new(&ctx, &uri)?;
+        array.open(Mode::Write)?;
+
+        let id_data = vec![0i32, 1, 2, 3];
+        let a_data = vec![100i32, 200, 300, 400];
+        let b_data = vec![0i32, 1, 0, 1];
+        let b_validity = vec![0u8, 1, 0, 1];
+        let c_data = "carldoughnutkatiamordecai".to_owned().into_bytes();
+        let c_offsets = vec![0u64, 4, 12, 16];
+        let d_data = "jasonhumphreyclivesophie".to_owned().into_bytes();
+        let d_offsets = vec![0u64, 5, 13, 18];
+        let d_validity = vec![1u8, 1, 1, 1];
+
+        let id_field = QueryBuffers::try_from((Datatype::Int32, id_data))?;
+
+        let fields = vec![
+            ("a", QueryBuffers::try_from((Datatype::Int32, a_data))?),
+            (
+                "b",
+                QueryBuffers::try_from((Datatype::Int32, b_data, b_validity))?,
+            ),
+            (
+                "c",
+                QueryBuffers::try_from((
+                    Datatype::StringUtf8,
+                    c_data,
+                    c_offsets,
+                ))?,
+            ),
+            (
+                "d",
+                QueryBuffers::try_from((
+                    Datatype::StringUtf8,
+                    d_data,
+                    d_offsets,
+                    d_validity,
+                ))?,
+            ),
+        ];
+
+        let mut query = QueryBuilder::new(&ctx, array, Mode::Write)?
+            .with_layout(CellOrder::Unordered)?
+            .with_field("id", id_field)?
+            .with_fields(fields)?
+            .build()?;
+
+        query.submit()?;
+        assert_eq!(query.status()?, QueryStatus::Completed);
+        assert!(!query.has_results()?);
+
+        assert_eq!(query.num_fragments()?, 1);
+        assert!(!query.fragment_uri(0)?.is_empty());
+
+        assert_eq!(query.num_relevant_fragments()?, 0);
+
+        let range = query.fragment_timestamp_range(0)?;
+        assert!(range.0 > 0 && range.1 >= range.0);
+
+        let (_, fields) = query.finalize()?;
+
+        let mut array = Array::new(&ctx, &uri)?;
+        array.open(Mode::Read)?;
+
+        let mut query = QueryBuilder::new(&ctx, array, Mode::Read)?
+            .with_layout(CellOrder::RowMajor)?
+            .with_allocated_field("id", 128)?
+            .with_allocated_fields(&["a", "b", "c", "d"], 128)?
+            .build()?;
+
+        let sizes = query.est_result_size("id")?;
+        assert!(sizes.0 > 0 && sizes.1.is_none() && sizes.2.is_none());
+
+        let sizes = query.est_result_size("a")?;
+        assert!(sizes.0 > 0 && sizes.1.is_none() && sizes.2.is_none());
+
+        let sizes = query.est_result_size("b")?;
+        assert!(sizes.0 > 0 && sizes.1.is_none() && sizes.2.is_some());
+
+        let sizes = query.est_result_size("c")?;
+        assert!(sizes.0 > 0 && sizes.1.is_some() && sizes.2.is_none());
+
+        let sizes = query.est_result_size("d")?;
+        assert!(sizes.0 > 0 && sizes.1.is_some() && sizes.2.is_some());
+
+        query.submit()?;
+        assert_eq!(query.status()?, QueryStatus::Completed);
+
+        let id_result = query.get_data_slice::<i32>("id")?;
+        let id_data = fields.get("id").unwrap().data.as_slice::<i32>()?;
+        assert_eq!(id_result, id_data);
+
+        let a_result = query.get_data_slice::<i32>("a")?;
+        let a_data = fields.get("a").unwrap().data.as_slice::<i32>()?;
+        assert_eq!(a_result, a_data);
+
+        let b_result = query.get_data_slice::<i32>("b")?;
+        let b_data = fields.get("b").unwrap().data.as_slice::<i32>()?;
+        assert_eq!(b_result, b_data);
+
+        let b_result_validity = query.get_validity_slice("b")?;
+        let b_validity = fields
+            .get("b")
+            .unwrap()
+            .validity
+            .as_ref()
+            .unwrap()
+            .as_slice::<u8>()?;
+        assert_eq!(b_result_validity, b_validity);
+
+        let c_result = query.get_data_slice::<u8>("c")?;
+        let c_data = fields.get("c").unwrap().data.as_slice::<u8>()?;
+        assert_eq!(c_result, c_data);
+
+        let c_result_offsets = query.get_offsets_slice("c")?;
+        let c_offsets = fields
+            .get("c")
+            .unwrap()
+            .offsets
+            .as_ref()
+            .unwrap()
+            .as_slice::<u64>()?;
+        assert_eq!(c_result_offsets, c_offsets);
+
+        let d_result = query.get_data_slice::<u8>("d")?;
+        let d_data = fields.get("d").unwrap().data.as_slice::<u8>()?;
+        assert_eq!(d_result, d_data);
+
+        let d_result_offsets = query.get_offsets_slice("d")?;
+        let d_offsets = fields
+            .get("d")
+            .unwrap()
+            .offsets
+            .as_ref()
+            .unwrap()
+            .as_slice::<u64>()?;
+        assert_eq!(d_result_offsets, d_offsets);
+
+        let d_result_validity = query.get_validity_slice("d")?;
+        let d_validity = fields
+            .get("d")
+            .unwrap()
+            .validity
+            .as_ref()
+            .unwrap()
+            .as_slice::<u8>()?;
+        assert_eq!(d_result_validity, d_validity);
+
+        assert_eq!(query.num_relevant_fragments()?, 1);
+
+        assert!(query.stats().is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn check_submit_and_finalize() -> Result<(), TileDBError> {
+        let ctx = Context::new()?;
+        let tmpuri = uri::get_uri_generator().unwrap();
+        let uri = tmpuri.with_path("quickstart_dense").unwrap();
+
+        crate::tests::create_quickstart_array(&ctx, &uri, ArrayType::Sparse)?;
+
+        let fields: Vec<(&str, QueryBuffers)> = vec![
+            ("rows", (Datatype::Int32, vec![1i32, 2, 2]).try_into()?),
+            ("columns", (Datatype::Int32, vec![1i32, 4, 3]).try_into()?),
+            ("a", (Datatype::Int32, vec![1i32, 2, 3]).try_into()?),
+        ];
+
+        let mut array = Array::new(&ctx, &uri)?;
+        array.open(Mode::Write)?;
+
+        let cfg = Config::new()?;
+        let mut query = QueryBuilder::new(&ctx, array, Mode::Write)?
+            .with_config(cfg)?
+            .with_layout(CellOrder::Unordered)?
+            .with_fields(fields)?
+            .build()?;
+
+        assert_eq!(query.mode()?, Mode::Write);
+        let err = query.submit_and_finalize();
+        assert!(err.is_err());
+        let msg = format!("{}", err.err().unwrap());
+        assert!(msg.contains("Call valid only in global_order writes."));
 
         Ok(())
     }
@@ -412,7 +713,9 @@ mod tests {
         let mut array = Array::new(ctx, uri)?;
         array.open(Mode::Write)?;
 
+        let cfg = Config::new()?;
         let mut query = QueryBuilder::new(ctx, array, Mode::Write)?
+            .with_config(cfg)?
             .with_layout(CellOrder::Unordered)?
             .with_fields(fields)?
             .build()?;

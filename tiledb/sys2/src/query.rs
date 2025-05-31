@@ -55,6 +55,26 @@ mod ffi {
             self: &Query,
             name: &str,
             data_size: &mut u64,
+        ) -> Result<()>;
+
+        pub fn est_result_size_var(
+            self: &Query,
+            name: &str,
+            data_size: &mut u64,
+            offsets_size: &mut u64,
+        ) -> Result<()>;
+
+        pub fn est_result_size_nullable(
+            self: &Query,
+            name: &str,
+            data_size: &mut u64,
+            validity_size: &mut u64,
+        ) -> Result<()>;
+
+        pub fn est_result_size_var_nullable(
+            self: &Query,
+            name: &str,
+            data_size: &mut u64,
             offsets_size: &mut u64,
             validity_size: &mut u64,
         ) -> Result<()>;

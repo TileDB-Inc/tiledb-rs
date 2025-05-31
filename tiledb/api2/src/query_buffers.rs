@@ -110,6 +110,57 @@ impl<T: PhysicalType> TryFrom<(Datatype, Vec<T>)> for QueryBuffers {
     }
 }
 
+impl<T: PhysicalType> TryFrom<(Datatype, Vec<T>, Vec<u64>)> for QueryBuffers {
+    type Error = TileDBError;
+
+    fn try_from(
+        data: (Datatype, Vec<T>, Vec<u64>),
+    ) -> Result<Self, Self::Error> {
+        let values = Buffer::try_from((data.0, data.1))?;
+        let offsets = Buffer::try_from((Datatype::UInt64, data.2))?;
+        Ok(Self {
+            data: values,
+            offsets: Some(offsets),
+            validity: None,
+        })
+    }
+}
+
+impl<T: PhysicalType> TryFrom<(Datatype, Vec<T>, Vec<u8>)> for QueryBuffers {
+    type Error = TileDBError;
+
+    fn try_from(
+        data: (Datatype, Vec<T>, Vec<u8>),
+    ) -> Result<Self, Self::Error> {
+        let values = Buffer::try_from((data.0, data.1))?;
+        let validity = Buffer::try_from((Datatype::UInt8, data.2))?;
+        Ok(Self {
+            data: values,
+            offsets: None,
+            validity: Some(validity),
+        })
+    }
+}
+
+impl<T: PhysicalType> TryFrom<(Datatype, Vec<T>, Vec<u64>, Vec<u8>)>
+    for QueryBuffers
+{
+    type Error = TileDBError;
+
+    fn try_from(
+        data: (Datatype, Vec<T>, Vec<u64>, Vec<u8>),
+    ) -> Result<Self, Self::Error> {
+        let values = Buffer::try_from((data.0, data.1))?;
+        let offsets = Buffer::try_from((Datatype::UInt64, data.2))?;
+        let validity = Buffer::try_from((Datatype::UInt8, data.3))?;
+        Ok(Self {
+            data: values,
+            offsets: Some(offsets),
+            validity: Some(validity),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

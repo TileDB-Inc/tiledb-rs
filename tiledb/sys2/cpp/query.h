@@ -59,10 +59,18 @@ class Query {
   QueryStatus status() const;
   bool has_results() const;
 
-  void est_result_size(
+  void est_result_size(rust::Str name, uint64_t& data_size) const;
+
+  void est_result_size_var(
+      rust::Str name, uint64_t& data_size, uint64_t& offsets_Size) const;
+
+  void est_result_size_nullable(
+      rust::Str name, uint64_t& data_size, uint64_t& validity_size) const;
+
+  void est_result_size_var_nullable(
       rust::Str name,
       uint64_t& data_size,
-      uint64_t& offsets_size,
+      uint64_t& offset_size,
       uint64_t& validity_size) const;
 
   uint32_t num_fragments() const;

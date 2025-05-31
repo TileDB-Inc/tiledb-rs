@@ -1,3 +1,4 @@
+use tiledb_sys2::datatype::Datatype;
 use tiledb_sys2::schema;
 
 use tiledb_common::array::{ArrayType, CellOrder, TileOrder};
@@ -103,6 +104,26 @@ impl Schema {
         let mut end = 0u64;
         self.schema.timestamp_range(&mut start, &mut end)?;
         Ok((start, end))
+    }
+
+    pub fn field_info(
+        &self,
+        field: &str,
+    ) -> Result<(Datatype, bool, bool), TileDBError> {
+        if self.domain()?.has_dimension(field)? {
+            let dim = self.domain()?.dimension_from_name(field)?;
+            let dtype = dim.datatype()?;
+            let var = dim.cell_val_num()? == u32::MAX;
+            Ok((dtype, var, false))
+        } else if self.has_attribute(field)? {
+            let attr = self.attribute_from_name(field)?;
+            let dtype = attr.datatype()?;
+            let var = attr.cell_val_num()? == u32::MAX;
+            let nullable = attr.nullable()?;
+            Ok((dtype, var, nullable))
+        } else {
+            return Err(TileDBError::UnknownField(field.into()));
+        }
     }
 }
 

@@ -99,14 +99,15 @@ void Query::set_data_buffer(rust::Str name, Buffer& data) const {
 void Query::set_offsets_buffer(rust::Str name, Buffer& offsets) const {
   auto c_name = static_cast<std::string>(name);
   auto sizes = get_sizes(c_name);
-
   sizes->offsets = offsets.len();
 
-  ctx_->handle_error(tiledb_query_set_data_buffer(
+  void* c_offsets = static_cast<void*>(offsets.as_mut_ptr());
+
+  ctx_->handle_error(tiledb_query_set_offsets_buffer(
       ctx_->ptr().get(),
       query_.get(),
       c_name.c_str(),
-      offsets.as_mut_ptr(),
+      static_cast<uint64_t*>(c_offsets),
       &(sizes->offsets)));
 }
 
@@ -116,7 +117,7 @@ void Query::set_validity_buffer(rust::Str name, Buffer& validity) const {
 
   sizes->validity = validity.len();
 
-  ctx_->handle_error(tiledb_query_set_data_buffer(
+  ctx_->handle_error(tiledb_query_set_validity_buffer(
       ctx_->ptr().get(),
       query_.get(),
       c_name.c_str(),
@@ -157,19 +158,53 @@ void Query::submit_and_finalize() const {
       tiledb_query_submit_and_finalize(ctx_->ptr().get(), query_.get()));
 }
 
-void Query::est_result_size(
-    rust::Str name,
-    uint64_t& data,
-    uint64_t& offsets,
-    uint64_t& validity) const {
+void Query::est_result_size(rust::Str name, uint64_t& data_size) const {
   auto c_name = static_cast<std::string>(name);
+  ctx_->handle_error(tiledb_query_get_est_result_size(
+      ctx_->ptr().get(), query_.get(), c_name.c_str(), &data_size));
+}
+
+void Query::est_result_size_var(
+    rust::Str name, uint64_t& data_size, uint64_t& offsets_size) const {
+  auto c_name = static_cast<std::string>(name);
+  // N.B., it may look like the offsets_size and data_size are backwards, but
+  // this is because core considers the offsets to be the "fixed data"
+  // while the actual value data is "var data".
+  ctx_->handle_error(tiledb_query_get_est_result_size_var(
+      ctx_->ptr().get(),
+      query_.get(),
+      c_name.c_str(),
+      &offsets_size,
+      &data_size));
+}
+
+void Query::est_result_size_nullable(
+    rust::Str name, uint64_t& data_size, uint64_t& validity_size) const {
+  auto c_name = static_cast<std::string>(name);
+  ctx_->handle_error(tiledb_query_get_est_result_size_nullable(
+      ctx_->ptr().get(),
+      query_.get(),
+      c_name.c_str(),
+      &data_size,
+      &validity_size));
+}
+
+void Query::est_result_size_var_nullable(
+    rust::Str name,
+    uint64_t& data_size,
+    uint64_t& offsets_size,
+    uint64_t& validity_size) const {
+  auto c_name = static_cast<std::string>(name);
+  // N.B., it may look like the offsets_size and data_size are backwards, but
+  // this is because core considers the offsets to be the "fixed data"
+  // while the actual value data is "var data".
   ctx_->handle_error(tiledb_query_get_est_result_size_var_nullable(
       ctx_->ptr().get(),
       query_.get(),
       c_name.c_str(),
-      &data,
-      &offsets,
-      &validity));
+      &offsets_size,
+      &data_size,
+      &validity_size));
 }
 
 uint32_t Query::num_fragments() const {
