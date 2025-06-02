@@ -597,6 +597,7 @@ impl QueryConditionField for FieldWithDomain {
     }
 
     fn domain(&self) -> Option<Range> {
+        #[allow(clippy::collapsible_if)]
         if let SchemaField::Attribute(ref a) = self.field {
             if let Some(edata) = self
                 .schema

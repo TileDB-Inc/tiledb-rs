@@ -82,8 +82,7 @@ mod tests {
     fn filesystem_roundtrips() {
         for i in 0..256 {
             let maybe_fs = Filesystem::try_from(i);
-            if maybe_fs.is_ok() {
-                let fs = maybe_fs.unwrap();
+            if let Ok(fs) = maybe_fs {
                 let fs_str = fs.to_string().expect("Error creating string.");
                 let str_fs = Filesystem::from_string(&fs_str)
                     .expect("Error round tripping filesystem string.");
