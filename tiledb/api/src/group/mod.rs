@@ -540,7 +540,11 @@ mod tests {
         let group1_uri = test_uri
             .with_path("group1")
             .map_err(|e| Error::Other(e.to_string()))?;
+
+        assert!(!Group::exists(&tdb, &group1_uri)?);
         Group::create(&tdb, &group1_uri)?;
+        assert!(Group::exists(&tdb, &group1_uri)?);
+
         {
             let mut group1_err =
                 Group::open(&tdb, &group1_uri, QueryType::Read, None)?;
