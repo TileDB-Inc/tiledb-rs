@@ -442,7 +442,7 @@ impl Schema {
         self.filter_list(ffi::tiledb_array_schema_get_offsets_filter_list)
     }
 
-    pub fn nullity_filters(&self) -> TileDBResult<FilterList> {
+    pub fn validity_filters(&self) -> TileDBResult<FilterList> {
         self.filter_list(ffi::tiledb_array_schema_get_validity_filter_list)
     }
 }
@@ -458,7 +458,7 @@ impl PartialEq<Schema> for Schema {
         eq_helper!(self.allows_duplicates(), other.allows_duplicates());
         eq_helper!(self.coordinate_filters(), other.coordinate_filters());
         eq_helper!(self.offsets_filters(), other.offsets_filters());
-        eq_helper!(self.nullity_filters(), other.nullity_filters());
+        eq_helper!(self.validity_filters(), other.validity_filters());
 
         for a in 0..self.num_attributes().unwrap() {
             eq_helper!(self.attribute(a), other.attribute(a));
@@ -671,7 +671,7 @@ impl Builder {
         )
     }
 
-    pub fn nullity_filters<FL>(self, filters: FL) -> TileDBResult<Self>
+    pub fn validity_filters<FL>(self, filters: FL) -> TileDBResult<Self>
     where
         FL: Borrow<FilterList>,
     {
@@ -1097,7 +1097,7 @@ mod tests {
                 CompressionType::Zstd,
             )))?
             .build();
-        let nullity_default = FilterListBuilder::new(&c)?
+        let validity_default = FilterListBuilder::new(&c)?
             .add_filter_data(FilterData::Compression(CompressionData::new(
                 CompressionType::Rle,
             )))?
@@ -1122,7 +1122,7 @@ mod tests {
 
             assert_eq!(coordinates_default, s.coordinate_filters()?);
             assert_eq!(offsets_default, s.offsets_filters()?);
-            assert_eq!(nullity_default, s.nullity_filters()?);
+            assert_eq!(validity_default, s.validity_filters()?);
         }
 
         // set coordinates filter
@@ -1138,7 +1138,7 @@ mod tests {
             };
 
             assert_eq!(offsets_default, s.offsets_filters()?);
-            assert_eq!(nullity_default, s.nullity_filters()?);
+            assert_eq!(validity_default, s.validity_filters()?);
 
             let coordinates = s.coordinate_filters()?;
             assert_eq!(target, coordinates);
@@ -1157,20 +1157,20 @@ mod tests {
             };
 
             assert_eq!(coordinates_default, s.coordinate_filters()?);
-            assert_eq!(nullity_default, s.nullity_filters()?);
+            assert_eq!(validity_default, s.validity_filters()?);
 
             let offsets = s.offsets_filters()?;
             assert_eq!(target, offsets);
         }
 
-        // set nullity filter
+        // set validity filter
         {
             let s: Schema = {
                 let a1 =
                     AttributeBuilder::new(&c, "a1", Datatype::Int32)?.build();
                 Builder::new(&c, ArrayType::Dense, sample_domain(&c))?
                     .add_attribute(a1)?
-                    .nullity_filters(&target)?
+                    .validity_filters(&target)?
                     .build()
                     .unwrap()
             };
@@ -1178,8 +1178,8 @@ mod tests {
             assert_eq!(coordinates_default, s.coordinate_filters()?);
             assert_eq!(offsets_default, s.offsets_filters()?);
 
-            let nullity = s.nullity_filters()?;
-            assert_eq!(target, nullity);
+            let validity = s.validity_filters()?;
+            assert_eq!(target, validity);
         }
 
         Ok(())
@@ -1285,10 +1285,10 @@ mod tests {
             assert_ne!(base, cmp);
         }
 
-        // nullity filters
+        // validity filters
         {
             let cmp = start_schema(base.array_type().unwrap())
-                .nullity_filters(FilterListBuilder::new(&c).unwrap().build())
+                .validity_filters(FilterListBuilder::new(&c).unwrap().build())
                 .unwrap()
                 .build()
                 .unwrap();

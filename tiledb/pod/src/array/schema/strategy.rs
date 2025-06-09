@@ -214,7 +214,7 @@ fn prop_schema_for_domain(
                 (attributes, enumerations),
                 coordinate_filters,
                 offsets_filters,
-                nullity_filters,
+                validity_filters,
             )| {
                 /*
                  * Update the set of dimension/attribute names to be unique.
@@ -265,7 +265,7 @@ fn prop_schema_for_domain(
                     enumerations,
                     coordinate_filters,
                     offsets_filters,
-                    nullity_filters,
+                    validity_filters,
                 }
             },
         )
@@ -365,7 +365,7 @@ pub struct SchemaValueTree {
     selected_attributes: RecordsValueTree<Vec<usize>>,
     coordinate_filters: FilterPipelineValueTree,
     offsets_filters: FilterPipelineValueTree,
-    nullity_filters: FilterPipelineValueTree,
+    validity_filters: FilterPipelineValueTree,
 }
 
 impl SchemaValueTree {
@@ -404,8 +404,8 @@ impl SchemaValueTree {
             offsets_filters: FilterPipelineValueTree::new(
                 schema.offsets_filters,
             ),
-            nullity_filters: FilterPipelineValueTree::new(
-                schema.nullity_filters,
+            validity_filters: FilterPipelineValueTree::new(
+                schema.validity_filters,
             ),
         }
     }
@@ -440,7 +440,7 @@ impl ValueTree for SchemaValueTree {
             enumerations,
             coordinate_filters: self.coordinate_filters.current(),
             offsets_filters: self.offsets_filters.current(),
-            nullity_filters: self.nullity_filters.current(),
+            validity_filters: self.validity_filters.current(),
         }
     }
 
@@ -457,7 +457,7 @@ impl ValueTree for SchemaValueTree {
             || self.tile_order.simplify()
             || self.coordinate_filters.simplify()
             || self.offsets_filters.simplify()
-            || self.nullity_filters.simplify()
+            || self.validity_filters.simplify()
     }
 
     fn complicate(&mut self) -> bool {
@@ -473,7 +473,7 @@ impl ValueTree for SchemaValueTree {
             || self.tile_order.complicate()
             || self.coordinate_filters.complicate()
             || self.offsets_filters.complicate()
-            || self.nullity_filters.complicate()
+            || self.validity_filters.complicate()
     }
 }
 

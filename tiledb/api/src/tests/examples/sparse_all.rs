@@ -151,6 +151,6 @@ pub fn schema(params: Parameters) -> SchemaData {
         enumerations: Default::default(),
         coordinate_filters: Default::default(),
         offsets_filters: Default::default(),
-        nullity_filters: Default::default(),
+        validity_filters: Default::default(),
     }
 }

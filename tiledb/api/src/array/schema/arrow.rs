@@ -54,7 +54,7 @@ pub struct SchemaMetadata {
     enumerations: Vec<EnumerationData>,
     coordinate_filters: FilterMetadata,
     offsets_filters: FilterMetadata,
-    nullity_filters: FilterMetadata,
+    validity_filters: FilterMetadata,
 
     /// Number of dimensions in this schema. The first `ndim` Fields are
     /// Dimensions, not Attributes
@@ -77,7 +77,7 @@ impl SchemaMetadata {
                 &schema.coordinate_filters()?,
             )?,
             offsets_filters: FilterMetadata::new(&schema.offsets_filters()?)?,
-            nullity_filters: FilterMetadata::new(&schema.nullity_filters()?)?,
+            validity_filters: FilterMetadata::new(&schema.validity_filters()?)?,
             ndim: schema.domain()?.num_dimensions()?,
         })
     }
@@ -218,7 +218,7 @@ pub fn from_arrow(
         .tile_order(metadata.tile_order)?
         .coordinate_filters(&metadata.coordinate_filters.create(context)?)?
         .offsets_filters(&metadata.offsets_filters.create(context)?)?
-        .nullity_filters(&metadata.nullity_filters.create(context)?)?;
+        .validity_filters(&metadata.validity_filters.create(context)?)?;
 
     b = metadata
         .enumerations
