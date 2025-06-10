@@ -298,7 +298,7 @@ pub enum WriteSequence {
 }
 
 impl WriteSequence {
-    pub fn iter(&self) -> WriteSequenceRefIter {
+    pub fn iter(&self) -> WriteSequenceRefIter<'_> {
         self.into_iter()
     }
 }

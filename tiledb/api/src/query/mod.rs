@@ -80,7 +80,7 @@ pub trait Query {
     ///     let _ = subarray.ranges();
     /// }
     /// ```
-    fn subarray(&self) -> TileDBResult<Subarray> {
+    fn subarray(&self) -> TileDBResult<Subarray<'_>> {
         let ctx = self.base().context();
         let c_query = *self.base().raw;
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();
@@ -213,7 +213,7 @@ pub trait QueryBuilder: Sized {
     /// Get the in-progress subarray for this query.
     ///
     /// The returned `Subarray` is tied to the lifetime of `self`.
-    fn subarray(&self) -> TileDBResult<Subarray> {
+    fn subarray(&self) -> TileDBResult<Subarray<'_>> {
         let ctx = self.base().context();
         let c_query = *self.base().query.raw;
         let mut c_subarray: *mut ffi::tiledb_subarray_t = out_ptr!();

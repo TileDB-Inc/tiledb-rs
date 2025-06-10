@@ -101,7 +101,7 @@ impl SchemaData {
         }
     }
 
-    pub fn fields(&self) -> FieldDataIter {
+    pub fn fields(&self) -> FieldDataIter<'_> {
         FieldDataIter::new(self)
     }
 

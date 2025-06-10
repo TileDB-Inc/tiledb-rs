@@ -19,7 +19,7 @@ pub trait DataProvider {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>>;
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>>;
 }
 
 pub trait TypedDataProvider {
@@ -40,7 +40,7 @@ where
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<TypedQueryBuffers> {
+    ) -> TileDBResult<TypedQueryBuffers<'_>> {
         let qb = <T as DataProvider>::query_buffers(
             self,
             cell_val_num,
@@ -60,7 +60,7 @@ where
         &self,
         _cell_val_num: CellValNum,
         _is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
@@ -84,7 +84,7 @@ where
         &self,
         _cell_val_num: CellValNum,
         _is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         let ptr = self.data.as_ptr();
         let byte_len = std::mem::size_of_val(&self.data);
         let raw_slice = unsafe { std::slice::from_raw_parts(ptr, byte_len) };
@@ -149,7 +149,7 @@ impl AsSlice for String {
 fn cell_structure<S>(
     cell_val_num: CellValNum,
     items: &[S],
-) -> TileDBResult<CellStructure>
+) -> TileDBResult<CellStructure<'_>>
 where
     S: AsSlice,
 {
@@ -188,7 +188,7 @@ fn query_buffers_impl<S>(
     value: &[S],
     cell_val_num: CellValNum,
     is_nullable: bool,
-) -> TileDBResult<QueryBuffers<<S as AsSlice>::Item>>
+) -> TileDBResult<QueryBuffers<'_, <S as AsSlice>::Item>>
 where
     S: AsSlice,
 {
@@ -226,7 +226,7 @@ where
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         self.as_slice().query_buffers(cell_val_num, is_nullable)
     }
 }
@@ -241,7 +241,7 @@ where
         &self,
         _cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         let validity = if is_nullable {
             Some(Buffer::Owned(vec![1u8; self.len()].into_boxed_slice()))
         } else {
@@ -266,7 +266,7 @@ where
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         query_buffers_impl(self, cell_val_num, is_nullable)
     }
 }
@@ -278,7 +278,7 @@ impl DataProvider for Vec<&str> {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         query_buffers_impl(self, cell_val_num, is_nullable)
     }
 }
@@ -290,7 +290,7 @@ impl DataProvider for Vec<String> {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         query_buffers_impl(self, cell_val_num, is_nullable)
     }
 }

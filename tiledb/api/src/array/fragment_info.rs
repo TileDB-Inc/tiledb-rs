@@ -617,7 +617,7 @@ impl FragmentInfoList {
         self.info.num_fragments()
     }
 
-    pub fn get_fragment(&self, index: u32) -> TileDBResult<FragmentInfo> {
+    pub fn get_fragment(&self, index: u32) -> TileDBResult<FragmentInfo<'_>> {
         if index >= self.num_fragments()? {
             return Err(Error::InvalidIndex(index as usize));
         }
@@ -628,7 +628,7 @@ impl FragmentInfoList {
         })
     }
 
-    pub fn iter(&self) -> TileDBResult<FragmentInfoListIterator> {
+    pub fn iter(&self) -> TileDBResult<FragmentInfoListIterator<'_>> {
         FragmentInfoListIterator::try_from(self)
     }
 }
