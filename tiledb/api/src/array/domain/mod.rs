@@ -152,7 +152,7 @@ impl Domain {
         )))
     }
 
-    pub fn dimensions(&self) -> TileDBResult<Dimensions> {
+    pub fn dimensions(&self) -> TileDBResult<Dimensions<'_>> {
         Dimensions::new(self)
     }
 }

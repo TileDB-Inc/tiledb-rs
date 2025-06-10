@@ -26,7 +26,7 @@ use crate::query::write::input::{
 fn cell_structure_var(
     offsets: &OffsetBuffer<i64>,
     cell_val_num: CellValNum,
-) -> TileDBResult<CellStructure> {
+) -> TileDBResult<CellStructure<'_>> {
     match cell_val_num {
         CellValNum::Fixed(nz) => {
             let expect_len = nz.get() as i64;
@@ -253,7 +253,7 @@ where
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         let data = Buffer::Borrowed(self.values().as_ref());
 
         match cell_val_num {
@@ -299,7 +299,7 @@ impl DataProvider for FixedSizeBinaryArray {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         let cell_structure = cell_structure_fixed(
             self.value_length(),
             self.len(),
@@ -324,7 +324,7 @@ impl DataProvider for LargeBinaryArray {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         let cell_structure = cell_structure_var(self.offsets(), cell_val_num)?;
         let data = Buffer::Borrowed(self.value_data());
         let validity = validity_buffer(self, is_nullable)?;
@@ -344,7 +344,7 @@ impl DataProvider for LargeStringArray {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<QueryBuffers<Self::Unit>> {
+    ) -> TileDBResult<QueryBuffers<'_, Self::Unit>> {
         let cell_structure = cell_structure_var(self.offsets(), cell_val_num)?;
         let data = Buffer::Borrowed(self.value_data());
         let validity = validity_buffer(self, is_nullable)?;
@@ -362,7 +362,7 @@ impl TypedDataProvider for FixedSizeListArray {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<TypedQueryBuffers> {
+    ) -> TileDBResult<TypedQueryBuffers<'_>> {
         let cell_structure = cell_structure_fixed(
             self.value_length(),
             self.len(),
@@ -384,7 +384,7 @@ impl TypedDataProvider for GenericListArray<i64> {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<TypedQueryBuffers> {
+    ) -> TileDBResult<TypedQueryBuffers<'_>> {
         let cell_structure = cell_structure_var(self.offsets(), cell_val_num)?;
         let validity = validity_buffer(self, is_nullable)?;
 
@@ -402,7 +402,7 @@ impl TypedDataProvider for dyn ArrowArray {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<TypedQueryBuffers> {
+    ) -> TileDBResult<TypedQueryBuffers<'_>> {
         let c = cell_val_num;
         let n = is_nullable;
 
