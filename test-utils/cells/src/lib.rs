@@ -905,79 +905,10 @@ mod tests {
     use tiledb_common::Datatype;
     use tiledb_common::array::CellValNum;
     use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
-    use tiledb_common::query::condition::strategy::{
-        QueryConditionField, QueryConditionSchema,
-    };
-    use tiledb_common::query::condition::{EqualityOp, SetMembers};
     use tiledb_pod::array::schema::SchemaData;
 
     use super::*;
     use crate::strategy::{CellsParameters, CellsStrategySchema};
-
-    struct CellsAsQueryConditionSchema {
-        fields: Vec<CellsQueryConditionField>,
-    }
-
-    struct CellsQueryConditionField {
-        cells: Rc<Cells>,
-        name: String,
-    }
-
-    impl CellsAsQueryConditionSchema {
-        pub fn new(cells: Rc<Cells>) -> CellsAsQueryConditionSchema {
-            Self {
-                fields: cells
-                    .fields
-                    .keys()
-                    .map(|name| CellsQueryConditionField {
-                        cells: Rc::clone(&cells),
-                        name: name.to_owned(),
-                    })
-                    .collect(),
-            }
-        }
-    }
-
-    impl QueryConditionSchema for CellsAsQueryConditionSchema {
-        /// Returns a list of fields which can have query conditions applied to them.
-        fn fields(&self) -> Vec<&dyn QueryConditionField> {
-            self.fields
-                .iter()
-                .map(|f| f as &dyn QueryConditionField)
-                .collect::<Vec<&dyn QueryConditionField>>()
-        }
-    }
-
-    impl QueryConditionField for CellsQueryConditionField {
-        fn name(&self) -> &str {
-            &self.name
-        }
-
-        fn equality_ops(&self) -> Option<Vec<EqualityOp>> {
-            // all ops are supported
-            None
-        }
-
-        fn domain(&self) -> Option<tiledb_common::range::Range> {
-            self.cells.fields.get(&self.name).unwrap().domain()
-        }
-
-        fn set_members(&self) -> Option<SetMembers> {
-            self.cells.enumeration_values.get(&self.name).and_then(|e| {
-                typed_field_data_go!(
-                    e,
-                    _DT,
-                    _members,
-                    Some(SetMembers::from(_members.clone())),
-                    {
-                        // NB: this is Var, we could do String but it's just to test the test code
-                        // so we will skip
-                        None
-                    }
-                )
-            })
-        }
-    }
 
     fn do_cells_extend(dst: Cells, src: Cells) {
         let orig_dst = dst.clone();
@@ -1605,9 +1536,11 @@ mod tests {
         strat_cells_with_qc_fields().prop_flat_map(|c| {
             let c = Rc::new(c);
             let params = QueryConditionParameters {
-                domain: Some(Rc::new(CellsAsQueryConditionSchema::new(
-                    Rc::clone(&c),
-                ))),
+                domain: Some(Rc::new(
+                    super::strategy::CellsAsQueryConditionSchema::new(
+                        Rc::clone(&c),
+                    ),
+                )),
                 ..Default::default()
             };
             let strat_qc = any_with::<Predicate>(params.clone())

@@ -10,11 +10,16 @@ use proptest::test_runner::TestRunner;
 use strategy_ext::records::RecordsValueTree;
 use tiledb_common::array::{ArrayType, CellValNum};
 use tiledb_common::datatype::{Datatype, PhysicalType};
+use tiledb_common::query::condition::strategy::{
+    QueryConditionField, QueryConditionSchema,
+};
+use tiledb_common::query::condition::*;
 use tiledb_common::{dimension_constraints_go, physical_type_go};
 use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 
 use super::Cells;
 use super::field::FieldData;
+use crate::typed_field_data_go;
 
 trait IntegralType: Eq + Ord + PhysicalType {}
 
@@ -634,5 +639,71 @@ impl Arbitrary for Cells {
                 })
                 .boxed()
         }
+    }
+}
+
+/// Enables [Cells] to be used in parameters for [QueryCondition].
+pub struct CellsAsQueryConditionSchema {
+    fields: Vec<CellsQueryConditionField>,
+}
+
+struct CellsQueryConditionField {
+    cells: Rc<Cells>,
+    name: String,
+}
+
+impl CellsAsQueryConditionSchema {
+    pub fn new(cells: Rc<Cells>) -> CellsAsQueryConditionSchema {
+        Self {
+            fields: cells
+                .fields
+                .keys()
+                .map(|name| CellsQueryConditionField {
+                    cells: Rc::clone(&cells),
+                    name: name.to_owned(),
+                })
+                .collect(),
+        }
+    }
+}
+
+impl QueryConditionSchema for CellsAsQueryConditionSchema {
+    /// Returns a list of fields which can have query conditions applied to them.
+    fn fields(&self) -> Vec<&dyn QueryConditionField> {
+        self.fields
+            .iter()
+            .map(|f| f as &dyn QueryConditionField)
+            .collect::<Vec<&dyn QueryConditionField>>()
+    }
+}
+
+impl QueryConditionField for CellsQueryConditionField {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn equality_ops(&self) -> Option<Vec<EqualityOp>> {
+        // all ops are supported
+        None
+    }
+
+    fn domain(&self) -> Option<tiledb_common::range::Range> {
+        self.cells.fields.get(&self.name).unwrap().domain()
+    }
+
+    fn set_members(&self) -> Option<SetMembers> {
+        self.cells.enumeration_values.get(&self.name).and_then(|e| {
+            typed_field_data_go!(
+                e,
+                _DT,
+                _members,
+                Some(SetMembers::from(_members.clone())),
+                {
+                    // NB: this is Var, we could do String but it's just to test the test code
+                    // so we will skip
+                    None
+                }
+            )
+        })
     }
 }

@@ -159,7 +159,7 @@ impl Records for FieldData {
 /// use cells::typed_field_data_go;
 ///
 /// fn dedup_cells(cells: &mut FieldData) {
-///     typed_field_data_go!(cells, ref mut cells_interior, cells_interior.dedup())
+///     typed_field_data_go!(cells, cells_interior, cells_interior.dedup())
 /// }
 /// let mut cells = FieldData::UInt64(vec![1, 2, 2, 3, 2]);
 /// dedup_cells(&mut cells);
