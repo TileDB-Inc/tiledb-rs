@@ -43,8 +43,8 @@ impl TryFrom<&Schema> for SchemaData {
             offsets_filters: Vec::<FilterData>::try_from(
                 &schema.offsets_filters()?,
             )?,
-            nullity_filters: Vec::<FilterData>::try_from(
-                &schema.nullity_filters()?,
+            validity_filters: Vec::<FilterData>::try_from(
+                &schema.validity_filters()?,
             )?,
         })
     }
@@ -69,7 +69,7 @@ impl Factory for SchemaData {
         )?
         .coordinate_filters(self.coordinate_filters.create(context)?)?
         .offsets_filters(self.offsets_filters.create(context)?)?
-        .nullity_filters(self.nullity_filters.create(context)?)?;
+        .validity_filters(self.validity_filters.create(context)?)?;
 
         b = self
             .enumerations

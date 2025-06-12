@@ -32,7 +32,7 @@ pub struct SchemaData {
     pub enumerations: Vec<EnumerationData>,
     pub coordinate_filters: Vec<FilterData>,
     pub offsets_filters: Vec<FilterData>,
-    pub nullity_filters: Vec<FilterData>,
+    pub validity_filters: Vec<FilterData>,
 }
 
 impl SchemaData {

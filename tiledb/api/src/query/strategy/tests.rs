@@ -798,7 +798,7 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
         }],
         coordinate_filters: Default::default(),
         offsets_filters: Default::default(),
-        nullity_filters: Default::default(),
+        validity_filters: Default::default(),
     };
     let writes =
         WriteSequence::Sparse(cells::write::SparseWriteSequence::from(vec![
@@ -956,7 +956,7 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
         }],
         coordinate_filters: Default::default(),
         offsets_filters: Default::default(),
-        nullity_filters: Default::default(),
+        validity_filters: Default::default(),
     };
 
     let writes =
