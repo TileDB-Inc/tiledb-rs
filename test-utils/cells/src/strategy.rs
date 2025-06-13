@@ -8,13 +8,18 @@ use proptest::prelude::*;
 use proptest::strategy::{NewTree, ValueTree};
 use proptest::test_runner::TestRunner;
 use strategy_ext::records::RecordsValueTree;
+use tiledb_common::array::schema::EnumerationKey;
 use tiledb_common::array::{ArrayType, CellValNum};
+use tiledb_common::datatype::physical::BitsKeyAdapter;
 use tiledb_common::datatype::{Datatype, PhysicalType};
 use tiledb_common::query::condition::strategy::{
     QueryConditionField, QueryConditionSchema,
 };
-use tiledb_common::query::condition::*;
-use tiledb_common::{dimension_constraints_go, physical_type_go};
+use tiledb_common::query::condition::{Field as ASTField, *};
+use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
+use tiledb_common::{
+    dimension_constraints_go, physical_type_go, set_members_go,
+};
 use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 
 use super::Cells;
@@ -705,5 +710,210 @@ impl QueryConditionField for CellsQueryConditionField {
                 }
             )
         })
+    }
+}
+
+pub struct SchemaWithDomain {
+    fields: Vec<FieldWithDomain>,
+}
+
+impl SchemaWithDomain {
+    pub fn new(schema: Rc<SchemaData>, cells: &Cells) -> Self {
+        Self {
+            fields: cells
+                .domain()
+                .into_iter()
+                .map(|(f, domain)| FieldWithDomain {
+                    schema: Rc::clone(&schema),
+                    field: schema.field(f).unwrap(),
+                    domain,
+                })
+                .collect::<Vec<_>>(),
+        }
+    }
+}
+
+pub struct FieldWithDomain {
+    schema: Rc<SchemaData>,
+    field: SchemaField,
+    domain: Option<Range>,
+}
+
+impl QueryConditionSchema for SchemaWithDomain {
+    fn fields(&self) -> Vec<&dyn QueryConditionField> {
+        self.fields
+            .iter()
+            .map(|f| f as &dyn QueryConditionField)
+            .collect::<Vec<_>>()
+    }
+}
+
+impl QueryConditionField for FieldWithDomain {
+    fn name(&self) -> &str {
+        self.field.name()
+    }
+
+    fn equality_ops(&self) -> Option<Vec<EqualityOp>> {
+        match self.field {
+            SchemaField::Dimension(_) => None,
+            SchemaField::Attribute(ref a) => {
+                if let Some(edata) = self
+                    .schema
+                    .enumeration(EnumerationKey::AttributeName(&a.name))
+                {
+                    if !ASTField::is_allowed_type(
+                        edata.datatype,
+                        edata.cell_val_num.unwrap_or(CellValNum::single()),
+                    ) {
+                        // only null test allowed for these
+                        Some(vec![])
+                    } else if matches!(edata.ordered, Some(true)) {
+                        // anything goes
+                        None
+                    } else {
+                        Some(vec![EqualityOp::Equal, EqualityOp::NotEqual])
+                    }
+                } else if !ASTField::is_allowed_type(
+                    a.datatype,
+                    a.cell_val_num.unwrap_or(CellValNum::single()),
+                ) {
+                    // only null test allowed for these
+                    Some(vec![])
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn domain(&self) -> Option<Range> {
+        #[allow(clippy::collapsible_if)]
+        if let SchemaField::Attribute(ref a) = self.field {
+            if let Some(edata) = self
+                .schema
+                .enumeration(EnumerationKey::AttributeName(&a.name))
+            {
+                // query condition domain is in terms of the enumerated values,
+                // not the attribute values domaion (which are indexes into the enumerated values)
+                let members = edata.query_condition_set_members()?;
+                return Some(set_members_go!(
+                    members,
+                    _DT,
+                    ref members,
+                    {
+                        let min = *members.iter().min()?;
+                        let max = *members.iter().max()?;
+                        Range::Single(SingleValueRange::from(min..=max))
+                    },
+                    {
+                        let min = *members.iter().map(BitsKeyAdapter).min()?.0;
+                        let max = *members.iter().map(BitsKeyAdapter).max()?.0;
+                        Range::Single(SingleValueRange::from(min..=max))
+                    },
+                    {
+                        let min = members.iter().min()?.clone();
+                        let max = members.iter().max()?.clone();
+                        Range::Var(VarValueRange::from((
+                            min.into_bytes().into_boxed_slice(),
+                            max.into_bytes().into_boxed_slice(),
+                        )))
+                    }
+                ));
+            }
+        }
+
+        // see query_ast.cc
+        if matches!(
+            self.field.datatype(),
+            Datatype::Any
+                | Datatype::StringUtf16
+                | Datatype::StringUtf32
+                | Datatype::StringUcs2
+                | Datatype::StringUcs4
+                | Datatype::Blob
+                | Datatype::GeometryWkb
+                | Datatype::GeometryWkt
+        ) {
+            None
+        } else if matches!(self.domain, Some(Range::Single(_)))
+            || (matches!(
+                self.field.datatype(),
+                Datatype::StringAscii | Datatype::StringUtf8
+            ) && matches!(
+                self.field.cell_val_num(),
+                None | Some(CellValNum::Var)
+            ))
+        {
+            self.domain.clone()
+        } else {
+            None
+        }
+    }
+
+    fn set_members(&self) -> Option<SetMembers> {
+        match self.field {
+            SchemaField::Dimension(_) => None,
+            SchemaField::Attribute(ref a) => {
+                let edata = self
+                    .schema
+                    .enumeration(EnumerationKey::AttributeName(&a.name))?;
+                edata.query_condition_set_members()
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use proptest::prelude::*;
+    use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
+
+    use super::*;
+    use crate::strategy::{CellsParameters, CellsStrategySchema};
+
+    fn strat_schema_arbitrary_query_condition()
+    -> impl Strategy<Value = (Rc<SchemaData>, Rc<Cells>, Vec<QueryConditionExpr>)>
+    {
+        any::<SchemaData>()
+            .prop_flat_map(|schema| {
+                let schema = Rc::new(schema);
+                let strat_cells = any_with::<Cells>(CellsParameters {
+                    schema: Some(CellsStrategySchema::WriteSchema(Rc::clone(
+                        &schema,
+                    ))),
+                    ..Default::default()
+                });
+                (Just(schema), strat_cells)
+            })
+            .prop_flat_map(|(schema, cells)| {
+                let cells = Rc::new(cells);
+                let qc_params = QueryConditionParameters {
+                    domain: Some(Rc::new(SchemaWithDomain::new(
+                        Rc::clone(&schema),
+                        &cells,
+                    ))),
+                    ..Default::default()
+                };
+                (
+                    Just(schema),
+                    Just(cells),
+                    proptest::collection::vec(
+                        any_with::<QueryConditionExpr>(qc_params),
+                        1..=32,
+                    ),
+                )
+            })
+    }
+
+    proptest! {
+        /// Tests that we don't panic while running the strategy.
+        /// This should give some confidence in the correctness of the trait implementations
+        /// of `SchemaWithDomain`.
+        #[test]
+        fn schema_arbitrary_query_condition((_, _, _) in strat_schema_arbitrary_query_condition())
+        {
+        }
     }
 }
