@@ -11,6 +11,7 @@ members = [
     "tiledb/sys-defs",
     "tiledb/utils",
     "test-utils/arrow-ext",
+    "test-utils/arrow-proptest-strategies",
     "test-utils/cells",
     "test-utils/proptest-config",
     "test-utils/strategy-ext",

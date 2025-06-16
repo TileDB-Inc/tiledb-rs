@@ -6,7 +6,7 @@ use arrow::record_batch::RecordBatch;
 use proptest::collection::SizeRange;
 use proptest::prelude::*;
 
-use crate::strategy::array::{ColumnParameters, prop_column};
+use crate::array::{prop_column, ColumnParameters};
 
 #[derive(Clone, Debug)]
 pub struct RecordBatchParameters {
@@ -84,7 +84,7 @@ mod tests {
     proptest! {
         #[test]
         fn strategy_validity(_ in prop_record_batch(
-                crate::strategy::schema::prop_schema(Default::default()).boxed(),
+                crate::schema::prop_schema(Default::default()).boxed(),
                 Default::default())
         ) {
             // NB: empty, this just checks that we produce correct record batches

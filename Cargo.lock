@@ -282,6 +282,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrow-ext"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "half",
+ "proptest",
+ "strategy-ext",
+ "tiledb-common",
+ "tiledb-pod",
+ "tiledb-proptest-config",
+]
+
+[[package]]
 name = "arrow-ipc"
 version = "52.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -328,6 +341,16 @@ dependencies = [
  "arrow-select",
  "half",
  "num",
+]
+
+[[package]]
+name = "arrow-proptest-strategies"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "half",
+ "proptest",
+ "strategy-ext",
 ]
 
 [[package]]
@@ -1870,19 +1893,6 @@ dependencies = [
  "tiledb-sys-cfg",
  "tiledb-utils",
  "uri",
-]
-
-[[package]]
-name = "tiledb-arrow-ext"
-version = "0.1.0"
-dependencies = [
- "arrow",
- "half",
- "proptest",
- "strategy-ext",
- "tiledb-common",
- "tiledb-pod",
- "tiledb-proptest-config",
 ]
 
 [[package]]
