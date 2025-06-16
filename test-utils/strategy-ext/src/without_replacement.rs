@@ -44,14 +44,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use proptest::prelude::*;
+
+    use super::*;
+    use crate::StrategyExt;
 
     #[test]
     fn without_replacement() {
         let previous = RefCell::new(HashSet::new());
 
-        proptest!(|(s in any::<String>().without_replacement())| {
+        proptest!(|(s in any::<String>().prop_without_replacement())| {
             let first_insert = previous.borrow_mut().insert(s);
             assert!(first_insert);
         });
