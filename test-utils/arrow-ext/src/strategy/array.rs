@@ -3,7 +3,7 @@ use std::sync::Arc;
 use arrow::array::*;
 use arrow::buffer::{Buffer, NullBuffer, OffsetBuffer};
 use arrow::datatypes::*;
-use proptest::collection::{vec as strat_vec, SizeRange};
+use proptest::collection::{SizeRange, vec as strat_vec};
 use proptest::prelude::*;
 
 pub const DEFAULT_NONE_PROBABILITY: f64 = 0.1;
@@ -33,12 +33,8 @@ pub fn prop_column(
     }
 
     macro_rules! strat {
-        ($nrows:expr, $strat:expr, $arraytype:ident) => {{
-            strat!($nrows, $strat, $arraytype::from, $arraytype::from)
-        }};
-        ($nrows:expr, $strat:expr, $makearray:expr) => {{
-            strat!($nrows, $strat, $makearray, $makearray)
-        }};
+        ($nrows:expr, $strat:expr, $arraytype:ident) => {{ strat!($nrows, $strat, $arraytype::from, $arraytype::from) }};
+        ($nrows:expr, $strat:expr, $makearray:expr) => {{ strat!($nrows, $strat, $makearray, $makearray) }};
         ($nrows:expr, $strat:expr, $nullable:expr, $nonnullable:expr) => {{
             if field.is_nullable() && params.allow_null_values {
                 strat_vec(optional($strat), $nrows)
@@ -55,9 +51,7 @@ pub fn prop_column(
     }
 
     macro_rules! any {
-        ($nrows:expr, $datatype:ty, $arraytype:ident) => {{
-            strat!($nrows, any::<$datatype>(), $arraytype)
-        }};
+        ($nrows:expr, $datatype:ty, $arraytype:ident) => {{ strat!($nrows, any::<$datatype>(), $arraytype) }};
     }
 
     macro_rules! binary {

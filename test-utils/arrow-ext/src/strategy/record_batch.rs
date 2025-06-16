@@ -6,7 +6,7 @@ use arrow::record_batch::RecordBatch;
 use proptest::collection::SizeRange;
 use proptest::prelude::*;
 
-use crate::strategy::array::{prop_column, ColumnParameters};
+use crate::strategy::array::{ColumnParameters, prop_column};
 
 #[derive(Clone, Debug)]
 pub struct RecordBatchParameters {
