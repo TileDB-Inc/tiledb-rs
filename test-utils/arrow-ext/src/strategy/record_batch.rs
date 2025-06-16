@@ -84,7 +84,7 @@ mod tests {
     proptest! {
         #[test]
         fn strategy_validity(_ in prop_record_batch(
-                crate::schema::prop_schema(Default::default()).boxed(),
+                crate::strategy::schema::prop_schema(Default::default()).boxed(),
                 Default::default())
         ) {
             // NB: empty, this just checks that we produce correct record batches
