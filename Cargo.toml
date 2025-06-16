@@ -10,6 +10,7 @@ members = [
     "tiledb/sys-cfg",
     "tiledb/sys-defs",
     "tiledb/utils",
+    "test-utils/arrow-ext",
     "test-utils/cells",
     "test-utils/proptest-config",
     "test-utils/strategy-ext",
@@ -46,6 +47,7 @@ arrow-schema = "52.0.0"
 bindgen = "0.70"
 cells = { path = "test-utils/cells" }
 cmake = "0.1"
+half = { version = "2.2.1", default-features = false }
 itertools = "0"
 num-traits = "0.2"
 paste = "1.0"

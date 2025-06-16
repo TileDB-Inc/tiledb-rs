@@ -1,0 +1,24 @@
+[package]
+name = "tiledb-arrow-ext"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+arrow = { workspace = true }
+half = { workspace = true, optional = true }
+proptest = { workspace = true, optional = true }
+strategy-ext = { workspace = true, optional = true }
+tiledb-common = { workspace = true }
+tiledb-pod = { workspace = true }
+tiledb-proptest-config = { workspace = true, optional = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tiledb-common = { workspace = true, features = ["proptest-strategies"] }
+tiledb-pod = { workspace = true, features = ["proptest-strategies"] }
+tiledb-proptest-config = { workspace = true }
+
+[features]
+default = []
+proptest-strategies = ["dep:half", "dep:proptest", "dep:strategy-ext", "dep:tiledb-proptest-config", "tiledb-common/proptest-strategies", "tiledb-pod/proptest-strategies"]

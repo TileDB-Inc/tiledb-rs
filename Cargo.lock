@@ -1873,6 +1873,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiledb-arrow-ext"
+version = "0.1.0"
+dependencies = [
+ "arrow",
+ "half",
+ "proptest",
+ "strategy-ext",
+ "tiledb-common",
+ "tiledb-pod",
+ "tiledb-proptest-config",
+]
+
+[[package]]
 name = "tiledb-common"
 version = "0.1.0"
 dependencies = [
