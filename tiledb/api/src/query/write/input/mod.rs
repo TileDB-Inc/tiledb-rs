@@ -27,7 +27,7 @@ pub trait TypedDataProvider {
         &self,
         cell_val_num: CellValNum,
         is_nullable: bool,
-    ) -> TileDBResult<TypedQueryBuffers>;
+    ) -> TileDBResult<TypedQueryBuffers<'_>>;
 }
 
 impl<T> TypedDataProvider for T
