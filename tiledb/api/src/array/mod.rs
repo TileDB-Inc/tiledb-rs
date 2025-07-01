@@ -646,7 +646,8 @@ impl Array {
                     return Ok(None);
                 }
 
-                if start_size % std::mem::size_of::<DT>() as u64 != 0 {
+                if !start_size.is_multiple_of(std::mem::size_of::<DT>() as u64)
+                {
                     return Err(Error::from(
                         DatatypeError::physical_type_incompatible::<DT>(
                             datatype,
@@ -654,7 +655,7 @@ impl Array {
                     ));
                 }
 
-                if end_size % std::mem::size_of::<DT>() as u64 != 0 {
+                if !end_size.is_multiple_of(std::mem::size_of::<DT>() as u64) {
                     return Err(Error::from(
                         DatatypeError::physical_type_incompatible::<DT>(
                             datatype,
@@ -710,7 +711,8 @@ impl Array {
                     return Ok(None);
                 }
 
-                if start_size % std::mem::size_of::<DT>() as u64 != 0 {
+                if !start_size.is_multiple_of(std::mem::size_of::<DT>() as u64)
+                {
                     return Err(Error::from(
                         DatatypeError::physical_type_incompatible::<DT>(
                             datatype,
@@ -718,7 +720,7 @@ impl Array {
                     ));
                 }
 
-                if end_size % std::mem::size_of::<DT>() as u64 != 0 {
+                if !end_size.is_multiple_of(std::mem::size_of::<DT>() as u64) {
                     return Err(Error::from(
                         DatatypeError::physical_type_incompatible::<DT>(
                             datatype,

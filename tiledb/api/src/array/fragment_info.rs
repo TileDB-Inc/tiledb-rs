@@ -345,13 +345,13 @@ impl FragmentInfoInternal {
         })?;
 
         physical_type_go!(datatype, DT, {
-            if start_size % std::mem::size_of::<DT>() as u64 != 0 {
+            if !start_size.is_multiple_of(std::mem::size_of::<DT>() as u64) {
                 return Err(Error::Datatype(
                     DatatypeError::physical_type_incompatible::<DT>(datatype),
                 ));
             }
 
-            if end_size % std::mem::size_of::<DT>() as u64 != 0 {
+            if !end_size.is_multiple_of(std::mem::size_of::<DT>() as u64) {
                 return Err(Error::Datatype(
                     DatatypeError::physical_type_incompatible::<DT>(datatype),
                 ));
@@ -460,13 +460,13 @@ impl FragmentInfoInternal {
         })?;
 
         physical_type_go!(datatype, DT, {
-            if start_size % std::mem::size_of::<DT>() as u64 != 0 {
+            if !start_size.is_multiple_of(std::mem::size_of::<DT>() as u64) {
                 return Err(Error::Datatype(
                     DatatypeError::physical_type_incompatible::<DT>(datatype),
                 ));
             }
 
-            if end_size % std::mem::size_of::<DT>() as u64 != 0 {
+            if !end_size.is_multiple_of(std::mem::size_of::<DT>() as u64) {
                 return Err(Error::Datatype(
                     DatatypeError::physical_type_incompatible::<DT>(datatype),
                 ));

@@ -141,7 +141,8 @@ impl Attribute {
         })?;
 
         assert!(
-            c_size % std::mem::size_of::<F::PhysicalType>() as u64 == 0,
+            c_size
+                .is_multiple_of(std::mem::size_of::<F::PhysicalType>() as u64),
             "Unexpected fill value size for compatible type {}: expected multiple of {}, found {}",
             std::any::type_name::<F::PhysicalType>(),
             std::mem::size_of::<F::PhysicalType>(),
@@ -186,7 +187,8 @@ impl Attribute {
         })?;
 
         assert!(
-            c_size % std::mem::size_of::<F::PhysicalType>() as u64 == 0,
+            c_size
+                .is_multiple_of(std::mem::size_of::<F::PhysicalType>() as u64),
             "Unexpected fill value size for compatible type {}: expected multiple of {}, found {}",
             std::any::type_name::<F::PhysicalType>(),
             std::mem::size_of::<F::PhysicalType>(),

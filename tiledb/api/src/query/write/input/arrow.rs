@@ -267,7 +267,7 @@ where
                 })
             }
             CellValNum::Fixed(nz) => {
-                if self.values().len() % nz.get() as usize == 0 {
+                if self.values().len().is_multiple_of(nz.get() as usize) {
                     return Err(Error::UnexpectedCellStructure {
                         found: CellValNum::Fixed(nz),
                         expected: CellValNum::single(),
