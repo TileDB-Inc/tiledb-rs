@@ -144,7 +144,7 @@ impl Enumeration {
 
         // The size returned is the number of bytes, where from_raw_parts
         // wants the number of elements.
-        assert!((size as usize).is_multiple_of(std::mem::size_of::<u64>()));
+        assert!(size as usize % std::mem::size_of::<u64>() == 0);
         let elems = size as usize / std::mem::size_of::<u64>();
         Ok(Some(unsafe { std::slice::from_raw_parts(ptr, elems) }))
     }
