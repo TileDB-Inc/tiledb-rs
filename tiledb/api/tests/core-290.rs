@@ -2,28 +2,15 @@ use std::collections::HashMap;
 use std::ops::RangeInclusive;
 
 use cells::write::DenseWriteInput;
-use cells::{Cells, FieldData};
-use itertools::Itertools;
+use cells::Cells;
 use proptest::prelude::*;
-use proptest::strategy::ValueTree;
-use proptest::test_runner::TestRunner;
-use strategy_ext::StrategyExt;
-use tiledb_api::array::fragment_info::Builder as FragmentMetadataBuilder;
 use tiledb_api::array::schema::Schema;
 use tiledb_api::array::Array;
 use tiledb_api::config::Config;
-use tiledb_api::filter::FilterListBuilder;
-use tiledb_api::query::condition::strategy::QueryConditionValueTree;
-use tiledb_api::query::{
-    Query, QueryBuilder, QueryConditionExpr, QueryLayout, ReadBuilder,
-    ReadQuery, ReadQueryBuilder, ToWriteQuery, WriteBuilder,
-};
+use tiledb_api::query::{Query, QueryBuilder, ToWriteQuery, WriteBuilder};
 use tiledb_api::Context;
-use tiledb_common::array::dimension::DimensionConstraints;
-use tiledb_common::array::{ArrayType, CellOrder, CellValNum, Mode, TileOrder};
-use tiledb_common::filter::{CompressionData, CompressionType, FilterData};
+use tiledb_common::array::{CellOrder, Mode};
 use tiledb_common::range::SingleValueRange;
-use tiledb_common::Datatype;
 use uri::TestArrayUri;
 
 fn repro_schema(ctx: &Context) -> anyhow::Result<Schema> {
@@ -47,7 +34,7 @@ fn repro_consolidation_config() -> anyhow::Result<Config> {
 
 #[derive(Debug)]
 struct Core290Input {
-    fragments: Vec<Core290Write>,
+    batches: Vec<Vec<Core290Write>>,
 }
 
 impl Arbitrary for Core290Input {
@@ -55,12 +42,16 @@ impl Arbitrary for Core290Input {
     type Strategy = BoxedStrategy<Self>;
 
     fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
-        proptest::collection::vec(
+        let minute = proptest::collection::vec(
             strat_core_290_write_input(1282876277, 1282880241),
-            1..=1024,
-        )
-        .prop_map(|fragments| Core290Input { fragments })
-        .boxed()
+            1..=8,
+        );
+
+        let consolidation_batch = proptest::collection::vec(minute, 1..=20);
+
+        consolidation_batch
+            .prop_map(|batches| Core290Input { batches })
+            .boxed()
     }
 }
 
@@ -128,30 +119,28 @@ fn instance(input: Core290Input) -> anyhow::Result<()> {
 
     Array::create(&ctx, &uri, repro_schema(&ctx)?)?;
 
-    let _ = input
-        .fragments
-        .into_iter()
-        .map(|w290| w290.to_write_input())
-        .try_fold(Array::open(&ctx, &uri, Mode::Write)?, |a, f| {
-            let w = f.attach_write(WriteBuilder::new(a)?)?.build();
-            w.submit()?;
-            w.finalize()
-        })?;
+    for batch in input.batches.into_iter() {
+        let _ = batch
+            .into_iter()
+            .map(|w290| w290.to_write_input())
+            .try_fold(Array::open(&ctx, &uri, Mode::Write)?, |a, f| {
+                let w = f.attach_write(WriteBuilder::new(a)?)?.build();
+                w.submit()?;
+                w.finalize()
+            })?;
 
-    Ok(Array::consolidate(
-        &ctx,
-        &uri,
-        Some(&repro_consolidation_config()?),
-    )?)
+        Array::consolidate(&ctx, &uri, Some(&repro_consolidation_config()?))?;
+    }
+    Ok(())
 }
 
 #[test]
 fn example_core290() -> anyhow::Result<()> {
     let input = Core290Input {
-        fragments: vec![Core290Write {
+        batches: vec![vec![Core290Write {
             z: 1282876277..=1282876674,
             s: 0..=65535,
-        }],
+        }]],
     };
     instance(input)
 }
