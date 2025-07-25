@@ -24,6 +24,7 @@ tiledb-sys = { workspace = true }
 
 [dev-dependencies]
 cells = { workspace = true, features = ["proptest-strategies"] }
+clap = { workspace = true }
 num-traits = { workspace = true }
 proptest = { workspace = true }
 strategy-ext = { workspace = true }
