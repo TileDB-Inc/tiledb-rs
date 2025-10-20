@@ -10,7 +10,7 @@ TILEDB_REF_URL = API + "repos/TileDB-Inc/TileDB/git/ref/{ref}"
 NIGHTLY_RELEASE_URL = API + "repos/TileDB-Inc/tiledb-rs/releases/tags/nightlies"
 
 BUILD_SHARED_LIBS = ["ON", "OFF"]
-VERSIONS = ["main", "2.28.0"]
+VERSIONS = ["main", "2.28.1"]
 
 # This is taken from the TileDB Release workflow found here:
 #
@@ -41,7 +41,7 @@ BASE_MATRIX = [
     },
     {
         "platform": "macos-x86_64",
-        "os": "macos-13",
+        "os": "macos-15-intel",
         "cmake_args": "-DCMAKE_OSX_ARCHITECTURES=x86_64",
         "MACOSX_DEPLOYMENT_TARGET": "11",
         "triplet": "x64-osx-release"

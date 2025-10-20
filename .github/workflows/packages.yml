@@ -60,7 +60,10 @@ jobs:
         with:
           crate: armerge
       - name: Setup Homebrew
-        run: brew install automake ninja
+        run: brew install make automake ninja
+        if: ${{ !matrix.prebuilt && startsWith(matrix.os, 'macos-') == true }}
+      - name: Setup SDKROOT on MacOS
+        run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> $GITHUB_ENV
         if: ${{ !matrix.prebuilt && startsWith(matrix.os, 'macos-') == true }}
       - name: Setup manylinux
         if: ${{ !matrix.prebuilt && startsWith(matrix.platform, 'linux') == true }}
