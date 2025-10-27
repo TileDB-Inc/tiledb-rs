@@ -693,13 +693,13 @@ impl MultiValueRange {
         crate::multi_value_range_go!(
             self,
             DT,
-            start,
-            end,
+            _start,
+            _end,
             {
                 let iter_factor = i128::from(DT::MAX) - i128::from(DT::MIN) + 1;
-                start
+                _start
                     .iter()
-                    .zip(end.iter())
+                    .zip(_end.iter())
                     .skip_while(|(lb, ub)| lb == ub)
                     .try_fold(0i128, |num_cells, (lower, upper)| {
                         if upper < lower && num_cells == 0 {

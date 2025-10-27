@@ -214,9 +214,9 @@ impl DimensionConstraints {
         let (low, high) = crate::dimension_constraints_go!(
             self,
             _DT,
-            [low, high],
+            [_low, _high],
             _,
-            (i128::from(*low), i128::from(*high)),
+            (i128::from(*_low), i128::from(*_high)),
             return None,
             return None
         );
@@ -230,8 +230,8 @@ impl DimensionConstraints {
             self,
             _DT,
             _,
-            extent,
-            extent.map(|extent| {
+            _extent,
+            _extent.map(|extent| {
                 #[allow(clippy::unnecessary_fallible_conversions)]
                 // this `unwrap` should be safe, validation will confirm nonzero
                 usize::try_from(extent).unwrap()
