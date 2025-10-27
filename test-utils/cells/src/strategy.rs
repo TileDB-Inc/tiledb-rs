@@ -171,7 +171,7 @@ impl Arbitrary for FieldData {
                 dimension_constraints_go!(
                     d.constraints,
                     DT,
-                    ref domain,
+                    _,
                     _,
                     {
                         <DT as ArbitraryFieldData>::arbitrary(

@@ -282,10 +282,9 @@ impl Strategy for DenseWriteStrategy {
         /* prepare tree for each subarray dimension */
         let strat_subarray = bounding_subarray
             .iter()
-            .cloned()
             .map(|dim| {
                 single_value_range_go!(
-                    dim,
+                    dim.clone(),
                     _DT: Integral,
                     start,
                     end,
