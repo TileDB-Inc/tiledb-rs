@@ -357,27 +357,29 @@ impl Processor {
             generated += 1;
 
             let sys_def = self.sys_defs.constants.get(&name);
-            if sys_def.is_none() {
-                unwrapped.push(name);
-            } else if sys_def.unwrap() == &constant {
-                declared += 1;
-            } else {
-                if !mismatch {
-                    println!("## Mismatched Constants");
-                    println!();
+            match sys_def {
+                None => unwrapped.push(name),
+                Some(def) if def == &constant => {
+                    declared += 1;
                 }
-                mismatch = true;
-                println!("<table>");
-                println!(
-                    "<tr><th>Generated</th><td><pre>{}</pre></td></tr>",
-                    util::unparse_constant(&constant)
-                );
-                println!(
-                    "<tr><th>Declared</th><td><pre>{}</pre></td></tr>",
-                    util::unparse_constant(sys_def.unwrap())
-                );
-                println!("</table>");
-                println!()
+                Some(def) => {
+                    if !mismatch {
+                        println!("## Mismatched Constants");
+                        println!();
+                    }
+                    mismatch = true;
+                    println!("<table>");
+                    println!(
+                        "<tr><th>Generated</th><td><pre>{}</pre></td></tr>",
+                        util::unparse_constant(&constant)
+                    );
+                    println!(
+                        "<tr><th>Declared</th><td><pre>{}</pre></td></tr>",
+                        util::unparse_constant(def)
+                    );
+                    println!("</table>");
+                    println!()
+                }
             }
         }
 
@@ -409,28 +411,30 @@ impl Processor {
 
             let mut wrapped = false;
             let sys_def = self.sys_defs.signatures.get(&name);
-            if sys_def.is_none() {
-                unwrapped.push(name.clone());
-            } else if sys_def.unwrap() == &sig {
-                wrapped = true;
-                declared += 1;
-            } else {
-                if !mismatch {
-                    println!("## Mismatched Function Signatures");
+            match sys_def {
+                None => unwrapped.push(name.clone()),
+                Some(def) if def == &sig => {
+                    wrapped = true;
+                    declared += 1;
+                }
+                Some(def) => {
+                    if !mismatch {
+                        println!("## Mismatched Function Signatures");
+                        println!();
+                    }
+                    mismatch = true;
+                    println!("### {name}");
+                    println!();
+                    println!("<table>");
+                    println!("<tr><th>Generated</th><th>Declared</th></tr>");
+                    println!(
+                        "<tr><td><pre>{}</pre></td><td><pre>{}</pre></td></tr>",
+                        util::unparse_signature(&sig),
+                        util::unparse_signature(def)
+                    );
+                    println!("</table>");
                     println!();
                 }
-                mismatch = true;
-                println!("### {name}");
-                println!();
-                println!("<table>");
-                println!("<tr><th>Generated</th><th>Declared</th></tr>");
-                println!(
-                    "<tr><td><pre>{}</pre></td><td><pre>{}</pre></td></tr>",
-                    util::unparse_signature(&sig),
-                    util::unparse_signature(sys_def.unwrap())
-                );
-                println!("</table>");
-                println!();
             }
 
             if wrapped {
