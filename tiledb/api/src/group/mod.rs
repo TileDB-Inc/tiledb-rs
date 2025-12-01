@@ -309,20 +309,21 @@ impl Group {
 
     pub fn dump(&self, recursive: bool) -> TileDBResult<String> {
         let c_group = self.capi();
-        let mut c_str: *mut std::ffi::c_char = out_ptr!();
+        let mut c_dump: *mut ffi::tiledb_string_t = out_ptr!();
         let c_recursive = if recursive { 1 } else { 0 };
         self.capi_call(|ctx| unsafe {
-            ffi::tiledb_group_dump_str(
+            ffi::tiledb_group_dump_str_v2(
                 ctx,
                 c_group,
-                &mut c_str as *mut *mut std::ffi::c_char,
+                &mut c_dump,
                 c_recursive,
             )
         })?;
-        let group_dump = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        let group_dump_rust_str = group_dump.to_string_lossy().into_owned();
 
-        Ok(group_dump_rust_str)
+        Ok(TDBString {
+            raw: RawTDBString::Owned(c_dump),
+        }
+        .to_string()?)
     }
 
     pub fn config(&self) -> TileDBResult<Config> {
