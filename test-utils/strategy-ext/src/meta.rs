@@ -9,17 +9,22 @@ use crate::sequence::SequenceValueTree;
 
 /// Strategy to create [ValueTree] objects for a wrapped [Strategy].
 ///
+/// See `StrategyExt::prop_indirect`.
+///
 /// ```
 /// # use proptest::prelude::*;
+/// # use proptest::strategy::ValueTree;
 /// # use strategy_ext::meta::ValueTreeStrategy;
+/// use strategy_ext::StrategyExt;
 ///
 /// proptest! {
-///     #[test]
-///     fn value_tree_test(value_tree in ValueTreeStrategy(any::<u64>())) {
+///     fn value_tree_test(mut value_tree in any::<u64>().prop_indirect()) {
 ///         // binary search should always simplify
 ///         assert!(value_tree.simplify());
 ///     }
 /// }
+///
+/// value_tree_test();
 /// ```
 /// This can be used to write tests about how a [ValueTree] created by
 /// a custom [Strategy] responds to shrinking.

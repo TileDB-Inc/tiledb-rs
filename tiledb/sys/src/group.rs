@@ -160,10 +160,10 @@ unsafe extern "C" {
         query_type: *mut tiledb_query_type_t,
     ) -> capi_return_t;
 
-    pub fn tiledb_group_dump_str(
+    pub fn tiledb_group_dump_str_v2(
         ctx: *mut tiledb_ctx_t,
         group: *mut tiledb_group_t,
-        dump_ascii: *mut *mut ::std::os::raw::c_char,
+        dump_ascii: *mut *mut tiledb_string_t,
         recursive: u8,
     ) -> capi_return_t;
 
