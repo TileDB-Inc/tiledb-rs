@@ -1897,6 +1897,7 @@ dependencies = [
  "itertools 0.14.0",
  "num-traits",
  "proptest",
+ "regex",
  "serde",
  "serde_json",
  "strategy-ext",

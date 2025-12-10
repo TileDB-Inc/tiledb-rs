@@ -21,9 +21,10 @@ tiledb-sys-defs = { workspace = true }
 [dev-dependencies]
 num-traits = { workspace = true }
 proptest = { workspace = true }
+regex = { workspace = true }
+strategy-ext = { workspace = true }
 tiledb-common = { workspace = true, features = ["proptest-strategies"] }
 tiledb-proptest-config = { workspace = true }
-strategy-ext = { workspace = true }
 tiledb-utils = { workspace = true }
 
 [features]

@@ -75,15 +75,17 @@ pub enum StrategyContext {
 
 #[derive(Clone, Default)]
 pub struct Requirements {
-    pub name: Option<String>,
+    pub name: Option<BoxedStrategy<String>>,
     pub datatype: Option<BoxedStrategy<(Datatype, CellValNum)>>,
     pub nullability: Option<bool>,
     pub context: Option<StrategyContext>,
     pub filters: Option<Rc<FilterRequirements>>,
 }
 
+const ATTRIBUTE_NAME_REGEX: &str = "[a-zA-Z0-9_]*";
+
 pub fn prop_attribute_name() -> impl Strategy<Value = String> {
-    proptest::string::string_regex("[a-zA-Z0-9_]*")
+    proptest::string::string_regex(ATTRIBUTE_NAME_REGEX)
         .expect("Error creating attribute name strategy")
         .prop_filter(
             "Attribute names may not begin with reserved prefix",
@@ -152,8 +154,7 @@ fn prop_attribute_for_datatype(
         {
             let name = requirements
                 .name
-                .as_ref()
-                .map(|n| Just(n.clone()).boxed())
+                .clone()
                 .unwrap_or(prop_attribute_name().boxed());
             let nullable = requirements
                 .nullability
@@ -285,5 +286,38 @@ impl ValueTree for AttributeValueTree {
             .map(|e| e.complicate())
             .unwrap_or(false)
             || self.filters.complicate()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use proptest::prelude::*;
+    use regex::Regex;
+
+    use super::*;
+
+    const LOWERCASE_NAME_REGEX: &str = "[a-z]+";
+
+    fn strat_requirements_name() -> impl Strategy<Value = AttributeData> {
+        let r = Requirements {
+            name: proptest::string::string_regex(LOWERCASE_NAME_REGEX)
+                .expect("Unexpected invalid regex")
+                .boxed()
+                .into(),
+            ..Default::default()
+        };
+        any_with::<AttributeData>(Some(r.into()))
+    }
+
+    proptest! {
+        #[test]
+        fn default_name(attribute in any::<AttributeData>()) {
+            assert!(Regex::new(ATTRIBUTE_NAME_REGEX).unwrap().is_match(&attribute.name));
+        }
+
+        #[test]
+        fn requirements_name(attribute in strat_requirements_name()) {
+            assert!(Regex::new(LOWERCASE_NAME_REGEX).unwrap().is_match(&attribute.name));
+        }
     }
 }
