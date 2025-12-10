@@ -33,7 +33,7 @@ pub enum Value {
 /// use tiledb_common::metadata_value_go;
 ///
 /// fn truncate(v: &mut Value, len: usize) {
-///     metadata_value_go!(v, _DT, ref mut v_inner, v_inner.truncate(len));
+///     metadata_value_go!(v, _DT, v_inner, v_inner.truncate(len));
 /// }
 ///
 /// let mut v = Value::UInt64Value(vec![0, 24, 48]);

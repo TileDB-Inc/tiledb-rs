@@ -140,6 +140,7 @@ impl DimensionData {
 
 #[derive(Clone)]
 pub struct Requirements {
+    pub name: Option<BoxedStrategy<String>>,
     pub array_type: Option<ArrayType>,
     pub datatype: Option<Datatype>,
     pub extent_limit: usize,
@@ -149,6 +150,7 @@ pub struct Requirements {
 impl Default for Requirements {
     fn default() -> Self {
         Requirements {
+            name: None,
             array_type: None,
             datatype: None,
             extent_limit: 1024 * 16,
@@ -157,9 +159,11 @@ impl Default for Requirements {
     }
 }
 
+const DIMENSION_NAME_REGEX: &str = "[a-zA-Z0-9_]+";
+
 pub fn prop_dimension_name() -> impl Strategy<Value = String> {
     // SC-48077: bug with "" for dimension name, prevent for now
-    proptest::string::string_regex("[a-zA-Z0-9_]+")
+    proptest::string::string_regex(DIMENSION_NAME_REGEX)
         .expect("Error creating dimension name strategy")
 }
 
@@ -317,6 +321,9 @@ fn prop_dimension_for_datatype(
         }
     });
 
+    let strat_dimension_name =
+        params.name.clone().unwrap_or(prop_dimension_name().boxed());
+
     constraints.prop_flat_map(move |constraints| {
         let filter_req = FilterRequirements {
             input_datatype: Some(datatype),
@@ -331,7 +338,7 @@ fn prop_dimension_for_datatype(
                 .unwrap_or_default()
         };
         let filters = FilterPipelineStrategy::new(Rc::new(filter_req));
-        (prop_dimension_name(), Just(constraints), filters)
+        (strat_dimension_name.clone(), Just(constraints), filters)
             .prop_map(move |(name, constraints, filters)| DimensionData {
                 name,
                 datatype,
@@ -436,6 +443,7 @@ mod tests {
 
     use proptest::prelude::*;
     use proptest::strategy::Strategy;
+    use regex::Regex;
     use tiledb_common::range::{Range, SingleValueRange};
 
     use super::Requirements;
@@ -521,5 +529,30 @@ mod tests {
             };
             assert_eq!(Some((end - start + 1) as u128), s.num_cells());
         });
+    }
+
+    const LOWERCASE_NAME_REGEX: &str = "[a-z]+";
+
+    fn strat_requirements_name() -> impl Strategy<Value = DimensionData> {
+        let r = Requirements {
+            name: proptest::string::string_regex(LOWERCASE_NAME_REGEX)
+                .expect("Unexpected invalid regex")
+                .boxed()
+                .into(),
+            ..Default::default()
+        };
+        any_with::<DimensionData>(r)
+    }
+
+    proptest! {
+        #[test]
+        fn default_name(dimension in any::<DimensionData>()) {
+            assert!(Regex::new(DIMENSION_NAME_REGEX).unwrap().is_match(&dimension.name));
+        }
+
+        #[test]
+        fn requirements_name(dimension in strat_requirements_name()) {
+            assert!(Regex::new(LOWERCASE_NAME_REGEX).unwrap().is_match(&dimension.name));
+        }
     }
 }
