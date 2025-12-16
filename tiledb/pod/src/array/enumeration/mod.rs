@@ -77,8 +77,7 @@ impl EnumerationData {
                 records
                     .into_iter()
                     .map(|v| String::from_utf8_lossy(v.as_slice()).into_owned())
-                    .collect::<Vec<String>>()
-                    .into(),
+                    .collect(),
             )
         } else if self
             .cell_val_num
@@ -88,17 +87,12 @@ impl EnumerationData {
             physical_type_go!(self.datatype, DT, {
                 const WIDTH: usize = std::mem::size_of::<DT>();
                 type ByteArray = [u8; WIDTH];
-                Some(SetMembers::from(
-                    records
-                        .into_iter()
-                        .map(|v| {
-                            assert_eq!(WIDTH, v.len());
-                            DT::from_le_bytes(
-                                ByteArray::try_from(v.as_slice()).unwrap(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                ))
+                Some(SetMembers::from_iter(records.into_iter().map(|v| {
+                    assert_eq!(WIDTH, v.len());
+                    DT::from_le_bytes(
+                        ByteArray::try_from(v.as_slice()).unwrap(),
+                    )
+                })))
             })
         } else {
             None

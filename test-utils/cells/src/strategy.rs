@@ -702,7 +702,7 @@ impl QueryConditionField for CellsQueryConditionField {
                 e,
                 _DT,
                 _members,
-                Some(SetMembers::from(_members.clone())),
+                Some(_members.clone().into_iter().collect::<SetMembers>()),
                 {
                     // NB: this is Var, we could do String but it's just to test the test code
                     // so we will skip

@@ -514,9 +514,12 @@ macro_rules! set_member_value_impl {
             }
         }
 
-        impl From<Vec<$ty>> for SetMembers {
-            fn from(value: Vec<$ty>) -> SetMembers {
-                $constructor(value)
+        impl FromIterator<$ty> for SetMembers {
+            fn from_iter<T>(iter: T) -> Self
+            where
+                T: IntoIterator<Item = $ty>,
+            {
+                $constructor(iter.into_iter().collect::<Vec<_>>())
             }
         }
     };
@@ -534,13 +537,14 @@ set_member_value_impl!(f32, SetMembers::Float32);
 set_member_value_impl!(f64, SetMembers::Float64);
 set_member_value_impl!(String, SetMembers::String);
 
-impl From<&[&str]> for SetMembers {
-    fn from(val: &[&str]) -> SetMembers {
-        let mut owned = Vec::new();
-        for v in val {
-            owned.push(v.to_string())
-        }
-        SetMembers::String(owned)
+impl<'a> FromIterator<&'a str> for SetMembers {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = &'a str>,
+    {
+        SetMembers::String(
+            iter.into_iter().map(|s| s.to_owned()).collect::<Vec<_>>(),
+        )
     }
 }
 
@@ -758,22 +762,30 @@ impl Field {
         }))
     }
 
-    pub fn is_in<V: Into<SetMembers>>(self, value: V) -> QueryConditionExpr {
+    pub fn is_in<V>(self, value: V) -> QueryConditionExpr
+    where
+        V: IntoIterator,
+        SetMembers: FromIterator<<V as IntoIterator>::Item>,
+    {
         QueryConditionExpr::Cond(Predicate::SetMembership(
             SetMembershipPredicate {
                 field: self.field,
                 op: SetMembershipOp::In,
-                members: value.into(),
+                members: value.into_iter().collect(),
             },
         ))
     }
 
-    pub fn not_in<V: Into<SetMembers>>(self, value: V) -> QueryConditionExpr {
+    pub fn not_in<V>(self, value: V) -> QueryConditionExpr
+    where
+        V: IntoIterator,
+        SetMembers: FromIterator<<V as IntoIterator>::Item>,
+    {
         QueryConditionExpr::Cond(Predicate::SetMembership(
             SetMembershipPredicate {
                 field: self.field,
                 op: SetMembershipOp::NotIn,
-                members: value.into(),
+                members: value.into_iter().collect(),
             },
         ))
     }
@@ -883,9 +895,14 @@ mod tests {
         let qc_cmp = QC::field("field").lt(5);
         assert_eq!("field < 5", qc_cmp.to_string());
 
-        let qc_setmemb =
-            QC::field("field").is_in(["one", "two", "three"].as_slice());
+        let qc_setmemb = QC::field("field").is_in(["one", "two", "three"]);
         assert_eq!("field IN ('one', 'two', 'three')", qc_setmemb.to_string());
+
+        let qc_setmemb = QC::field("field").not_in(["one", "two", "three"]);
+        assert_eq!(
+            "field NOT IN ('one', 'two', 'three')",
+            qc_setmemb.to_string()
+        );
 
         let qc_nullness = QC::field("field").not_null();
         assert_eq!("field IS NOT NULL", qc_nullness.to_string());

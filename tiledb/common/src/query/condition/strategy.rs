@@ -245,7 +245,7 @@ impl Arbitrary for SetMembers {
                     },
                     params.1
                 )
-                .prop_map(SetMembers::from)
+                .prop_map(SetMembers::from_iter)
                 .boxed()
             ),
             Range::Multi(_) => unimplemented!(),
@@ -256,7 +256,7 @@ impl Arbitrary for SetMembers {
                     }),
                     params.1,
                 )
-                .prop_map(SetMembers::from)
+                .prop_map(SetMembers::from_iter)
                 .boxed()
             }
             Range::Var(_) => unimplemented!(),
@@ -328,7 +328,7 @@ impl Arbitrary for SetMembershipPredicate {
                                     subseq_size_range,
                                 )
                             })
-                            .prop_map(SetMembers::from)
+                            .prop_map(SetMembers::from_iter)
                             .boxed()
                     })
                 } else if let Some(domain) = domain {
