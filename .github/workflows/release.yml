@@ -16,7 +16,7 @@ jobs:
         os:
           - "ubuntu-latest"
           - "linux-arm64-ubuntu24"
-          - "macos-13"
+          - "macos-15-intel"
           - "macos-latest"
     runs-on: ${{ matrix.os }}
     steps:
