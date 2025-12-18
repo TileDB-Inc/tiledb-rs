@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn basic_set_test() -> TileDBResult<()> {
-        let qc = QC::field("foo").is_in(&[1u32, 2, 3, 4, 5][..]);
+        let qc = QC::field("foo").is_in([1u32, 2, 3, 4, 5]);
         let ctx = Context::new()?;
         assert!(qc.build(&ctx).is_ok());
 
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn basic_string_set_test() -> TileDBResult<()> {
-        let qc = QC::field("foo").is_in(&["foo", "bar", "baz"][..]);
+        let qc = QC::field("foo").is_in(["foo", "bar", "baz"]);
         let ctx = Context::new()?;
         assert!(qc.build(&ctx).is_ok());
 
