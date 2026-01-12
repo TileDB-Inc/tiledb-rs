@@ -37,6 +37,10 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: ${{ matrix.MACOSX_DEPLOYMENT_TARGET }}
       VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
     steps:
+      - name: Install kernel headers for OpenSSL build
+        if: ${{ !matrix.prebuilt && startsWith(matrix.platform, 'linux') == true }}
+        run: |
+          yum install -y kernel-devel perl-core
       - name: Checkout TileDB
         if: ${{ !matrix.prebuilt }}
         run: |
