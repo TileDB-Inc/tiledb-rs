@@ -36,10 +36,10 @@ fn configure_dynamic(libdir: String) {
 
 fn main() {
     pkg_config::Config::new()
-        .atleast_version("2.28.0")
+        .atleast_version("2.30.0")
         .cargo_metadata(false)
         .probe("tiledb")
-        .expect("TileDB >= 2.28 not found.");
+        .expect("TileDB >= 2.30 not found.");
 
     let prefix = pkg_config::get_variable("tiledb", "prefix")
         .expect("Missing TileDB 'libdir' variable.");
