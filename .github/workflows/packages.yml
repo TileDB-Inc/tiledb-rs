@@ -191,7 +191,7 @@ jobs:
           cd release && sha256sum -c *.sha256
         shell: bash
       - name: Publish Artifacts
-        uses: pyTooling/Actions/releaser/composite@main
+        uses: pyTooling/Actions/releaser/composite@v6.7.0
         with:
           tag: nightlies
           rm: true
