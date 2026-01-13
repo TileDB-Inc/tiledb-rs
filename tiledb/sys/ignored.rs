@@ -34,38 +34,8 @@ extern "C" {
         datatype: *mut tiledb_datatype_t,
     ) -> capi_return_t;
 
-    pub fn tiledb_attribute_dump(
-        ctx: *mut tiledb_ctx_t,
-        attr: *const tiledb_attribute_t,
-        out: *mut FILE,
-    ) -> i32;
-
-    pub fn tiledb_array_schema_dump(
-        ctx: *mut tiledb_ctx_t,
-        array_schema: *const tiledb_array_schema_t,
-        out: *mut FILE,
-    ) -> capi_return_t;
-
     pub fn tiledb_as_built_dump(
         out: *mut *mut tiledb_string_t,
-    ) -> capi_return_t;
-
-    pub fn tiledb_dimension_dump(
-        ctx: *mut tiledb_ctx_t,
-        dim: *const tiledb_dimension_t,
-        out: *mut FILE,
-    ) -> i32;
-
-    pub fn tiledb_domain_dump(
-        ctx: *mut tiledb_ctx_t,
-        domain: *const tiledb_domain_t,
-        out: *mut FILE,
-    ) -> i32;
-
-    pub fn tiledb_enumeration_dump(
-        ctx: *mut tiledb_ctx_t,
-        enumeration: *mut tiledb_enumeration_t,
-        out: *mut FILE,
     ) -> capi_return_t;
 
     pub fn tiledb_fragment_info_dump(
