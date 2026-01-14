@@ -762,30 +762,22 @@ impl Field {
         }))
     }
 
-    pub fn is_in<V>(self, value: V) -> QueryConditionExpr
-    where
-        V: IntoIterator,
-        SetMembers: FromIterator<<V as IntoIterator>::Item>,
-    {
+    pub fn is_in(self, members: SetMembers) -> QueryConditionExpr {
         QueryConditionExpr::Cond(Predicate::SetMembership(
             SetMembershipPredicate {
                 field: self.field,
                 op: SetMembershipOp::In,
-                members: value.into_iter().collect(),
+                members,
             },
         ))
     }
 
-    pub fn not_in<V>(self, value: V) -> QueryConditionExpr
-    where
-        V: IntoIterator,
-        SetMembers: FromIterator<<V as IntoIterator>::Item>,
-    {
+    pub fn not_in(self, members: SetMembers) -> QueryConditionExpr {
         QueryConditionExpr::Cond(Predicate::SetMembership(
             SetMembershipPredicate {
                 field: self.field,
                 op: SetMembershipOp::NotIn,
-                members: value.into_iter().collect(),
+                members,
             },
         ))
     }
@@ -895,14 +887,24 @@ mod tests {
         let qc_cmp = QC::field("field").lt(5);
         assert_eq!("field < 5", qc_cmp.to_string());
 
-        let qc_setmemb = QC::field("field").is_in(["one", "two", "three"]);
+        let qc_setmemb = QC::field("field")
+            .is_in(["one", "two", "three"].into_iter().collect());
         assert_eq!("field IN ('one', 'two', 'three')", qc_setmemb.to_string());
 
-        let qc_setmemb = QC::field("field").not_in(["one", "two", "three"]);
+        let qc_setmemb = QC::field("field")
+            .not_in(["one", "two", "three"].into_iter().collect());
         assert_eq!(
             "field NOT IN ('one', 'two', 'three')",
             qc_setmemb.to_string()
         );
+
+        let qc_setmemb =
+            QC::field("field").is_in(SetMembers::from_iter([1u32, 2, 3]));
+        assert_eq!("field IN (1, 2, 3)", qc_setmemb.to_string());
+
+        let qc_setmemb =
+            QC::field("field").not_in(SetMembers::from_iter([1u32, 2, 3]));
+        assert_eq!("field NOT IN (1, 2, 3)", qc_setmemb.to_string());
 
         let qc_nullness = QC::field("field").not_null();
         assert_eq!("field IS NOT NULL", qc_nullness.to_string());
