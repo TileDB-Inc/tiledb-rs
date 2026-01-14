@@ -1320,41 +1320,41 @@ mod tests {
         let qc = {
             let f = QueryConditionExpr::field(field);
             match fdata {
-                FieldData::UInt8(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::UInt16(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::UInt32(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::UInt64(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int8(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int16(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int32(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int64(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Float32(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Float64(cells) => f.is_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
+                FieldData::UInt8(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::UInt16(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::UInt32(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::UInt64(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int8(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int16(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int32(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int64(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Float32(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Float64(cells) => {
+                    f.is_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
                 FieldData::VecUInt8(cells) => f.is_in(
                     member_idx
                         .iter()
                         .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
-                        .collect::<Vec<_>>(),
+                        .collect(),
                 ),
                 _ => {
                     unreachable!("Invalid field for query condition: {fdata:?}",)
@@ -1385,41 +1385,41 @@ mod tests {
         let qc = {
             let f = QueryConditionExpr::field(field);
             match fdata {
-                FieldData::UInt8(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::UInt16(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::UInt32(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::UInt64(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int8(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int16(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int32(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Int64(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Float32(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
-                FieldData::Float64(cells) => f.not_in(
-                    member_idx.iter().map(|i| cells[*i]).collect::<Vec<_>>(),
-                ),
+                FieldData::UInt8(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::UInt16(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::UInt32(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::UInt64(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int8(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int16(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int32(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Int64(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Float32(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
+                FieldData::Float64(cells) => {
+                    f.not_in(member_idx.iter().map(|i| cells[*i]).collect())
+                }
                 FieldData::VecUInt8(cells) => f.not_in(
                     member_idx
                         .iter()
                         .map(|i| String::from_utf8(cells[*i].to_vec()).unwrap())
-                        .collect::<Vec<_>>(),
+                        .collect(),
                 ),
                 _ => {
                     unreachable!("Invalid field for query condition: {fdata:?}",)
