@@ -10,6 +10,7 @@ fn configure_rustc(_libdir: String) {
     println!("cargo::rustc-link-lib=framework=CoreServices");
     println!("cargo::rustc-link-lib=framework=Security");
     println!("cargo::rustc-link-lib=framework=SystemConfiguration");
+    println!("cargo::rustc-link-lib=framework=Network");
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
