@@ -37,6 +37,7 @@ version = "main"
 # Remove once this PR hits a release:
 # https://github.com/apache/arrow-rs/pull/7198
 chrono = { git = "https://github.com/davisp/chrono", rev = "8b863490d88ba098038392c8aa930012ffd0c439" }
+pkg-config = { git = "https://github.com/teo-tsirpanis/pkg-config-rs", rev = "9da252047c9bacf5c714a4eb3e43eae4f5955196" }
 
 [workspace.dependencies]
 anyhow = "1.0"
