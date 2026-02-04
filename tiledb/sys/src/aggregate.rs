@@ -56,12 +56,12 @@ unsafe extern "C" {
     ) -> i32;
 
     pub fn tiledb_aggregate_free(
-        ctx: *mut tiledb_ctx_t,
+        unused: *mut tiledb_ctx_t,
         op: *mut *mut tiledb_channel_operation_t,
     ) -> capi_return_t;
 
     pub fn tiledb_query_channel_free(
-        ctx: *mut tiledb_ctx_t,
+        unused: *mut tiledb_ctx_t,
         channel: *mut *mut tiledb_query_channel_t,
     ) -> capi_return_t;
 }
