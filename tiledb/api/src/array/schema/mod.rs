@@ -771,7 +771,7 @@ mod tests {
 
         // it's a little awkward to use a constant here but this does
         // not appear to be tied to the library version
-        assert_eq!(schema_version, 22);
+        assert_eq!(schema_version, 23);
     }
 
     #[test]
