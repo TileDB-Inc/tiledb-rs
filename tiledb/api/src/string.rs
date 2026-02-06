@@ -35,6 +35,10 @@ pub struct TDBString {
 }
 
 impl TDBString {
+    pub fn capi(&self) -> *mut ffi::tiledb_string_t {
+        *self.raw
+    }
+
     pub(crate) fn from_raw(raw: RawTDBString) -> Self {
         Self { raw }
     }

@@ -239,7 +239,7 @@ where
         let context = self.base().context();
         let location_ptr = &mut self.data as *mut T;
 
-        let c_query = **self.base().cquery();
+        let c_query = self.base().capi();
         let c_bufptr = location_ptr as *mut std::ffi::c_void;
         let c_sizeptr = &mut self.data_size as *mut u64;
         let agg_str: &CString = &self.handle.agg_name;
@@ -326,7 +326,7 @@ pub trait AggregateQueryBuilder: QueryBuilder {
         let handle = AggregateFunctionHandle::new(agg_function)?;
 
         let context = self.base().context();
-        let c_query = **self.base().cquery();
+        let c_query = self.base().cquery();
 
         let mut c_channel: *mut tiledb_query_channel_t = out_ptr!();
         context.capi_call(|ctx| unsafe {

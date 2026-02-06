@@ -42,7 +42,7 @@ impl ContextBound for Enumeration {
 }
 
 impl Enumeration {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_enumeration_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_enumeration_t {
         *self.raw
     }
 

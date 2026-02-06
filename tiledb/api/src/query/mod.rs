@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use crate::context::{CApiInterface, Context, ContextBound};
 use crate::error::Error;
-use crate::{Array, Result as TileDBResult, array::RawArray};
+use crate::{Array, Result as TileDBResult};
 
 pub mod buffer;
 pub mod condition;
@@ -107,13 +107,13 @@ impl ContextBound for QueryBase {
 }
 
 impl QueryBase {
-    fn cquery(&self) -> &RawQuery {
-        &self.raw
+    pub fn capi(&self) -> *mut ffi::tiledb_query_t {
+        *self.raw
     }
 
     /// Executes a single step of the query.
     fn do_submit(&self) -> TileDBResult<()> {
-        let c_query = **self.cquery();
+        let c_query = self.capi();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_submit(ctx, c_query)
         })?;
@@ -122,7 +122,7 @@ impl QueryBase {
 
     /// Returns the ffi status of the last submit()
     fn capi_status(&self) -> TileDBResult<ffi::tiledb_query_status_t> {
-        let c_query = **self.cquery();
+        let c_query = self.capi();
         let mut c_status: ffi::tiledb_query_status_t = out_ptr!();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_get_status(ctx, c_query, &mut c_status)
@@ -141,7 +141,7 @@ impl Query for QueryBase {
     }
 
     fn finalize(self) -> TileDBResult<Array> {
-        let c_query = **self.base().cquery();
+        let c_query = self.base().capi();
         self.capi_call(|ctx| unsafe {
             ffi::tiledb_query_finalize(ctx, c_query)
         })?;
@@ -202,7 +202,7 @@ pub trait QueryBuilder: Sized {
     where
         Self: Sized,
     {
-        let c_query = **self.base().cquery();
+        let c_query = self.base().cquery();
         let c_layout = ffi::tiledb_layout_t::from(layout);
         self.base().capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_layout(ctx, c_query, c_layout)
@@ -236,7 +236,7 @@ pub trait QueryBuilder: Sized {
 
     fn query_condition(self, qc: QueryConditionExpr) -> TileDBResult<Self> {
         let raw = qc.build(&self.base().context())?;
-        let c_query = **self.base().cquery();
+        let c_query = self.base().cquery();
         let c_cond = *raw;
         self.base().capi_call(|ctx| unsafe {
             ffi::tiledb_query_set_condition(ctx, c_query, c_cond)
@@ -258,11 +258,12 @@ impl ContextBound for BuilderBase {
 }
 
 impl BuilderBase {
-    fn carray(&self) -> &RawArray {
+    fn carray(&self) -> *mut ffi::tiledb_array_t {
         self.query.array.capi()
     }
-    fn cquery(&self) -> &RawQuery {
-        &self.query.raw
+
+    fn cquery(&self) -> *mut ffi::tiledb_query_t {
+        self.query.capi()
     }
 
     pub fn array(&self) -> &Array {
@@ -284,7 +285,7 @@ impl QueryBuilder for BuilderBase {
 
 impl BuilderBase {
     fn new(array: Array, query_type: QueryType) -> TileDBResult<Self> {
-        let c_array = **array.capi();
+        let c_array = array.capi();
         let c_query_type = ffi::tiledb_query_type_t::from(query_type);
         let mut c_query: *mut ffi::tiledb_query_t = out_ptr!();
         array.capi_call(|ctx| unsafe {
