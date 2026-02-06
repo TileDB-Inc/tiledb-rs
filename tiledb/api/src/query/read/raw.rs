@@ -466,7 +466,7 @@ where
     ) -> TileDBResult<ReadStepOutput<Self::Intermediate, Self::Final>> {
         /* update the internal buffers */
         self.raw_read_output
-            .attach_query(&self.base().context(), **self.base().cquery())?;
+            .attach_query(&self.base().context(), self.base().capi())?;
 
         /* then execute */
         let base_result = {
@@ -591,7 +591,7 @@ where
         /* update the internal buffers */
         {
             let context = self.base().context();
-            let cquery = **self.base().cquery();
+            let cquery = self.base().capi();
             for handle in self.raw_read_output.iter_mut() {
                 handle.attach_query(&context, cquery)?;
             }

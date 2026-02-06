@@ -55,7 +55,7 @@ impl ContextBound for Group {
 }
 
 impl Group {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_group_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_group_t {
         *self.raw
     }
 

@@ -412,7 +412,7 @@ impl ReadBuilder {
              * TODO: make sure that users can't override this somehow,
              * else we will be very very sad
              */
-            let c_query = **base.cquery();
+            let c_query = base.cquery();
 
             base.capi_call(|c_context| unsafe {
                 ffi::tiledb_query_set_config(c_context, c_query, config.capi())

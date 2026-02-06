@@ -38,7 +38,7 @@ impl ContextBound for SchemaEvolution {
 }
 
 impl SchemaEvolution {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_schema_evolution_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_array_schema_evolution_t {
         *self.raw
     }
 }

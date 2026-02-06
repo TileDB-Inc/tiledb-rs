@@ -692,7 +692,7 @@ macro_rules! query_read_callback {
                     $(
                         self.[< arg_ $U:snake >].attach_query(
                             &self.base().context(),
-                            **self.base().cquery())?;
+                            self.base().capi())?;
                     )+
                 }
 

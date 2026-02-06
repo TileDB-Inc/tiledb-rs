@@ -50,7 +50,7 @@ impl ContextBound for Attribute {
 }
 
 impl Attribute {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_attribute_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_attribute_t {
         *self.raw
     }
 

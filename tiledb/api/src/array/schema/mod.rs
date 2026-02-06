@@ -151,7 +151,7 @@ impl ContextBound for Schema {
 }
 
 impl Schema {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_array_schema_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_array_schema_t {
         *self.raw
     }
 

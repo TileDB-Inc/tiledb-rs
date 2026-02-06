@@ -52,7 +52,7 @@ impl ContextBound for FragmentInfoInternal {
 }
 
 impl FragmentInfoInternal {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_fragment_info_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_fragment_info_t {
         *self.raw
     }
 
