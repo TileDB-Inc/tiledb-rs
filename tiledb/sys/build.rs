@@ -1,5 +1,3 @@
-use std::env;
-
 #[cfg(target_os = "linux")]
 fn configure_rustc(_libdir: &str) {
     println!("cargo::rustc-link-lib=dylib=stdc++");
@@ -44,11 +42,12 @@ fn main() {
     let lib = pkg_config::Config::new()
         .atleast_version("2.30.0")
         .cargo_metadata(false)
-        .probe_cflags(env::consts::OS != "windows")
+        // Not needed for our use case, and skips resolving private transitive requirements.
+        .probe_cflags(false)
         .probe("tiledb")
         .expect("TileDB >= 2.30 not found.");
 
-    if let Some(libdir) = lib.link_paths.get(0) {
+    if let Some(libdir) = lib.link_paths.first() {
         let is_static = lib.libs.iter().any(|x| x.eq("tiledb_static"));
         let libdir: String = libdir.to_string_lossy().into();
         if is_static {
