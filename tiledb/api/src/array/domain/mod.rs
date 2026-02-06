@@ -43,7 +43,7 @@ impl ContextBound for Domain {
 }
 
 impl Domain {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_domain_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_domain_t {
         *self.raw
     }
 

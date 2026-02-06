@@ -92,7 +92,7 @@ impl<'data> WriteBuilder<'data> {
              * TODO: make sure that users can't override this somehow,
              * else we will be very very sad
              */
-            let c_query = **base.cquery();
+            let c_query = base.cquery();
 
             base.capi_call(|c_context| unsafe {
                 ffi::tiledb_query_set_config(c_context, c_query, config.capi())
@@ -133,7 +133,7 @@ impl<'data> WriteBuilder<'data> {
             })
         }
 
-        let c_query = **self.base().cquery();
+        let c_query = self.base().cquery();
         let c_name = cstring!(field_name.clone());
 
         let (c_bufptr, mut data_size) =

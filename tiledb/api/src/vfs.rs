@@ -75,6 +75,10 @@ impl ContextBound for VFSHandle {
 }
 
 impl VFS {
+    pub fn capi(&self) -> *mut ffi::tiledb_vfs_t {
+        *self.raw
+    }
+
     pub fn new(ctx: &Context, config: &Config) -> TileDBResult<VFS> {
         let c_config = config.capi();
         let mut c_vfs: *mut ffi::tiledb_vfs_t = out_ptr!();
@@ -450,6 +454,10 @@ extern "C" fn vfs_ls_recursive_cb_handler(
 }
 
 impl VFSHandle {
+    pub fn capi(&self) -> *mut ffi::tiledb_vfs_fh_t {
+        *self.raw
+    }
+
     pub fn is_closed(&self) -> TileDBResult<bool> {
         let c_fh = *self.raw;
         let mut c_is_closed: i32 = 0;

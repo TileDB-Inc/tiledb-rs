@@ -171,8 +171,8 @@ fn unwrap_config_to_ptr(context: Option<&Config>) -> *mut tiledb_config_t {
 }
 
 impl Array {
-    pub(crate) fn capi(&self) -> &RawArray {
-        &self.raw
+    pub fn capi(&self) -> *mut ffi::tiledb_array_t {
+        *self.raw
     }
 
     pub fn create<S>(
@@ -886,7 +886,7 @@ impl ArrayOpener {
 
     /// Sets configuration options for this array.
     pub fn config(self, config: &Config) -> TileDBResult<Self> {
-        let c_array = **self.array.capi();
+        let c_array = self.array.capi();
         let c_config = config.capi();
 
         self.array.capi_call(|c_context| unsafe {

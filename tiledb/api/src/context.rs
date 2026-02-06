@@ -85,6 +85,13 @@ impl Drop for RawContext {
     }
 }
 
+impl Deref for RawContext {
+    type Target = *mut ffi::tiledb_ctx_t;
+    fn deref(&self) -> &Self::Target {
+        &self.raw
+    }
+}
+
 pub trait ContextBound {
     fn context(&self) -> Context;
 }
@@ -117,6 +124,10 @@ pub struct Context {
 }
 
 impl Context {
+    pub fn capi(&self) -> *mut ffi::tiledb_ctx_t {
+        *self.raw.deref().deref()
+    }
+
     pub fn new() -> Result<Context, CreateContextError> {
         let cfg = Config::new().map_err(CreateContextError::Config)?;
         Context::from_config(&cfg)

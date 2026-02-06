@@ -44,7 +44,7 @@ impl ContextBound for Dimension {
 }
 
 impl Dimension {
-    pub(crate) fn capi(&self) -> *mut ffi::tiledb_dimension_t {
+    pub fn capi(&self) -> *mut ffi::tiledb_dimension_t {
         *self.raw
     }
 
