@@ -9,6 +9,7 @@ use tiledb_utils::numbers::{
 use super::*;
 use crate::datatype::physical::strategy::PhysicalValueStrategy;
 use crate::datatype::physical::BitsOrd;
+use crate::physical_type_go;
 use crate::range::{Range, VarValueRange};
 
 impl DimensionConstraints {
@@ -115,7 +116,7 @@ impl DimensionConstraints {
 
 #[derive(Clone)]
 pub struct Requirements {
-    pub datatype: Option<DimensionType>,
+    pub datatype: Option<DimensionConstraintType>,
     pub extent_limit: usize,
 }
 
@@ -131,7 +132,7 @@ impl Default for Requirements {
 #[derive(
     proptest_derive::Arbitrary, Clone, Copy, Debug, Eq, Hash, PartialEq,
 )]
-pub enum DimensionType {
+pub enum DimensionConstraintType {
     UInt8,
     UInt16,
     UInt32,
@@ -145,8 +146,8 @@ pub enum DimensionType {
     StringAscii,
 }
 
-impl DimensionType {
-    fn dimension_strategy(
+impl DimensionConstraintType {
+    pub fn dimension_strategy(
         &self,
         extent_limit: usize,
     ) -> impl Strategy<Value = DimensionConstraints> + use<> {
@@ -188,6 +189,46 @@ impl DimensionType {
     }
 }
 
+trait DimensionConstraintTypeProvider {
+    const TYPE: DimensionConstraintType;
+}
+
+macro_rules! dimension_constraint_type_provider {
+    ($($phys:ty: $logical:ident),+) => {
+        $(
+            impl DimensionConstraintTypeProvider for $phys {
+                const TYPE: DimensionConstraintType = DimensionConstraintType::$logical;
+            }
+        )+
+    }
+}
+
+dimension_constraint_type_provider!(u8: UInt8, u16: UInt16, u32: UInt32, u64: UInt64);
+dimension_constraint_type_provider!(i8: Int8, i16: Int16, i32: Int32, i64: Int64);
+dimension_constraint_type_provider!(f32: Float32, f64: Float64);
+
+impl TryFrom<Datatype> for DimensionConstraintType {
+    type Error = Datatype;
+    fn try_from(value: Datatype) -> Result<Self, Self::Error> {
+        if value.is_allowed_dimension_type_sparse()
+            || value.is_allowed_dimension_type_dense()
+        {
+            Ok(match value {
+                Datatype::StringAscii | Datatype::StringUtf8 => {
+                    DimensionConstraintType::StringAscii
+                }
+                value => physical_type_go!(
+                    value,
+                    DT,
+                    <DT as DimensionConstraintTypeProvider>::TYPE
+                ),
+            })
+        } else {
+            Err(value)
+        }
+    }
+}
+
 impl Arbitrary for DimensionConstraints {
     type Parameters = Requirements;
     type Strategy = BoxedStrategy<Self>;
@@ -196,7 +237,7 @@ impl Arbitrary for DimensionConstraints {
         if let Some(dt) = p.datatype {
             dt.dimension_strategy(p.extent_limit).boxed()
         } else {
-            any::<DimensionType>()
+            any::<DimensionConstraintType>()
                 .prop_flat_map(move |dt| dt.dimension_strategy(p.extent_limit))
                 .boxed()
         }

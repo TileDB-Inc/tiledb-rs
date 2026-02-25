@@ -255,4 +255,4 @@ impl DimensionConstraints {
 }
 
 #[cfg(feature = "proptest-strategies")]
-mod strategy;
+pub mod strategy;
