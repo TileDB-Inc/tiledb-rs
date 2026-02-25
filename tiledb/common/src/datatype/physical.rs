@@ -539,8 +539,12 @@ impl Display for PhysicalValue {
 
 #[cfg(feature = "proptest-strategies")]
 pub mod strategy {
-    use proptest::strategy::BoxedStrategy;
+    use proptest::strategy::{BoxedStrategy, NewTree, Strategy, ValueTree};
+    use proptest::test_runner::TestRunner;
 
+    use super::PhysicalValue;
+
+    #[derive(Debug)]
     pub enum PhysicalValueStrategy {
         UInt8(BoxedStrategy<u8>),
         UInt16(BoxedStrategy<u16>),
@@ -552,6 +556,46 @@ pub mod strategy {
         Int64(BoxedStrategy<i64>),
         Float32(BoxedStrategy<f32>),
         Float64(BoxedStrategy<f64>),
+    }
+
+    impl Strategy for PhysicalValueStrategy {
+        type Tree = PhysicalValueValueTree;
+        type Value = PhysicalValue;
+
+        fn new_tree(&self, runner: &mut TestRunner) -> NewTree<Self> {
+            match self {
+                Self::UInt8(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::UInt8)
+                }
+                Self::UInt16(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::UInt16)
+                }
+                Self::UInt32(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::UInt32)
+                }
+                Self::UInt64(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::UInt64)
+                }
+                Self::Int8(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::Int8)
+                }
+                Self::Int16(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::Int16)
+                }
+                Self::Int32(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::Int32)
+                }
+                Self::Int64(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::Int64)
+                }
+                Self::Float32(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::Float32)
+                }
+                Self::Float64(s) => {
+                    s.new_tree(runner).map(PhysicalValueValueTree::Float64)
+                }
+            }
+        }
     }
 
     macro_rules! field_value_strategy {
@@ -580,6 +624,53 @@ pub mod strategy {
     field_value_strategy!(UInt8 : u8, UInt16 : u16, UInt32 : u32, UInt64 : u64);
     field_value_strategy!(Int8 : i8, Int16 : i16, Int32 : i32, Int64 : i64);
     field_value_strategy!(Float32 : f32, Float64 : f64);
+
+    type BoxedValueTree<T> = Box<dyn ValueTree<Value = T>>;
+
+    pub enum PhysicalValueValueTree {
+        UInt8(BoxedValueTree<u8>),
+        UInt16(BoxedValueTree<u16>),
+        UInt32(BoxedValueTree<u32>),
+        UInt64(BoxedValueTree<u64>),
+        Int8(BoxedValueTree<i8>),
+        Int16(BoxedValueTree<i16>),
+        Int32(BoxedValueTree<i32>),
+        Int64(BoxedValueTree<i64>),
+        Float32(BoxedValueTree<f32>),
+        Float64(BoxedValueTree<f64>),
+    }
+
+    macro_rules! physical_vt_go {
+        ($vt:expr, $bind:pat, $then:expr) => {{
+            type _VT = PhysicalValueValueTree;
+            match $vt {
+                _VT::UInt8($bind) => $then,
+                _VT::UInt16($bind) => $then,
+                _VT::UInt32($bind) => $then,
+                _VT::UInt64($bind) => $then,
+                _VT::Int8($bind) => $then,
+                _VT::Int16($bind) => $then,
+                _VT::Int32($bind) => $then,
+                _VT::Int64($bind) => $then,
+                _VT::Float32($bind) => $then,
+                _VT::Float64($bind) => $then,
+            }
+        }};
+    }
+
+    impl ValueTree for PhysicalValueValueTree {
+        type Value = PhysicalValue;
+
+        fn current(&self) -> Self::Value {
+            physical_vt_go!(self, vt, PhysicalValue::from(vt.current()))
+        }
+        fn simplify(&mut self) -> bool {
+            physical_vt_go!(self, vt, vt.simplify())
+        }
+        fn complicate(&mut self) -> bool {
+            physical_vt_go!(self, vt, vt.complicate())
+        }
+    }
 }
 
 #[cfg(test)]

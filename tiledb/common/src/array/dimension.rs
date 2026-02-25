@@ -253,3 +253,6 @@ impl DimensionConstraints {
         )
     }
 }
+
+#[cfg(feature = "proptest-strategies")]
+pub mod strategy;
