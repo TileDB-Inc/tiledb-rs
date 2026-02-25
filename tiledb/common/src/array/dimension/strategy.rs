@@ -7,8 +7,8 @@ use tiledb_utils::numbers::{
 };
 
 use super::*;
-use crate::datatype::physical::strategy::PhysicalValueStrategy;
 use crate::datatype::physical::BitsOrd;
+use crate::datatype::physical::strategy::PhysicalValueStrategy;
 use crate::physical_type_go;
 use crate::range::{Range, VarValueRange};
 
