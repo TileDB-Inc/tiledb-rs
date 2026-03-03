@@ -5,6 +5,10 @@
 /// building static binaries, this is a no-op when tiledb-sys was built
 /// statically.
 pub fn rpath() {
+    if cfg!(windows) {
+        return;
+    }
+
     let libdir = env!("TILEDB_RPATH");
     if libdir.is_empty() {
         return;
