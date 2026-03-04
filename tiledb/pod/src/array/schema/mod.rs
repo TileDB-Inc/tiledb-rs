@@ -153,16 +153,16 @@ impl FieldData {
         }
     }
 
-    pub fn cell_val_num(&self) -> Option<CellValNum> {
+    pub fn cell_val_num(&self) -> CellValNum {
         match self {
-            Self::Dimension(d) => Some(d.cell_val_num()),
+            Self::Dimension(d) => d.cell_val_num(),
             Self::Attribute(a) => a.cell_val_num,
         }
     }
 
-    pub fn nullability(&self) -> Option<bool> {
+    pub fn nullability(&self) -> bool {
         match self {
-            Self::Dimension(_) => Some(false),
+            Self::Dimension(_) => false,
             Self::Attribute(a) => a.nullability,
         }
     }

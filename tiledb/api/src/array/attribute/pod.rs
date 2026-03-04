@@ -25,8 +25,8 @@ impl TryFrom<&Attribute> for AttributeData {
         Ok(AttributeData {
             name: attr.name()?,
             datatype,
-            nullability: Some(attr.is_nullable()?),
-            cell_val_num: Some(attr.cell_val_num()?),
+            nullability: attr.is_nullable()?,
+            cell_val_num: attr.cell_val_num()?,
             fill: Some(fill),
             filters: Vec::<FilterData>::try_from(&attr.filter_list()?)?,
             enumeration: attr.enumeration_name()?,
@@ -47,18 +47,15 @@ impl Factory for AttributeData {
 
     fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
         let mut b = Builder::new(context, &self.name, self.datatype)?
-            .filter_list(self.filters.create(context)?)?;
+            .filter_list(self.filters.create(context)?)?
+            .nullability(self.nullability)?;
 
-        if let Some(n) = self.nullability {
-            b = b.nullability(n)?;
-        }
-
-        #[allow(clippy::collapsible_if)]
-        if let Some(c) = self.cell_val_num {
-            if !matches!((self.datatype, c), (Datatype::Any, CellValNum::Var)) {
-                /* SC-46696 */
-                b = b.cell_val_num(c)?;
-            }
+        if !matches!(
+            (self.datatype, self.cell_val_num),
+            (Datatype::Any, CellValNum::Var)
+        ) {
+            /* SC-46696 */
+            b = b.cell_val_num(self.cell_val_num)?;
         }
 
         if let Some(ref fill) = self.fill {

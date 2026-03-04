@@ -193,8 +193,7 @@ impl Arbitrary for FieldData {
                 SchemaField::Attribute(a),
             )) => {
                 let value_strat = a.value_strategy();
-                let cell_val_num =
-                    a.cell_val_num.unwrap_or(CellValNum::single());
+                let cell_val_num = a.cell_val_num;
 
                 physical_type_go!(a.datatype, DT, {
                     <DT as ArbitraryFieldData>::arbitrary(
@@ -773,10 +772,8 @@ impl QueryConditionField for FieldWithDomain {
                     } else {
                         Some(vec![EqualityOp::Equal, EqualityOp::NotEqual])
                     }
-                } else if !ASTField::is_allowed_type(
-                    a.datatype,
-                    a.cell_val_num.unwrap_or(CellValNum::single()),
-                ) {
+                } else if !ASTField::is_allowed_type(a.datatype, a.cell_val_num)
+                {
                     // only null test allowed for these
                     Some(vec![])
                 } else {
@@ -839,10 +836,7 @@ impl QueryConditionField for FieldWithDomain {
             || (matches!(
                 self.field.datatype(),
                 Datatype::StringAscii | Datatype::StringUtf8
-            ) && matches!(
-                self.field.cell_val_num(),
-                None | Some(CellValNum::Var)
-            ))
+            ) && self.field.cell_val_num().is_var_sized())
         {
             self.domain.clone()
         } else {

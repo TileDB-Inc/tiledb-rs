@@ -33,11 +33,10 @@ impl Builder {
                         },
                     ],
                 },
-                attributes: vec![AttributeData {
-                    name: "a".to_owned(),
-                    datatype: Datatype::Int32,
-                    ..Default::default()
-                }],
+                attributes: vec![AttributeData::new(
+                    "a".to_owned(),
+                    Datatype::Int32,
+                )],
                 tile_order: Some(TileOrder::RowMajor),
                 cell_order: Some(CellOrder::RowMajor),
 

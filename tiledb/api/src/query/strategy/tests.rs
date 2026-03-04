@@ -588,8 +588,8 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
             AttributeData {
                 name: "HAR_".to_owned(),
                 datatype: Datatype::Int16,
-                nullability: Some(true),
-                cell_val_num: Some(CellValNum::single()),
+                nullability: true,
+                cell_val_num: CellValNum::single(),
                 fill: Some(FillData {
                     data: Value::Int16Value(vec![32082]),
                     nullability: Some(true),
@@ -600,8 +600,8 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
             AttributeData {
                 name: "R_0".to_owned(),
                 datatype: Datatype::Float32,
-                nullability: Some(true),
-                cell_val_num: Some(CellValNum::single()),
+                nullability: true,
+                cell_val_num: CellValNum::single(),
                 fill: Some(FillData {
                     data: Value::Float32Value(vec![-0.00014772698]),
                     nullability: Some(false),
@@ -693,7 +693,7 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
             AttributeData {
                 name: "G".to_owned(),
                 datatype: Datatype::Int16,
-                nullability: Some(false),
+                nullability: false,
                 cell_val_num: CellValNum::single().into(),
                 fill: None,
                 filters: Default::default(),
@@ -702,7 +702,7 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
             AttributeData {
                 name: "NVjjN97iS_6T0y7XATzd3kCH4".to_owned(),
                 datatype: Datatype::StringUtf8,
-                nullability: Some(false),
+                nullability: false,
                 cell_val_num: CellValNum::Var.into(),
                 fill: None,
                 filters: Default::default(),

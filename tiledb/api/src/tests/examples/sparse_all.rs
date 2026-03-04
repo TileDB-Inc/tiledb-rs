@@ -109,15 +109,14 @@ pub fn schema(params: Parameters) -> SchemaData {
                 "not_nullable"
             };
 
-            atts.push(AttributeData {
-                name: format!("a_{dt}_{tag_cvn}_{tag_nullable}"),
-                datatype: dt,
-                nullability: Some(is_nullable),
-                cell_val_num: Some(cell_val_num),
-                fill: None,
-                filters: Default::default(),
-                enumeration: None,
-            });
+            atts.push(
+                AttributeData::new(
+                    format!("a_{dt}_{tag_cvn}_{tag_nullable}"),
+                    dt,
+                )
+                .with_nullability(is_nullable)
+                .with_cell_val_num(cell_val_num),
+            );
         };
 
         if (params.fn_accept_attribute)(

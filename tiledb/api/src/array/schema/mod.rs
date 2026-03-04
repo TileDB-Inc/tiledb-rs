@@ -1397,11 +1397,10 @@ mod tests {
                     filters: None,
                 }],
             },
-            attributes: vec![AttributeData {
-                name: "a".to_string(),
-                datatype: Datatype::Int32,
-                ..Default::default()
-            }],
+            attributes: vec![AttributeData::new(
+                "a".to_owned(),
+                Datatype::Int32,
+            )],
             ..Default::default()
         };
 
@@ -1425,11 +1424,10 @@ mod tests {
                     filters: None,
                 }],
             },
-            attributes: vec![AttributeData {
-                name: "a".to_string(),
-                datatype: Datatype::Int32,
-                ..Default::default()
-            }],
+            attributes: vec![AttributeData::new(
+                "a".to_owned(),
+                Datatype::Int32,
+            )],
             ..Default::default()
         };
         let sparse_schema = sparse_spec

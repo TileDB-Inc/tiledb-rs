@@ -237,7 +237,7 @@ impl Strategy for DenseWriteStrategy {
             .schema
             .fields()
             .map(|field| {
-                match field.cell_val_num().unwrap_or(CellValNum::single()) {
+                match field.cell_val_num() {
                     CellValNum::Fixed(nz) => {
                         /* exact */
                         nz.get() as usize * field.datatype().size()

@@ -177,8 +177,8 @@ fn prop_attribute_for_datatype(
                             move |(fill, filters)| AttributeData {
                                 name: name.clone(),
                                 datatype,
-                                nullability: Some(nullable),
-                                cell_val_num: Some(cell_val_num),
+                                nullability: nullable,
+                                cell_val_num: cell_val_num,
                                 fill: Some(FillData {
                                     data: fill.into(),
                                     nullability: Some(
@@ -236,8 +236,8 @@ impl Arbitrary for AttributeData {
 pub struct AttributeValueTree {
     name: String,
     datatype: Datatype,
-    nullability: Option<bool>,
-    cell_val_num: Just<Option<CellValNum>>, // TODO: enable shrinking, will help identify if Var is necessary for example
+    nullability: bool,
+    cell_val_num: Just<CellValNum>, // TODO: enable shrinking, will help identify if Var is necessary for example
     fill: Just<Option<FillData>>,           // TODO: enable shrinking
     filters: FilterPipelineValueTree,
     enumeration: Option<MaybeValueTree<Just<String>>>,
