@@ -257,10 +257,10 @@ fn prop_schema_for_domain(
                 SchemaData {
                     array_type,
                     domain,
-                    capacity: Some(capacity),
-                    cell_order: Some(cell_order),
-                    tile_order: Some(tile_order),
-                    allow_duplicates: Some(allow_duplicates),
+                    capacity: capacity,
+                    cell_order: cell_order,
+                    tile_order: tile_order,
+                    allow_duplicates: allow_duplicates,
                     attributes,
                     enumerations,
                     coordinate_filters,
@@ -356,10 +356,10 @@ impl SchemaData {
 pub struct SchemaValueTree {
     array_type: ArrayType,
     domain: DomainValueTree,
-    capacity: Just<Option<u64>>, // TODO: make shrinkable
-    cell_order: Just<Option<CellOrder>>, // TODO: make shrinkable
-    tile_order: Just<Option<TileOrder>>, // TODO: make shrinkable
-    allow_duplicates: Just<Option<bool>>, // TODO: make shrinkable
+    capacity: Just<u64>,          // TODO: make shrinkable
+    cell_order: Just<CellOrder>,  // TODO: make shrinkable
+    tile_order: Just<TileOrder>,  // TODO: make shrinkable
+    allow_duplicates: Just<bool>, // TODO: make shrinkable
     all_attributes: Vec<AttributeValueTree>,
     all_enumerations: HashMap<String, EnumerationValueTree>,
     selected_attributes: RecordsValueTree<Vec<usize>>,

@@ -70,7 +70,7 @@ struct SparseCellsAccumulator {
 
 impl SparseCellsAccumulator {
     pub fn new(schema: &SchemaData) -> Self {
-        let dedup_keys = if schema.allow_duplicates.unwrap_or(false) {
+        let dedup_keys = if schema.allow_duplicates {
             None
         } else {
             Some(
@@ -580,10 +580,10 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
                 filters: None,
             }],
         },
-        capacity: Some(100000),
-        cell_order: Some(CellOrder::ColumnMajor),
-        tile_order: Some(TileOrder::RowMajor),
-        allow_duplicates: Some(true),
+        capacity: 100000,
+        cell_order: CellOrder::ColumnMajor,
+        tile_order: TileOrder::RowMajor,
+        allow_duplicates: true,
         attributes: vec![
             AttributeData {
                 name: "HAR_".to_owned(),
@@ -685,10 +685,10 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
                 filters: None,
             }],
         },
-        capacity: Some(100000),
-        cell_order: Some(CellOrder::ColumnMajor),
-        tile_order: Some(TileOrder::ColumnMajor),
-        allow_duplicates: Some(true),
+        capacity: 100000,
+        cell_order: CellOrder::ColumnMajor,
+        tile_order: TileOrder::ColumnMajor,
+        allow_duplicates: true,
         attributes: vec![
             AttributeData {
                 name: "G".to_owned(),

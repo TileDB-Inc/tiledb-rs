@@ -8,41 +8,27 @@ pub struct Builder {
 
 impl Builder {
     pub fn new(array_type: ArrayType) -> Self {
-        Builder {
-            schema: SchemaData {
-                array_type,
-                domain: DomainData {
-                    dimension: vec![
-                        DimensionData {
-                            name: "rows".to_owned(),
-                            datatype: Datatype::Int32,
-                            constraints: DimensionConstraints::Int32(
-                                [1, 4],
-                                Some(4),
-                            ),
-                            filters: None,
-                        },
-                        DimensionData {
-                            name: "cols".to_owned(),
-                            datatype: Datatype::Int32,
-                            constraints: DimensionConstraints::Int32(
-                                [1, 4],
-                                Some(4),
-                            ),
-                            filters: None,
-                        },
-                    ],
+        let schema = SchemaData::new(
+            array_type,
+            vec![
+                DimensionData {
+                    name: "rows".to_owned(),
+                    datatype: Datatype::Int32,
+                    constraints: DimensionConstraints::Int32([1, 4], Some(4)),
+                    filters: None,
                 },
-                attributes: vec![AttributeData::new(
-                    "a".to_owned(),
-                    Datatype::Int32,
-                )],
-                tile_order: Some(TileOrder::RowMajor),
-                cell_order: Some(CellOrder::RowMajor),
-
-                ..Default::default()
-            },
-        }
+                DimensionData {
+                    name: "cols".to_owned(),
+                    datatype: Datatype::Int32,
+                    constraints: DimensionConstraints::Int32([1, 4], Some(4)),
+                    filters: None,
+                },
+            ],
+            vec![AttributeData::new("a".to_owned(), Datatype::Int32)],
+        )
+        .with_tile_order(TileOrder::RowMajor)
+        .with_cell_order(CellOrder::RowMajor);
+        Builder { schema }
     }
 
     pub fn with_rows(mut self, domain: DimensionConstraints) -> Self {

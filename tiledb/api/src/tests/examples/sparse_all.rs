@@ -10,7 +10,6 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::physical_type_go;
 use tiledb_pod::array::attribute::AttributeData;
 use tiledb_pod::array::dimension::DimensionData;
-use tiledb_pod::array::domain::DomainData;
 use tiledb_pod::array::schema::SchemaData;
 
 pub type FnAcceptDimension = dyn Fn(&Parameters, Datatype) -> bool;
@@ -139,17 +138,5 @@ pub fn schema(params: Parameters) -> SchemaData {
         }
     }
 
-    SchemaData {
-        array_type: ArrayType::Sparse,
-        domain: DomainData { dimension: dims },
-        capacity: None,
-        cell_order: None,
-        tile_order: None,
-        allow_duplicates: None,
-        attributes: atts,
-        enumerations: Default::default(),
-        coordinate_filters: Default::default(),
-        offsets_filters: Default::default(),
-        validity_filters: Default::default(),
-    }
+    SchemaData::new(ArrayType::Sparse, dims, atts)
 }

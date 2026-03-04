@@ -31,10 +31,10 @@ impl TryFrom<&Schema> for SchemaData {
         Ok(SchemaData {
             array_type: schema.array_type()?,
             domain: DomainData::try_from(&schema.domain()?)?,
-            capacity: Some(schema.capacity()?),
-            cell_order: Some(schema.cell_order()?),
-            tile_order: Some(schema.tile_order()?),
-            allow_duplicates: Some(schema.allows_duplicates()?),
+            capacity: schema.capacity()?,
+            cell_order: schema.cell_order()?,
+            tile_order: schema.tile_order()?,
+            allow_duplicates: schema.allows_duplicates()?,
             attributes,
             enumerations,
             coordinate_filters: Vec::<FilterData>::try_from(
@@ -81,20 +81,11 @@ impl Factory for SchemaData {
             .iter()
             .try_fold(b, |b, a| b.add_attribute(a.create(context)?))?;
 
-        if let Some(c) = self.capacity {
-            b = b.capacity(c)?;
-        }
-        if let Some(d) = self.allow_duplicates {
-            b = b.allow_duplicates(d)?;
-        }
-        if let Some(o) = self.cell_order {
-            b = b.cell_order(o)?;
-        }
-        if let Some(o) = self.tile_order {
-            b = b.tile_order(o)?;
-        }
-
-        b.build()
+        b.capacity(self.capacity)?
+            .allow_duplicates(self.allow_duplicates)?
+            .cell_order(self.cell_order)?
+            .tile_order(self.tile_order)?
+            .build()
     }
 }
 

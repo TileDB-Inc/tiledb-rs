@@ -423,7 +423,7 @@ impl CellsStrategySchema {
                 };
 
                 if schema.array_type == ArrayType::Sparse
-                    && !schema.allow_duplicates.unwrap_or(false)
+                    && !schema.allow_duplicates
                 {
                     // dimension coordinates must be unique, generate them first
                     let unique_keys = schema
@@ -587,7 +587,7 @@ impl CellsStrategy {
     /// Returns an upper bound on the number of cells which can possibly be produced
     fn nrecords_limit(&self) -> Option<usize> {
         if let Some(schema) = self.schema.array_schema() {
-            if !schema.allow_duplicates.unwrap_or(true) {
+            if !schema.allow_duplicates {
                 return schema.domain.num_cells();
             }
         }

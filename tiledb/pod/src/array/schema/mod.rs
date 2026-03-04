@@ -18,16 +18,16 @@ pub use crate::array::{
 };
 
 /// Encapsulation of data needed to construct a Schema
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct SchemaData {
     pub array_type: ArrayType,
     pub domain: DomainData,
-    pub capacity: Option<u64>,
-    pub cell_order: Option<CellOrder>,
-    pub tile_order: Option<TileOrder>,
-    pub allow_duplicates: Option<bool>,
+    pub capacity: u64,
+    pub cell_order: CellOrder,
+    pub tile_order: TileOrder,
+    pub allow_duplicates: bool,
     pub attributes: Vec<AttributeData>,
     pub enumerations: Vec<EnumerationData>,
     pub coordinate_filters: Vec<FilterData>,
@@ -37,6 +37,88 @@ pub struct SchemaData {
 
 impl SchemaData {
     pub const DEFAULT_SPARSE_TILE_CAPACITY: u64 = 10000;
+
+    pub fn new(
+        array_type: ArrayType,
+        domain: Vec<DimensionData>,
+        attributes: Vec<AttributeData>,
+    ) -> Self {
+        Self {
+            array_type,
+            domain: DomainData { dimension: domain },
+            capacity: Self::DEFAULT_SPARSE_TILE_CAPACITY,
+            cell_order: CellOrder::RowMajor,
+            tile_order: TileOrder::RowMajor,
+            allow_duplicates: false,
+            attributes,
+            enumerations: Vec::new(),
+            coordinate_filters: Vec::new(),
+            offsets_filters: Vec::new(),
+            validity_filters: Vec::new(),
+        }
+    }
+
+    pub fn with_capacity(self, capacity: u64) -> Self {
+        Self { capacity, ..self }
+    }
+
+    pub fn with_cell_order(self, cell_order: CellOrder) -> Self {
+        Self {
+            cell_order: cell_order,
+            ..self
+        }
+    }
+
+    pub fn with_tile_order(self, tile_order: TileOrder) -> Self {
+        Self {
+            tile_order: tile_order,
+            ..self
+        }
+    }
+
+    pub fn with_allow_duplicates(self, allow_duplicates: bool) -> Self {
+        Self {
+            allow_duplicates,
+            ..self
+        }
+    }
+
+    pub fn with_enumerations(self, enumerations: Vec<EnumerationData>) -> Self {
+        Self {
+            enumerations,
+            ..self
+        }
+    }
+
+    pub fn with_coordinate_filters(
+        self,
+        coordinate_filters: Vec<FilterData>,
+    ) -> Self {
+        Self {
+            coordinate_filters,
+            ..self
+        }
+    }
+
+    pub fn with_offsets_filters(
+        self,
+        offsets_filters: Vec<FilterData>,
+    ) -> Self {
+        Self {
+            offsets_filters,
+            ..self
+        }
+    }
+
+    pub fn with_validity_filters(
+        self,
+        validity_filters: Vec<FilterData>,
+    ) -> Self {
+        Self {
+            validity_filters,
+            ..self
+        }
+    }
 
     pub fn num_fields(&self) -> usize {
         self.domain.dimension.len() + self.attributes.len()
@@ -114,10 +196,7 @@ impl SchemaData {
                 // (TODO: what about for string ascii dense domains?)
                 self.domain.num_cells_per_tile().unwrap()
             }
-            ArrayType::Sparse => {
-                self.capacity.unwrap_or(Self::DEFAULT_SPARSE_TILE_CAPACITY)
-                    as usize
-            }
+            ArrayType::Sparse => self.capacity as usize,
         }
     }
 }

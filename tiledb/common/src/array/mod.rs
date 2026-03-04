@@ -180,11 +180,10 @@ impl Arbitrary for CellOrder {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum ArrayType {
-    #[default]
     Dense,
     Sparse,
 }
