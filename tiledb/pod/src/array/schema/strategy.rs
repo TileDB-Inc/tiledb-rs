@@ -29,11 +29,13 @@ use crate::filter::strategy::{
 #[derive(Clone)]
 pub struct Requirements {
     pub domain: Option<Rc<DomainRequirements>>,
+    pub cell_order: Rc<dyn Fn(ArrayType) -> BoxedStrategy<CellOrder>>,
     pub num_attributes: std::ops::RangeInclusive<usize>,
     pub attributes: Option<AttributeRequirements>,
     pub coordinates_filters: Option<Rc<FilterRequirements>>,
     pub offsets_filters: Option<Rc<FilterRequirements>>,
     pub validity_filters: Option<Rc<FilterRequirements>>,
+    pub allow_duplicates: Rc<dyn Fn(ArrayType) -> BoxedStrategy<bool>>,
     pub sparse_tile_capacity: std::ops::RangeInclusive<u64>,
     pub attribute_enumeration_likelihood: f64,
 }
@@ -64,12 +66,21 @@ impl Default for Requirements {
     fn default() -> Self {
         Requirements {
             domain: None,
+            cell_order: Rc::new(|array_type: ArrayType| {
+                any_with::<CellOrder>(Some(array_type)).boxed()
+            }),
             num_attributes: Self::min_attributes_default()
                 ..=Self::max_attributes_default(),
             attributes: None,
             coordinates_filters: None,
             offsets_filters: None,
             validity_filters: None,
+            allow_duplicates: Rc::new(
+                |array_type: ArrayType| match array_type {
+                    ArrayType::Dense => Just(false).boxed(),
+                    ArrayType::Sparse => any::<bool>().boxed(),
+                },
+            ),
             sparse_tile_capacity: Self::min_sparse_tile_capacity_default()
                 ..=Self::max_sparse_tile_capacity_default(),
             attribute_enumeration_likelihood:
@@ -98,10 +109,7 @@ fn prop_schema_for_domain(
     domain: Rc<DomainData>,
     params: Rc<Requirements>,
 ) -> impl Strategy<Value = SchemaData> {
-    let allow_duplicates = match array_type {
-        ArrayType::Dense => Just(false).boxed(),
-        ArrayType::Sparse => any::<bool>().boxed(),
-    };
+    let allow_duplicates = (params.allow_duplicates)(array_type);
 
     let capacity = match array_type {
         ArrayType::Dense => any::<u64>().boxed(), // unused?
@@ -197,7 +205,7 @@ fn prop_schema_for_domain(
 
     (
         capacity,
-        any_with::<CellOrder>(Some(array_type)),
+        (params.cell_order)(array_type),
         any::<TileOrder>(),
         allow_duplicates,
         strat_attributes_enumerations,
