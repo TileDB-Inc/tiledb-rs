@@ -238,7 +238,7 @@ pub struct AttributeValueTree {
     datatype: Datatype,
     nullability: bool,
     cell_val_num: Just<CellValNum>, // TODO: enable shrinking, will help identify if Var is necessary for example
-    fill: Just<Option<FillData>>,           // TODO: enable shrinking
+    fill: Just<Option<FillData>>,   // TODO: enable shrinking
     filters: FilterPipelineValueTree,
     enumeration: Option<MaybeValueTree<Just<String>>>,
 }
