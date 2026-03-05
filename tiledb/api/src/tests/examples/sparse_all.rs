@@ -91,7 +91,7 @@ pub fn schema(params: Parameters) -> SchemaData {
             dims.push(DimensionData {
                 name: format!("d_{dt}"),
                 datatype: dt,
-                filters: None,
+                filters: vec![],
                 constraints,
             });
         }

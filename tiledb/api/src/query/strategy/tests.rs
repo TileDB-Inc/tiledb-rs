@@ -4,9 +4,7 @@ use cells::write::{DenseWriteInput, SparseWriteInput, WriteSequence};
 use proptest::prelude::*;
 use tiledb_common::Datatype;
 use tiledb_common::array::schema::EnumerationKey;
-use tiledb_common::array::{
-    CellOrder, TileOrder, dimension::DimensionConstraints,
-};
+use tiledb_common::array::{CellOrder, TileOrder};
 use tiledb_common::metadata::Value;
 use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
 use tiledb_common::range::{NonEmptyDomain, Range};
@@ -570,15 +568,15 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
         domain: DomainData {
-            dimension: vec![DimensionData {
-                name: "__9clS_8u_EwY_7X_CUz70_".to_owned(),
-                datatype: Datatype::TimePicosecond,
-                constraints: DimensionConstraints::Int64(
-                    [-1826241097139635319, 3393001123887180702],
+            dimension: vec![
+                DimensionData::new(
+                    "__9clS_8u_EwY_7X_CUz70_".to_owned(),
+                    -1826241097139635319i64,
+                    3393001123887180702,
                     Some(3633),
-                ),
-                filters: None,
-            }],
+                )
+                .with_datatype(Datatype::TimePicosecond),
+            ],
         },
         capacity: 100000,
         cell_order: CellOrder::ColumnMajor,
@@ -675,15 +673,15 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
         domain: DomainData {
-            dimension: vec![DimensionData {
-                name: "G_2x0u0nImT_z5__S_LpDF".to_owned(),
-                datatype: Datatype::TimeNanosecond,
-                constraints: DimensionConstraints::Int64(
-                    [-1724306171463955564, 2590083558631104178],
+            dimension: vec![
+                DimensionData::new(
+                    "G_2x0u0nImT_z5__S_LpDF".to_owned(),
+                    -1724306171463955564i64,
+                    2590083558631104178,
                     Some(4365),
-                ),
-                filters: None,
-            }],
+                )
+                .with_datatype(Datatype::TimeNanosecond),
+            ],
         },
         capacity: 100000,
         cell_order: CellOrder::ColumnMajor,

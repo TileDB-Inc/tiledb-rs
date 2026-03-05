@@ -14,8 +14,15 @@ use crate::range::SingleValueRange;
 pub enum Error {
     #[error("Invalid datatype: {0}")]
     Datatype(#[from] DatatypeError),
-    #[error("Expected {} but found {0}", Datatype::StringAscii.to_string())]
+    #[error("Expected {} but found {0}", Datatype::StringAscii)]
     ExpectedStringAscii(Datatype),
+    #[error(
+        "{datatype} is not compatible with {constraint_datatype} declared in constraints"
+    )]
+    IncompatibleDatatypeWithConstraint {
+        datatype: Datatype,
+        constraint_datatype: Datatype,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

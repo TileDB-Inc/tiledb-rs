@@ -1,4 +1,4 @@
-use tiledb_common::array::dimension::DimensionConstraints;
+use tiledb_common::array::dimension::{self, DimensionConstraints};
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 use tiledb_pod::array::dimension::DimensionData;
@@ -27,10 +27,7 @@ impl TryFrom<&Dimension> for DimensionData {
             name: dim.name()?,
             datatype,
             constraints,
-            filters: {
-                let fl = Vec::<FilterData>::try_from(&dim.filters()?)?;
-                if fl.is_empty() { None } else { Some(fl) }
-            },
+            filters: Vec::<FilterData>::try_from(&dim.filters()?)?,
         })
     }
 }
@@ -47,6 +44,16 @@ impl Factory for DimensionData {
     type Item = Dimension;
 
     fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
+        if self
+            .datatype
+            .same_physical_type(&self.constraints.physical_datatype())
+        {
+            return Err(dimension::Error::IncompatibleDatatypeWithConstraint {
+                datatype: self.datatype,
+                constraint_datatype: self.constraints.physical_datatype(),
+            }
+            .into());
+        }
         let mut b = Builder::new(
             context,
             &self.name,
@@ -54,9 +61,7 @@ impl Factory for DimensionData {
             self.constraints.clone(),
         )?;
 
-        if let Some(fl) = self.filters.as_ref() {
-            b = b.filters(fl.create(context)?)?;
-        }
+        b = b.filters(self.filters.create(context)?)?;
 
         Ok(b.cell_val_num(self.cell_val_num())?.build())
     }

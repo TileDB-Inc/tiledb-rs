@@ -11,18 +11,8 @@ impl Builder {
         let schema = SchemaData::new(
             array_type,
             vec![
-                DimensionData {
-                    name: "rows".to_owned(),
-                    datatype: Datatype::Int32,
-                    constraints: DimensionConstraints::Int32([1, 4], Some(4)),
-                    filters: None,
-                },
-                DimensionData {
-                    name: "cols".to_owned(),
-                    datatype: Datatype::Int32,
-                    constraints: DimensionConstraints::Int32([1, 4], Some(4)),
-                    filters: None,
-                },
+                DimensionData::new("rows".to_owned(), 1, 4, Some(4)),
+                DimensionData::new("cols".to_owned(), 1, 4, Some(4)),
             ],
             vec![AttributeData::new("a".to_owned(), Datatype::Int32)],
         )

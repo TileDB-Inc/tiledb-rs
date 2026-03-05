@@ -21,13 +21,49 @@ pub struct DimensionData {
     pub datatype: Datatype,
     pub constraints: DimensionConstraints,
 
-    /// Optional filters to apply to the dimension. If None or Some(empty),
+    /// Optional filters to apply to the dimension. If empty,
     /// then filters will be inherited from the schema's `coordinate_filters`
     /// field when the array is constructed.
-    pub filters: Option<Vec<FilterData>>,
+    pub filters: Vec<FilterData>,
 }
 
 impl DimensionData {
+    pub fn new<T>(
+        name: String,
+        domain_low: T,
+        domain_high: T,
+        extent: Option<T>,
+    ) -> Self
+    where
+        DimensionConstraints: From<([T; 2], Option<T>)>,
+    {
+        let constraints =
+            DimensionConstraints::from(([domain_low, domain_high], extent));
+        Self {
+            name,
+            datatype: constraints.physical_datatype(),
+            constraints: constraints,
+            filters: vec![],
+        }
+    }
+
+    pub fn new_ascii_string(name: String) -> Self {
+        Self {
+            name,
+            datatype: Datatype::StringAscii,
+            constraints: DimensionConstraints::StringAscii,
+            filters: vec![],
+        }
+    }
+
+    pub fn with_datatype(self, datatype: Datatype) -> Self {
+        Self { datatype, ..self }
+    }
+
+    pub fn with_filters(self, filters: Vec<FilterData>) -> Self {
+        Self { filters, ..self }
+    }
+
     pub fn cell_val_num(&self) -> CellValNum {
         self.constraints.cell_val_num()
     }

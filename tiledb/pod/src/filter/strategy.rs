@@ -212,13 +212,10 @@ fn prop_compression(
                  * DoubleDelta compressor is disallowed in the schema coordinates filter
                  * if there is a floating-point dimension
                  */
-                !domain.dimension.iter().any(|d| {
-                    d.datatype.is_real_type()
-                        && d.filters
-                            .as_ref()
-                            .map(|fl| fl.is_empty())
-                            .unwrap_or(true)
-                })
+                !domain
+                    .dimension
+                    .iter()
+                    .any(|d| d.datatype.is_real_type() && d.filters.is_empty())
             } else {
                 true
             }
