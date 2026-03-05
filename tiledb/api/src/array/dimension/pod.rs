@@ -44,7 +44,7 @@ impl Factory for DimensionData {
     type Item = Dimension;
 
     fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        if self
+        if !self
             .datatype
             .same_physical_type(&self.constraints.physical_datatype())
         {
