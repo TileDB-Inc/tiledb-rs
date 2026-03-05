@@ -28,9 +28,9 @@ pub struct AttributeData {
 }
 
 impl AttributeData {
-    pub fn new(name: String, datatype: Datatype) -> Self {
+    pub fn new(name: &str, datatype: Datatype) -> Self {
         Self {
-            name,
+            name: name.to_string(),
             datatype,
             nullability: false,
             cell_val_num: CellValNum::default(),

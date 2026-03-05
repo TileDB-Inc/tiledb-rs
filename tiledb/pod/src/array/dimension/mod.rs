@@ -29,7 +29,7 @@ pub struct DimensionData {
 
 impl DimensionData {
     pub fn new<T>(
-        name: String,
+        name: &str,
         domain_low: T,
         domain_high: T,
         extent: Option<T>,
@@ -40,16 +40,16 @@ impl DimensionData {
         let constraints =
             DimensionConstraints::from(([domain_low, domain_high], extent));
         Self {
-            name,
+            name: name.to_string(),
             datatype: constraints.physical_datatype(),
             constraints: constraints,
             filters: vec![],
         }
     }
 
-    pub fn new_ascii_string(name: String) -> Self {
+    pub fn new_ascii_string(name: &str) -> Self {
         Self {
-            name,
+            name: name.to_string(),
             datatype: Datatype::StringAscii,
             constraints: DimensionConstraints::StringAscii,
             filters: vec![],

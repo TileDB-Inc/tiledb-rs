@@ -110,7 +110,7 @@ pub fn schema(params: Parameters) -> SchemaData {
 
             atts.push(
                 AttributeData::new(
-                    format!("a_{dt}_{tag_cvn}_{tag_nullable}"),
+                    &format!("a_{dt}_{tag_cvn}_{tag_nullable}"),
                     dt,
                 )
                 .with_nullability(is_nullable)

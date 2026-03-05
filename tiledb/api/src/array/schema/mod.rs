@@ -1388,8 +1388,8 @@ mod tests {
 
         let dense_spec = SchemaData::new(
             ArrayType::Dense,
-            vec![DimensionData::new("d".to_string(), 0, 100, None)],
-            vec![AttributeData::new("a".to_owned(), Datatype::Int32)],
+            vec![DimensionData::new("d", 0, 100, None)],
+            vec![AttributeData::new("a", Datatype::Int32)],
         );
 
         let dense_schema = dense_spec
@@ -1404,8 +1404,8 @@ mod tests {
 
         let sparse_spec = SchemaData::new(
             ArrayType::Sparse,
-            vec![DimensionData::new("d".to_string(), 0, 100, None)],
-            vec![AttributeData::new("a".to_owned(), Datatype::Int32)],
+            vec![DimensionData::new("d", 0, 100, None)],
+            vec![AttributeData::new("a", Datatype::Int32)],
         );
         let sparse_schema = sparse_spec
             .create(&ctx)

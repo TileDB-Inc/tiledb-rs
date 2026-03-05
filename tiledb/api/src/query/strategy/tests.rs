@@ -570,7 +570,7 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
         domain: DomainData {
             dimension: vec![
                 DimensionData::new(
-                    "__9clS_8u_EwY_7X_CUz70_".to_owned(),
+                    "__9clS_8u_EwY_7X_CUz70_",
                     -1826241097139635319i64,
                     3393001123887180702,
                     Some(3633),
@@ -675,7 +675,7 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
         domain: DomainData {
             dimension: vec![
                 DimensionData::new(
-                    "G_2x0u0nImT_z5__S_LpDF".to_owned(),
+                    "G_2x0u0nImT_z5__S_LpDF",
                     -1724306171463955564i64,
                     2590083558631104178,
                     Some(4365),

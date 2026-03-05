@@ -11,10 +11,10 @@ impl Builder {
         let schema = SchemaData::new(
             array_type,
             vec![
-                DimensionData::new("rows".to_owned(), 1, 4, Some(4)),
-                DimensionData::new("cols".to_owned(), 1, 4, Some(4)),
+                DimensionData::new("rows", 1, 4, Some(4)),
+                DimensionData::new("cols", 1, 4, Some(4)),
             ],
-            vec![AttributeData::new("a".to_owned(), Datatype::Int32)],
+            vec![AttributeData::new("a", Datatype::Int32)],
         )
         .with_tile_order(TileOrder::RowMajor)
         .with_cell_order(CellOrder::RowMajor);
