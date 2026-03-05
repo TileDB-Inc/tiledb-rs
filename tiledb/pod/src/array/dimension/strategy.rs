@@ -109,7 +109,7 @@ fn prop_dimension_for_datatype(
                 name,
                 datatype,
                 constraints,
-                filters: filters,
+                filters,
             })
             .boxed()
     })

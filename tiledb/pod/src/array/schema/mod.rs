@@ -63,17 +63,11 @@ impl SchemaData {
     }
 
     pub fn with_cell_order(self, cell_order: CellOrder) -> Self {
-        Self {
-            cell_order: cell_order,
-            ..self
-        }
+        Self { cell_order, ..self }
     }
 
     pub fn with_tile_order(self, tile_order: TileOrder) -> Self {
-        Self {
-            tile_order: tile_order,
-            ..self
-        }
+        Self { tile_order, ..self }
     }
 
     pub fn with_allow_duplicates(self, allow_duplicates: bool) -> Self {

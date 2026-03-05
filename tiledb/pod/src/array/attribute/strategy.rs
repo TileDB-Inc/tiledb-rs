@@ -178,7 +178,7 @@ fn prop_attribute_for_datatype(
                                 name: name.clone(),
                                 datatype,
                                 nullability: nullable,
-                                cell_val_num: cell_val_num,
+                                cell_val_num,
                                 fill: Some(FillData {
                                     data: fill.into(),
                                     nullability: Some(

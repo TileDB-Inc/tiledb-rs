@@ -42,7 +42,7 @@ impl DimensionData {
         Self {
             name: name.to_string(),
             datatype: constraints.physical_datatype(),
-            constraints: constraints,
+            constraints,
             filters: vec![],
         }
     }
