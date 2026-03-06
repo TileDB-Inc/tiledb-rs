@@ -11,7 +11,7 @@ use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 
-use crate::array::DomainData;
+use crate::array::DimensionData;
 use crate::array::attribute::{AttributeData, FillData};
 use crate::array::enumeration::strategy::Parameters as EnumerationParameters;
 use crate::filter::strategy::{
@@ -70,7 +70,7 @@ impl AttributeData {
 #[derive(Clone)]
 pub enum StrategyContext {
     /// This attribute is being generated for an array schema
-    Schema(ArrayType, Rc<DomainData>),
+    Schema(ArrayType, Rc<Vec<DimensionData>>),
 }
 
 #[derive(Clone, Default)]
@@ -177,8 +177,8 @@ fn prop_attribute_for_datatype(
                             move |(fill, filters)| AttributeData {
                                 name: name.clone(),
                                 datatype,
-                                nullability: Some(nullable),
-                                cell_val_num: Some(cell_val_num),
+                                nullability: nullable,
+                                cell_val_num,
                                 fill: Some(FillData {
                                     data: fill.into(),
                                     nullability: Some(
@@ -236,9 +236,9 @@ impl Arbitrary for AttributeData {
 pub struct AttributeValueTree {
     name: String,
     datatype: Datatype,
-    nullability: Option<bool>,
-    cell_val_num: Just<Option<CellValNum>>, // TODO: enable shrinking, will help identify if Var is necessary for example
-    fill: Just<Option<FillData>>,           // TODO: enable shrinking
+    nullability: bool,
+    cell_val_num: Just<CellValNum>, // TODO: enable shrinking, will help identify if Var is necessary for example
+    fill: Just<Option<FillData>>,   // TODO: enable shrinking
     filters: FilterPipelineValueTree,
     enumeration: Option<MaybeValueTree<Just<String>>>,
 }

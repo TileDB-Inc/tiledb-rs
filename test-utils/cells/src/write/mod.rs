@@ -27,7 +27,6 @@ impl SparseWriteInput {
     pub fn from_schema_and_data(schema: &SchemaData, data: Cells) -> Self {
         let dimensions = schema
             .domain
-            .dimension
             .iter()
             .map(|d| (d.name.clone(), d.cell_val_num()))
             .collect::<Vec<_>>();

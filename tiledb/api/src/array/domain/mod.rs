@@ -218,7 +218,10 @@ impl Iterator for Dimensions<'_> {
 #[cfg(any(test, feature = "pod"))]
 impl Debug for Domain {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        match tiledb_pod::array::domain::DomainData::try_from(self) {
+        match <Vec<tiledb_pod::array::dimension::DimensionData> as TryFrom<
+            &Domain,
+        >>::try_from(self)
+        {
             Ok(d) => Debug::fmt(&d, f),
             Err(e) => {
                 let RawDomain::Owned(ptr) = self.raw;
@@ -282,7 +285,7 @@ pub mod pod;
 mod tests {
     use proptest::prelude::*;
     use tiledb_pod::array::dimension::DimensionData;
-    use tiledb_pod::array::domain::DomainData;
+    use tiledb_pod::array::domain::strategy::DomainData;
     use utils::assert_option_subset;
 
     use crate::array::domain::Builder;
@@ -479,7 +482,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context");
 
         proptest!(|(maybe_domain in any::<DomainData>())| {
-            maybe_domain.create(&ctx)
+            maybe_domain.as_ref().create(&ctx)
                 .expect("Error constructing arbitrary domain");
         });
     }
@@ -490,25 +493,24 @@ mod tests {
 
         proptest!(|(domain in any::<DomainData>())| {
             assert_eq!(domain, domain);
-            assert_option_subset!(domain, domain);
 
-            let domain = domain.create(&ctx)
+            let domain =
+            domain.as_ref().create(&ctx)
                 .expect("Error constructing arbitrary domain");
             assert_eq!(domain, domain);
         });
     }
 
     /// Test iteration over [Domain] dimensions
-    fn do_test_dimensions_iter(spec: DomainData) -> TileDBResult<()> {
+    fn do_test_dimensions_iter(spec: &[DimensionData]) -> TileDBResult<()> {
         let context = Context::new()?;
         let domain = spec.create(&context)?;
 
         let num_dimensions = domain.num_dimensions()?;
-        assert_eq!(num_dimensions, spec.dimension.len());
+        assert_eq!(num_dimensions, spec.len());
         assert_eq!(num_dimensions, domain.dimensions()?.count());
 
-        for (dimension_spec, dimension) in
-            spec.dimension.iter().zip(domain.dimensions()?)
+        for (dimension_spec, dimension) in spec.iter().zip(domain.dimensions()?)
         {
             let dimension = DimensionData::try_from(dimension?)?;
             assert_option_subset!(dimension_spec, dimension);
@@ -520,7 +522,7 @@ mod tests {
     proptest! {
         #[test]
         fn test_dimensions_iter(spec in any::<DomainData>()) {
-            do_test_dimensions_iter(spec).expect("Error in do_test_dimensions_iter");
+            do_test_dimensions_iter(spec.as_ref()).expect("Error in do_test_dimensions_iter");
         }
     }
 }

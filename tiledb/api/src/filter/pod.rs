@@ -48,7 +48,7 @@ impl TryFrom<FilterList> for Vec<FilterData> {
     }
 }
 
-impl crate::Factory for Vec<FilterData> {
+impl crate::Factory for [FilterData] {
     type Item = FilterList;
 
     fn create(&self, context: &Context) -> TileDBResult<Self::Item> {

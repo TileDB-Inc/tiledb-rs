@@ -56,7 +56,7 @@ impl Error {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 #[repr(u64)]
 pub enum Datatype {
@@ -95,9 +95,6 @@ pub enum Datatype {
     /// A UCS4 string
     StringUcs4,
     /// An arbitrary type
-    // Any is default to cause an error if we forget to set it on either a
-    // DimensionData or AttributeData instance.
-    #[default]
     Any,
     /// DateTime with year resolution
     DateTimeYear,

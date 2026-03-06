@@ -10,7 +10,6 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::physical_type_go;
 use tiledb_pod::array::attribute::AttributeData;
 use tiledb_pod::array::dimension::DimensionData;
-use tiledb_pod::array::domain::DomainData;
 use tiledb_pod::array::schema::SchemaData;
 
 pub type FnAcceptDimension = dyn Fn(&Parameters, Datatype) -> bool;
@@ -92,7 +91,7 @@ pub fn schema(params: Parameters) -> SchemaData {
             dims.push(DimensionData {
                 name: format!("d_{dt}"),
                 datatype: dt,
-                filters: None,
+                filters: vec![],
                 constraints,
             });
         }
@@ -109,15 +108,14 @@ pub fn schema(params: Parameters) -> SchemaData {
                 "not_nullable"
             };
 
-            atts.push(AttributeData {
-                name: format!("a_{dt}_{tag_cvn}_{tag_nullable}"),
-                datatype: dt,
-                nullability: Some(is_nullable),
-                cell_val_num: Some(cell_val_num),
-                fill: None,
-                filters: Default::default(),
-                enumeration: None,
-            });
+            atts.push(
+                AttributeData::new(
+                    &format!("a_{dt}_{tag_cvn}_{tag_nullable}"),
+                    dt,
+                )
+                .with_nullability(is_nullable)
+                .with_cell_val_num(cell_val_num),
+            );
         };
 
         if (params.fn_accept_attribute)(
@@ -140,17 +138,5 @@ pub fn schema(params: Parameters) -> SchemaData {
         }
     }
 
-    SchemaData {
-        array_type: ArrayType::Sparse,
-        domain: DomainData { dimension: dims },
-        capacity: None,
-        cell_order: None,
-        tile_order: None,
-        allow_duplicates: None,
-        attributes: atts,
-        enumerations: Default::default(),
-        coordinate_filters: Default::default(),
-        offsets_filters: Default::default(),
-        validity_filters: Default::default(),
-    }
+    SchemaData::new(ArrayType::Sparse, dims, atts)
 }

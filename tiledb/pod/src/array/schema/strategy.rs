@@ -16,11 +16,11 @@ use crate::array::attribute::strategy::{
     StrategyContext as AttributeContext, prop_attribute,
 };
 use crate::array::domain::strategy::{
-    DomainValueTree, Requirements as DomainRequirements,
+    DomainData, DomainValueTree, Requirements as DomainRequirements,
 };
 use crate::array::enumeration::strategy::EnumerationValueTree;
 use crate::array::schema::{FieldData, SchemaData};
-use crate::array::{AttributeData, DimensionData, DomainData, EnumerationData};
+use crate::array::{AttributeData, DimensionData, EnumerationData};
 use crate::filter::strategy::{
     FilterPipelineStrategy, FilterPipelineValueTree,
     Requirements as FilterRequirements, StrategyContext as FilterContext,
@@ -90,7 +90,7 @@ impl Default for Requirements {
 }
 
 pub fn prop_coordinate_filters(
-    domain: Rc<DomainData>,
+    domain: Rc<Vec<DimensionData>>,
     params: Rc<Requirements>,
 ) -> impl Strategy<Value = Vec<FilterData>> {
     let req = FilterRequirements {
@@ -106,7 +106,7 @@ pub fn prop_coordinate_filters(
 
 fn prop_schema_for_domain(
     array_type: ArrayType,
-    domain: Rc<DomainData>,
+    domain: Rc<Vec<DimensionData>>,
     params: Rc<Requirements>,
 ) -> impl Strategy<Value = SchemaData> {
     let allow_duplicates = (params.allow_duplicates)(array_type);
@@ -240,7 +240,7 @@ fn prop_schema_for_domain(
 
                     {
                         let dimgen = crate::array::dimension::strategy::prop_dimension_name();
-                        for dim in domain.dimension.iter_mut() {
+                        for dim in domain.iter_mut() {
                             while !names.insert(dim.name.clone()) {
                                 dim.name = dimgen
                                     .new_tree(&mut runner)
@@ -265,10 +265,10 @@ fn prop_schema_for_domain(
                 SchemaData {
                     array_type,
                     domain,
-                    capacity: Some(capacity),
-                    cell_order: Some(cell_order),
-                    tile_order: Some(tile_order),
-                    allow_duplicates: Some(allow_duplicates),
+                    capacity,
+                    cell_order,
+                    tile_order,
+                    allow_duplicates,
                     attributes,
                     enumerations,
                     coordinate_filters,
@@ -289,7 +289,7 @@ fn prop_schema(
             .prop_flat_map(move |domain| {
                 prop_schema_for_domain(
                     array_type,
-                    Rc::new(domain),
+                    Rc::new(domain.0),
                     requirements.clone(),
                 )
             })
@@ -310,7 +310,7 @@ fn prop_schema(
                         move |(array_type, domain)| {
                             prop_schema_for_domain(
                                 array_type,
-                                Rc::new(domain),
+                                Rc::new(domain.0),
                                 Rc::clone(&schema_requirements),
                             )
                         },
@@ -333,7 +333,7 @@ impl Arbitrary for SchemaData {
 impl SchemaData {
     /// Returns a strategy which chooses any dimension from `self`.
     pub fn strat_dimension(&self) -> impl Strategy<Value = DimensionData> {
-        self.domain.strat_dimension()
+        select(self.domain.clone())
     }
 
     /// Returns a strategy which chooses any attribute from `self`.
@@ -345,7 +345,6 @@ impl SchemaData {
     pub fn strat_field(&self) -> impl Strategy<Value = FieldData> {
         select(
             self.domain
-                .dimension
                 .clone()
                 .into_iter()
                 .map(FieldData::Dimension)
@@ -364,10 +363,10 @@ impl SchemaData {
 pub struct SchemaValueTree {
     array_type: ArrayType,
     domain: DomainValueTree,
-    capacity: Just<Option<u64>>, // TODO: make shrinkable
-    cell_order: Just<Option<CellOrder>>, // TODO: make shrinkable
-    tile_order: Just<Option<TileOrder>>, // TODO: make shrinkable
-    allow_duplicates: Just<Option<bool>>, // TODO: make shrinkable
+    capacity: Just<u64>,          // TODO: make shrinkable
+    cell_order: Just<CellOrder>,  // TODO: make shrinkable
+    tile_order: Just<TileOrder>,  // TODO: make shrinkable
+    allow_duplicates: Just<bool>, // TODO: make shrinkable
     all_attributes: Vec<AttributeValueTree>,
     all_enumerations: HashMap<String, EnumerationValueTree>,
     selected_attributes: RecordsValueTree<Vec<usize>>,
@@ -382,7 +381,7 @@ impl SchemaValueTree {
 
         Self {
             array_type: schema.array_type,
-            domain: DomainValueTree::new(schema.domain),
+            domain: DomainValueTree::new(schema.domain.into()),
             capacity: Just(schema.capacity),
             cell_order: Just(schema.cell_order),
             tile_order: Just(schema.tile_order),
@@ -439,7 +438,7 @@ impl ValueTree for SchemaValueTree {
 
         SchemaData {
             array_type: self.array_type,
-            domain: self.domain.current(),
+            domain: self.domain.current().0,
             capacity: self.capacity.current(),
             cell_order: self.cell_order.current(),
             tile_order: self.tile_order.current(),
@@ -505,7 +504,7 @@ mod tests {
         while vt.selected_attributes.simplify() {
             let current = vt.current();
             assert!(!current.attributes.is_empty());
-            assert!(!current.domain.dimension.is_empty());
+            assert!(!current.domain.is_empty());
         }
 
         // (this may not be generally true but it is true for RecordsStrategy)
@@ -515,7 +514,7 @@ mod tests {
 
         let minimal = vt.current();
         assert_eq!(1, minimal.attributes.len());
-        assert_eq!(1, minimal.domain.dimension.len());
+        assert_eq!(1, minimal.domain.len());
 
         // check contract of ValueTree
         assert!(!vt.complicate());

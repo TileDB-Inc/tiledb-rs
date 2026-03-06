@@ -109,11 +109,7 @@ fn prop_dimension_for_datatype(
                 name,
                 datatype,
                 constraints,
-                filters: if filters.is_empty() {
-                    None
-                } else {
-                    Some(filters)
-                },
+                filters,
             })
             .boxed()
     })
@@ -162,7 +158,7 @@ pub struct DimensionValueTree {
     name: String,
     datatype: Datatype,
     constraints: Just<DimensionConstraints>, // TODO: this should be shrinkable
-    filters: Option<FilterPipelineValueTree>,
+    filters: FilterPipelineValueTree,
 }
 
 impl DimensionValueTree {
@@ -171,7 +167,7 @@ impl DimensionValueTree {
             name: dimension.name,
             datatype: dimension.datatype,
             constraints: Just(dimension.constraints),
-            filters: dimension.filters.map(FilterPipelineValueTree::new),
+            filters: FilterPipelineValueTree::new(dimension.filters),
         }
     }
 }
@@ -184,22 +180,16 @@ impl ValueTree for DimensionValueTree {
             name: self.name.clone(),
             datatype: self.datatype,
             constraints: self.constraints.current(),
-            filters: self.filters.as_ref().map(|p| p.current()),
+            filters: self.filters.current(),
         }
     }
 
     fn simplify(&mut self) -> bool {
-        self.constraints.simplify()
-            || self.filters.as_mut().map(|p| p.simplify()).unwrap_or(false)
+        self.constraints.simplify() || self.filters.simplify()
     }
 
     fn complicate(&mut self) -> bool {
-        self.constraints.complicate()
-            || self
-                .filters
-                .as_mut()
-                .map(|p| p.complicate())
-                .unwrap_or(false)
+        self.constraints.complicate() || self.filters.complicate()
     }
 }
 

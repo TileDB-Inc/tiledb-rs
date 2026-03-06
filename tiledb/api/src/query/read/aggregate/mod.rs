@@ -514,7 +514,7 @@ mod tests {
                     ArrayType::Sparse,
                 )
                 .with_cols(DimensionConstraints::Int32([5, 8], Some(4)));
-                b.attribute().nullability = Some(true);
+                b.attribute().nullability = true;
                 b.build()
             }),
         )?;
