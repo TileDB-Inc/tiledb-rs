@@ -13,9 +13,8 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::key::LookupKey;
 
-pub use crate::array::{
-    AttributeData, DimensionData, DomainData, EnumerationData,
-};
+use crate::array::dimension::num_cells_per_tile;
+pub use crate::array::{AttributeData, DimensionData, EnumerationData};
 
 /// Encapsulation of data needed to construct a Schema
 #[derive(Clone, Debug, PartialEq)]
@@ -23,7 +22,7 @@ pub use crate::array::{
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct SchemaData {
     pub array_type: ArrayType,
-    pub domain: DomainData,
+    pub domain: Vec<DimensionData>,
     pub capacity: u64,
     pub cell_order: CellOrder,
     pub tile_order: TileOrder,
@@ -45,7 +44,7 @@ impl SchemaData {
     ) -> Self {
         Self {
             array_type,
-            domain: DomainData { dimension: domain },
+            domain,
             capacity: Self::DEFAULT_SPARSE_TILE_CAPACITY,
             cell_order: CellOrder::RowMajor,
             tile_order: TileOrder::RowMajor,
@@ -115,27 +114,24 @@ impl SchemaData {
     }
 
     pub fn num_fields(&self) -> usize {
-        self.domain.dimension.len() + self.attributes.len()
+        self.domain.len() + self.attributes.len()
     }
 
     pub fn field<K: Into<LookupKey>>(&self, key: K) -> Option<FieldData> {
         match key.into() {
             LookupKey::Index(idx) => {
-                if idx < self.domain.dimension.len() {
-                    Some(FieldData::from(self.domain.dimension[idx].clone()))
-                } else if idx
-                    < self.domain.dimension.len() + self.attributes.len()
-                {
+                if idx < self.domain.len() {
+                    Some(FieldData::from(self.domain[idx].clone()))
+                } else if idx < self.domain.len() + self.attributes.len() {
                     Some(FieldData::from(
-                        self.attributes[idx - self.domain.dimension.len()]
-                            .clone(),
+                        self.attributes[idx - self.domain.len()].clone(),
                     ))
                 } else {
                     None
                 }
             }
             LookupKey::Name(name) => {
-                for d in self.domain.dimension.iter() {
+                for d in self.domain.iter() {
                     if d.name == name {
                         return Some(FieldData::from(d.clone()));
                     }
@@ -188,7 +184,7 @@ impl SchemaData {
                 // it should be safe to unwrap, the two `None` conditions must not
                 // be satisfied for a dense array domain
                 // (TODO: what about for string ascii dense domains?)
-                self.domain.num_cells_per_tile().unwrap()
+                num_cells_per_tile(&self.domain).unwrap()
             }
             ArrayType::Sparse => self.capacity as usize,
         }

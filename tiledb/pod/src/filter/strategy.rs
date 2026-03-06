@@ -10,14 +10,14 @@ use tiledb_common::datatype::strategy::DatatypeContext;
 use tiledb_common::dimension_constraints_go;
 use tiledb_common::filter::*;
 
-use crate::array::domain::DomainData;
+use crate::array::DimensionData;
 
 #[derive(Clone, Debug)]
 pub enum StrategyContext {
     Attribute(Datatype, CellValNum),
     Dimension(Datatype, CellValNum),
-    SchemaAttribute(Datatype, CellValNum, ArrayType, Rc<DomainData>),
-    SchemaCoordinates(Rc<DomainData>),
+    SchemaAttribute(Datatype, CellValNum, ArrayType, Rc<Vec<DimensionData>>),
+    SchemaCoordinates(Rc<Vec<DimensionData>>),
 }
 
 impl StrategyContext {
@@ -34,7 +34,6 @@ impl StrategyContext {
             }
             StrategyContext::SchemaCoordinates(domain) => Some(
                 domain
-                    .dimension
                     .iter()
                     .map(|d| (d.datatype, d.cell_val_num()))
                     .collect::<Vec<(Datatype, CellValNum)>>(),
@@ -213,7 +212,6 @@ fn prop_compression(
                  * if there is a floating-point dimension
                  */
                 !domain
-                    .dimension
                     .iter()
                     .any(|d| d.datatype.is_real_type() && d.filters.is_empty())
             } else {
@@ -307,9 +305,9 @@ fn prop_webp(
         if *attribute_type != Datatype::UInt8
             || requirements.input_datatype != Some(Datatype::UInt8)
             || *array_type == ArrayType::Sparse
-            || domain.dimension.len() != 2
-            || !domain.dimension[0].datatype.is_integral_type()
-            || domain.dimension[0].datatype != domain.dimension[1].datatype
+            || domain.len() != 2
+            || !domain[0].datatype.is_integral_type()
+            || domain[0].datatype != domain[1].datatype
         {
             return None;
         }
@@ -317,7 +315,7 @@ fn prop_webp(
         const MAX_EXTENT: usize = 16383;
 
         dimension_constraints_go!(
-            domain.dimension[0].constraints,
+            domain[0].constraints,
             _DT,
             _range,
             extent,
@@ -329,7 +327,7 @@ fn prop_webp(
 
         let mut formats: Vec<WebPFilterInputFormat> = vec![];
         dimension_constraints_go!(
-            domain.dimension[1].constraints,
+            domain[1].constraints,
             _DT,
             _range,
             extent,

@@ -2,7 +2,7 @@ use itertools::Itertools;
 use tiledb_common::filter::FilterData;
 use tiledb_pod::array::attribute::AttributeData;
 use tiledb_pod::array::schema::{FieldData, SchemaData};
-use tiledb_pod::array::{DimensionData, DomainData, EnumerationData};
+use tiledb_pod::array::{DimensionData, EnumerationData};
 
 use super::{Builder, EnumerationKey, Field, Schema};
 use crate::error::Error;
@@ -30,7 +30,7 @@ impl TryFrom<&Schema> for SchemaData {
 
         Ok(SchemaData {
             array_type: schema.array_type()?,
-            domain: DomainData::try_from(&schema.domain()?)?,
+            domain: Vec::<DimensionData>::try_from(&schema.domain()?)?,
             capacity: schema.capacity()?,
             cell_order: schema.cell_order()?,
             tile_order: schema.tile_order()?,
@@ -65,7 +65,7 @@ impl Factory for SchemaData {
         let mut b = Builder::new(
             context,
             self.array_type,
-            self.domain.create(context)?,
+            Factory::create(&self.domain as &[DimensionData], context)?,
         )?
         .coordinate_filters(self.coordinate_filters.create(context)?)?
         .offsets_filters(self.offsets_filters.create(context)?)?

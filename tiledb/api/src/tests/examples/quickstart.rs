@@ -22,14 +22,14 @@ impl Builder {
     }
 
     pub fn with_rows(mut self, domain: DimensionConstraints) -> Self {
-        let rows = &mut self.schema.domain.dimension[0];
+        let rows = &mut self.schema.domain[0];
         rows.datatype = domain.physical_datatype();
         rows.constraints = domain;
         self
     }
 
     pub fn with_cols(mut self, domain: DimensionConstraints) -> Self {
-        let cols = &mut self.schema.domain.dimension[1];
+        let cols = &mut self.schema.domain[1];
         cols.datatype = domain.physical_datatype();
         cols.constraints = domain;
         self

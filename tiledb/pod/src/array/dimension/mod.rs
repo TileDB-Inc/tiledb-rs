@@ -1,3 +1,4 @@
+use tiledb_common::range::{NonEmptyDomain, Range};
 #[cfg(feature = "option-subset")]
 use tiledb_utils::option::OptionSubset;
 
@@ -67,4 +68,36 @@ impl DimensionData {
     pub fn cell_val_num(&self) -> CellValNum {
         self.constraints.cell_val_num()
     }
+}
+
+/// Returns the total number of cells spanned by all dimensions,
+/// or `None` if:
+/// - any dimension is not constrained into a domain; or
+/// - the total number of cells exceeds `usize::MAX`.
+pub fn num_cells(domain: &[DimensionData]) -> Option<usize> {
+    let mut total = 1u128;
+    for d in domain.iter() {
+        total = total.checked_mul(d.constraints.num_cells()?)?;
+    }
+    usize::try_from(total).ok()
+}
+
+/// Returns the number of cells in each tile, or `None` if:
+/// - any dimension does not have a tile extent specified (e.g. for a sparse array); or
+/// - the number of cells in a tile exceeds `usize::MAX`.
+pub fn num_cells_per_tile(domain: &[DimensionData]) -> Option<usize> {
+    let mut total = 1usize;
+    for d in domain.iter() {
+        total = total.checked_mul(d.constraints.num_cells_per_tile()?)?;
+    }
+    Some(total)
+}
+
+/// Returns the domains of each dimension as a `NonEmptyDomain`,
+/// or `None` if any dimension is not constrained into a domain
+pub fn domains(domain: &[DimensionData]) -> Option<NonEmptyDomain> {
+    domain
+        .iter()
+        .map(|d| d.constraints.domain().map(Range::Single))
+        .collect::<Option<NonEmptyDomain>>()
 }

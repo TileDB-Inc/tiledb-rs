@@ -11,7 +11,7 @@ use tiledb_common::datatype::physical::strategy::PhysicalValueStrategy;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 
-use crate::array::DomainData;
+use crate::array::DimensionData;
 use crate::array::attribute::{AttributeData, FillData};
 use crate::array::enumeration::strategy::Parameters as EnumerationParameters;
 use crate::filter::strategy::{
@@ -70,7 +70,7 @@ impl AttributeData {
 #[derive(Clone)]
 pub enum StrategyContext {
     /// This attribute is being generated for an array schema
-    Schema(ArrayType, Rc<DomainData>),
+    Schema(ArrayType, Rc<Vec<DimensionData>>),
 }
 
 #[derive(Clone, Default)]

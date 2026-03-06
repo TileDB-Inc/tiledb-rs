@@ -167,7 +167,6 @@ pub mod strategy {
             let strat_dimension_ranges = if let Some(schema) = params {
                 schema
                     .domain
-                    .dimension
                     .iter()
                     .map(|d| d.subarray_strategy(None).unwrap())
                     .collect::<Vec<BoxedStrategy<Range>>>()
@@ -203,6 +202,7 @@ mod tests {
 
     use super::*;
     use crate::array::domain::strategy::Requirements as DomainRequirements;
+    use crate::array::domain::strategy::subarray_strategy;
     use crate::array::schema::SchemaData;
     use crate::array::schema::strategy::Requirements as SchemaRequirements;
 
@@ -334,7 +334,7 @@ mod tests {
         any_with::<SchemaData>(req).prop_flat_map(|schema| {
             let schema = Rc::new(schema);
             let domain = schema.domain.clone();
-            let ranges = domain.subarray_strategy();
+            let ranges = subarray_strategy(&domain);
             (any_with::<SubarrayData>(Some(Rc::clone(&schema))), ranges)
         })
     }

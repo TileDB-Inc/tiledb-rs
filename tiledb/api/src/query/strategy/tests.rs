@@ -10,7 +10,7 @@ use tiledb_common::query::condition::strategy::Parameters as QueryConditionParam
 use tiledb_common::range::{NonEmptyDomain, Range};
 use tiledb_pod::array::attribute::{AttributeData, FillData};
 use tiledb_pod::array::schema::SchemaData;
-use tiledb_pod::array::{DimensionData, DomainData, EnumerationData};
+use tiledb_pod::array::{DimensionData, EnumerationData};
 use uri::TestArrayUri;
 
 use super::*;
@@ -74,7 +74,6 @@ impl SparseCellsAccumulator {
             Some(
                 schema
                     .domain
-                    .dimension
                     .iter()
                     .map(|d| d.name.clone())
                     .collect::<Vec<String>>(),
@@ -567,17 +566,15 @@ proptest! {
 fn shrinking_query_condition_1() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
-        domain: DomainData {
-            dimension: vec![
-                DimensionData::new(
-                    "__9clS_8u_EwY_7X_CUz70_",
-                    -1826241097139635319i64,
-                    3393001123887180702,
-                    Some(3633),
-                )
-                .with_datatype(Datatype::TimePicosecond),
-            ],
-        },
+        domain: vec![
+            DimensionData::new(
+                "__9clS_8u_EwY_7X_CUz70_",
+                -1826241097139635319i64,
+                3393001123887180702,
+                Some(3633),
+            )
+            .with_datatype(Datatype::TimePicosecond),
+        ],
         capacity: 100000,
         cell_order: CellOrder::ColumnMajor,
         tile_order: TileOrder::RowMajor,
@@ -672,17 +669,15 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
 fn shrinking_query_condition_2() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
-        domain: DomainData {
-            dimension: vec![
-                DimensionData::new(
-                    "G_2x0u0nImT_z5__S_LpDF",
-                    -1724306171463955564i64,
-                    2590083558631104178,
-                    Some(4365),
-                )
-                .with_datatype(Datatype::TimeNanosecond),
-            ],
-        },
+        domain: vec![
+            DimensionData::new(
+                "G_2x0u0nImT_z5__S_LpDF",
+                -1724306171463955564i64,
+                2590083558631104178,
+                Some(4365),
+            )
+            .with_datatype(Datatype::TimeNanosecond),
+        ],
         capacity: 100000,
         cell_order: CellOrder::ColumnMajor,
         tile_order: TileOrder::ColumnMajor,

@@ -20,6 +20,7 @@ use tiledb_common::range::{Range, SingleValueRange, VarValueRange};
 use tiledb_common::{
     dimension_constraints_go, physical_type_go, set_members_go,
 };
+use tiledb_pod::array::dimension::num_cells;
 use tiledb_pod::array::schema::{FieldData as SchemaField, SchemaData};
 
 use super::Cells;
@@ -401,7 +402,6 @@ impl CellsStrategySchema {
                         };
                         schema
                             .domain
-                            .dimension
                             .iter()
                             .map(|d| (SchemaField::from(d.clone()), mask))
                             .collect::<Vec<(SchemaField, FieldMask)>>()
@@ -428,13 +428,11 @@ impl CellsStrategySchema {
                     // dimension coordinates must be unique, generate them first
                     let unique_keys = schema
                         .domain
-                        .dimension
                         .iter()
                         .map(|d| d.name.clone())
                         .collect::<Vec<String>>();
                     let dimension_data = schema
                         .domain
-                        .dimension
                         .iter()
                         .map(|d| {
                             let params = FieldDataParameters {
@@ -588,7 +586,7 @@ impl CellsStrategy {
     fn nrecords_limit(&self) -> Option<usize> {
         if let Some(schema) = self.schema.array_schema() {
             if !schema.allow_duplicates {
-                return schema.domain.num_cells();
+                return num_cells(&schema.domain);
             }
         }
         None
