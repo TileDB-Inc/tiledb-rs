@@ -16,13 +16,6 @@ pub enum Error {
     Datatype(#[from] DatatypeError),
     #[error("Expected {} but found {0}", Datatype::StringAscii)]
     ExpectedStringAscii(Datatype),
-    #[error(
-        "{datatype} is not compatible with {constraint_datatype} declared in constraints"
-    )]
-    IncompatibleDatatypeWithConstraint {
-        datatype: Datatype,
-        constraint_datatype: Datatype,
-    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -1,4 +1,4 @@
-use tiledb_common::array::dimension::{self, DimensionConstraints};
+use tiledb_common::array::dimension::DimensionConstraints;
 use tiledb_common::filter::FilterData;
 use tiledb_common::physical_type_go;
 use tiledb_pod::array::dimension::DimensionData;
@@ -44,16 +44,6 @@ impl Factory for DimensionData {
     type Item = Dimension;
 
     fn create(&self, context: &Context) -> TileDBResult<Self::Item> {
-        if !self
-            .datatype
-            .same_physical_type(&self.constraints.physical_datatype())
-        {
-            return Err(dimension::Error::IncompatibleDatatypeWithConstraint {
-                datatype: self.datatype,
-                constraint_datatype: self.constraints.physical_datatype(),
-            }
-            .into());
-        }
         let mut b = Builder::new(
             context,
             &self.name,
