@@ -8,9 +8,9 @@ impl TryFrom<&Domain> for Vec<DimensionData> {
     type Error = TileDBError;
 
     fn try_from(domain: &Domain) -> Result<Self, Self::Error> {
-        Ok((0..domain.num_dimensions()?)
+        (0..domain.num_dimensions()?)
             .map(|d| DimensionData::try_from(&domain.dimension(d)?))
-            .collect::<TileDBResult<Vec<DimensionData>>>()?)
+            .collect::<TileDBResult<Vec<DimensionData>>>()
     }
 }
 
