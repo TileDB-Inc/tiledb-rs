@@ -385,10 +385,7 @@ mod tests {
             assert!(tdb.field(f.name()).unwrap().is_dimension());
             assert!(field_names.insert(f.name()));
         }
-        assert_eq!(
-            tdb.domain.dimension.len(),
-            dimensions(&arrow_schema).unwrap().len()
-        );
+        assert_eq!(tdb.domain.len(), dimensions(&arrow_schema).unwrap().len());
 
         for f in attributes(&arrow_schema).unwrap() {
             assert!(tdb.field(f.name()).unwrap().is_attribute());

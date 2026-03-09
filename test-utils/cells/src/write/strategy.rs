@@ -226,7 +226,7 @@ impl Strategy for DenseWriteStrategy {
          * rather than keeping a moving product of the accumulated memory
          */
         let memory_limit =
-            { self.params.memory_limit / self.schema.domain.dimension.len() };
+            { self.params.memory_limit / self.schema.domain.len() };
 
         if matches!(self.layout, CellOrder::Global) {
             // necessary to align to tile boundaries
@@ -237,7 +237,7 @@ impl Strategy for DenseWriteStrategy {
             .schema
             .fields()
             .map(|field| {
-                match field.cell_val_num().unwrap_or(CellValNum::single()) {
+                match field.cell_val_num() {
                     CellValNum::Fixed(nz) => {
                         /* exact */
                         nz.get() as usize * field.datatype().size()
@@ -261,7 +261,6 @@ impl Strategy for DenseWriteStrategy {
         let strat_subarray_bounds = self
             .schema
             .domain
-            .dimension
             .iter()
             .map(|d| {
                 d.subarray_strategy(Some(cell_limit)).expect("Dense dimension subarray not found")
@@ -384,7 +383,6 @@ impl Arbitrary for SparseWriteInput {
                 .prop_map(move |data| {
                     let dimensions = schema
                         .domain
-                        .dimension
                         .iter()
                         .map(|d| (d.name.clone(), d.cell_val_num()))
                         .collect::<Vec<(String, CellValNum)>>();

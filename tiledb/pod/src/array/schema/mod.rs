@@ -13,21 +13,20 @@ use tiledb_common::datatype::Datatype;
 use tiledb_common::filter::FilterData;
 use tiledb_common::key::LookupKey;
 
-pub use crate::array::{
-    AttributeData, DimensionData, DomainData, EnumerationData,
-};
+use crate::array::dimension::num_cells_per_tile;
+pub use crate::array::{AttributeData, DimensionData, EnumerationData};
 
 /// Encapsulation of data needed to construct a Schema
-#[derive(Clone, Default, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub struct SchemaData {
     pub array_type: ArrayType,
-    pub domain: DomainData,
-    pub capacity: Option<u64>,
-    pub cell_order: Option<CellOrder>,
-    pub tile_order: Option<TileOrder>,
-    pub allow_duplicates: Option<bool>,
+    pub domain: Vec<DimensionData>,
+    pub capacity: u64,
+    pub cell_order: CellOrder,
+    pub tile_order: TileOrder,
+    pub allow_duplicates: bool,
     pub attributes: Vec<AttributeData>,
     pub enumerations: Vec<EnumerationData>,
     pub coordinate_filters: Vec<FilterData>,
@@ -38,28 +37,101 @@ pub struct SchemaData {
 impl SchemaData {
     pub const DEFAULT_SPARSE_TILE_CAPACITY: u64 = 10000;
 
+    pub fn new(
+        array_type: ArrayType,
+        domain: Vec<DimensionData>,
+        attributes: Vec<AttributeData>,
+    ) -> Self {
+        Self {
+            array_type,
+            domain,
+            capacity: Self::DEFAULT_SPARSE_TILE_CAPACITY,
+            cell_order: CellOrder::RowMajor,
+            tile_order: TileOrder::RowMajor,
+            allow_duplicates: false,
+            attributes,
+            enumerations: Vec::new(),
+            coordinate_filters: Vec::new(),
+            offsets_filters: Vec::new(),
+            validity_filters: Vec::new(),
+        }
+    }
+
+    pub fn with_capacity(self, capacity: u64) -> Self {
+        Self { capacity, ..self }
+    }
+
+    pub fn with_cell_order(self, cell_order: CellOrder) -> Self {
+        Self { cell_order, ..self }
+    }
+
+    pub fn with_tile_order(self, tile_order: TileOrder) -> Self {
+        Self { tile_order, ..self }
+    }
+
+    pub fn with_allow_duplicates(self, allow_duplicates: bool) -> Self {
+        Self {
+            allow_duplicates,
+            ..self
+        }
+    }
+
+    pub fn with_enumerations(self, enumerations: Vec<EnumerationData>) -> Self {
+        Self {
+            enumerations,
+            ..self
+        }
+    }
+
+    pub fn with_coordinate_filters(
+        self,
+        coordinate_filters: Vec<FilterData>,
+    ) -> Self {
+        Self {
+            coordinate_filters,
+            ..self
+        }
+    }
+
+    pub fn with_offsets_filters(
+        self,
+        offsets_filters: Vec<FilterData>,
+    ) -> Self {
+        Self {
+            offsets_filters,
+            ..self
+        }
+    }
+
+    pub fn with_validity_filters(
+        self,
+        validity_filters: Vec<FilterData>,
+    ) -> Self {
+        Self {
+            validity_filters,
+            ..self
+        }
+    }
+
     pub fn num_fields(&self) -> usize {
-        self.domain.dimension.len() + self.attributes.len()
+        self.domain.len() + self.attributes.len()
     }
 
     pub fn field<K: Into<LookupKey>>(&self, key: K) -> Option<FieldData> {
         match key.into() {
             LookupKey::Index(idx) => {
-                if idx < self.domain.dimension.len() {
-                    Some(FieldData::from(self.domain.dimension[idx].clone()))
-                } else if idx
-                    < self.domain.dimension.len() + self.attributes.len()
-                {
+                if idx < self.domain.len() {
+                    Some(FieldData::from(self.domain[idx].clone()))
+                } else if idx < self.domain.len() + self.attributes.len() {
                     Some(FieldData::from(
-                        self.attributes[idx - self.domain.dimension.len()]
-                            .clone(),
+                        self.attributes[idx - self.domain.len()].clone(),
                     ))
                 } else {
                     None
                 }
             }
             LookupKey::Name(name) => {
-                for d in self.domain.dimension.iter() {
+                for d in self.domain.iter() {
                     if d.name == name {
                         return Some(FieldData::from(d.clone()));
                     }
@@ -112,12 +184,9 @@ impl SchemaData {
                 // it should be safe to unwrap, the two `None` conditions must not
                 // be satisfied for a dense array domain
                 // (TODO: what about for string ascii dense domains?)
-                self.domain.num_cells_per_tile().unwrap()
+                num_cells_per_tile(&self.domain).unwrap()
             }
-            ArrayType::Sparse => {
-                self.capacity.unwrap_or(Self::DEFAULT_SPARSE_TILE_CAPACITY)
-                    as usize
-            }
+            ArrayType::Sparse => self.capacity as usize,
         }
     }
 }
@@ -153,16 +222,16 @@ impl FieldData {
         }
     }
 
-    pub fn cell_val_num(&self) -> Option<CellValNum> {
+    pub fn cell_val_num(&self) -> CellValNum {
         match self {
-            Self::Dimension(d) => Some(d.cell_val_num()),
+            Self::Dimension(d) => d.cell_val_num(),
             Self::Attribute(a) => a.cell_val_num,
         }
     }
 
-    pub fn nullability(&self) -> Option<bool> {
+    pub fn nullability(&self) -> bool {
         match self {
-            Self::Dimension(_) => Some(false),
+            Self::Dimension(_) => false,
             Self::Attribute(a) => a.nullability,
         }
     }

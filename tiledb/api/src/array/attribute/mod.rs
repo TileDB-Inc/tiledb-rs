@@ -509,11 +509,7 @@ mod tests {
         let ctx = Context::new().expect("Error creating context instance.");
 
         {
-            let spec = AttributeData {
-                name: "xkcd".to_owned(),
-                datatype: Datatype::UInt32,
-                ..Default::default()
-            };
+            let spec = AttributeData::new("xkcd", Datatype::UInt32);
             let attr = spec.create(&ctx).unwrap();
             assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
 
@@ -521,11 +517,7 @@ mod tests {
             assert!(!attr.is_nullable().unwrap());
         }
         {
-            let spec = AttributeData {
-                name: "xkcd".to_owned(),
-                datatype: Datatype::StringAscii,
-                ..Default::default()
-            };
+            let spec = AttributeData::new("xkcd", Datatype::StringAscii);
             let attr = spec.create(&ctx).unwrap();
             assert_eq!(CellValNum::single(), attr.cell_val_num().unwrap());
 

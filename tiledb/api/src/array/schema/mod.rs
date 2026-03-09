@@ -710,7 +710,6 @@ mod tests {
     use tiledb_common::physical_type_go;
     use tiledb_pod::array::attribute::AttributeData;
     use tiledb_pod::array::dimension::DimensionData;
-    use tiledb_pod::array::domain::DomainData;
     use tiledb_pod::array::schema::SchemaData;
     use uri::{self, TestArrayUri};
     use utils::assert_option_subset;
@@ -1387,23 +1386,11 @@ mod tests {
     fn test_defaults() {
         let ctx = Context::new().unwrap();
 
-        let dense_spec = SchemaData {
-            array_type: ArrayType::Dense,
-            domain: DomainData {
-                dimension: vec![DimensionData {
-                    name: "d".to_string(),
-                    datatype: Datatype::Int32,
-                    constraints: DimensionConstraints::Int32([0, 100], None),
-                    filters: None,
-                }],
-            },
-            attributes: vec![AttributeData {
-                name: "a".to_string(),
-                datatype: Datatype::Int32,
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
+        let dense_spec = SchemaData::new(
+            ArrayType::Dense,
+            vec![DimensionData::new("d", 0, 100, None)],
+            vec![AttributeData::new("a", Datatype::Int32)],
+        );
 
         let dense_schema = dense_spec
             .create(&ctx)
@@ -1415,23 +1402,11 @@ mod tests {
         assert_eq!(TileOrder::RowMajor, dense_schema.tile_order().unwrap());
         assert!(!dense_schema.allows_duplicates().unwrap());
 
-        let sparse_spec = SchemaData {
-            array_type: ArrayType::Sparse,
-            domain: DomainData {
-                dimension: vec![DimensionData {
-                    name: "d".to_string(),
-                    datatype: Datatype::Int32,
-                    constraints: DimensionConstraints::Int32([0, 100], None),
-                    filters: None,
-                }],
-            },
-            attributes: vec![AttributeData {
-                name: "a".to_string(),
-                datatype: Datatype::Int32,
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
+        let sparse_spec = SchemaData::new(
+            ArrayType::Sparse,
+            vec![DimensionData::new("d", 0, 100, None)],
+            vec![AttributeData::new("a", Datatype::Int32)],
+        );
         let sparse_schema = sparse_spec
             .create(&ctx)
             .expect("Error creating schema from mostly-default settings");

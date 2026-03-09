@@ -25,8 +25,8 @@ fn add_attribute() -> anyhow::Result<()> {
     let new_attribute = AttributeData {
         name: "foobar".to_owned(),
         datatype: Datatype::Blob,
-        cell_val_num: Some(CellValNum::Var),
-        nullability: Some(false),
+        cell_val_num: CellValNum::Var,
+        nullability: false,
         fill: None,
         filters: Default::default(),
         enumeration: None,
@@ -57,8 +57,8 @@ fn drop_attribute() -> anyhow::Result<()> {
         b.schema.attributes.push(AttributeData {
             name: "foobar".to_owned(),
             datatype: Datatype::Blob,
-            cell_val_num: Some(CellValNum::Var),
-            nullability: Some(false),
+            cell_val_num: CellValNum::Var,
+            nullability: false,
             fill: None,
             filters: Default::default(),
             enumeration: None,
@@ -95,8 +95,8 @@ fn add_enumeration() -> anyhow::Result<()> {
     let new_attribute = AttributeData {
         name: "state".to_owned(),
         datatype: Datatype::UInt8,
-        cell_val_num: None,
-        nullability: Some(false),
+        cell_val_num: CellValNum::single(),
+        nullability: false,
         fill: None,
         filters: Default::default(),
         enumeration: Some(ename.to_owned()),

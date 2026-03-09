@@ -4,15 +4,13 @@ use cells::write::{DenseWriteInput, SparseWriteInput, WriteSequence};
 use proptest::prelude::*;
 use tiledb_common::Datatype;
 use tiledb_common::array::schema::EnumerationKey;
-use tiledb_common::array::{
-    CellOrder, TileOrder, dimension::DimensionConstraints,
-};
+use tiledb_common::array::{CellOrder, TileOrder};
 use tiledb_common::metadata::Value;
 use tiledb_common::query::condition::strategy::Parameters as QueryConditionParameters;
 use tiledb_common::range::{NonEmptyDomain, Range};
 use tiledb_pod::array::attribute::{AttributeData, FillData};
 use tiledb_pod::array::schema::SchemaData;
-use tiledb_pod::array::{DimensionData, DomainData, EnumerationData};
+use tiledb_pod::array::{DimensionData, EnumerationData};
 use uri::TestArrayUri;
 
 use super::*;
@@ -70,13 +68,12 @@ struct SparseCellsAccumulator {
 
 impl SparseCellsAccumulator {
     pub fn new(schema: &SchemaData) -> Self {
-        let dedup_keys = if schema.allow_duplicates.unwrap_or(false) {
+        let dedup_keys = if schema.allow_duplicates {
             None
         } else {
             Some(
                 schema
                     .domain
-                    .dimension
                     .iter()
                     .map(|d| d.name.clone())
                     .collect::<Vec<String>>(),
@@ -569,27 +566,25 @@ proptest! {
 fn shrinking_query_condition_1() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
-        domain: DomainData {
-            dimension: vec![DimensionData {
-                name: "__9clS_8u_EwY_7X_CUz70_".to_owned(),
-                datatype: Datatype::TimePicosecond,
-                constraints: DimensionConstraints::Int64(
-                    [-1826241097139635319, 3393001123887180702],
-                    Some(3633),
-                ),
-                filters: None,
-            }],
-        },
-        capacity: Some(100000),
-        cell_order: Some(CellOrder::ColumnMajor),
-        tile_order: Some(TileOrder::RowMajor),
-        allow_duplicates: Some(true),
+        domain: vec![
+            DimensionData::new(
+                "__9clS_8u_EwY_7X_CUz70_",
+                -1826241097139635319i64,
+                3393001123887180702,
+                Some(3633),
+            )
+            .with_datatype(Datatype::TimePicosecond),
+        ],
+        capacity: 100000,
+        cell_order: CellOrder::ColumnMajor,
+        tile_order: TileOrder::RowMajor,
+        allow_duplicates: true,
         attributes: vec![
             AttributeData {
                 name: "HAR_".to_owned(),
                 datatype: Datatype::Int16,
-                nullability: Some(true),
-                cell_val_num: Some(CellValNum::single()),
+                nullability: true,
+                cell_val_num: CellValNum::single(),
                 fill: Some(FillData {
                     data: Value::Int16Value(vec![32082]),
                     nullability: Some(true),
@@ -600,8 +595,8 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
             AttributeData {
                 name: "R_0".to_owned(),
                 datatype: Datatype::Float32,
-                nullability: Some(true),
-                cell_val_num: Some(CellValNum::single()),
+                nullability: true,
+                cell_val_num: CellValNum::single(),
                 fill: Some(FillData {
                     data: Value::Float32Value(vec![-0.00014772698]),
                     nullability: Some(false),
@@ -674,27 +669,25 @@ fn shrinking_query_condition_1() -> anyhow::Result<()> {
 fn shrinking_query_condition_2() -> anyhow::Result<()> {
     let schema = SchemaData {
         array_type: ArrayType::Sparse,
-        domain: DomainData {
-            dimension: vec![DimensionData {
-                name: "G_2x0u0nImT_z5__S_LpDF".to_owned(),
-                datatype: Datatype::TimeNanosecond,
-                constraints: DimensionConstraints::Int64(
-                    [-1724306171463955564, 2590083558631104178],
-                    Some(4365),
-                ),
-                filters: None,
-            }],
-        },
-        capacity: Some(100000),
-        cell_order: Some(CellOrder::ColumnMajor),
-        tile_order: Some(TileOrder::ColumnMajor),
-        allow_duplicates: Some(true),
+        domain: vec![
+            DimensionData::new(
+                "G_2x0u0nImT_z5__S_LpDF",
+                -1724306171463955564i64,
+                2590083558631104178,
+                Some(4365),
+            )
+            .with_datatype(Datatype::TimeNanosecond),
+        ],
+        capacity: 100000,
+        cell_order: CellOrder::ColumnMajor,
+        tile_order: TileOrder::ColumnMajor,
+        allow_duplicates: true,
         attributes: vec![
             AttributeData {
                 name: "G".to_owned(),
                 datatype: Datatype::Int16,
-                nullability: Some(false),
-                cell_val_num: CellValNum::single().into(),
+                nullability: false,
+                cell_val_num: CellValNum::single(),
                 fill: None,
                 filters: Default::default(),
                 enumeration: Some("t55pbZ".to_owned()),
@@ -702,8 +695,8 @@ fn shrinking_query_condition_2() -> anyhow::Result<()> {
             AttributeData {
                 name: "NVjjN97iS_6T0y7XATzd3kCH4".to_owned(),
                 datatype: Datatype::StringUtf8,
-                nullability: Some(false),
-                cell_val_num: CellValNum::Var.into(),
+                nullability: false,
+                cell_val_num: CellValNum::Var,
                 fill: None,
                 filters: Default::default(),
                 enumeration: None,

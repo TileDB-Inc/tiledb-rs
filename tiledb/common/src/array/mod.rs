@@ -180,11 +180,10 @@ impl Arbitrary for CellOrder {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "option-subset", derive(OptionSubset))]
 #[cfg_attr(feature = "serde", derive(Deserialize, Serialize))]
 pub enum ArrayType {
-    #[default]
     Dense,
     Sparse,
 }
@@ -241,20 +240,20 @@ pub enum CellValNum {
 }
 
 impl CellValNum {
-    pub fn single() -> Self {
+    pub const fn single() -> Self {
         CellValNum::Fixed(NonZeroU32::new(1).unwrap())
     }
 
-    pub fn is_var_sized(&self) -> bool {
+    pub const fn is_var_sized(&self) -> bool {
         matches!(self, CellValNum::Var)
     }
 
-    pub fn is_single_valued(&self) -> bool {
+    pub const fn is_single_valued(&self) -> bool {
         matches!(self, CellValNum::Fixed(nz) if nz.get() == 1)
     }
 
     /// Return the fixed number of values per cell, if not variable.
-    pub fn fixed(&self) -> Option<NonZeroU32> {
+    pub const fn fixed(&self) -> Option<NonZeroU32> {
         if let CellValNum::Fixed(nz) = self {
             Some(*nz)
         } else {

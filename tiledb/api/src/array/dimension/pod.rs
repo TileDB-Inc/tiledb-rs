@@ -27,10 +27,7 @@ impl TryFrom<&Dimension> for DimensionData {
             name: dim.name()?,
             datatype,
             constraints,
-            filters: {
-                let fl = Vec::<FilterData>::try_from(&dim.filters()?)?;
-                if fl.is_empty() { None } else { Some(fl) }
-            },
+            filters: Vec::<FilterData>::try_from(&dim.filters()?)?,
         })
     }
 }
@@ -54,9 +51,7 @@ impl Factory for DimensionData {
             self.constraints.clone(),
         )?;
 
-        if let Some(fl) = self.filters.as_ref() {
-            b = b.filters(fl.create(context)?)?;
-        }
+        b = b.filters(self.filters.create(context)?)?;
 
         Ok(b.cell_val_num(self.cell_val_num())?.build())
     }

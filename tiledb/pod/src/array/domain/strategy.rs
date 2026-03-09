@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use proptest::prelude::*;
-use proptest::sample::select;
 use proptest::strategy::ValueTree;
 use strategy_ext::StrategyExt;
 use strategy_ext::records::RecordsValueTree;
@@ -14,17 +13,29 @@ use crate::array::dimension::DimensionData;
 use crate::array::dimension::strategy::{
     DimensionValueTree, Requirements as DimensionRequirements,
 };
-use crate::array::domain::DomainData;
 
-impl DomainData {
-    pub fn subarray_strategy(
-        &self,
-    ) -> impl proptest::prelude::Strategy<Value = Vec<Range>> + use<> {
-        self.dimension
-            .iter()
-            .map(|d| d.subarray_strategy(None).unwrap())
-            .collect::<Vec<proptest::prelude::BoxedStrategy<Range>>>()
+#[derive(Clone, Debug, PartialEq)]
+pub struct DomainData(pub Vec<DimensionData>);
+
+impl AsRef<[DimensionData]> for DomainData {
+    fn as_ref(&self) -> &[DimensionData] {
+        &self.0
     }
+}
+
+impl From<Vec<DimensionData>> for DomainData {
+    fn from(value: Vec<DimensionData>) -> Self {
+        DomainData(value)
+    }
+}
+
+pub fn subarray_strategy(
+    domain: &[DimensionData],
+) -> impl proptest::prelude::Strategy<Value = Vec<Range>> + use<> {
+    domain
+        .iter()
+        .map(|d| d.subarray_strategy(None).unwrap())
+        .collect::<Vec<proptest::prelude::BoxedStrategy<Range>>>()
 }
 
 #[derive(Clone)]
@@ -121,7 +132,7 @@ fn prop_domain_for_array_type(
             .boxed()
         }
     }
-    .prop_map(|dimension| DomainData { dimension })
+    .prop_map(DomainData)
 }
 
 fn prop_domain(
@@ -139,6 +150,7 @@ fn prop_domain(
             .boxed()
     }
     .value_tree_map(|vt| DomainValueTree::new(vt.current()))
+    .prop_map(DomainData::into)
 }
 
 impl Arbitrary for DomainData {
@@ -150,13 +162,6 @@ impl Arbitrary for DomainData {
     }
 }
 
-impl DomainData {
-    /// Returns a strategy which chooses any dimension from `self.`
-    pub fn strat_dimension(&self) -> impl Strategy<Value = DimensionData> {
-        select(self.dimension.clone())
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct DomainValueTree {
     all_dimensions: Vec<DimensionValueTree>,
@@ -165,11 +170,11 @@ pub struct DomainValueTree {
 
 impl DomainValueTree {
     pub fn new(domain: DomainData) -> Self {
-        let num_dimension = domain.dimension.len();
+        let num_dimension = domain.0.len();
 
         Self {
             all_dimensions: domain
-                .dimension
+                .0
                 .into_iter()
                 .map(DimensionValueTree::new)
                 .collect::<Vec<_>>(),
@@ -185,14 +190,12 @@ impl ValueTree for DomainValueTree {
     type Value = DomainData;
 
     fn current(&self) -> Self::Value {
-        DomainData {
-            dimension: self
-                .selected_dimensions
-                .current()
-                .into_iter()
-                .map(|i| self.all_dimensions[i].current())
-                .collect::<Vec<DimensionData>>(),
-        }
+        self.selected_dimensions
+            .current()
+            .into_iter()
+            .map(|i| self.all_dimensions[i].current())
+            .collect::<Vec<DimensionData>>()
+            .into()
     }
 
     fn simplify(&mut self) -> bool {
@@ -220,7 +223,7 @@ mod tests {
 
         let mut value = loop {
             let value = strat.new_tree(&mut runner).unwrap();
-            if value.current().dimension.len() > 4 {
+            if value.current().0.len() > 4 {
                 break value;
             }
         };
@@ -235,6 +238,6 @@ mod tests {
         }
         let last = value.current();
         assert_ne!(init, last);
-        assert_eq!(1, last.dimension.len());
+        assert_eq!(1, last.0.len());
     }
 }
