@@ -54,7 +54,7 @@ impl Requirements {
     }
 
     pub fn max_sparse_tile_capacity_default() -> u64 {
-        **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MIN
+        **tiledb_proptest_config::TILEDB_STRATEGY_SCHEMA_PARAMETERS_SPARSE_TILE_CAPACITY_MAX
     }
 
     pub fn attribute_enumeration_likelihood_default() -> f64 {
