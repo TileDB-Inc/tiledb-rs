@@ -68,7 +68,7 @@ where
         .build()?;
 
     // Create array
-    tiledb::Array::create(&tdb, array_uri, schema)?;
+    tiledb::Array::create(&tdb, array_uri, &schema)?;
     Ok(())
 }
 

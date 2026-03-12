@@ -68,7 +68,7 @@ fn create_array() -> TileDBResult<()> {
     .add_attribute(attribute_a)?
     .build()?;
 
-    tiledb::Array::create(&tdb, QUICKSTART_DENSE_ARRAY_URI, schema)
+    tiledb::Array::create(&tdb, QUICKSTART_DENSE_ARRAY_URI, &schema)
 }
 
 /// Writes data into the array in row-major order from a 1D-array buffer.

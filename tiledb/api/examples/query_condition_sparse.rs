@@ -149,7 +149,7 @@ fn create_array(ctx: &Context) -> TileDBResult<()> {
         .add_attribute(attr_d)?
         .build()?;
 
-    Array::create(ctx, ARRAY_URI, schema)
+    Array::create(ctx, ARRAY_URI, &schema)
 }
 
 /// Write the following data to the array:

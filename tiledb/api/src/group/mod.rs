@@ -667,7 +667,7 @@ mod tests {
             .build()?;
 
         // Create array
-        Array::create(&tdb, array_uri, schema)?;
+        Array::create(&tdb, array_uri, &schema)?;
         Ok(())
     }
 

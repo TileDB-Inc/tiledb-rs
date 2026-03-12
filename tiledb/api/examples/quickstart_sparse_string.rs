@@ -85,7 +85,7 @@ fn create_array(ctx: &Context) -> TileDBResult<()> {
             .build()?
     };
 
-    Array::create(ctx, ARRAY_URI, schema)?;
+    Array::create(ctx, ARRAY_URI, &schema)?;
     Ok(())
 }
 

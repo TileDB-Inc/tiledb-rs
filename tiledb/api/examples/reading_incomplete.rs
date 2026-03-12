@@ -91,7 +91,7 @@ fn create_array() -> TileDBResult<()> {
     .add_attribute(attribute_char)?
     .build()?;
 
-    tiledb::Array::create(&tdb, ARRAY_NAME, schema)
+    tiledb::Array::create(&tdb, ARRAY_NAME, &schema)
 }
 
 /// Writes data into the array.
