@@ -789,7 +789,7 @@ mod tests {
             .with_path("sc_52312")
             .map_err(|e| Error::Other(e.to_string()))?;
 
-        Array::create(&c, &uri, schema)?;
+        Array::create(&c, &uri, &schema)?;
 
         // try dimension
         {
@@ -987,7 +987,7 @@ mod tests {
             .with_path("sc_53791")
             .map_err(|e| Error::Other(e.to_string()))?;
 
-        Array::create(&c, &uri, schema)?;
+        Array::create(&c, &uri, &schema)?;
 
         // insert a cell
         {

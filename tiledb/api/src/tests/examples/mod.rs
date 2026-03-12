@@ -32,7 +32,7 @@ impl TestArray {
         let context = Context::new()?;
         {
             let s = schema.create(&context)?;
-            Array::create(&context, &uri, s)?;
+            Array::create(&context, &uri, &s)?;
         }
 
         Ok(TestArray {

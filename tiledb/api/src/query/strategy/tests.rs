@@ -203,7 +203,7 @@ fn do_write_readback(
     let schema_in = schema_spec
         .create(ctx)
         .expect("Error constructing arbitrary schema");
-    Array::create(ctx, &uri, schema_in).expect("Error creating array");
+    Array::create(ctx, &uri, &schema_in).expect("Error creating array");
 
     let mut accumulated_domain: Option<NonEmptyDomain> = None;
     let mut accumulated_write = CellsAccumulator::new(&schema_spec);
@@ -447,7 +447,7 @@ fn instance_query_condition(
         .map_err(|e| Error::Other(e.to_string()))?;
 
     let schema_in = schema_spec.create(&ctx)?;
-    Array::create(&ctx, &uri, schema_in)?;
+    Array::create(&ctx, &uri, &schema_in)?;
 
     for write in write_sequence.iter() {
         let array = Array::open(&ctx, &uri, Mode::Write)?;

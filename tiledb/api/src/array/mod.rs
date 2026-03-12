@@ -178,7 +178,7 @@ impl Array {
     pub fn create<S>(
         context: &Context,
         name: S,
-        schema: Schema,
+        schema: &Schema,
     ) -> TileDBResult<()>
     where
         S: AsRef<str>,
@@ -1005,7 +1005,7 @@ pub mod tests {
         let uri = test_uri
             .with_path("quickstart_dense")
             .map_err(|e| Error::Other(e.to_string()))?;
-        Array::create(context, &uri, s)?;
+        Array::create(context, &uri, &s)?;
         Ok(uri)
     }
 
@@ -1025,7 +1025,7 @@ pub mod tests {
         let uri = test_uri
             .with_path("quickstart_dense")
             .map_err(|e| Error::Other(e.to_string()))?;
-        Array::create(ctx, &uri, schema)?;
+        Array::create(ctx, &uri, &schema)?;
         Ok(uri)
     }
 
@@ -1067,7 +1067,7 @@ pub mod tests {
             let test_uri = uri::get_uri_generator().map_err(|e| Error::Other(e.to_string()))?;
             let uri = test_uri.with_path("array").map_err(|e| Error::Other(e.to_string()))?;
 
-            Array::create(&ctx, &uri, schema_in)
+            Array::create(&ctx, &uri, &schema_in)
                 .expect("Error creating array");
 
             let schema_out = Schema::load(&ctx, &uri).expect("Error loading array schema");
@@ -1252,7 +1252,7 @@ pub mod tests {
         let array_uri = test_uri
             .with_path("quickstart_dense")
             .map_err(|e| Error::Other(e.to_string()))?;
-        Array::create(ctx, &array_uri, schema)?;
+        Array::create(ctx, &array_uri, &schema)?;
         Ok(array_uri)
     }
 
@@ -1403,7 +1403,7 @@ pub mod tests {
             .add_attribute(attr2)?
             .build()?;
 
-        Array::create(&ctx, &uri, schema)?;
+        Array::create(&ctx, &uri, &schema)?;
 
         let array = Array::open(&ctx, &uri, Mode::Read)?;
 

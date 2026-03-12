@@ -960,7 +960,7 @@ pub mod tests {
             )?
             .build()?;
 
-        Array::create(ctx, &array_uri, schema)?;
+        Array::create(ctx, &array_uri, &schema)?;
 
         // Two writes for multiple fragments
         write_dense_array(ctx, &array_uri)?;
@@ -1005,7 +1005,7 @@ pub mod tests {
             )?
             .build()?;
 
-        Array::create(ctx, &array_uri, schema)?;
+        Array::create(ctx, &array_uri, &schema)?;
 
         // Two writes for multiple fragments
         write_sparse_array(ctx, &array_uri)?;

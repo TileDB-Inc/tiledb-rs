@@ -569,7 +569,7 @@ mod tests {
             .add_attribute(attr)?
             .build()?;
 
-        Array::create(ctx, &array_uri, schema)?;
+        Array::create(ctx, &array_uri, &schema)?;
 
         Ok(array_uri)
     }
